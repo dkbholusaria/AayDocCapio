@@ -17,6 +17,7 @@ dist/
 *.egg-info/
 .eggs/
 *.spec
+installer_output/
 
 # Virtual environments
 venv/
