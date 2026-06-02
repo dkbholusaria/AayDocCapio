@@ -16,6 +16,7 @@ build/
 dist/
 *.egg-info/
 .eggs/
+*.spec
 
 # Virtual environments
 venv/
