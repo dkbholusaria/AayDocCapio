@@ -39,10 +39,12 @@ echo [OK] dist\TaxDownloader.exe created.
 echo.
 echo [Step 3/3] Building installer with Inno Setup...
 
-:: Try default Inno Setup install locations
+:: Try default Inno Setup install locations (7 preferred, fallback to 6)
 set ISCC=""
-if exist "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" set ISCC="C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-if exist "C:\Program Files\Inno Setup 6\ISCC.exe"       set ISCC="C:\Program Files\Inno Setup 6\ISCC.exe"
+if exist "C:\Program Files (x86)\Inno Setup 7\ISCC.exe" set ISCC="C:\Program Files (x86)\Inno Setup 7\ISCC.exe"
+if exist "C:\Program Files\Inno Setup 7\ISCC.exe"       set ISCC="C:\Program Files\Inno Setup 7\ISCC.exe"
+if %ISCC%=="" if exist "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" set ISCC="C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+if %ISCC%=="" if exist "C:\Program Files\Inno Setup 6\ISCC.exe"       set ISCC="C:\Program Files\Inno Setup 6\ISCC.exe"
 
 if %ISCC%=="" (
     echo [Warning] Inno Setup not found. Skipping installer build.
