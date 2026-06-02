@@ -26,7 +26,6 @@ pyinstaller --onefile --noconsole --name="TaxDownloader" --clean ^
     --add-data "assessment_years.json;." ^
     --add-data "resources;resources" ^
     --add-data "automation;automation" ^
-    --icon="resources\app_icon.ico" ^
     app.py
 
 if %errorlevel% neq 0 (
