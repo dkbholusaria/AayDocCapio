@@ -1,0 +1,31 @@
+# Vault — contains encrypted credentials, never commit
+tax_vault.json
+
+# Logs
+app.log
+*.log
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# Build artefacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

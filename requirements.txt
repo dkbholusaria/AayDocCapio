@@ -1,0 +1,7 @@
+PyQt6
+pandas
+openpyxl
+playwright
+cryptography
+pyinstaller
+briefcase

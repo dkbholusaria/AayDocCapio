@@ -1,0 +1,44 @@
+[tool.briefcase]
+project_name = "Tax Downloader"
+bundle = "com.taxdownloader"
+version = "1.0.0"
+url = "https://github.com/your-org/tax-downloader"
+license = "Proprietary"
+author = "Your Name"
+author_email = "you@example.com"
+
+[tool.briefcase.app.tax-downloader]
+formal_name = "Tax Downloader"
+description = "ITD Bulk Document Downloader (Form 26AS, AIS, TIS)"
+icon = "resources/icon"
+sources = [
+    "automation",
+    "vault.py",
+    "assessment_years.json",
+    "tax_vault.json",
+]
+requires = [
+    "PyQt6",
+    "pandas",
+    "openpyxl",
+    "playwright",
+    "cryptography",
+]
+
+# Entry point — Briefcase calls main() in the app module
+[tool.briefcase.app.tax-downloader.sources]
+
+[tool.briefcase.app.tax-downloader.windows]
+requires = [
+    "PyQt6",
+    "pandas",
+    "openpyxl",
+    "playwright",
+    "cryptography",
+]
+
+# To build:
+#   pip install briefcase
+#   briefcase create windows
+#   briefcase build windows       # produces MSI in dist/
+#   briefcase run windows         # test locally
