@@ -17,7 +17,6 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=installer_output
 OutputBaseFilename=ITDDocsDownloader_Setup_v{#MyAppVersion}
-SetupIconFile=resources\app_icon.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -39,13 +38,10 @@ Source: "dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 ; Seed assessment_years.json into AppData on first install
 Source: "assessment_years.json"; DestDir: "{#MyAppDataDir}"; Flags: onlyifdoesntexist uninsneveruninstall
 
-; Icon for shortcuts
-Source: "resources\app_icon.ico"; DestDir: "{app}"; Flags: ignoreversion
-
 [Icons]
-Name: "{group}\{#MyAppName}";       Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\app_icon.ico"
+Name: "{group}\{#MyAppName}";           Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
-Name: "{commondesktop}\{#MyAppName}";   Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\app_icon.ico"; Tasks: desktopicon
+Name: "{commondesktop}\{#MyAppName}";   Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent

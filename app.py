@@ -19,7 +19,7 @@ from PyQt6.QtCore import QRegularExpression
 def _app_dir() -> str:
     """
     Writable user-data directory for vault, settings, and outputs.
-    - Windows frozen .exe : %LOCALAPPDATA%\ITDDocsDownloader
+    - Windows frozen .exe : %LOCALAPPDATA%\\ITDDocsDownloader
     - Linux/WSL frozen    : ~/.local/share/ITDDocsDownloader
     - Running as script   : folder containing app.py
     """
