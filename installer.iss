@@ -32,8 +32,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"; Flags: unchecked
 
 [Files]
-; Main executable — built by PyInstaller into dist\
-Source: "dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+; All files from the one-dir PyInstaller build
+Source: "dist\TaxDownloader\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; Seed assessment_years.json into AppData on first install
 Source: "assessment_years.json"; DestDir: "{#MyAppDataDir}"; Flags: onlyifdoesntexist uninsneveruninstall
