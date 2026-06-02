@@ -16,7 +16,28 @@ from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QMetaObject, Q_ARG, QModelIndex
 from PyQt6.QtGui import QFont, QTextCursor, QColor, QRegularExpressionValidator, QPalette
 from PyQt6.QtCore import QRegularExpression
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+def _app_dir() -> str:
+    """
+    Directory that holds writable runtime files (vault, assessment_years.json).
+    - When running as a PyInstaller .exe: folder containing the .exe
+    - When running as a script: folder containing app.py
+    """
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def _bundled_dir() -> str:
+    """
+    Directory for read-only assets bundled inside the .exe (_MEIPASS).
+    Falls back to _app_dir() when running as a script.
+    """
+    if getattr(sys, "frozen", False):
+        return sys._MEIPASS
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+sys.path.append(_bundled_dir())
 from vault import VaultManager
 from automation.browser import browser_manager
 from automation.auth import login_itd, logout_itd
@@ -393,7 +414,8 @@ class TaxDownloaderApp(QMainWindow):
         self.setMinimumSize(1100, 720)
         self.resize(1200, 780)
 
-        self.vault = VaultManager()
+        self.vault = VaultManager(
+            vault_path=os.path.join(_app_dir(), "tax_vault.json"))
         self.selected_ids = set()
         self.editing_id = None
         self.is_running = False
@@ -1047,8 +1069,21 @@ class TaxDownloaderApp(QMainWindow):
             self.vault.update_setting("download_root_dir", chosen)
             self.log(f"[Settings] Output folder: {chosen}")
 
+    def _ay_json_path(self) -> str:
+        """
+        Writable path for assessment_years.json next to the exe / script.
+        On first run when frozen, seeds the file from the bundled read-only copy.
+        """
+        writable = os.path.join(_app_dir(), "assessment_years.json")
+        if not os.path.exists(writable):
+            bundled = os.path.join(_bundled_dir(), "assessment_years.json")
+            if os.path.exists(bundled):
+                import shutil
+                shutil.copy2(bundled, writable)
+        return writable
+
     def _load_ay_list(self):
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assessment_years.json")
+        path = self._ay_json_path()
         try:
             with open(path, "r", encoding="utf-8") as f:
                 entries = json.load(f)
@@ -1075,8 +1110,7 @@ class TaxDownloaderApp(QMainWindow):
         return None, None
 
     def open_manage_years(self):
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assessment_years.json")
-        ManageYearsDialog(self, path, on_save=self.refresh_ay_combo).exec()
+        ManageYearsDialog(self, self._ay_json_path(), on_save=self.refresh_ay_combo).exec()
 
     def refresh_ay_combo(self):
         self._ay_entries = self._load_ay_list()

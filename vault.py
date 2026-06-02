@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import json
 import uuid
 import datetime
@@ -94,8 +95,11 @@ class VaultManager:
     """
     def __init__(self, vault_path=None, master_password="automated_tax_app_key"):
         if vault_path is None:
-            # Place in the same directory as this file
-            base_dir = os.path.dirname(os.path.abspath(__file__))
+            # When frozen by PyInstaller use folder next to .exe, not _MEIPASS
+            if getattr(sys, "frozen", False):
+                base_dir = os.path.dirname(sys.executable)
+            else:
+                base_dir = os.path.dirname(os.path.abspath(__file__))
             self.vault_file = os.path.join(base_dir, "tax_vault.json")
         else:
             self.vault_file = vault_path

@@ -29,7 +29,11 @@ echo [Info] Starting executable compilation...
 echo [Info] Packaging app.py into a single-file console-less executable...
 echo.
 
-pyinstaller --onefile --noconsole --name="TaxDownloader" --clean app.py
+pyinstaller --onefile --noconsole --name="TaxDownloader" --clean ^
+    --add-data "assessment_years.json;." ^
+    --add-data "resources;resources" ^
+    --add-data "automation;automation" ^
+    app.py
 
 if %errorlevel% eq 0 (
     echo.
