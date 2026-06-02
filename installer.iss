@@ -9,6 +9,7 @@ AppId={{A3F2C1D4-8B7E-4F9A-BC12-3E5D6F7A8C90}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
+; Compatible with Inno Setup 6 and 7
 AppPublisherURL=https://github.com/dkbholusaria/ITD-docs-downloader
 AppSupportURL=https://github.com/dkbholusaria/ITD-docs-downloader/issues
 DefaultDirName={autopf}\{#MyAppName}
