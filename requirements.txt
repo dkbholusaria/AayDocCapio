@@ -3,5 +3,6 @@ pandas
 openpyxl
 playwright
 cryptography
-pyinstaller
-briefcase
+nuitka
+ordered-set
+zstandard

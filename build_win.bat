@@ -1,6 +1,6 @@
 @echo off
 echo ========================================================
-echo   ITD Docs Downloader - Windows Build Script
+echo   ITD Docs Downloader - Windows Build Script (Nuitka)
 echo ========================================================
 echo.
 
@@ -19,26 +19,40 @@ if %errorlevel% neq 0 (
     pause & exit /b 1
 )
 
-:: ── PyInstaller — build the exe ──────────────────────────
+:: ── Nuitka — compile to native C executable ──────────────
 echo.
-echo [Step 2/3] Building TaxDownloader.exe with PyInstaller...
-pyinstaller --noconsole --name="TaxDownloader" --clean ^
-    --add-data "assessment_years.json;." ^
-    --add-data "resources;resources" ^
-    --add-data "automation;automation" ^
+echo [Step 2/3] Compiling with Nuitka (this takes several minutes)...
+echo            Python code will be compiled to native machine code.
+echo.
+
+python -m nuitka ^
+    --standalone ^
+    --windows-console-mode=disable ^
+    --output-dir=dist ^
+    --output-filename=TaxDownloader.exe ^
+    --include-data-file=assessment_years.json=assessment_years.json ^
+    --include-data-dir=resources=resources ^
+    --include-package=automation ^
+    --include-package=vault ^
+    --enable-plugin=pyqt6 ^
+    --assume-yes-for-downloads ^
     app.py
 
 if %errorlevel% neq 0 (
-    echo [Error] PyInstaller build failed. See errors above.
+    echo [Error] Nuitka compilation failed. See errors above.
     pause & exit /b 1
 )
-echo [OK] dist\TaxDownloader\ folder created.
+echo [OK] dist\app.dist\ folder created.
 
-:: ── Inno Setup — build the installer ────────────────────
+:: ── Rename output folder to TaxDownloader ────────────────
+if exist "dist\TaxDownloader" rmdir /s /q "dist\TaxDownloader"
+rename "dist\app.dist" "TaxDownloader"
+echo [OK] Renamed to dist\TaxDownloader\
+
+:: ── Inno Setup — build the installer ─────────────────────
 echo.
 echo [Step 3/3] Building installer with Inno Setup...
 
-:: Try default Inno Setup install locations (7 preferred, fallback to 6)
 set ISCC=""
 if exist "C:\Program Files (x86)\Inno Setup 7\ISCC.exe" set ISCC="C:\Program Files (x86)\Inno Setup 7\ISCC.exe"
 if exist "C:\Program Files\Inno Setup 7\ISCC.exe"       set ISCC="C:\Program Files\Inno Setup 7\ISCC.exe"
@@ -49,7 +63,7 @@ if %ISCC%=="" (
     echo [Warning] Inno Setup not found. Skipping installer build.
     echo           Download from https://jrsoftware.org/isdl.php and re-run.
     echo.
-    echo [Done] Executable only: dist\TaxDownloader.exe
+    echo [Done] App folder only: dist\TaxDownloader\
     pause & exit /b 0
 )
 

@@ -18,6 +18,8 @@ dist/
 .eggs/
 *.spec
 installer_output/
+*.build/
+*.onefile-build/
 
 # Virtual environments
 venv/
