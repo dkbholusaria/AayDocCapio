@@ -22,7 +22,7 @@ if %errorlevel% neq 0 (
 :: ── PyInstaller — build the exe ──────────────────────────
 echo.
 echo [Step 2/3] Building TaxDownloader.exe with PyInstaller...
-pyinstaller --onefile --noconsole --name="TaxDownloader" --clean ^
+pyinstaller --noconsole --name="TaxDownloader" --clean ^
     --add-data "assessment_years.json;." ^
     --add-data "resources;resources" ^
     --add-data "automation;automation" ^
@@ -32,7 +32,7 @@ if %errorlevel% neq 0 (
     echo [Error] PyInstaller build failed. See errors above.
     pause & exit /b 1
 )
-echo [OK] dist\TaxDownloader.exe created.
+echo [OK] dist\TaxDownloader\ folder created.
 
 :: ── Inno Setup — build the installer ────────────────────
 echo.
@@ -62,7 +62,7 @@ if %errorlevel% neq 0 (
 echo.
 echo ========================================================
 echo   Build complete!
-echo   Executable : dist\TaxDownloader.exe
+echo   App folder : dist\TaxDownloader\
 echo   Installer  : installer_output\ITDDocsDownloader_Setup_v1.0.0.exe
 echo ========================================================
 pause
