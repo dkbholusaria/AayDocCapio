@@ -1,49 +1,67 @@
 @echo off
 echo ========================================================
-echo   Tax Downloader - Windows Packaging Script (PyInstaller)
+echo   ITD Docs Downloader - Windows Build Script
 echo ========================================================
 echo.
 
-:: Check for python
+:: ── Check Python ─────────────────────────────────────────
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
     echo [Error] Python is not installed or not in PATH.
-    echo Please install Python 3.8+ and try again.
-    pause
-    exit /b 1
+    pause & exit /b 1
 )
 
-:: Check for pyinstaller
-pip show pyinstaller >nul 2>&1
+:: ── Install / verify dependencies ────────────────────────
+echo [Step 1/3] Installing dependencies...
+pip install -r requirements.txt --quiet
 if %errorlevel% neq 0 (
-    echo [Info] PyInstaller is missing. Installing PyInstaller...
-    pip install pyinstaller
+    echo [Error] pip install failed.
+    pause & exit /b 1
 )
 
-:: Check dependencies from requirements.txt
-echo [Info] Verifying project dependencies...
-pip install -r requirements.txt
-
+:: ── PyInstaller — build the exe ──────────────────────────
 echo.
-echo [Info] Starting executable compilation...
-echo [Info] Packaging app.py into a single-file console-less executable...
-echo.
-
+echo [Step 2/3] Building TaxDownloader.exe with PyInstaller...
 pyinstaller --onefile --noconsole --name="TaxDownloader" --clean ^
     --add-data "assessment_years.json;." ^
     --add-data "resources;resources" ^
     --add-data "automation;automation" ^
+    --icon="resources\app_icon.ico" ^
     app.py
 
-if %errorlevel% eq 0 (
+if %errorlevel% neq 0 (
+    echo [Error] PyInstaller build failed. See errors above.
+    pause & exit /b 1
+)
+echo [OK] dist\TaxDownloader.exe created.
+
+:: ── Inno Setup — build the installer ────────────────────
+echo.
+echo [Step 3/3] Building installer with Inno Setup...
+
+:: Try default Inno Setup install locations
+set ISCC=""
+if exist "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" set ISCC="C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+if exist "C:\Program Files\Inno Setup 6\ISCC.exe"       set ISCC="C:\Program Files\Inno Setup 6\ISCC.exe"
+
+if %ISCC%=="" (
+    echo [Warning] Inno Setup not found. Skipping installer build.
+    echo           Download from https://jrsoftware.org/isdl.php and re-run.
     echo.
-    echo ========================================================
-    echo   [Success] TaxDownloader.exe compiled successfully!
-    echo   The executable is located in the 'dist' folder.
-    echo ========================================================
-) else (
-    echo.
-    echo [Error] PyInstaller compilation failed. See errors above.
+    echo [Done] Executable only: dist\TaxDownloader.exe
+    pause & exit /b 0
 )
 
+%ISCC% installer.iss
+if %errorlevel% neq 0 (
+    echo [Error] Inno Setup build failed.
+    pause & exit /b 1
+)
+
+echo.
+echo ========================================================
+echo   Build complete!
+echo   Executable : dist\TaxDownloader.exe
+echo   Installer  : installer_output\ITDDocsDownloader_Setup_v1.0.0.exe
+echo ========================================================
 pause

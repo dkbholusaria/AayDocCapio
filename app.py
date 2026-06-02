@@ -18,12 +18,19 @@ from PyQt6.QtCore import QRegularExpression
 
 def _app_dir() -> str:
     """
-    Directory that holds writable runtime files (vault, assessment_years.json).
-    - When running as a PyInstaller .exe: folder containing the .exe
-    - When running as a script: folder containing app.py
+    Writable user-data directory for vault, settings, and outputs.
+    - Windows frozen .exe : %LOCALAPPDATA%\ITDDocsDownloader
+    - Linux/WSL frozen    : ~/.local/share/ITDDocsDownloader
+    - Running as script   : folder containing app.py
     """
     if getattr(sys, "frozen", False):
-        return os.path.dirname(sys.executable)
+        if sys.platform == "win32":
+            base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
+        else:
+            base = os.path.join(os.path.expanduser("~"), ".local", "share")
+        data_dir = os.path.join(base, "ITDDocsDownloader")
+        os.makedirs(data_dir, exist_ok=True)
+        return data_dir
     return os.path.dirname(os.path.abspath(__file__))
 
 
