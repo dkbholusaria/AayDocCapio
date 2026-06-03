@@ -107,7 +107,13 @@ class BrowserManager:
             try:
                 self._browser = await self._playwright.chromium.launch(
                     headless=headless,
-                    args=["--start-maximized", "--disable-blink-features=AutomationControlled"]
+                    args=[
+                        "--start-maximized",
+                        "--disable-blink-features=AutomationControlled",
+                        "--disable-features=IsolateOrigins,site-per-process",
+                        "--password-store=basic",
+                    ],
+                    ignore_default_args=["--enable-automation"],
                 )
             except Exception as e:
                 err_str = str(e).lower()
@@ -129,7 +135,13 @@ class BrowserManager:
                     await self.initialize(log_callback)
                     self._browser = await self._playwright.chromium.launch(
                         headless=headless,
-                        args=["--start-maximized", "--disable-blink-features=AutomationControlled"]
+                        args=[
+                            "--start-maximized",
+                            "--disable-blink-features=AutomationControlled",
+                            "--disable-features=IsolateOrigins,site-per-process",
+                            "--password-store=basic",
+                        ],
+                        ignore_default_args=["--enable-automation"],
                     )
                 else:
                     if log_callback:
@@ -145,15 +157,26 @@ class BrowserManager:
             self._browser = None
             await self._ensure_browser(log_callback, interactive)
 
-        return await self._browser.new_context(
+        ctx = await self._browser.new_context(
             no_viewport=True,
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
+                "Chrome/131.0.0.0 Safari/537.36"
             ),
             bypass_csp=True,
+            locale="en-IN",
+            timezone_id="Asia/Kolkata",
+            accept_downloads=True,
         )
+        # Spoof automation-detection properties
+        await ctx.add_init_script("""() => {
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            Object.defineProperty(navigator, 'languages', { get: () => ['en-IN', 'en-US', 'en'] });
+            Object.defineProperty(navigator, 'plugins',   { get: () => [1, 2, 3, 4, 5] });
+            window.chrome = window.chrome || { runtime: {} };
+        }""")
+        return ctx
 
     async def close(self):
         try:

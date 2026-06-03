@@ -3,17 +3,17 @@ app_qt.py — PyQt6 port of Tax Downloader
 Install: pip install PyQt6
 Run:     python3 app_qt.py
 """
-import sys, os, json, asyncio, threading
-import pandas as pd
+import sys, os, json, asyncio, threading, datetime
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton,
     QLineEdit, QCheckBox, QComboBox, QFileDialog, QScrollArea,
     QTabWidget, QHBoxLayout, QVBoxLayout, QGridLayout,
     QMessageBox, QTextEdit, QDialog, QRadioButton, QSplitter, QSizePolicy,
-    QGraphicsDropShadowEffect, QListView, QStyledItemDelegate,
+    QGraphicsDropShadowEffect, QListView, QStyledItemDelegate, QTableWidget,
+    QTableWidgetItem, QHeaderView, QAbstractItemView, QToolButton, QMenu,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QMetaObject, Q_ARG, QModelIndex
-from PyQt6.QtGui import QFont, QTextCursor, QColor, QRegularExpressionValidator, QPalette
+from PyQt6.QtGui import QFont, QTextCursor, QColor, QRegularExpressionValidator, QPalette, QAction
 from PyQt6.QtCore import QRegularExpression
 
 def _app_dir() -> str:
@@ -49,7 +49,7 @@ from vault import VaultManager
 from automation.browser import browser_manager
 from automation.auth import login_itd, logout_itd
 from automation.downloader_26as import download_26as
-from automation.downloader_ais_tis import download_ais_tis
+from automation.downloader_ais_tis import run_request_ais, run_download_ais_tis
 
 
 class _HoverDelegate(QStyledItemDelegate):
@@ -410,10 +410,178 @@ class ManageYearsDialog(QDialog):
             QMessageBox.critical(self, "Save Error", str(ex))
 
 
+# ── Batch Progress Dialog ─────────────────────────────────────────────────────
+
+# Status → (icon prefix, background colour, text colour)
+_STATUS_STYLE = {
+    "waiting":  ("⬜", "#F8FAFC", "#64748B"),
+    "running":  ("⏳", "#EFF6FF", "#1D4ED8"),
+    "success":  ("✅", "#F0FDF4", "#15803D"),
+    "queued":   ("🕐", "#FFFBEB", "#92400E"),
+    "failed":   ("❌", "#FEF2F2", "#B91C1C"),
+}
+
+def _status_style(text: str):
+    t = text.lower()
+    if any(x in t for x in ("waiting",)):          return _STATUS_STYLE["waiting"]
+    if any(x in t for x in ("✅", "downloaded")):  return _STATUS_STYLE["success"]
+    if any(x in t for x in ("🕐", "queued", "pls use")):  return _STATUS_STYLE["queued"]
+    if any(x in t for x in ("❌", "failed", "error")): return _STATUS_STYLE["failed"]
+    return _STATUS_STYLE["running"]  # ⏳ anything in-progress
+
+
+class BatchProgressDialog(QDialog):
+    """
+    Live progress popup shown during any batch run.
+    One row per assessee: Name | Status
+    Status updates arrive from the worker thread via Qt signal.
+    """
+    _update_signal = pyqtSignal(str, str)   # (pan, status_text)
+
+    def __init__(self, targets: list, mode: str, stop_callback=None, parent=None):
+        super().__init__(parent)
+        self._stop_callback = stop_callback
+        self.setWindowTitle("Batch Progress")
+        self.setMinimumSize(620, 400)
+        self.resize(680, min(100 + len(targets) * 38, 600))
+        self.setWindowFlags(
+            Qt.WindowType.Window |
+            Qt.WindowType.WindowTitleHint |
+            Qt.WindowType.WindowCloseButtonHint)
+        self.setStyleSheet("QDialog{background:#F8FAFC;}")
+
+        self._pan_to_row = {}   # pan → table row index
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 12)
+        layout.setSpacing(10)
+
+        # Title
+        mode_label = {
+            "26as":        "Downloading 26AS",
+            "request_ais": "Requesting AIS Generation",
+            "ais_tis":     "Downloading AIS / TIS",
+        }.get(mode, "Batch Run")
+        title = QLabel(f"<b>{mode_label}</b> — {len(targets)} client(s)")
+        title.setStyleSheet("font-size:14px; color:#0F172A; background:transparent;")
+        layout.addWidget(title)
+
+        # Table
+        self._table = QTableWidget(len(targets), 2)
+        self._table.setHorizontalHeaderLabels(["Name", "Status"])
+        self._table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch)
+        self._table.horizontalHeader().setStyleSheet(
+            "QHeaderView::section{background:#E2E8F0;color:#475569;"
+            "font-size:11px;font-weight:600;padding:6px;border:none;}")
+        self._table.verticalHeader().setVisible(False)
+        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self._table.setShowGrid(False)
+        self._table.setAlternatingRowColors(False)
+        self._table.setStyleSheet(
+            "QTableWidget{border:1.5px solid #E2E8F0;border-radius:8px;"
+            "background:#FFFFFF;outline:0;}"
+            "QTableWidget::item{padding:6px 10px;border-bottom:1px solid #F1F5F9;}")
+        self._table.setRowHeight(0, 36)
+
+        for row, t in enumerate(targets):
+            pan  = t.get("pan", "")
+            name = t.get("name", "—")
+            self._pan_to_row[pan] = row
+            self._table.setRowHeight(row, 36)
+
+            name_item = QTableWidgetItem(name)
+            name_item.setForeground(QColor("#1E293B"))
+            self._table.setItem(row, 0, name_item)
+
+            self._set_status_item(row, "⬜ Waiting")
+
+        layout.addWidget(self._table)
+
+        # Footer: progress counter + stop + close buttons
+        footer = QHBoxLayout()
+        self._progress_lbl = QLabel(f"0 / {len(targets)} done")
+        self._progress_lbl.setStyleSheet(
+            "color:#64748B; font-size:11px; background:transparent;")
+        footer.addWidget(self._progress_lbl)
+        footer.addStretch()
+
+        self._stop_btn = QPushButton("⏹  Stop")
+        self._stop_btn.setFixedSize(90, 30)
+        self._stop_btn.setStyleSheet(
+            "QPushButton{background:#EF4444;color:#FFFFFF;border:none;"
+            "border-radius:6px;font-size:12px;font-weight:600;}"
+            "QPushButton:hover{background:#DC2626;}"
+            "QPushButton:disabled{background:#E2E8F0;color:#94A3B8;}")
+        self._stop_btn.clicked.connect(self._on_stop_clicked)
+        footer.addWidget(self._stop_btn)
+        footer.addSpacing(8)
+
+        self._close_btn = QPushButton("Close")
+        self._close_btn.setFixedSize(80, 30)
+        self._close_btn.setEnabled(False)  # disabled until batch finishes
+        self._close_btn.setStyleSheet(
+            "QPushButton{background:#E2E8F0;color:#475569;border:none;"
+            "border-radius:6px;font-size:12px;}"
+            "QPushButton:enabled{background:#2563EB;color:#FFFFFF;}"
+            "QPushButton:enabled:hover{background:#1D4ED8;}")
+        self._close_btn.clicked.connect(self.accept)
+        footer.addWidget(self._close_btn)
+        layout.addLayout(footer)
+
+        self._done_count = 0
+        self._total = len(targets)
+
+        # Wire signal — always called on the Qt main thread
+        self._update_signal.connect(self._on_update)
+
+    def _set_status_item(self, row: int, text: str):
+        _, bg, fg = _status_style(text)
+        item = QTableWidgetItem(text)
+        item.setForeground(QColor(fg))
+        item.setBackground(QColor(bg))
+        item.setFont(QFont("Segoe UI", 10))
+        self._table.setItem(row, 1, item)
+
+    def _on_update(self, pan: str, status: str):
+        row = self._pan_to_row.get(pan)
+        if row is None:
+            return
+        self._set_status_item(row, status)
+        # Count terminal states
+        terminal = ("✅", "❌", "🕐")
+        if any(status.startswith(p) for p in terminal):
+            self._done_count += 1
+            self._progress_lbl.setText(f"{self._done_count} / {self._total} done")
+        if self._done_count >= self._total:
+            self._close_btn.setEnabled(True)
+            self._progress_lbl.setText(
+                f"All {self._total} done — review results above")
+
+    def _on_stop_clicked(self):
+        if self._stop_callback:
+            self._stop_callback()
+        self._stop_btn.setEnabled(False)
+        self._stop_btn.setText("⏹  Stopping...")
+
+    def set_status(self, pan: str, status: str):
+        """Thread-safe: called from worker thread."""
+        self._update_signal.emit(pan, status)
+
+    def batch_finished(self):
+        """Called when batch ends (even if aborted) to enable Close and hide Stop."""
+        self._stop_btn.setVisible(False)
+        self._close_btn.setEnabled(True)
+
+
 # ── Main Window ───────────────────────────────────────────────────────────────
 class TaxDownloaderApp(QMainWindow):
     _log_signal = pyqtSignal(str)
     _batch_done_signal = pyqtSignal()
+    _show_progress_signal = pyqtSignal(list, str)   # (targets, mode)
 
     def __init__(self):
         super().__init__()
@@ -427,9 +595,14 @@ class TaxDownloaderApp(QMainWindow):
         self.editing_id = None
         self.is_running = False
         self._checkbox_map = {}
+        self._ais_requested_time = None   # datetime when Request AIS last completed
+        self._last_mode = None            # mode of last completed batch
+        self._ais_results = {}            # pan → "instant" | "queued" | "failed" | "skipped"
 
         self._log_signal.connect(self._append_log)
         self._batch_done_signal.connect(self._on_batch_done)
+        self._show_progress_signal.connect(self._show_progress_dialog)
+        self._progress_dialog = None   # BatchProgressDialog instance
 
         try:
             log_path = os.path.join(_app_dir(), "app.log")
@@ -691,34 +864,6 @@ class TaxDownloaderApp(QMainWindow):
 
         hl.addSpacing(20); hl.addWidget(_divider()); hl.addSpacing(20)
 
-        # ── Documents ─────────────────────────────────────────────────────────
-        doc_w = QFrame()
-        doc_w.setStyleSheet(
-            "QFrame{border:1px solid #D1D5DB;border-radius:6px;background:transparent;}"
-            "QCheckBox{border:none;background:transparent;font-size:12px;"
-            "font-weight:600;color:#1a1a1a;spacing:5px;}"
-            "QCheckBox::indicator{border:1.5px solid #CBD5E1;border-radius:3px;"
-            "background:#FFF;width:14px;height:14px;}"
-            "QCheckBox::indicator:checked{background:#2563EB;border-color:#2563EB;"
-            "image:url(resources/check.png);}"
-        )
-        doc_l = QHBoxLayout(doc_w)
-        doc_l.setContentsMargins(10, 4, 10, 4); doc_l.setSpacing(12)
-        self.chk_26as = QCheckBox("26AS"); self.chk_26as.setChecked(True)
-        self.chk_ais  = QCheckBox("AIS");  self.chk_ais.setChecked(True)
-        self.chk_tis  = QCheckBox("TIS");  self.chk_tis.setChecked(True)
-        for c in (self.chk_26as, self.chk_ais, self.chk_tis):
-            doc_l.addWidget(c)
-
-        doc_col = QWidget(); doc_col.setStyleSheet("background:transparent;")
-        doc_vl = QVBoxLayout(doc_col); doc_vl.setContentsMargins(0,0,0,0); doc_vl.setSpacing(2)
-        doc_vl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        doc_vl.addWidget(_cap("DOCUMENTS"))
-        doc_vl.addWidget(doc_w)
-        hl.addWidget(doc_col)
-
-        hl.addSpacing(20); hl.addWidget(_divider()); hl.addSpacing(20)
-
         # ── Output Directory ──────────────────────────────────────────────────
         default_dir = self.vault.get_setting(
             "download_root_dir",
@@ -801,19 +946,92 @@ class TaxDownloaderApp(QMainWindow):
         hl.addWidget(self.btn_delete_sel)
         hl.addSpacing(8)
 
-        self.btn_stop = _btn("⏹  Stop", "danger", height=34, min_width=90)
-        self.btn_stop.setEnabled(False)
-        self.btn_stop.clicked.connect(self.stop_automation)
-        hl.addWidget(self.btn_stop)
-        hl.addSpacing(8)
-
-        self.btn_run = _btn("▶   Start Download", "success", height=34, min_width=160)
+        # ── Run dropdown (split-style: label + arrow) ─────────────────────────
+        self.btn_run = QToolButton()
+        self.btn_run.setText("▶  Run")
+        self.btn_run.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        self.btn_run.setFixedHeight(34)
+        self.btn_run.setMinimumWidth(110)
         self.btn_run.setStyleSheet(
-            self.btn_run.styleSheet().replace("font-size:12px", "font-size:13px"))
-        self.btn_run.clicked.connect(self.start_automation)
+            "QToolButton{"
+            "  background:#16A34A; color:#FFFFFF; border:none;"
+            "  border-radius:8px; font-size:13px; font-weight:600; padding:0 14px;"
+            "}"
+            "QToolButton:hover{ background:#15803D; }"
+            "QToolButton:disabled{ background:#D1FAE5; color:#6EE7B7; }"
+            "QToolButton::menu-button{"
+            "  border-left:1px solid rgba(255,255,255,0.35);"
+            "  border-radius:0 8px 8px 0; width:20px;"
+            "}"
+            "QToolButton::menu-arrow{ image:none; }"
+        )
+
+        run_menu = QMenu(self.btn_run)
+        run_menu.setStyleSheet(
+            "QMenu{ background:#FFFFFF; border:1px solid #E2E8F0;"
+            "       border-radius:8px; padding:4px 0; }"
+            "QMenu::item{ padding:8px 18px; font-size:13px; color:#1E293B; }"
+            "QMenu::item:selected{ background:#F1F5F9; }"
+            "QMenu::separator{ height:1px; background:#E2E8F0; margin:4px 0; }"
+        )
+
+        act_26as = QAction("▶  Download 26AS", self)
+        act_26as.setToolTip("Downloads Form 26AS PDF + TXT for selected clients.")
+        act_26as.triggered.connect(lambda: self.start_automation("26as"))
+
+        act_request_ais = QAction("📋  Download / Request TIS & AIS", self)
+        act_request_ais.setToolTip(
+            "Opens AIS portal for each client.\n"
+            "• If AIS is ready — downloads instantly.\n"
+            "• If not ready — places generation request (~5 min on ITD servers).")
+        act_request_ais.triggered.connect(lambda: self.start_automation("request_ais"))
+
+        act_dl_ais = QAction("⬇  Download Previously Requested AIS", self)
+        act_dl_ais.setToolTip(
+            "Fetches AIS PDF from Activity History for clients\n"
+            "whose AIS was requested earlier and is now ready.")
+        act_dl_ais.triggered.connect(lambda: self.start_automation("ais_tis"))
+
+        run_menu.addAction(act_26as)
+        run_menu.addSeparator()
+        run_menu.addAction(act_request_ais)
+        run_menu.addAction(act_dl_ais)
+
+        self.btn_run.setMenu(run_menu)
+        self.btn_run.clicked.connect(lambda: self.btn_run.showMenu())
         hl.addWidget(self.btn_run)
 
-        return bar
+        # ── AIS status line (hidden until Request AIS runs) ───────────────────
+        self.ais_status_bar = QFrame()
+        self.ais_status_bar.setFixedHeight(28)
+        self.ais_status_bar.setStyleSheet(
+            "QFrame{background:#FFF7ED;border-top:1px solid #FED7AA;}")
+        self.ais_status_bar.setVisible(False)
+        asl = QHBoxLayout(self.ais_status_bar)
+        asl.setContentsMargins(22, 0, 16, 0)
+        self.ais_status_lbl = QLabel()
+        self.ais_status_lbl.setStyleSheet(
+            "color:#92400E; font-size:11px; background:transparent;")
+        asl.addWidget(self.ais_status_lbl)
+        asl.addStretch()
+        ais_dismiss = QPushButton("✕")
+        ais_dismiss.setFixedSize(18, 18)
+        ais_dismiss.setStyleSheet(
+            "QPushButton{background:transparent;border:none;"
+            "color:#92400E;font-size:10px;}"
+            "QPushButton:hover{color:#78350F;}")
+        ais_dismiss.clicked.connect(lambda: self.ais_status_bar.setVisible(False))
+        asl.addWidget(ais_dismiss)
+
+        # Wrap bar + status into a column so status sits just below the bar
+        container = QWidget()
+        container.setStyleSheet("background:transparent;")
+        col = QVBoxLayout(container)
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(0)
+        col.addWidget(bar)
+        col.addWidget(self.ais_status_bar)
+        return container
 
     def _mk_footer(self):
         footer = QFrame()
@@ -1248,11 +1466,16 @@ class TaxDownloaderApp(QMainWindow):
     def _lock_ui(self, lock: bool):
         for w in (self.entry_name, self.entry_pan, self.entry_dob, self.entry_pwd,
                   self.btn_save, self.btn_clear, self.btn_bulk_import, self.btn_template,
-                  self.btn_export, self.ay_combo, self.chk_26as, self.chk_ais, self.chk_tis,
-                  self.select_all_cb, self.btn_delete_sel):
+                  self.btn_export, self.ay_combo,
+                  self.select_all_cb, self.btn_delete_sel, self.btn_run):
             w.setEnabled(not lock)
 
-    def start_automation(self):
+    def start_automation(self, mode: str):
+        """
+        mode: "26as"        — download 26AS only
+              "request_ais" — fire AIS generation request (Phase 1)
+              "ais_tis"     — download AIS (from Activity History) + TIS (Phase 2)
+        """
         if self.is_running:
             return
         if not self.selected_ids:
@@ -1268,25 +1491,34 @@ class TaxDownloaderApp(QMainWindow):
         if not ay:
             QMessageBox.warning(self, "Invalid", f"Cannot resolve year: {ay_label}")
             return
-        if not (self.chk_26as.isChecked() or self.chk_ais.isChecked() or self.chk_tis.isChecked()):
-            QMessageBox.warning(self, "Selection Required",
-                "Select at least one document type.")
-            return
 
         self.is_running = True
-        self.btn_run.setEnabled(False); self.btn_run.setText("⏳ RUNNING...")
-        self.btn_stop.setEnabled(True)
         self._lock_ui(True)
         self.log_box.clear()
-        self.log("[System] Launching automation session...")
 
         targets = [a for a in self.assessee_list if a.get("id") in self.selected_ids]
+
+        self.btn_run.setText("⏳ Running...")
+
+        mode_log = {"26as": "26AS download",
+                    "request_ais": "AIS generation requests",
+                    "ais_tis": "AIS/TIS download"}
+        self.log(f"[System] Starting {mode_log[mode]}...")
+
+        # Show progress dialog (on main thread via signal)
+        self._show_progress_signal.emit(targets, mode)
+
         threading.Thread(
             target=self._run_wrapper,
-            args=(targets, ay, fy, self.dir_lbl.text(),
-                  self.chk_26as.isChecked(), self.chk_ais.isChecked(), self.chk_tis.isChecked()),
-            daemon=True
-        ).start()
+            args=(targets, ay, fy, self.dir_lbl.text(), mode),
+            daemon=True).start()
+
+    def _show_progress_dialog(self, targets: list, mode: str):
+        """Called on main thread to create and show the progress dialog."""
+        self._progress_dialog = BatchProgressDialog(
+            targets, mode, stop_callback=self.stop_automation, parent=self)
+        self._progress_dialog.setModal(False)
+        self._progress_dialog.show()
 
     def stop_automation(self):
         if not self.is_running:
@@ -1296,27 +1528,96 @@ class TaxDownloaderApp(QMainWindow):
             self.log("[System] Abort requested...")
             self.is_running = False
 
-    def _run_wrapper(self, targets, ay, fy, root_dir, dl_26as, dl_ais, dl_tis):
+    def _run_wrapper(self, targets, ay, fy, root_dir, mode):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
             loop.run_until_complete(
-                self._execute_batch(targets, ay, fy, root_dir, dl_26as, dl_ais, dl_tis))
+                self._execute_batch(targets, ay, fy, root_dir, mode))
         except Exception as e:
             self.log(f"[System Error] Batch crashed: {e}")
         finally:
             loop.close()
             self.is_running = False
+            self._last_mode = mode
+            if self._progress_dialog:
+                self._progress_dialog.batch_finished()
             self._batch_done_signal.emit()
 
     def _on_batch_done(self):
-        self.btn_run.setEnabled(True); self.btn_run.setText("▶  START AUTO DOWNLOAD")
-        self.btn_stop.setEnabled(False)
+        import datetime
+        self.btn_run.setText("▶  Run")
         self._lock_ui(False)
         self.log("[System] Engine Idle.")
 
-    async def _execute_batch(self, targets, ay, fy, root_dir, dl_26as, dl_ais, dl_tis):
-        self.log(f"[System] Batch: {len(targets)} assessees | AY: {ay}")
+        mode = self._last_mode
+
+        if mode == "request_ais":
+            results = self._ais_results
+            n_instant = sum(1 for v in results.values() if v == "instant")
+            n_queued  = sum(1 for v in results.values() if v == "queued")
+            n_failed  = sum(1 for v in results.values() if v == "failed")
+
+            self._ais_requested_time = datetime.datetime.now()
+            t = self._ais_requested_time.strftime("%I:%M %p")
+
+            # Build status line text — only mention what actually happened
+            parts = []
+            if n_instant:
+                parts.append(f"{n_instant} downloaded instantly")
+            if n_queued:
+                parts.append(f"{n_queued} queued on ITD servers")
+            if n_failed:
+                parts.append(f"{n_failed} failed")
+            status_summary = " · ".join(parts) if parts else "no results"
+
+            if n_queued:
+                self.ais_status_lbl.setText(
+                    f"⏳  AIS at {t}: {status_summary} — "
+                    f"wait ~5 min then click ⬇ Download AIS/TIS for the {n_queued} queued client(s).")
+                self.ais_status_bar.setVisible(True)
+            else:
+                # All instant or failed — no need to show the waiting reminder
+                self.ais_status_bar.setVisible(False)
+
+            # Build dialog text based on actual breakdown
+            lines = ["<b>AIS Request Results:</b><br>"]
+            if n_instant:
+                lines.append(
+                    f"✅ <b>{n_instant} client(s)</b> — AIS file was small, "
+                    f"downloaded instantly. No further action needed for these.")
+            if n_queued:
+                lines.append(
+                    f"⏳ <b>{n_queued} client(s)</b> — AIS file is large, "
+                    f"generation request queued on ITD servers.<br>"
+                    f"&nbsp;&nbsp;Wait <b>~5 minutes</b>, then select these clients "
+                    f"and click <b>⬇ Download AIS/TIS</b>.")
+            if n_failed:
+                lines.append(
+                    f"❌ <b>{n_failed} client(s)</b> — Request failed. "
+                    f"Check logs and try again.")
+
+            msg = QMessageBox(self)
+            msg.setWindowTitle("AIS Request Complete")
+            msg.setIcon(QMessageBox.Icon.Information)
+            msg.setText("<br><br>".join(lines))
+            msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+            msg.exec()
+
+        elif mode == "ais_tis":
+            # Hide the status line once download is done
+            self.ais_status_bar.setVisible(False)
+            self._ais_requested_time = None
+
+    async def _execute_batch(self, targets, ay, fy, root_dir, mode):
+        self.log(f"[System] Batch: {len(targets)} client(s) | AY: {ay} | Mode: {mode}")
+        self._ais_results = {}
+
+        def set_status(pan, text):
+            """Update the progress dialog row for this client (thread-safe)."""
+            if self._progress_dialog:
+                self._progress_dialog.set_status(pan, text)
+
         try:
             context = await browser_manager.get_context(log_callback=self.log, interactive=True)
         except Exception as e:
@@ -1326,34 +1627,89 @@ class TaxDownloaderApp(QMainWindow):
             if not self.is_running:
                 self.log("[System] Aborted."); break
 
-            pan = target.get("pan"); name = target.get("name"); dob = target.get("dob", "")
+            pan  = target.get("pan", "")
+            name = target.get("name", "")
+            dob  = target.get("dob", "")
             self.log("──────────────────────────────────────────────────")
-            self.log(f"[{i+1}/{len(targets)}] {name} ({pan})")
+            self.log(f"[{i+1}/{len(targets)}] {name}")
 
             name_safe = "".join(c if c.isalnum() or c in " _-" else "" for c in name)
             out = os.path.join(root_dir, f"{pan}-{name_safe}", f"AY_{ay.replace('-','_')}")
 
             page = None
             try:
+                # ── Login ────────────────────────────────────────────────────
+                set_status(pan, "⏳ Logging in to ITD...")
                 page = await login_itd(pan, target.get("password"), self.log, context)
-                if dl_26as and self.is_running:
+                set_status(pan, "⏳ Logged in to ITD")
+
+                # ── 26AS ─────────────────────────────────────────────────────
+                if mode == "26as" and self.is_running:
+                    set_status(pan, "⏳ Downloading 26AS...")
                     await download_26as(page, ay, out, self.log, pan=pan, dob=dob)
-                if (dl_ais or dl_tis) and self.is_running:
-                    try:
-                        await page.bring_to_front()
-                        if "dashboard" not in page.url.lower():
-                            await page.goto(
-                                "https://eportal.incometax.gov.in/iec/fo/dashboard",
-                                wait_until="domcontentloaded", timeout=30000)
-                            await asyncio.sleep(2)
-                    except Exception:
-                        pass
-                    await download_ais_tis(page, fy, out, self.log, pan=pan)
+                    set_status(pan, "✅ 26AS Downloaded")
+
+                # ── Request AIS ───────────────────────────────────────────────
+                elif mode == "request_ais" and self.is_running:
+                    await self._ensure_dashboard(page)
+                    set_status(pan, "⏳ Opening AIS portal...")
+                    result = await run_request_ais(page, fy, out, self.log, pan=pan)
+                    ais_status = result.get("status")
+
+                    if ais_status == "instant":
+                        self._ais_results[pan] = "instant"
+                        set_status(pan, "✅ AIS Downloaded instantly")
+                    elif ais_status == "requested":
+                        self._ais_results[pan] = "queued"
+                        ref = result.get("ref_id", "")
+                        ref_txt = f" (Ref: {ref})" if ref else ""
+                        set_status(pan,
+                            f"🕐 AIS request placed{ref_txt} — use Download AIS/TIS after ~5 min")
+                        self.log(f"[AIS] Generation queued — Ref ID: {ref or 'N/A'}")
+                    elif ais_status == "skipped":
+                        self._ais_results[pan] = "skipped"
+                        set_status(pan, "⬜ Skipped — AIS not available for this FY")
+                    else:
+                        self._ais_results[pan] = "failed"
+                        set_status(pan, "❌ AIS request failed — check logs")
+                        self.log("[Warning] AIS request did not complete — check portal.")
+
+                # ── Download AIS/TIS ──────────────────────────────────────────
+                elif mode == "ais_tis" and self.is_running:
+                    await self._ensure_dashboard(page)
+                    dl_ais = True
+                    dl_tis = True
+
+                    if dl_tis:
+                        set_status(pan, "⏳ Opening AIS portal...")
+                    if dl_ais:
+                        set_status(pan, "⏳ Downloading AIS from Activity History...")
+
+                    ok = await run_download_ais_tis(
+                        page, fy, out, self.log, pan=pan,
+                        dl_ais=dl_ais, dl_tis=dl_tis)
+
+                    if ok:
+                        if dl_ais and dl_tis:
+                            set_status(pan, "✅ TIS & AIS Downloaded")
+                        elif dl_tis:
+                            set_status(pan, "✅ TIS Downloaded")
+                        else:
+                            set_status(pan, "✅ AIS Downloaded")
+                    else:
+                        set_status(pan, "❌ Download incomplete — check logs")
+
                 if self.is_running:
-                    await logout_itd(page, self.log); page = None
-                self.log(f"[Victory] {pan} complete.")
+                    await logout_itd(page, self.log)
+                    page = None
+
+                pan_masked = pan[:3] + "XXXXXXX" if pan and len(pan) >= 3 else "UNKNOWN"
+                self.log(f"[Victory] {pan_masked} done.")
+
             except Exception as e:
-                self.log(f"[Error] {pan}: {e}")
+                pan_masked = pan[:3] + "XXXXXXX" if pan and len(pan) >= 3 else "UNKNOWN"
+                self.log(f"[Error] {pan_masked}: {e}")
+                set_status(pan, "❌ Failed — see logs")
                 if page:
                     try: await logout_itd(page, self.log)
                     except Exception: pass
@@ -1361,6 +1717,17 @@ class TaxDownloaderApp(QMainWindow):
 
         await browser_manager.close()
         self.log("[System] Batch finished.")
+
+    async def _ensure_dashboard(self, page):
+        """Navigate back to ITD dashboard if not already there."""
+        try:
+            if "dashboard" not in page.url.lower():
+                await page.goto(
+                    "https://eportal.incometax.gov.in/iec/fo/dashboard",
+                    wait_until="domcontentloaded", timeout=30000)
+                await asyncio.sleep(2)
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

@@ -1,5 +1,4 @@
 PyQt6
-pandas
 openpyxl
 playwright
 cryptography

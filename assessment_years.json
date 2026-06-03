@@ -56,6 +56,14 @@
     }
   },
   {
+    "label": "AY 2020-21 (FY 2019-20)",
+    "enabled": true,
+    "year": {
+      "AY": "2020-21",
+      "FY": "2019-20"
+    }
+  },
+  {
     "label": "AY 2019-20 (FY 2018-19)",
     "enabled": true,
     "year": {

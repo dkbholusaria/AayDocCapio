@@ -4,6 +4,9 @@ echo   ITD Docs Downloader - Windows Build Script (Nuitka)
 echo ========================================================
 echo.
 
+:: ── Change to project root (one level up from scripts\) ───
+cd /d "%~dp0.."
+
 :: ── Check Python ─────────────────────────────────────────
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
@@ -67,7 +70,7 @@ if %ISCC%=="" (
     pause & exit /b 0
 )
 
-%ISCC% installer.iss
+%ISCC% scripts\installer.iss
 if %errorlevel% neq 0 (
     echo [Error] Inno Setup build failed.
     pause & exit /b 1

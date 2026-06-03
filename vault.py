@@ -1,10 +1,10 @@
 import os
 import re
 import sys
+import csv
 import json
 import uuid
 import datetime
-import pandas as pd
 from base64 import urlsafe_b64encode
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
@@ -37,11 +37,6 @@ def _normalise_dob(raw: str) -> str:
             return datetime.datetime.strptime(s, fmt).strftime('%d-%m-%Y')
         except ValueError:
             continue
-    # Last resort: try pandas parser
-    try:
-        return pd.to_datetime(s, dayfirst=True).strftime('%d-%m-%Y')
-    except Exception:
-        pass
     return raw.strip()  # let _validate_fields report the error with the original value
 
 def _validate_fields(name: str, pan: str, dob: str, password: str):
@@ -251,47 +246,58 @@ class VaultManager:
         
         try:
             if file_path.endswith('.xlsx'):
-                df = pd.read_excel(file_path)
+                from openpyxl import load_workbook
+                wb = load_workbook(file_path, data_only=True)
+                ws = wb.active
+                raw_rows = list(ws.iter_rows(values_only=True))
+                if not raw_rows:
+                    return 0, ["File is empty."]
+                headers = [str(c).strip().lower() if c is not None else "" for c in raw_rows[0]]
+                data_rows = raw_rows[1:]
             elif file_path.endswith('.csv'):
-                df = pd.read_csv(file_path)
+                with open(file_path, newline='', encoding='utf-8-sig') as f:
+                    reader = csv.reader(f)
+                    raw_rows = list(reader)
+                if not raw_rows:
+                    return 0, ["File is empty."]
+                headers = [c.strip().lower() for c in raw_rows[0]]
+                data_rows = raw_rows[1:]
             else:
                 return 0, ["Unsupported file format. Please use Excel (.xlsx) or CSV (.csv)."]
         except Exception as e:
             return 0, [f"Failed to read file: {str(e)}"]
 
-        # Normalize column headers
-        df.columns = [str(c).strip().lower() for c in df.columns]
         required_cols = {'name', 'pan', 'dob', 'password'}
-        missing = required_cols - set(df.columns)
+        missing = required_cols - set(headers)
         if missing:
             return 0, [f"Missing required columns: {', '.join(missing)}. Headers must include: Name, PAN, DOB, Password."]
 
+        col = {h: i for i, h in enumerate(headers)}
         added_count = 0
         updated_count = 0
         errors = []
 
         existing_pans = {a.get("pan") for a in self.get_all_assessees()}
 
-        for idx, row in df.iterrows():
-            row_num = idx + 2  # Excel row is 1-indexed plus header row
+        for idx, row in enumerate(data_rows):
+            row_num = idx + 2
             try:
-                name = str(row['name']).strip() if pd.notna(row['name']) else ""
-                pan = str(row['pan']).strip().upper() if pd.notna(row['pan']) else ""
+                def _cell(key):
+                    v = row[col[key]] if col[key] < len(row) else None
+                    return str(v).strip() if v is not None and str(v).strip() not in ("", "None") else ""
 
-                # Format DOB as string (handle datetime objects or floats from Excel)
-                dob_val = row['dob']
-                try:
-                    is_null = pd.isna(dob_val)
-                except (TypeError, ValueError):
-                    is_null = False
-                if is_null:
+                name = _cell('name')
+                pan = _cell('pan').upper()
+
+                dob_val = row[col['dob']] if col['dob'] < len(row) else None
+                if dob_val is None or str(dob_val).strip() in ("", "None"):
                     dob = ""
-                elif isinstance(dob_val, (pd.Timestamp, datetime.datetime, datetime.date)):
-                    dob = pd.Timestamp(dob_val).strftime('%d-%m-%Y')
+                elif isinstance(dob_val, (datetime.datetime, datetime.date)):
+                    dob = dob_val.strftime('%d-%m-%Y')
                 else:
                     dob = _normalise_dob(str(dob_val).strip())
 
-                password = str(row['password']).strip() if pd.notna(row['password']) else ""
+                password = _cell('password')
 
                 if not name or not pan or not dob or not password:
                     errors.append(f"Row {row_num}: Missing values in Name, PAN, DOB, or Password.")
@@ -315,33 +321,39 @@ class VaultManager:
 
     def generate_template(self, file_path: str):
         """Generates an Excel import template with sample columns."""
-        df = pd.DataFrame(columns=["Name", "PAN", "DOB", "Password"])
-        df.loc[0] = ["John Doe", "AAAPT0001A", "01-01-1980", "YourPortalPassword"]
-
-        if file_path.endswith('.xlsx'):
-            df.to_excel(file_path, index=False)
-        elif file_path.endswith('.csv'):
-            df.to_csv(file_path, index=False)
+        headers = ["Name", "PAN", "DOB", "Password"]
+        sample = ["John Doe", "AAAPT0001A", "01-01-1980", "YourPortalPassword"]
+        if file_path.endswith('.csv'):
+            with open(file_path, 'w', newline='', encoding='utf-8') as f:
+                csv.writer(f).writerows([headers, sample])
         else:
-            df.to_excel(file_path + ".xlsx", index=False)
+            from openpyxl import Workbook
+            target = file_path if file_path.endswith('.xlsx') else file_path + ".xlsx"
+            wb = Workbook()
+            ws = wb.active
+            ws.append(headers)
+            ws.append(sample)
+            wb.save(target)
 
     def export_data(self, file_path: str):
         """Exports all saved assessees (with decrypted passwords) to Excel or CSV."""
         assessees = self.get_all_assessees()
-        rows = [
-            {
-                "Name": a.get("name", ""),
-                "PAN": a.get("pan", ""),
-                "DOB": a.get("dob", ""),
-                "Password": a.get("password", ""),
-            }
-            for a in assessees
-        ]
-        df = pd.DataFrame(rows, columns=["Name", "PAN", "DOB", "Password"])
+        headers = ["Name", "PAN", "DOB", "Password"]
+        rows = [[a.get("name", ""), a.get("pan", ""), a.get("dob", ""), a.get("password", "")]
+                for a in assessees]
         if file_path.endswith('.csv'):
-            df.to_csv(file_path, index=False)
+            with open(file_path, 'w', newline='', encoding='utf-8') as f:
+                w = csv.writer(f)
+                w.writerow(headers)
+                w.writerows(rows)
         else:
-            df.to_excel(file_path, index=False)
+            from openpyxl import Workbook
+            wb = Workbook()
+            ws = wb.active
+            ws.append(headers)
+            for row in rows:
+                ws.append(row)
+            wb.save(file_path)
 
     # --- Settings Management ---
 
