@@ -110,10 +110,11 @@ async def login_itd(user_id: str, password: str, log_callback, context: BrowserC
     # The portal shows radio buttons: Password / OTP — select Password
     log_callback("[Auth] Selecting Password login method...")
     try:
-        pwd_radio = page.locator("xpath=//label[normalize-space(text())='Password']").first
-        if await pwd_radio.is_visible(timeout=3000):
-            await pwd_radio.click()
-            log_callback("[Auth] Password radio selected.")
+        await page.wait_for_selector(
+            "xpath=//label[normalize-space(text())='Password']",
+            state="visible", timeout=5000)
+        await page.locator("xpath=//label[normalize-space(text())='Password']").first.click()
+        log_callback("[Auth] Password radio selected.")
     except Exception as e:
         log_callback(f"[Auth] Password radio not found (may already be selected): {e}")
 

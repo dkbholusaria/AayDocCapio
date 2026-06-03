@@ -38,77 +38,77 @@ async def _open_ais_portal(itd_page: Page, log) -> Page:
 
 async def _navigate_to_ais_tab(portal: Page, log):
     """
-    Click the 'AIS' tab on the Compliance Portal to reveal the TIS/AIS tiles.
-    Handles the Instructions page (first page on login).
-    URL target: /complianceportal/ais/home
+    Navigate from /ais/instructions to /ais/home.
+    The portal always lands on instructions first.
+    The sub-navbar has two tabs: 'Instructions' (active) and 'AIS'.
+    Both are <a href="javascript:void(0)"> inside nav.sub-navbar.
+    The second <a> is the AIS tab.
     """
     log("[AIS] Navigating to AIS tab...")
 
-    # If on instructions page, click AIS tab
-    ais_tab = portal.locator("a[role='tab']:has-text('AIS'), li:has-text('AIS') a, "
-                             ".nav-link:has-text('AIS'), a.nav-item:has-text('AIS')").first
+    if "/ais/home" in portal.url:
+        log("[AIS] Already on AIS home.")
+        await update_browser_status(portal, "AIS: AIS tab active")
+        return
+
+    # The sub-navbar second anchor = AIS tab (first = Instructions)
     try:
+        ais_tab = portal.locator("nav.sub-navbar a").nth(1)
         await ais_tab.wait_for(state="visible", timeout=10000)
         await ais_tab.click()
         await asyncio.sleep(2)
         log(f"[AIS] AIS tab clicked. URL: {portal.url}")
-    except Exception:
-        log("[AIS] AIS tab not found — may already be on AIS page.")
+    except Exception as e:
+        log(f"[AIS] AIS tab click failed: {e}")
 
     await update_browser_status(portal, "AIS: AIS tab active")
 
 
 async def _select_fy(portal: Page, fiscal_year: str, log):
-    """Select the given FY (e.g. '2024-25') from the FY dropdown."""
+    """
+    Select FY from the AIS home dropdown.
+    Toggle button: button#dropdownMenuButton (inside .fy-dropdown)
+    Items: button.dropdown-item with text like ' F.Y. 2025-26 '
+    """
     log(f"[AIS] Selecting F.Y. {fiscal_year}...")
+    target_text = f"F.Y. {fiscal_year}"
+
     try:
-        toggle = portal.locator(
-            "button.dropdown-toggle, [class*='dropdown'] button, button:has-text('F.Y.')"
-        ).first
+        # Check if already selected
+        toggle = portal.locator(".fy-dropdown button#dropdownMenuButton").first
         await toggle.wait_for(state="visible", timeout=8000)
+        current = (await toggle.inner_text()).strip()
+        if fiscal_year in current:
+            log(f"[AIS] F.Y. {fiscal_year} already selected.")
+            return
+
         await toggle.click()
         await asyncio.sleep(0.5)
 
-        option = portal.locator(f".dropdown-item:has-text('{fiscal_year}')").first
+        # Items are button.dropdown-item with text ' F.Y. 2025-26 '
+        option = portal.locator(
+            f".fy-dropdown button.dropdown-item:has-text('{target_text}')"
+        ).first
         await option.wait_for(state="visible", timeout=5000)
         await option.click()
+        await asyncio.sleep(1)
         log(f"[AIS] F.Y. {fiscal_year} selected.")
-    except Exception:
-        try:
-            sel = portal.locator("select").first
-            await sel.select_option(label=fiscal_year)
-            log(f"[AIS] F.Y. {fiscal_year} selected via <select>.")
-        except Exception as e:
-            log(f"[Warning] Could not select F.Y. {fiscal_year}: {e}")
-    await asyncio.sleep(1.5)
+    except Exception as e:
+        log(f"[Warning] Could not select F.Y. {fiscal_year}: {e} — proceeding with current selection.")
 
 
 async def _open_tis_modal(portal: Page, log) -> bool:
     """
-    Click the download icon on the TIS tile to open the TIS Download modal.
-    Returns True if modal opened.
+    Click the download icon on the TIS card (first app-ais-card).
+    The icon is img[alt='Download Summary'] inside .card-footer.
     """
     log("[TIS] Opening TIS download modal...")
-    # TIS tile is the left tile — its download icon is the first ⬇ icon
-    # The tile contains "Taxpayer Information Summary" text
     try:
-        tis_tile = portal.locator(
-            "div:has-text('Taxpayer Information Summary')"
-        ).last
-        dl_icon = tis_tile.locator("button, a, [role='button']").filter(
-            has=portal.locator("[class*='download'], [title*='download' i], [aria-label*='download' i]")
-        ).first
-        # Fallback: just find the download icon buttons on page and take first (TIS is left tile)
-        try:
-            dl_icon_visible = await dl_icon.is_visible()
-        except Exception:
-            dl_icon_visible = False
-        if not dl_icon_visible:
-            dl_icon = portal.locator(
-                "button[class*='download'], a[class*='download'], "
-                "button[title*='Download' i], a[title*='Download' i]"
-            ).first
-        await dl_icon.wait_for(state="visible", timeout=10000)
+        # TIS is the first app-ais-card
+        tis_card = portal.locator("app-ais-card").nth(0)
+        await tis_card.wait_for(state="visible", timeout=10000)
+        dl_icon = tis_card.locator("img[alt='Download Summary']").first
+        await dl_icon.wait_for(state="visible", timeout=5000)
         await dl_icon.click()
         await asyncio.sleep(1)
         log("[TIS] TIS modal opened.")
@@ -120,29 +120,17 @@ async def _open_tis_modal(portal: Page, log) -> bool:
 
 async def _open_ais_modal(portal: Page, log) -> bool:
     """
-    Click the download icon on the AIS tile to open the AIS Download modal.
-    Returns True if modal opened.
+    Click the download icon on the AIS card (second app-ais-card).
+    The icon is img[alt='Download Summary'] inside .card-footer.
     """
     log("[AIS] Opening AIS download modal...")
     try:
-        ais_tile = portal.locator(
-            "div:has-text('Annual Information Statement')"
-        ).last
-        # AIS tile has two download icons — we click the first (PDF/JSON modal)
-        dl_icons = ais_tile.locator(
-            "button[class*='download'], a[class*='download'], "
-            "button[title*='Download' i], a[title*='Download' i], "
-            "button, a"
-        ).filter(has=portal.locator("[class*='download'], mat-icon:has-text('download')"))
-        count = await dl_icons.count()
-        if count == 0:
-            # Fallback: all download icons on page, AIS tile is right tile so take last
-            dl_icons = portal.locator(
-                "button[class*='download'], a[class*='download']"
-            )
-        # Click the first download icon inside AIS tile
-        await dl_icons.first.wait_for(state="visible", timeout=10000)
-        await dl_icons.first.click()
+        # AIS is the second app-ais-card
+        ais_card = portal.locator("app-ais-card").nth(1)
+        await ais_card.wait_for(state="visible", timeout=10000)
+        dl_icon = ais_card.locator("img[alt='Download Summary']").first
+        await dl_icon.wait_for(state="visible", timeout=5000)
+        await dl_icon.click()
         await asyncio.sleep(1)
         log("[AIS] AIS modal opened.")
         return True
@@ -153,21 +141,14 @@ async def _open_ais_modal(portal: Page, log) -> bool:
 
 def _modal_locator(portal: Page):
     """Return a locator for the open Download modal."""
-    return portal.locator(
-        ".modal.show, .modal[style*='display: block'], "
-        "[role='dialog'], .modal-dialog, mat-dialog-container"
-    ).first
+    return portal.locator("mat-dialog-container").first
 
 
 async def _close_modal(portal: Page, log):
-    """Close the currently open modal via the × button."""
+    """Close the modal via the close icon (img[alt='Close'])."""
     try:
         modal = _modal_locator(portal)
-        close_btn = modal.locator(
-            "button[aria-label='Close'], button.close, "
-            "button:has-text('×'), button:has-text('✕'), "
-            "[aria-label='close' i]"
-        ).first
+        close_btn = modal.locator("img[alt='Close']").first
         if await close_btn.is_visible(timeout=2000):
             await close_btn.click()
             await asyncio.sleep(0.5)
@@ -198,12 +179,12 @@ async def download_tis(portal: Page, fiscal_year: str, download_dir: str,
         log("[TIS] Modal did not appear.")
         return False
 
-    # Modal has one row: "Taxpayer Information Summary (TIS) - PDF" + [Download]
+    # Modal row: p.dialog-sub-head "Taxpayer Information Summary (TIS) - PDF" + button.dialog-outline-btn
     tis_file = os.path.join(download_dir, f"{prefix}TIS-{fy_str}.pdf")
     try:
         log("[TIS] Downloading TIS PDF...")
         await update_browser_status(portal, "AIS: Downloading TIS PDF...")
-        dl_btn = modal.locator("button:has-text('Download')").first
+        dl_btn = modal.locator("button.dialog-outline-btn").first
         await dl_btn.wait_for(state="visible", timeout=8000)
 
         async with portal.context.expect_download(timeout=60000) as dl_info:
@@ -225,14 +206,13 @@ async def download_tis(portal: Page, fiscal_year: str, download_dir: str,
 async def request_ais(portal: Page, fiscal_year: str, download_dir: str,
                       log, pan: str = "") -> dict:
     """
-    Open AIS modal and click Download for AIS PDF.
-    Three outcomes:
-      - Instant: small file downloads immediately → saved to download_dir, returns {"status": "downloaded", "file": path}
-      - Large:   success message with Reference ID → returns {"status": "requested", "ref_id": "..."}
-      - Failed:  returns {"status": "failed"}
-
-    NOTE: AIS JSON is skipped — it requires a CAPTCHA.
+    Click Download on the AIS PDF row in the modal.
+    Two outcomes:
+      - Instant download → file saved, returns {"status": "downloaded"}
+      - Queued (large file) → button changes / success message appears,
+        returns {"status": "requested", "ref_id": "..."}
     """
+    import re as _re
     os.makedirs(download_dir, exist_ok=True)
     fy_str = fiscal_year.replace("-", "_")
     prefix = f"{pan}-" if pan else ""
@@ -249,25 +229,19 @@ async def request_ais(portal: Page, fiscal_year: str, download_dir: str,
         log("[AIS] Modal did not appear.")
         return {"status": "failed"}
 
-    # Find the AIS PDF row — first row in modal
-    # Row text: "Annual Information Statement (AIS) - PDF"
     try:
-        ais_pdf_row = modal.locator(
-            "tr:has-text('Annual Information Statement (AIS) - PDF'), "
-            "div:has-text('Annual Information Statement (AIS) - PDF'), "
-            "li:has-text('Annual Information Statement (AIS) - PDF')"
+        # The AIS PDF row contains p.dialog-sub-head with this exact text
+        # Its Download button is the first button.dialog-outline-btn in that row
+        ais_row = modal.locator(
+            "div.d-flex:has(p.dialog-sub-head:has-text('Annual Information Statement (AIS) - PDF'))"
         ).first
-
-        dl_btn = ais_pdf_row.locator("button:has-text('Download')").first
-        if not await dl_btn.is_visible(timeout=5000):
-            # Fallback: first Download button in modal
-            dl_btn = modal.locator("button:has-text('Download')").first
-            await dl_btn.wait_for(state="visible", timeout=5000)
+        dl_btn = ais_row.locator("button.dialog-outline-btn").first
+        await dl_btn.wait_for(state="visible", timeout=5000)
 
         log("[AIS] Clicking Download for AIS PDF...")
         await update_browser_status(portal, "AIS: Requesting AIS PDF...")
 
-        # Listen for instant download (small file) — 8s window
+        # Try instant download first (8s window)
         try:
             async with portal.context.expect_download(timeout=8000) as dl_info:
                 await dl_btn.click()
@@ -277,33 +251,39 @@ async def request_ais(portal: Page, fiscal_year: str, download_dir: str,
             await _close_modal(portal, log)
             return {"status": "downloaded", "file": ais_file}
         except Exception:
-            pass  # No instant download — check for success/request message
+            pass  # No instant download — large file queued on ITD servers
 
-        # Check for "Success" / "Go To Activity History" message in modal
-        await asyncio.sleep(1.5)
+        # Wait for modal to update with success/queued state
+        await asyncio.sleep(2)
         try:
-            success_text = await modal.inner_text()
+            modal_text = await modal.inner_text()
         except Exception:
-            success_text = ""
+            modal_text = ""
 
-        # Look for Reference ID in the success message
-        import re
-        ref_match = re.search(r'Reference ID[:\s]*([A-Z0-9]+)', success_text, re.IGNORECASE)
-        ref_id = ref_match.group(1) if ref_match else ""
+        # Extract Reference ID if present
+        ref_match = _re.search(r'Reference\s*(?:ID|No\.?)[:\s]*([A-Z0-9\-]+)', modal_text, _re.IGNORECASE)
+        ref_id = ref_match.group(1).strip() if ref_match else ""
 
-        if ref_id or "activity history" in success_text.lower() or "submitted successfully" in success_text.lower():
-            log(f"[AIS] AIS generation requested. Reference ID: {ref_id}")
+        # Detect queued state: "Go To Activity History" button or success text
+        try:
+            goto_visible = await modal.locator(
+                "button:has-text('Go To Activity History')"
+            ).first.is_visible(timeout=2000)
+        except Exception:
+            goto_visible = False
+
+        queued = (goto_visible
+                  or ref_id
+                  or "activity history" in modal_text.lower()
+                  or "submitted successfully" in modal_text.lower()
+                  or "request" in modal_text.lower())
+
+        if queued:
+            log(f"[AIS] AIS generation queued. Reference ID: {ref_id or 'N/A'}")
             await _close_modal(portal, log)
             return {"status": "requested", "ref_id": ref_id, "fy": fiscal_year}
 
-        # Button may have changed to "Go To Activity History"
-        goto_btn = modal.locator("button:has-text('Go To Activity History')").first
-        if await goto_btn.is_visible(timeout=2000):
-            log("[AIS] AIS generation queued — Go To Activity History button visible.")
-            await _close_modal(portal, log)
-            return {"status": "requested", "ref_id": ref_id, "fy": fiscal_year}
-
-        log("[AIS] Unknown state after clicking Download — check portal manually.")
+        log("[AIS] Unexpected modal state after clicking Download.")
         await _close_modal(portal, log)
         return {"status": "failed"}
 
@@ -321,25 +301,27 @@ async def download_ais_from_activity_history(portal: Page, fiscal_year: str,
                                               ref_id: str = "") -> bool:
     """
     Navigate to Activity History and download the AIS PDF for the given FY.
-    Matches by Reference ID if provided, otherwise by Description = "AIS - F.Y. XXXX-XX".
 
-    The row appears immediately after requesting but shows a spinner while generating.
-    We poll every 30s (up to 10 min) until the download icon replaces the spinner.
+    Row structure (from actual portal HTML):
+      - Main rows: tr.example-element-row
+      - Activity column: td.mat-column-activityType span  → "AIS Downloaded - PDF"
+      - Description column: td.mat-column-description span → "AIS - F.Y. 2025-26"
+      - Reference ID column: td.mat-column-referenceId span → "406202603001101"
+      - Download column: td.mat-column-download
+          Pending:  a > img[alt="Progress"][title="File in progress"]
+          Ready:    a[title="Download file"] > img[alt="Download"]
     """
     os.makedirs(download_dir, exist_ok=True)
     fy_str = fiscal_year.replace("-", "_")
     prefix = f"{pan}-" if pan else ""
     ais_file = os.path.join(download_dir, f"{prefix}AIS-{fy_str}.pdf")
+    fy_desc = f"AIS - F.Y. {fiscal_year}"
 
     log("[AIS] Navigating to Activity History...")
     await update_browser_status(portal, "AIS: Opening Activity History...")
 
     try:
-        act_link = portal.locator(
-            "a:has-text('Activity History'), "
-            "li:has-text('Activity History') a, "
-            "nav a:has-text('Activity')"
-        ).first
+        act_link = portal.locator("nav.ctm-navbar li.item a:has-text('Activity History')").first
         await act_link.wait_for(state="visible", timeout=10000)
         await act_link.click()
         await portal.wait_for_load_state("domcontentloaded", timeout=20000)
@@ -349,20 +331,15 @@ async def download_ais_from_activity_history(portal: Page, fiscal_year: str,
         log(f"[AIS] Could not navigate to Activity History: {e}")
         return False
 
-    fy_desc = f"AIS - F.Y. {fiscal_year}"
-
-    # ── Poll until download icon is ready (spinner → ⬇) ─────────────────────
-    # Max 20 attempts × 30s = 10 minutes
     MAX_ATTEMPTS = 20
-    POLL_INTERVAL = 30  # seconds
+    POLL_INTERVAL = 30
 
     for attempt in range(MAX_ATTEMPTS):
-        # Reload page to get latest status
         if attempt > 0:
-            log(f"[AIS] File still generating... ({attempt}/{MAX_ATTEMPTS-1}, "
-                f"retrying in {POLL_INTERVAL}s)")
-            await update_browser_status(portal, f"AIS: Waiting for generation "
-                                                f"({attempt}/{MAX_ATTEMPTS-1})...")
+            log(f"[AIS] Still generating... (attempt {attempt}/{MAX_ATTEMPTS-1}, "
+                f"waiting {POLL_INTERVAL}s)")
+            await update_browser_status(
+                portal, f"AIS: Waiting for generation ({attempt}/{MAX_ATTEMPTS-1})...")
             await asyncio.sleep(POLL_INTERVAL)
             try:
                 await portal.reload(wait_until="domcontentloaded", timeout=20000)
@@ -371,70 +348,57 @@ async def download_ais_from_activity_history(portal: Page, fiscal_year: str,
                 pass
 
         try:
-            # Locate the row
+            # Find the matching row — prefer ref_id match, fall back to FY description
             if ref_id:
-                row = portal.locator(f"tr:has-text('{ref_id}')").first
+                row = portal.locator(
+                    f"tr.example-element-row:has(td.mat-column-referenceId:has-text('{ref_id}'))"
+                ).first
             else:
                 row = portal.locator(
-                    f"tr:has-text('AIS Downloaded - PDF'):has-text('{fy_desc}')"
+                    f"tr.example-element-row"
+                    f":has(td.mat-column-activityType:has-text('AIS Downloaded - PDF'))"
+                    f":has(td.mat-column-description:has-text('{fy_desc}'))"
                 ).first
 
-            await row.wait_for(state="visible", timeout=8000)
+            await row.wait_for(state="visible", timeout=5000)
 
-            # Check if download icon is present (not a spinner)
-            # Spinner is typically mat-spinner, .spinner, or similar animated element
-            # Download icon is a button/anchor — if spinner is present the dl button won't be
-            spinner = row.locator(
-                "mat-spinner, .spinner, [class*='spinner'], "
-                "[class*='loading'], circle[class*='path']"
-            ).first
+            dl_cell = row.locator("td.mat-column-download").first
+
+            # In-progress: img[alt="Progress"]
             try:
-                is_spinning = await spinner.is_visible(timeout=1000)
+                progress_img = dl_cell.locator("img[alt='Progress']").first
+                is_pending = await progress_img.is_visible(timeout=500)
             except Exception:
-                is_spinning = False
+                is_pending = False
 
-            if is_spinning:
-                continue  # Still generating — loop again
+            if is_pending:
+                log(f"[AIS] File still generating (attempt {attempt+1})...")
+                continue
 
-            # Check for a clickable download icon
-            dl_icon = row.locator(
-                "button:not([disabled]), a:not([disabled])"
-            ).filter(
-                has=portal.locator(
-                    "[class*='download'], mat-icon:has-text('download'), "
-                    "[title*='download' i], [aria-label*='download' i]"
-                )
-            ).first
-
+            # Ready: a[title="Download file"]
             try:
-                is_ready = await dl_icon.is_visible(timeout=1000)
+                dl_link = dl_cell.locator("a[title='Download file']").first
+                is_ready = await dl_link.is_visible(timeout=500)
             except Exception:
                 is_ready = False
-            if not is_ready:
-                # Fallback: any enabled button in row that isn't a text/expand button
-                dl_icon = row.locator("button").last
-                try:
-                    is_ready = await dl_icon.is_visible(timeout=1000)
-                except Exception:
-                    is_ready = False
 
             if is_ready:
-                log("[AIS] AIS file ready. Downloading...")
+                log("[AIS] File ready — downloading...")
                 await update_browser_status(portal, "AIS: Downloading from Activity History...")
                 async with portal.context.expect_download(timeout=60000) as dl_info:
-                    await dl_icon.click()
+                    await dl_link.click()
                 download = await dl_info.value
                 await download.save_as(ais_file)
                 log(f"[Victory] AIS PDF saved: {os.path.basename(ais_file)}")
                 return True
 
+            log(f"[AIS] Row found but no download link yet (attempt {attempt+1}).")
+
         except Exception as e:
             if attempt == 0:
                 log(f"[AIS] Row not found yet: {e}")
-            continue
 
-    log("[Warning] AIS generation timed out after 10 minutes. "
-        "Try 'Download AIS/TIS' again later.")
+    log("[Warning] AIS generation timed out after 10 minutes.")
     return False
 
 
