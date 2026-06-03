@@ -1364,6 +1364,19 @@ class TaxDownloaderApp(QMainWindow):
 
 
 if __name__ == "__main__":
+    # Called by Inno Setup [Run] step to pre-install Chromium silently
+    if "--install-browsers" in sys.argv:
+        from automation.browser import _install_chromium
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(_install_chromium())
+        except Exception as e:
+            print(f"Browser install failed: {e}", file=sys.stderr)
+            sys.exit(1)
+        finally:
+            loop.close()
+        sys.exit(0)
+
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setStyleSheet(APP_STYLE)
