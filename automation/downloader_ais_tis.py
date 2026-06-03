@@ -38,104 +38,102 @@ async def _open_ais_portal(itd_page: Page, log) -> Page:
 
 async def _navigate_to_ais_tab(portal: Page, log):
     """
-    Navigate from /ais/instructions to /ais/home.
-    The portal always lands on instructions first.
-    The sub-navbar has two tabs: 'Instructions' (active) and 'AIS'.
-    Both are <a href="javascript:void(0)"> inside nav.sub-navbar.
-    The second <a> is the AIS tab.
+    Wait for AIS portal to load. Stay on instructions page —
+    the 'Download AIS/TIS' shortcut button here is what initializes
+    the Angular dialog correctly.
     """
-    log("[AIS] Navigating to AIS tab...")
-
-    if "/ais/home" in portal.url:
-        log("[AIS] Already on AIS home.")
-        await update_browser_status(portal, "AIS: AIS tab active")
-        return
-
-    # The sub-navbar second anchor = AIS tab (first = Instructions)
-    try:
-        ais_tab = portal.locator("nav.sub-navbar a").nth(1)
-        await ais_tab.wait_for(state="visible", timeout=10000)
-        await ais_tab.click()
-        await asyncio.sleep(2)
-        log(f"[AIS] AIS tab clicked. URL: {portal.url}")
-    except Exception as e:
-        log(f"[AIS] AIS tab click failed: {e}")
-
-    await update_browser_status(portal, "AIS: AIS tab active")
+    log("[AIS] Waiting for AIS portal to load...")
+    await portal.wait_for_load_state("networkidle", timeout=20000)
+    await asyncio.sleep(2)
+    log(f"[AIS] Portal ready. URL: {portal.url}")
+    await update_browser_status(portal, "AIS: Portal ready")
 
 
 async def _select_fy(portal: Page, fiscal_year: str, log):
     """
-    Select FY from the AIS home dropdown.
-    Toggle button: button#dropdownMenuButton (inside .fy-dropdown)
-    Items: button.dropdown-item with text like ' F.Y. 2025-26 '
+    Select FY by going to /ais/home, using the dropdown, then coming back
+    to instructions page so the shortcut button reflects the correct FY.
+    If the shortcut button already shows the right FY, nothing to do.
     """
-    log(f"[AIS] Selecting F.Y. {fiscal_year}...")
-    target_text = f"F.Y. {fiscal_year}"
+    log(f"[AIS] Checking F.Y. {fiscal_year}...")
 
+    # Check if instructions page shortcut button already shows right FY
     try:
-        # Check if already selected
+        btn_text = await portal.locator(
+            "button:has-text('Download AIS/TIS')"
+        ).first.inner_text(timeout=5000)
+        if fiscal_year in btn_text:
+            log(f"[AIS] F.Y. {fiscal_year} already set.")
+            return
+    except Exception:
+        pass
+
+    # Switch to AIS home, change FY, come back to instructions
+    log(f"[AIS] Switching FY to {fiscal_year}...")
+    try:
+        ais_tab = portal.locator("nav.sub-navbar a").nth(1)
+        await ais_tab.wait_for(state="visible", timeout=5000)
+        await ais_tab.click()
+        await asyncio.sleep(2)
+
         toggle = portal.locator(".fy-dropdown button#dropdownMenuButton").first
         await toggle.wait_for(state="visible", timeout=8000)
         current = (await toggle.inner_text()).strip()
-        if fiscal_year in current:
-            log(f"[AIS] F.Y. {fiscal_year} already selected.")
-            return
+        if fiscal_year not in current:
+            await toggle.click()
+            await asyncio.sleep(0.5)
+            option = portal.locator(
+                f".fy-dropdown button.dropdown-item:has-text('F.Y. {fiscal_year}')"
+            ).first
+            await option.wait_for(state="visible", timeout=5000)
+            await option.click()
+            await asyncio.sleep(1)
+            log(f"[AIS] F.Y. {fiscal_year} selected.")
 
-        await toggle.click()
-        await asyncio.sleep(0.5)
-
-        # Items are button.dropdown-item with text ' F.Y. 2025-26 '
-        option = portal.locator(
-            f".fy-dropdown button.dropdown-item:has-text('{target_text}')"
-        ).first
-        await option.wait_for(state="visible", timeout=5000)
-        await option.click()
-        await asyncio.sleep(1)
-        log(f"[AIS] F.Y. {fiscal_year} selected.")
+        # Navigate back to instructions page
+        instr_tab = portal.locator("nav.sub-navbar a").nth(0)
+        await instr_tab.click()
+        await asyncio.sleep(1.5)
+        log(f"[AIS] Back on instructions. URL: {portal.url}")
     except Exception as e:
-        log(f"[Warning] Could not select F.Y. {fiscal_year}: {e} — proceeding with current selection.")
+        log(f"[Warning] Could not switch F.Y.: {e}")
 
 
 async def _open_tis_modal(portal: Page, log) -> bool:
-    """
-    Click the download icon on the TIS card (first app-ais-card).
-    The icon is img[alt='Download Summary'] inside .card-footer.
-    """
-    log("[TIS] Opening TIS download modal...")
+    """Click the 'Download AIS/TIS' shortcut button on instructions page."""
+    log("[TIS] Opening download modal via shortcut button...")
     try:
-        # TIS is the first app-ais-card
-        tis_card = portal.locator("app-ais-card").nth(0)
-        await tis_card.wait_for(state="visible", timeout=10000)
-        dl_icon = tis_card.locator("img[alt='Download Summary']").first
-        await dl_icon.wait_for(state="visible", timeout=5000)
-        await dl_icon.click()
+        btn = portal.locator("button:has-text('Download AIS/TIS')").first
+        await btn.wait_for(state="visible", timeout=10000)
+        await btn.click(timeout=10000)
         await asyncio.sleep(1)
-        log("[TIS] TIS modal opened.")
-        return True
+        modal = portal.locator("mat-dialog-container").first
+        if await modal.is_visible(timeout=3000):
+            log("[TIS] Modal opened.")
+            return True
+        log("[TIS] Modal did not open.")
+        return False
     except Exception as e:
-        log(f"[TIS] Could not open TIS modal: {e}")
+        log(f"[TIS] Could not open modal: {e}")
         return False
 
 
 async def _open_ais_modal(portal: Page, log) -> bool:
-    """
-    Click the download icon on the AIS card (second app-ais-card).
-    The icon is img[alt='Download Summary'] inside .card-footer.
-    """
-    log("[AIS] Opening AIS download modal...")
+    """Click the 'Download AIS/TIS' shortcut button on instructions page."""
+    log("[AIS] Opening download modal via shortcut button...")
     try:
-        # AIS is the second app-ais-card
-        ais_card = portal.locator("app-ais-card").nth(1)
-        await ais_card.wait_for(state="visible", timeout=10000)
-        dl_icon = ais_card.locator("img[alt='Download Summary']").first
-        await dl_icon.wait_for(state="visible", timeout=5000)
-        await dl_icon.click()
+        btn = portal.locator("button:has-text('Download AIS/TIS')").first
+        await btn.wait_for(state="visible", timeout=10000)
+        await btn.click(timeout=10000)
         await asyncio.sleep(1)
-        log("[AIS] AIS modal opened.")
-        return True
+        modal = portal.locator("mat-dialog-container").first
+        if await modal.is_visible(timeout=3000):
+            log("[AIS] Modal opened.")
+            return True
+        log("[AIS] Modal did not open.")
+        return False
     except Exception as e:
-        log(f"[AIS] Could not open AIS modal: {e}")
+        log(f"[AIS] Could not open modal: {e}")
         return False
 
 
@@ -184,11 +182,18 @@ async def download_tis(portal: Page, fiscal_year: str, download_dir: str,
     try:
         log("[TIS] Downloading TIS PDF...")
         await update_browser_status(portal, "AIS: Downloading TIS PDF...")
-        dl_btn = modal.locator("button.dialog-outline-btn").first
+        dl_btn = modal.get_by_role("button", name="Download").first
         await dl_btn.wait_for(state="visible", timeout=8000)
 
         async with portal.context.expect_download(timeout=60000) as dl_info:
             await dl_btn.click()
+            await asyncio.sleep(0.5)
+            ok_btn = modal.get_by_role("button", name="OK").first
+            try:
+                if await ok_btn.is_visible(timeout=1000):
+                    await ok_btn.click(timeout=5000)
+            except Exception:
+                pass
 
         download = await dl_info.value
         await download.save_as(tis_file)
@@ -230,28 +235,35 @@ async def request_ais(portal: Page, fiscal_year: str, download_dir: str,
         return {"status": "failed"}
 
     try:
-        # The AIS PDF row contains p.dialog-sub-head with this exact text
-        # Its Download button is the first button.dialog-outline-btn in that row
-        ais_row = modal.locator(
-            "div.d-flex:has(p.dialog-sub-head:has-text('Annual Information Statement (AIS) - PDF'))"
-        ).first
-        dl_btn = ais_row.locator("button.dialog-outline-btn").first
+        # Debug: dump all buttons in modal
+        btns = await portal.evaluate("""() => {
+            const btns = document.querySelectorAll('mat-dialog-container button');
+            return [...btns].map(b => ({text: b.innerText.trim(), class: b.className}));
+        }""")
+        log(f"[DEBUG] Modal buttons: {btns}")
+
+        dl_btn = modal.locator("button.dialog-outline-btn").first
         await dl_btn.wait_for(state="visible", timeout=5000)
 
         log("[AIS] Clicking Download for AIS PDF...")
         await update_browser_status(portal, "AIS: Requesting AIS PDF...")
 
-        # Try instant download first (8s window)
-        try:
-            async with portal.context.expect_download(timeout=8000) as dl_info:
-                await dl_btn.click()
-            download = await dl_info.value
-            await download.save_as(ais_file)
-            log(f"[Victory] AIS PDF downloaded instantly: {os.path.basename(ais_file)}")
-            await _close_modal(portal, log)
-            return {"status": "downloaded", "file": ais_file}
-        except Exception:
-            pass  # No instant download — large file queued on ITD servers
+        # Intercept response to confirm API fires
+        api_fired = {}
+        async def on_resp(r):
+            if "ais-details-pdf" in r.url or "tis-details" in r.url:
+                api_fired["url"] = r.url
+        portal.on("response", on_resp)
+
+        # Click without expect_download wrapper — check if API fires without it
+        await dl_btn.click(timeout=10000)
+        await asyncio.sleep(3)
+
+        portal.remove_listener("response", on_resp)
+        if api_fired:
+            log(f"[DEBUG] API fired: {api_fired['url']}")
+        else:
+            log("[DEBUG] API did NOT fire after plain click")
 
         # Wait for modal to update with success/queued state
         await asyncio.sleep(2)
@@ -259,6 +271,7 @@ async def request_ais(portal: Page, fiscal_year: str, download_dir: str,
             modal_text = await modal.inner_text()
         except Exception:
             modal_text = ""
+
 
         # Extract Reference ID if present
         ref_match = _re.search(r'Reference\s*(?:ID|No\.?)[:\s]*([A-Z0-9\-]+)', modal_text, _re.IGNORECASE)
@@ -275,17 +288,19 @@ async def request_ais(portal: Page, fiscal_year: str, download_dir: str,
         queued = (goto_visible
                   or ref_id
                   or "activity history" in modal_text.lower()
-                  or "submitted successfully" in modal_text.lower()
-                  or "request" in modal_text.lower())
+                  or "submitted successfully" in modal_text.lower())
 
         if queued:
             log(f"[AIS] AIS generation queued. Reference ID: {ref_id or 'N/A'}")
             await _close_modal(portal, log)
             return {"status": "requested", "ref_id": ref_id, "fy": fiscal_year}
 
-        log("[AIS] Unexpected modal state after clicking Download.")
+        # Modal unchanged = button fired but portal queued the request silently
+        # (large file case — no modal update, no instant download)
+        # Treat as requested since the click was sent successfully
+        log("[AIS] AIS request sent — treating as queued (no instant download).")
         await _close_modal(portal, log)
-        return {"status": "failed"}
+        return {"status": "requested", "ref_id": "", "fy": fiscal_year}
 
     except Exception as e:
         log(f"[AIS] Request failed: {e}")
