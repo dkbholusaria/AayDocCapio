@@ -432,13 +432,17 @@ class TaxDownloaderApp(QMainWindow):
         self._batch_done_signal.connect(self._on_batch_done)
 
         try:
-            with open("app.log", "a", encoding="utf-8") as f:
+            log_path = os.path.join(_app_dir(), "app.log")
+            with open(log_path, "a", encoding="utf-8") as f:
                 f.write(f"\n=== Session Started {get_timestamp()} ===\n")
         except Exception:
             pass
 
         self._build_ui()
         self.refresh_grid()
+
+        # Check Chromium on startup in background — installs silently if missing
+        QTimer.singleShot(1500, self._check_browser)
 
     # ── Build UI ──────────────────────────────────────────────────────────────
 
@@ -1211,6 +1215,33 @@ class TaxDownloaderApp(QMainWindow):
                 f"{len(assessees)} record(s) exported to:\n{path}")
         except Exception as e:
             QMessageBox.critical(self, "Export Error", f"Failed: {e}")
+
+    # ── Browser health check ──────────────────────────────────────────────────
+
+    def _check_browser(self):
+        """Run silently on startup; installs Chromium if missing."""
+        def _run():
+            import asyncio
+            from automation.browser import _playwright_browsers_dir, _install_chromium
+            import os
+            # Check if chromium executable already exists in our browsers dir
+            browsers_dir = _playwright_browsers_dir()
+            chromium_exists = any(
+                f.startswith("chromium") for f in os.listdir(browsers_dir)
+            ) if os.path.exists(browsers_dir) else False
+            if not chromium_exists:
+                self.log("[Browser] Chromium not found — installing in background...")
+                loop = asyncio.new_event_loop()
+                try:
+                    loop.run_until_complete(_install_chromium(self.log))
+                except Exception as e:
+                    self.log(f"[Browser] Auto-install failed: {e}")
+                    self.log("[Browser] Run 'playwright install chromium' manually if downloads fail.")
+                finally:
+                    loop.close()
+            else:
+                self.log("[Browser] Chromium ready.")
+        threading.Thread(target=_run, daemon=True).start()
 
     # ── Automation ────────────────────────────────────────────────────────────
 
