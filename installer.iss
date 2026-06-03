@@ -44,6 +44,14 @@ Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{commondesktop}\{#MyAppName}";   Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
+; Install Chromium browser during setup so it's ready on first launch
+; Runs hidden with a status label shown in the wizard
+Filename: "{app}\{#MyAppExeName}"; Parameters: "--install-browsers"; \
+    StatusMsg: "Installing Chromium browser (one-time, ~150 MB)..."; \
+    Flags: runhidden waituntilterminated; \
+    Description: "Download Chromium browser"
+
+; Launch the app after install
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
