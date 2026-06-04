@@ -12,7 +12,9 @@ Built with **PyQt6** + **Playwright**. Runs on Windows and Linux/WSL.
 - **Bulk operations** — import assessees from Excel/CSV, export saved records, generate import templates
 - **One-click batch download** — logs in, downloads, logs out sequentially for every selected client
 - **Documents supported** — Form 26AS (PDF + TXT), AIS (PDF), TIS (PDF)
+- **Automated PDF unlocking** — automatically unlocks downloaded PDFs using the client's PAN and DOB.
 - **Run dropdown** — single ▶ Run button with: Download 26AS · Download / Request TIS & AIS · Download Previously Requested AIS
+- **Headless mode by default** — browsers run invisibly, with a UI toggle ("Show Browser (Debug)") to reveal them for debugging.
 - **Live per-client progress popup** — a modal dialog shows one row per client with live status; Stop control lives here
 - **Assessment year management** — add/remove/toggle years via the built-in Manage Years dialog
 - **Per-client error isolation** — one client's failure (e.g. wrong password) never aborts the batch; the reason is shown in the row, the summary dialog, and the live log
@@ -35,27 +37,32 @@ Built with **PyQt6** + **Playwright**. Runs on Windows and Linux/WSL.
 ## Project Structure
 
 ITD-docs-downloader/
-├── app.py                        # PyQt6 main application
-├── vault.py                      # Encrypted credential vault manager
+├── app.py                        # PyQt6 main application GUI and orchestration
+├── vault.py                      # Encrypted credential vault manager (Fernet AES-128)
+├── app.log                       # Rotating log of runtime events
 ├── assessment_years.json         # Configured assessment / tax years
-├── requirements.txt              # Python dependencies
+├── requirements.txt              # Python dependencies (PyQt6, playwright, pikepdf, etc.)
+├── tax_vault.json                # Local encrypted client database (created on run)
 ├── automation/
-│   ├── browser.py                # Playwright manager (prefers real Google Chrome)
-│   ├── auth.py                   # ITD login / logout automation
-│   ├── downloader.py             # Shared utilities + step logger
-│   ├── downloader_26as.py        # Form 26AS download logic (TRACES)
-│   └── downloader_ais_tis.py     # AIS / TIS download logic (Insight portal)
-├── resources/                    # UI icons
+│   ├── browser.py                # Playwright manager (handles headless/interactive and browser installs)
+│   ├── auth.py                   # ITD login / logout automation and error handling
+│   ├── downloader.py             # Shared utilities + live step logger
+│   ├── downloader_26as.py        # Form 26AS download logic (TRACES fallback handling)
+│   ├── downloader_ais_tis.py     # AIS / TIS download logic (Insight portal modal triggers)
+│   └── pdf_unlocker.py           # Automated PDF password unlocking (uses PAN and DOB)
+├── resources/                    # UI icons (check.png, chevron_down.png)
 ├── scripts/
-│   ├── setup_and_build.ps1       # Windows sync + Nuitka build + Inno Setup
-│   ├── installer.iss             # Inno Setup installer script
-│   └── setup.sh                  # Linux/WSL dev setup
+│   ├── setup_and_build.ps1       # Windows sync + Nuitka build + Inno Setup compilation
+│   ├── build_win.bat             # Batch script wrapper for building
+│   ├── installer.iss             # Inno Setup installer script definition
+│   ├── TaxDownloader.spec        # PyInstaller/Nuitka spec configuration
+│   └── setup.sh                  # Linux/WSL dev setup script
 ├── Documentation/
 │   ├── README.md                 # This file
-│   ├── DEVELOPMENT_LOG.md        # Design decisions + debugging history
-│   ├── CONTRIBUTING.md
-│   ├── implementation_plan.md
-│   └── walkthrough.md
+│   ├── DEVELOPMENT_LOG.md        # Design decisions, architecture, and debugging history
+│   ├── CONTRIBUTING.md           # Contribution guidelines
+│   ├── implementation_plan.md    # Active engineering plans
+│   └── walkthrough.md            # Feature walkthroughs
 └── outputs/                      # Downloaded files (created at runtime)
     └── <PAN>-<Name>/
         └── AY_<year>/
@@ -120,12 +127,31 @@ python app.py
 
 1. Select an **Assessment Year** from the settings bar
 2. Set the **Output Directory** (defaults to `outputs/` inside the project folder)
-3. Check one or more clients from the list (or use **Select / Deselect All**)
-4. Click **▶ Run** and choose:
+3. Use the **Show Browser (Debug)** toggle if you wish to see the browser visibly working. Otherwise, it runs blazingly fast in the background (headless).
+4. Check one or more clients from the list (or use **Select / Deselect All**)
+5. Click **▶ Run** and choose:
    - **Download 26AS** — Form 26AS PDF + TXT (TRACES)
    - **Download / Request TIS & AIS** — AIS PDF + TIS PDF (Insight portal)
    - **Download Previously Requested AIS** — fetch a queued large AIS from Activity History
-5. A **Batch Progress** popup shows live per-client status; use its **Stop** button to abort
+6. A **Batch Progress** popup shows live per-client status as the batch runs.
+   Each row updates in real time through every step of the automation:
+
+   | Status shown | What it means |
+   |---|---|
+   | `⏳ Logging in to ITD...` | Browser opening ITD portal |
+   | `✅ Logged in — loading portal...` | ITD dashboard reached |
+   | `⏳ Opening AIS portal...` | Navigating to Insight |
+   | `⏳ Downloading AIS PDF...` / `⏳ Downloading 26AS...` | File in progress |
+   | `✅ AIS downloaded — fetching TIS...` | AIS saved, fetching TIS |
+   | `🕐 AIS queued — fetching TIS...` | AIS is large; queued server-side |
+   | `⏳ Logging out...` | Clearing session |
+   | `✅ AIS Downloaded instantly` / `✅ 26AS Downloaded` | Done |
+   | `🕐 AIS request placed (Ref: …)` | Use *Download Previously Requested AIS* in ~5 min |
+   | `❌ Failed — <reason>` | Error; check the log panel below for details |
+   | `⏸ Cooling down... 5s → 1s` | Inter-client pause (prevents ITD rate-limits) |
+
+   Use the **Stop** button to abort mid-batch. Use **Close** once finished.
+
 
 Downloaded files are saved to:
 
@@ -133,8 +159,7 @@ Downloaded files are saved to:
 <Output Directory>/<PAN>-<Client Name>/AY_<year>/
 ```
 
-> A live status badge is also injected at the top of the automated browser
-> window so you can watch each step as it happens.
+> The PDFs are automatically unlocked using the logic in `pdf_unlocker.py` and saved so they can be opened immediately without passwords.
 
 ---
 
@@ -188,8 +213,6 @@ This script:
 - AIS JSON is intentionally skipped (the portal gates it behind a CAPTCHA).
 - AIS/Insight portal selectors may need updates if the portal UI changes — the
   step logs make this easy to diagnose.
-- PDF password removal is not yet implemented (downloaded AIS/TIS PDFs are
-  password-protected: PAN in lowercase + DOB `ddmmyyyy`).
 
 For the full design history and root-cause analysis of the AIS download work,
 see **[DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md)**.

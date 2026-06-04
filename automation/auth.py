@@ -179,6 +179,11 @@ async def _do_login(page, user_id, uid_masked, password, log_callback):
                     try:
                         await page.wait_for_url(
                             lambda u: "dashboard" in u.lower(), timeout=10000)
+                        # ITD throttles the session after a max-attempts popup — the 
+                        # Angular router may silently drop navigation events for a few
+                        # seconds. Wait for the portal to fully recover before returning.
+                        log_callback("[Auth] Rate-limit recovered — waiting for session to stabilise...")
+                        await asyncio.sleep(6)
                         return True
                     except Exception:
                         return False

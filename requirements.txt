@@ -1,8 +1,19 @@
-PyQt6
-openpyxl
-playwright
-cryptography
-pikepdf
-nuitka
-ordered-set
-zstandard
+# ── Runtime dependencies ───────────────────────────────────────────────────────
+# Install with:  pip install -r requirements.txt
+# Then run:      python -m playwright install chrome
+
+PyQt6>=6.11.0          # Desktop GUI framework
+playwright>=1.60.0     # Browser automation (Chromium / real Chrome)
+cryptography>=48.0.0   # AES-128 Fernet encryption for the vault
+pikepdf>=10.7.2        # PDF password removal (requires system qpdf library)
+openpyxl>=3.1.5        # Excel bulk-import / template generation
+pillow>=12.2.0         # Image generation for custom checkbox styling
+
+# ── Build-only dependencies (Windows Nuitka standalone executable) ─────────────
+# These are NOT needed to run the application — only to build the .exe on Windows.
+# Install separately before building:
+#   pip install nuitka ordered-set zstandard
+#
+# nuitka          Python-to-C compiler (creates the standalone binary)
+# ordered-set     Required by Nuitka's dependency resolver
+# zstandard       Required by Nuitka for compressed output

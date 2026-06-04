@@ -472,20 +472,22 @@ class BatchProgressDialog(QDialog):
         self._table = QTableWidget(len(targets), 2)
         self._table.setHorizontalHeaderLabels(["Name", "Status"])
         self._table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.Stretch)
+            0, QHeaderView.ResizeMode.Interactive)
         self._table.horizontalHeader().setSectionResizeMode(
             1, QHeaderView.ResizeMode.Stretch)
+        self._table.setColumnWidth(0, 250)
         self._table.horizontalHeader().setStyleSheet(
             "QHeaderView::section{background:#E2E8F0;color:#475569;"
             "font-size:11px;font-weight:600;padding:6px;border:none;}")
         self._table.verticalHeader().setVisible(False)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self._table.setShowGrid(False)
-        self._table.setAlternatingRowColors(False)
+        self._table.setShowGrid(True)
+        self._table.setAlternatingRowColors(True)
         self._table.setStyleSheet(
             "QTableWidget{border:1.5px solid #E2E8F0;border-radius:8px;"
-            "background:#FFFFFF;outline:0;}"
+            "background:#FFFFFF;outline:0;gridline-color:#E2E8F0;"
+            "alternate-background-color:#F8FAFC;}"
             "QTableWidget::item{padding:6px 10px;border-bottom:1px solid #F1F5F9;}")
         self._table.setRowHeight(0, 36)
 
@@ -597,6 +599,19 @@ class TaxDownloaderApp(QMainWindow):
         self.editing_id = None
         self.is_running = False
         self._checkbox_map = {}
+        
+        # Generate checkmark image for custom check box styling
+        self.checkmark_path = os.path.join(_app_dir(), "checkmark.png")
+        if not os.path.exists(self.checkmark_path):
+            try:
+                from PIL import Image, ImageDraw
+                img = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
+                draw = ImageDraw.Draw(img)
+                draw.line([(3, 8), (7, 12), (13, 4)], fill=(255, 255, 255, 255), width=2)
+                img.save(self.checkmark_path, "PNG")
+            except Exception as e:
+                print(f"Error generating checkmark: {e}")
+
         self._ais_requested_time = None   # datetime when Request AIS last completed
         self._last_mode = None            # mode of last completed batch
         self._ais_results = {}            # pan → "instant" | "queued" | "failed" | "skipped"
@@ -808,8 +823,8 @@ class TaxDownloaderApp(QMainWindow):
         self.search_box.textChanged.connect(self._apply_filter)
         layout.addWidget(self.search_box)
 
-        layout.addWidget(self._mk_col_header())
-        layout.addWidget(self._mk_client_scroll(), 1)
+        # True Table Widget instead of Col Header & Client Scroll Area
+        layout.addWidget(self._mk_client_table(), 1)
 
         ctrl = self._mk_control_bar()
         ctrl.setGraphicsEffect(_shadow(18, 3, 18))
@@ -893,42 +908,138 @@ class TaxDownloaderApp(QMainWindow):
 
         return bar
 
-    def _mk_col_header(self):
-        hdr = QFrame()
-        hdr.setFixedHeight(34)
-        hdr.setStyleSheet(
-            "QFrame{"
-            "background:#F1F5F9;"
-            "border:1.5px solid #CBD5E1;"
-            "border-radius:7px;"
-            "}"
+    def _mk_client_table(self):
+        # Create Table Widget with 0 rows and 5 columns
+        self.client_table = QTableWidget(0, 5)
+        self.client_table.setHorizontalHeaderLabels(["", "Name  ⇅", "PAN  ⇅", "Date of Birth", "Actions"])
+        
+        # Style the header section
+        self.client_table.horizontalHeader().setStyleSheet(
+            "QHeaderView::section { background-color: #F1F5F9; border: none; border-right: 1px solid #CBD5E1; border-bottom: 1px solid #CBD5E1; font-weight: bold; color: #64748B; font-size: 11px; height: 34px; }"
         )
-        hl = QHBoxLayout(hdr); hl.setContentsMargins(36, 0, 15, 0); hl.setSpacing(6)
-        for text, width in [("Name", 0),
-                             ("PAN", 120), ("Date of Birth", 110), ("Actions", 62)]:
-            l = QLabel(text)
-            l.setStyleSheet("color:#64748B; font-size:10px; font-weight:700; letter-spacing:0.8px; background:transparent; border:none;")
-            if width:
-                l.setFixedWidth(width)
-            else:
-                l.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-            hl.addWidget(l)
-        return hdr
+        self.client_table.verticalHeader().setVisible(False)
+        self.client_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.client_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.client_table.setShowGrid(True)
+        self.client_table.setAlternatingRowColors(False)
+        
+        # Style checkboxes and table
+        chk_path = self.checkmark_path.replace("\\", "/")
+        checkbox_style = (
+            "QCheckBox { background: transparent; }"
+            "QCheckBox::indicator { width: 15px; height: 15px; border: 1.5px solid #475569; border-radius: 3px; background: #FFFFFF; }"
+            "QCheckBox::indicator:hover { border-color: #0284C7; }"
+            f"QCheckBox::indicator:checked {{ background-color: #0284C7; border-color: #0284C7; image: url('{chk_path}'); }}"
+        )
+        
+        self.client_table.setStyleSheet(
+            "QTableWidget { border: 1.5px solid #CBD5E1; border-radius: 8px; background: #FFFFFF; outline: 0; gridline-color: #E2E8F0; }"
+            "QTableWidget::item { border-bottom: 1px solid #E2E8F0; padding: 5px; }"
+            + checkbox_style
+        )
+        
+        # Set alignments for header items
+        for col, align in [
+            (1, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+            (2, Qt.AlignmentFlag.AlignCenter),
+            (3, Qt.AlignmentFlag.AlignCenter),
+            (4, Qt.AlignmentFlag.AlignCenter),
+        ]:
+            item = self.client_table.horizontalHeaderItem(col)
+            if item:
+                item.setTextAlignment(align)
+                
+        # Column width settings
+        self.client_table.setColumnWidth(0, 45)
+        self.client_table.setColumnWidth(2, 140)
+        self.client_table.setColumnWidth(3, 130)
+        self.client_table.setColumnWidth(4, 90)
+        
+        # Resize behaviors
+        header = self.client_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
+        
+        # Interactive sorting
+        header.setSortIndicatorShown(False)
+        header.sectionClicked.connect(self._on_header_clicked)
+        self._current_sort_col = -1
+        self._current_sort_order = Qt.SortOrder.AscendingOrder
+        
+        # Cell click listener
+        self.client_table.cellClicked.connect(self._on_cell_clicked)
+        
+        # Create Header Checkbox
+        self.header_cb = QCheckBox(header)
+        self.header_cb.setFixedSize(18, 18)
+        self.header_cb.setStyleSheet(checkbox_style)
+        self.header_cb.toggled.connect(self.toggle_select_all)
+        header.geometriesChanged.connect(self._position_header_checkbox)
+        
+        self.client_table.setMinimumHeight(200)
+        return self.client_table
 
-    def _mk_client_scroll(self):
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    def _position_header_checkbox(self):
+        if not hasattr(self, "client_table") or not hasattr(self, "header_cb"):
+            return
+        header = self.client_table.horizontalHeader()
+        x = header.sectionPosition(0)
+        w = header.sectionSize(0)
+        h = header.height()
+        cb_x = x + (w - 18) // 2
+        cb_y = (h - 18) // 2
+        self.header_cb.move(cb_x, cb_y)
 
-        self.clients_widget = QWidget()
-        self.clients_widget.setStyleSheet("background:transparent;")
-        self.clients_layout = QVBoxLayout(self.clients_widget)
-        self.clients_layout.setSpacing(3)
-        self.clients_layout.setContentsMargins(0, 0, 0, 0)
-        self.clients_layout.addStretch()
+    def _on_cell_clicked(self, row, col):
+        # Ignore columns 0 (checkbox) and 4 (actions) since they have their own click handlers
+        if col in (0, 4):
+            return
+        # Guard: check if combo popup is open
+        if hasattr(self, "ay_combo") and self.ay_combo._popup_was_open:
+            return
+        # Toggle checkbox in column 0
+        cb_container = self.client_table.cellWidget(row, 0)
+        if cb_container:
+            cb = cb_container.findChild(QCheckBox)
+            if cb:
+                cb.setChecked(not cb.isChecked())
 
-        self.scroll_area.setWidget(self.clients_widget)
-        return self.scroll_area
+    def _on_header_clicked(self, logical_index):
+        if logical_index not in (1, 2):  # Only sort on Name (1) and PAN (2)
+            return
+            
+        header = self.client_table.horizontalHeader()
+        
+        # Toggle or initialize sort
+        if self._current_sort_col == logical_index:
+            self._current_sort_order = (
+                Qt.SortOrder.DescendingOrder 
+                if self._current_sort_order == Qt.SortOrder.AscendingOrder 
+                else Qt.SortOrder.AscendingOrder
+            )
+        else:
+            self._current_sort_col = logical_index
+            self._current_sort_order = Qt.SortOrder.AscendingOrder
+            
+        # Visually show active sort indicator
+        header.setSortIndicatorShown(True)
+        header.setSortIndicator(self._current_sort_col, self._current_sort_order)
+        
+        # Perform sort
+        self.client_table.setSortingEnabled(True)
+        self.client_table.sortByColumn(self._current_sort_col, self._current_sort_order)
+        self.client_table.setSortingEnabled(False)
+        
+        # Re-apply alternating colors after sort
+        for row_idx in range(self.client_table.rowCount()):
+            item = self.client_table.item(row_idx, 1)
+            if item:
+                row_id = item.data(Qt.ItemDataRole.UserRole)
+                row_selected = row_id in self.selected_ids
+                self._apply_row_style(row_idx, row_selected, row_idx)
 
     def _mk_control_bar(self):
         bar = QFrame()
@@ -936,11 +1047,6 @@ class TaxDownloaderApp(QMainWindow):
         bar.setStyleSheet("QFrame{background:#FFFFFF;border-radius:10px;}")
         hl = QHBoxLayout(bar)
         hl.setContentsMargins(22, 0, 16, 0)
-
-        self.select_all_cb = QCheckBox("Select / Deselect All")
-        self.select_all_cb.setStyleSheet("font-size:12px; font-weight:600; color:#334155; background:transparent;")
-        self.select_all_cb.toggled.connect(self.toggle_select_all)
-        hl.addWidget(self.select_all_cb)
         hl.addStretch()
 
         self.btn_delete_sel = _btn("🗑  Delete Selected", "danger", height=34, min_width=130)
@@ -1074,98 +1180,108 @@ class TaxDownloaderApp(QMainWindow):
 
     # ── Grid ──────────────────────────────────────────────────────────────────
 
-    def _apply_row_style(self, row, selected, index=0):
-        if selected:
-            row.setStyleSheet(
-                "QFrame#row_frame{background:#1E3A8A;border-radius:6px;border:none;}"
-                "QLabel{color:#FFFFFF; background:transparent;}"
-                "QCheckBox{color:#FFFFFF;background:transparent;}"
-                "QPushButton{color:#93C5FD; background:transparent; border:none;}"
-                "QPushButton:hover{color:#FFFFFF;}")
-        else:
-            bg = "#FFFFFF" if index % 2 == 0 else "#F8FAFC"
-            row.setStyleSheet(
-                f"QFrame#row_frame{{background:{bg};border-radius:6px;border:none;}}"
-                f"QFrame#row_frame:hover{{background:#EFF6FF;}}"
-                "QLabel{color:#0F172A;}"
-                "QCheckBox{background:transparent;}")
+    def _apply_row_style(self, row_idx, selected, index=0):
+        # Determine background color based on alternate rows and selection
+        bg = "#1E3A8A" if selected else ("#FFFFFF" if index % 2 == 0 else "#F8FAFC")
+        fg = "#FFFFFF" if selected else "#0F172A"
+        
+        # Apply style to all items in the row
+        for col in range(self.client_table.columnCount()):
+            item = self.client_table.item(row_idx, col)
+            if item:
+                item.setBackground(QColor(bg))
+                item.setForeground(QColor(fg))
+                # Set font
+                font = item.font()
+                # PAN (col 2) is bold by default, or bold if selected
+                font.setBold(col == 2 or selected)
+                item.setFont(font)
+        
+        # Apply background to cell widgets
+        cb_container = self.client_table.cellWidget(row_idx, 0)
+        if cb_container:
+            cb_container.setStyleSheet(f"background:{bg}; border:none;")
+            cb = cb_container.findChild(QCheckBox)
+            if cb:
+                cb.setStyleSheet("background:transparent;")
+                
+        acts_container = self.client_table.cellWidget(row_idx, 4)
+        if acts_container:
+            acts_container.setStyleSheet(f"background:{bg}; border:none;")
 
     def _apply_filter(self, text=""):
+        if not hasattr(self, "client_table"):
+            return
         q = text.strip().lower()
-        for a_id, row in self._row_frames.items():
-            a = next((x for x in self.assessee_list if x.get("id") == a_id), None)
-            if not a:
+        for row_idx in range(self.client_table.rowCount()):
+            name_item = self.client_table.item(row_idx, 1)
+            pan_item = self.client_table.item(row_idx, 2)
+            if not name_item or not pan_item:
                 continue
             visible = (not q
-                       or q in a.get("name", "").lower()
-                       or q in a.get("pan", "").lower())
-            row.setVisible(visible)
+                       or q in name_item.text().lower()
+                       or q in pan_item.text().lower())
+            self.client_table.setRowHidden(row_idx, not visible)
 
     def refresh_grid(self):
-        while self.clients_layout.count() > 1:
-            item = self.clients_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-
         self._checkbox_map.clear()
         self.assessee_list = self.vault.get_all_assessees()
-
+        
+        if not hasattr(self, "client_table"):
+            return
+            
+        # Block signals on header_cb during refresh
+        if hasattr(self, "header_cb"):
+            self.header_cb.blockSignals(True)
+            self.header_cb.setEnabled(False)
+            
+        self.client_table.setRowCount(0)
+        
         if not self.assessee_list:
-            empty = _lbl(
-                "No clients registered. Use the profile form or bulk upload to add assessees.",
-                11, color="#475569")
-            empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            empty.setWordWrap(True)
-            self.clients_layout.insertWidget(0, empty)
-            self.select_all_cb.setEnabled(False)
+            if hasattr(self, "header_cb"):
+                self.header_cb.setChecked(False)
+                self.header_cb.blockSignals(False)
             self._update_count()
             return
 
-        self.select_all_cb.setEnabled(True)
-        self._row_frames = {}
+        if hasattr(self, "header_cb"):
+            self.header_cb.setEnabled(True)
+            
         for i, a in enumerate(self.assessee_list):
             a_id = a.get("id")
             is_selected = a_id in self.selected_ids
-            row = QFrame()
-            row.setObjectName("row_frame")
-            row.setFixedHeight(38)
-            row.setCursor(Qt.CursorShape.PointingHandCursor)
-            self._row_frames[a_id] = row
-            self._apply_row_style(row, is_selected, i)
-            hl = QHBoxLayout(row); hl.setContentsMargins(10, 0, 15, 0); hl.setSpacing(6)
-
+            
+            self.client_table.insertRow(i)
+            
+            # Col 0: Checkbox inside a centered widget
+            cb_container = QWidget()
+            cb_layout = QHBoxLayout(cb_container)
+            cb_layout.setContentsMargins(0, 0, 0, 0)
+            cb_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
             cb = QCheckBox()
-            cb.setFixedWidth(20)
-            cb.setChecked(a_id in self.selected_ids)
+            cb.setChecked(is_selected)
             cb.toggled.connect(lambda checked, id_=a_id: self._on_check(id_, checked))
             self._checkbox_map[a_id] = cb
-            hl.addWidget(cb)
-
-            # Clicking anywhere on the row (except action buttons) toggles selection.
-            # Guard: ignore if a combo popup is open anywhere in the window.
-            def _row_click(_, id_=a_id, c=cb):
-                if self.ay_combo._popup_was_open:
-                    return
-                c.setChecked(not c.isChecked())
-            row.mousePressEvent = _row_click
-
-            name_l = QLabel(a.get("name", ""))
-            name_l.setObjectName("name_l")
-            name_l.setStyleSheet("font-size:13px;")
-            name_l.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-            hl.addWidget(name_l, 1)
-
-            pan_l = QLabel(a.get("pan", ""))
-            pan_l.setObjectName("pan_l")
-            pan_l.setFixedWidth(120)
-            pan_l.setStyleSheet("font-size:13px; font-weight:bold;")
-            hl.addWidget(pan_l)
-
-            dob_l = QLabel(a.get("dob", ""))
-            dob_l.setFixedWidth(110)
-            dob_l.setStyleSheet("font-size:13px;")
-            hl.addWidget(dob_l)
-
+            cb_layout.addWidget(cb)
+            self.client_table.setCellWidget(i, 0, cb_container)
+            
+            # Col 1: Name item
+            name_item = QTableWidgetItem(a.get("name", ""))
+            name_item.setData(Qt.ItemDataRole.UserRole, a_id)
+            name_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            self.client_table.setItem(i, 1, name_item)
+            
+            # Col 2: PAN item
+            pan_item = QTableWidgetItem(a.get("pan", ""))
+            pan_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.client_table.setItem(i, 2, pan_item)
+            
+            # Col 3: Date of Birth item
+            dob_item = QTableWidgetItem(a.get("dob", ""))
+            dob_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.client_table.setItem(i, 3, dob_item)
+            
+            # Col 4: Action buttons
             edit_btn = QPushButton("✏")
             edit_btn.setFixedSize(28, 28)
             edit_btn.setToolTip("Edit")
@@ -1173,6 +1289,7 @@ class TaxDownloaderApp(QMainWindow):
                 "QPushButton { background:transparent; border:none; font-size:16px; }"
                 "QPushButton:hover { color:#0284C7; }")
             edit_btn.clicked.connect(lambda _, av=a: self.load_for_editing(av))
+            
             del_btn = QPushButton("🗑")
             del_btn.setFixedSize(28, 28)
             del_btn.setToolTip("Delete")
@@ -1180,14 +1297,36 @@ class TaxDownloaderApp(QMainWindow):
                 "QPushButton { background:transparent; border:none; font-size:16px; }"
                 "QPushButton:hover { color:#DC2626; }")
             del_btn.clicked.connect(lambda _, id_=a_id: self.delete_assessee(id_))
-            acts = QWidget(); acts.setFixedWidth(62)
-            acts.setStyleSheet("background:transparent;")
-            al = QHBoxLayout(acts); al.setContentsMargins(0,0,0,0); al.setSpacing(6)
-            al.addWidget(edit_btn); al.addWidget(del_btn)
-            hl.addWidget(acts)
-
-            self.clients_layout.insertWidget(self.clients_layout.count() - 1, row)
-
+            
+            acts_container = QWidget()
+            acts_layout = QHBoxLayout(acts_container)
+            acts_layout.setContentsMargins(0, 0, 0, 0)
+            acts_layout.setSpacing(6)
+            acts_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            acts_layout.addWidget(edit_btn)
+            acts_layout.addWidget(del_btn)
+            self.client_table.setCellWidget(i, 4, acts_container)
+            
+            # Apply row colors and styles
+            self._apply_row_style(i, is_selected, i)
+            
+        # Re-apply active sort if any
+        if self._current_sort_col in (1, 2):
+            self.client_table.setSortingEnabled(True)
+            self.client_table.sortByColumn(self._current_sort_col, self._current_sort_order)
+            self.client_table.setSortingEnabled(False)
+            
+            # Re-apply alternating colors after sort
+            for row_idx in range(self.client_table.rowCount()):
+                item = self.client_table.item(row_idx, 1)
+                if item:
+                    row_id = item.data(Qt.ItemDataRole.UserRole)
+                    row_selected = row_id in self.selected_ids
+                    self._apply_row_style(row_idx, row_selected, row_idx)
+                    
+        if hasattr(self, "header_cb"):
+            self.header_cb.blockSignals(False)
+            
         self._update_count()
         if hasattr(self, "search_box"):
             self._apply_filter(self.search_box.text())
@@ -1197,9 +1336,15 @@ class TaxDownloaderApp(QMainWindow):
             self.selected_ids.add(id_)
         else:
             self.selected_ids.discard(id_)
-        if hasattr(self, "_row_frames") and id_ in self._row_frames:
-            idx = next((i for i, a in enumerate(self.assessee_list) if a.get("id") == id_), 0)
-            self._apply_row_style(self._row_frames[id_], checked, idx)
+            
+        # Find the row in table widget and apply selection style
+        if hasattr(self, "client_table"):
+            for row_idx in range(self.client_table.rowCount()):
+                item = self.client_table.item(row_idx, 1)
+                if item and item.data(Qt.ItemDataRole.UserRole) == id_:
+                    self._apply_row_style(row_idx, checked, row_idx)
+                    break
+                    
         self._update_count()
 
     def toggle_select_all(self, checked):
@@ -1211,15 +1356,25 @@ class TaxDownloaderApp(QMainWindow):
                 self.selected_ids.add(a_id)
             else:
                 self.selected_ids.discard(a_id)
+                
+        # Re-apply styling to all rows
+        if hasattr(self, "client_table"):
+            for row_idx in range(self.client_table.rowCount()):
+                item = self.client_table.item(row_idx, 1)
+                if item:
+                    row_id = item.data(Qt.ItemDataRole.UserRole)
+                    self._apply_row_style(row_idx, checked, row_idx)
+                    
         self._update_count()
 
     def _update_count(self):
         n = len(self.selected_ids)
         self.lbl_selected.setText(f"{n} selected" if n else "")
         total = len(self._checkbox_map)
-        self.select_all_cb.blockSignals(True)
-        self.select_all_cb.setChecked(total > 0 and n == total)
-        self.select_all_cb.blockSignals(False)
+        if hasattr(self, "header_cb"):
+            self.header_cb.blockSignals(True)
+            self.header_cb.setChecked(total > 0 and n == total)
+            self.header_cb.blockSignals(False)
         if hasattr(self, "btn_delete_sel"):
             self.btn_delete_sel.setEnabled(n > 0)
 
@@ -1467,10 +1622,12 @@ class TaxDownloaderApp(QMainWindow):
     # ── Automation ────────────────────────────────────────────────────────────
 
     def _lock_ui(self, lock: bool):
-        for w in (self.entry_name, self.entry_pan, self.entry_dob, self.entry_pwd,
-                  self.btn_save, self.btn_clear, self.btn_bulk_import, self.btn_template,
-                  self.btn_export, self.ay_combo,
-                  self.select_all_cb, self.btn_delete_sel, self.btn_run):
+        widgets = [self.entry_name, self.entry_pan, self.entry_dob, self.entry_pwd,
+                   self.btn_save, self.btn_clear, self.btn_bulk_import, self.btn_template,
+                   self.btn_export, self.ay_combo, self.btn_delete_sel, self.btn_run]
+        if hasattr(self, "header_cb"):
+            widgets.append(self.header_cb)
+        for w in widgets:
             w.setEnabled(not lock)
 
     def start_automation(self, mode: str):

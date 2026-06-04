@@ -65,6 +65,65 @@ arrive from the worker thread via `pyqtSignal`. It is **window-modal**
 the parent window and renders an active title bar, while `show()` (not `exec()`)
 keeps the event loop alive for live updates.
 
+#### Table layouts (Batch Progress and Main Screen Client List)
+
+Both the **Batch Progress** dialog and the **Main Client List** on the main screen use a true `QTableWidget` to display information in a clean, professional grid:
+
+- **Batch Progress Table:**
+  - Name column: **Interactive** width (drag to resize), default 250 px.
+  - Status column: **Stretch** — fills remaining space automatically.
+  - Grid lines and alternating row colours (`#FFFFFF` / `#F8FAFC`) are enabled.
+
+- **Main Client List Table:**
+  - Header is part of the table widget itself (ensuring perfect column alignment).
+  - Columns: Checkbox (Select, width 45, interactive), Name (Stretch), PAN (width 140, interactive), Date of Birth (width 130, interactive), Actions (width 90, interactive).
+  - Drag-to-resize is fully supported on all column headers.
+  - Grid lines and alternating row colours (`#FFFFFF` / `#F8FAFC`) are enabled.
+  - Clicking on any text cell (Name, PAN, or DOB) toggles the select checkbox for that client.
+  - Row filtering/searching hides/shows matching rows dynamically via `setRowHidden()`.
+  - **Interactive Sorting:** Users can click the **Name** or **PAN** headers to sort alphabetically (ascending/descending). Sorting indicators are shown dynamically and only for these two allowed columns. Sort state is preserved and re-applied automatically whenever the grid is refreshed.
+  - **Header Select-All Checkbox:** The first column (checkbox) header contains an interactive `QCheckBox` widget centered overlays. Checking/unchecking this box instantly toggles all clients. The dedicated checkbox at the bottom has been removed to maximize interface cleanliness.
+
+#### Per-client status lifecycle
+
+Every assessee row cycles through these status values during a batch run:
+
+| Status | Meaning |
+|---|---|
+| `⬜ Waiting` | Not yet started |
+| `⏳ Logging in to ITD...` | Browser opening ITD login page |
+| `✅ Logged in — loading portal...` | Dashboard reached |
+| `⏳ Opening AIS portal...` | Navigating to Insight compliance portal |
+| `⏳ Selecting Financial Year...` | FY dropdown interaction |
+| `⏳ Downloading AIS PDF...` | AIS download button clicked, waiting for file |
+| `✅ AIS downloaded — fetching TIS...` | AIS saved, now opening TIS modal |
+| `🕐 AIS queued — fetching TIS...` | AIS is a large file, queued server-side |
+| `⚠️ AIS issue — fetching TIS...` | AIS attempt had an issue but continuing |
+| `✅ TIS downloaded — wrapping up...` | TIS saved, about to log out |
+| `⚠️ TIS could not be downloaded` | TIS download failed |
+| `⏳ Downloading 26AS...` | 26AS mode — TRACES download in progress |
+| `⏳ Logging out...` | Clearing ITD session |
+| `✅ AIS Downloaded instantly` | Final success (instant AIS) |
+| `✅ 26AS Downloaded` | Final success (26AS mode) |
+| `🕐 AIS request placed (Ref: …)` | AIS queued — retry with Download mode later |
+| `⬜ Skipped — AIS not available for this FY` | FY pre-dates AIS availability |
+| `❌ Failed — <reason>` | Error with short description |
+| `⏸ Cooling down... 5s / 4s / … / 1s` | Live countdown between clients |
+
+#### Inter-client isolation and cooldown
+
+Each client gets a **fresh, isolated `BrowserContext`** (separate cookies,
+localStorage, and session state) created just before login and destroyed
+immediately after logout. This prevents session bleed between clients.
+
+After each client (except the last), a **5-second cooldown** is applied with a
+live countdown visible in the Batch Progress window. This reduces the risk of
+triggering ITD's `loginMaxAttemptsPopup` rate-limit on rapid consecutive logins.
+
+If the rate-limit popup *does* fire and is handled, an additional **6-second
+recovery pause** is applied inside `auth.py` before returning the page, giving
+the Angular router time to fully re-initialise before navigation events are sent.
+
 ### 3.4 Vault without pandas
 
 Import/export/template use `openpyxl` + `csv` directly (pandas was removed to cut
@@ -172,9 +231,16 @@ clicking `a#AIS` (or `e-File` for 26AS) we:
 - Portal lands on `/complianceportal/ais/instructions`.
 - FY selection: go to `/ais/home` via the sub-navbar AIS tab, open
   `.fy-dropdown button#dropdownMenuButton`, pick `F.Y. YYYY-YY`
-  (`button.dropdown-item`), return to the **Instructions** tab.
-- The instructions page has a **`Download AIS/TIS (F.Y. ...)`** shortcut button
-  that opens the download modal — this is the reliable entry point.
+  (`button.dropdown-item`).
+
+- *Important Fix (2026-06-04)*: We previously used a combined "Download AIS/TIS" 
+  button on the Instructions tab. This had a portal-side bug where it ignored 
+  the selected FY and always generated 2025-26 documents. 
+
+- The reliable entry point is now clicking the specific download icons on the 
+  `ais/home` tiles themselves using `img[title='Download AIS related documents']` 
+  and `img[title='Download TIS related documents']`. This correctly preserves 
+  the selected FY context.
 
 ### 5.4 Download modal (`mat-dialog-container`)
 
@@ -249,15 +315,16 @@ and AIS/TIS — they make any future portal change trivially diagnosable.
 Working end to end:
 
 - Login with robust error handling and fast-fail on bad password
-- 26AS download (TRACES)
-- AIS + TIS download for all years (instant)
+- 26AS download (TRACES) — robustly handles full-screen loader intercepts and slow new-tab spawning
+- AIS + TIS download for all years (instant) — respects FY selection
 - FY switching
 - Mixed batches with per-client isolation and clear error reporting
 - Permanent step logging
+- Automated PDF Unlocking (`pikepdf` decrypts using PAN+DOB seamlessly)
+- Headless Automation by default (with UI checkbox for visual debug mode)
 
 Pending / optional:
 
 - Large-file queued path (Activity History) — implemented but seldom exercised
   since files download instantly
-- PDF password removal (deferred)
 - Windows build verification with all latest changes
