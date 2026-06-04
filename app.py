@@ -1668,7 +1668,7 @@ class TaxDownloaderApp(QMainWindow):
                 elif mode == "request_ais" and self.is_running:
                     await self._ensure_dashboard(page)
                     set_status(pan, "⏳ Opening AIS portal...")
-                    result = await run_request_ais(page, fy, out, self.log, pan=pan)
+                    result = await run_request_ais(page, fy, out, self.log, pan=pan, dob=dob)
                     ais_status = result.get("status")
 
                     if ais_status in ("instant", "downloaded"):
@@ -1691,28 +1691,29 @@ class TaxDownloaderApp(QMainWindow):
 
                 # ── Download AIS/TIS ──────────────────────────────────────────
                 elif mode == "ais_tis" and self.is_running:
+                    # "Download Previously Requested AIS" — fetch ONLY the AIS PDF
+                    # from Activity History. TIS is not re-downloaded here (it was
+                    # already grabbed during the Request step).
                     await self._ensure_dashboard(page)
-                    dl_ais = True
-                    dl_tis = True
+                    set_status(pan, "⏳ Downloading AIS from Activity History...")
 
-                    if dl_tis:
-                        set_status(pan, "⏳ Opening AIS portal...")
-                    if dl_ais:
-                        set_status(pan, "⏳ Downloading AIS from Activity History...")
+                    status = await run_download_ais_tis(
+                        page, fy, out, self.log, pan=pan, dob=dob,
+                        dl_ais=True, dl_tis=False,
+                        should_continue=lambda: self.is_running)
 
-                    ok = await run_download_ais_tis(
-                        page, fy, out, self.log, pan=pan,
-                        dl_ais=dl_ais, dl_tis=dl_tis)
-
-                    if ok:
-                        if dl_ais and dl_tis:
-                            set_status(pan, "✅ TIS & AIS Downloaded")
-                        elif dl_tis:
-                            set_status(pan, "✅ TIS Downloaded")
-                        else:
-                            set_status(pan, "✅ AIS Downloaded")
+                    if status == "downloaded":
+                        set_status(pan, "✅ AIS Downloaded")
+                    elif status == "not_found":
+                        set_status(pan,
+                            "⬜ No queued AIS for this FY — run Download / Request TIS & AIS first")
+                    elif status == "timeout":
+                        set_status(pan,
+                            "🕐 AIS still generating — try again in a few minutes")
+                    elif status == "aborted":
+                        set_status(pan, "⏹ Stopped")
                     else:
-                        set_status(pan, "❌ Download incomplete — check logs")
+                        set_status(pan, "❌ AIS download incomplete — check logs")
 
                 if self.is_running:
                     await logout_itd(page, self.log)

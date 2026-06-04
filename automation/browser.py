@@ -107,6 +107,7 @@ class BrowserManager:
         "--disable-blink-features=AutomationControlled",
         "--disable-features=IsolateOrigins,site-per-process",
         "--password-store=basic",
+        "--use-mock-keychain",
     ]
     _IGNORE_DEFAULT_ARGS = ["--enable-automation"]
 

@@ -22,7 +22,6 @@ Credentials (PAN, DOB, portal password) are stored in a local encrypted vault.
 
 ## 2. Architecture
 
-```
 app.py                       PyQt6 GUI, batch orchestration, progress dialog
 vault.py                     Encrypted credential vault (openpyxl + csv, no pandas)
 automation/
@@ -31,7 +30,6 @@ automation/
   downloader_26as.py         Form 26AS (TRACES) flow
   downloader_ais_tis.py      AIS / TIS (Insight portal) flow
   downloader.py              Shared helpers (status badge, step logger)
-```
 
 The GUI runs the batch in a background thread; per-client status is pushed to a
 live **Batch Progress** dialog via Qt signals. Each client is processed in its
@@ -42,7 +40,9 @@ own `try/except`, so one client's failure never aborts the batch.
 ## 3. Key Design Decisions
 
 ### 3.1 Run dropdown (replaced three buttons)
+
 The action bar uses a single **▶ Run** split-button (`QToolButton` + `QMenu`):
+
 - Download 26AS
 - Download / Request TIS & AIS
 - Download Previously Requested AIS
@@ -52,11 +52,13 @@ redundant — the menu choice itself expresses intent. AIS and TIS always downlo
 together when "Download / Request TIS & AIS" is chosen.
 
 ### 3.2 Stop button lives on the progress popup
+
 The Stop control was moved from the main toolbar into the Batch Progress dialog
 footer. It calls `stop_automation()` on the main window, then hides itself when
 the batch finishes (Close button takes over).
 
 ### 3.3 Live per-client progress dialog
+
 `BatchProgressDialog` shows one row per assessee (Name | Status). Status updates
 arrive from the worker thread via `pyqtSignal`. It is **window-modal**
 (`Qt.WindowModality.WindowModal`) and uses `Qt.WindowType.Dialog` so it blocks
@@ -64,6 +66,7 @@ the parent window and renders an active title bar, while `show()` (not `exec()`)
 keeps the event loop alive for live updates.
 
 ### 3.4 Vault without pandas
+
 Import/export/template use `openpyxl` + `csv` directly (pandas was removed to cut
 binary size). `import_bulk()` returns `(added, updated, errors)`.
 
@@ -133,6 +136,7 @@ viewport={"width": 1600, "height": 900}   # no --start-maximized, no bypass_csp
 
 Even at 1600px the dashboard nav can collapse into a hamburger, so before
 clicking `a#AIS` (or `e-File` for 26AS) we:
+
 1. `window.scrollTo(0,0)` + reset every scrollable container (nav can be scrolled
    out of view),
 2. click `#hamburgerOpen` (with fallback selectors) if present.
@@ -142,6 +146,7 @@ clicking `a#AIS` (or `e-File` for 26AS) we:
 ## 5. ITD / Insight Portal Flow (verified against live HTML)
 
 ### 5.1 Login (`auth.py`)
+
 1. Navigate to `#/login`, wait for Angular hydration.
 2. Fill `#panAdhaarUserId`, click **Continue**.
 3. Wait for SAM (Secure Access Message) checkbox `#passwordCheckBox-input`, tick it.
@@ -156,12 +161,14 @@ clicking `a#AIS` (or `e-File` for 26AS) we:
 9. On any failure the login page is closed (no orphan-tab leaks across clients).
 
 ### 5.2 Opening the AIS portal (`_open_ais_portal`)
+
 - Open hamburger, click `a#AIS`.
 - Arm a new-tab listener **before** the click; dismiss an optional "Yes"
   confirmation; race between a new tab opening and the same tab navigating to
   `ais.insight.gov.in`.
 
 ### 5.3 AIS portal navigation
+
 - Portal lands on `/complianceportal/ais/instructions`.
 - FY selection: go to `/ais/home` via the sub-navbar AIS tab, open
   `.fy-dropdown button#dropdownMenuButton`, pick `F.Y. YYYY-YY`
@@ -170,6 +177,7 @@ clicking `a#AIS` (or `e-File` for 26AS) we:
   that opens the download modal — this is the reliable entry point.
 
 ### 5.4 Download modal (`mat-dialog-container`)
+
 - AIS modal rows (each `div.d-flex` with `p.dialog-sub-head` + one
   `button.dialog-outline-btn`):
   - "Annual Information Statement (AIS) - PDF" ← downloaded
@@ -181,7 +189,9 @@ clicking `a#AIS` (or `e-File` for 26AS) we:
 - Files saved as `<PAN>-AIS-<FY>.pdf` and `<PAN>-TIS-<FY>.pdf`.
 
 ### 5.5 Activity History (two-phase fallback, rarely needed)
+
 For genuinely large files that queue instead of downloading instantly:
+
 - Row = `tr.example-element-row`; columns by class
   (`mat-column-activityType`, `mat-column-description`, `mat-column-referenceId`,
   `mat-column-download`).
@@ -196,10 +206,8 @@ For genuinely large files that queue instead of downloading instantly:
 `make_step_logger(log_callback, prefix)` in `downloader.py` returns a
 `step(msg, page=None)` that emits numbered, URL-tagged progress lines, e.g.:
 
-```
 [AIS-OPEN] (6) Clicking a#AIS  |  url: https://eportal.incometax.gov.in/...
 [AIS-DL]   (5) Download saved: AEKPB0205L-AIS-2025_26.pdf
-```
 
 Comprehensive step logs are deliberately **kept permanently** across login, 26AS,
 and AIS/TIS — they make any future portal change trivially diagnosable.
@@ -239,6 +247,7 @@ and AIS/TIS — they make any future portal change trivially diagnosable.
 ## 10. Status (as of 2026-06-04)
 
 Working end to end:
+
 - Login with robust error handling and fast-fail on bad password
 - 26AS download (TRACES)
 - AIS + TIS download for all years (instant)
@@ -247,6 +256,7 @@ Working end to end:
 - Permanent step logging
 
 Pending / optional:
+
 - Large-file queued path (Activity History) — implemented but seldom exercised
   since files download instantly
 - PDF password removal (deferred)

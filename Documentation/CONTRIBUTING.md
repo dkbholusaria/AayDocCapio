@@ -3,6 +3,7 @@
 ## Reporting issues
 
 Please open a GitHub Issue with:
+
 - Steps to reproduce
 - Expected vs actual behaviour
 - Python version and OS
@@ -22,7 +23,7 @@ python app.py
 ## Key files
 
 | File | Purpose |
-|---|---|
+| --- | --- |
 | `app.py` | All UI code (PyQt6) |
 | `vault.py` | Encryption, CRUD, import/export |
 | `automation/auth.py` | ITD portal login / logout |

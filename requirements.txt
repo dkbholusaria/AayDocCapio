@@ -2,6 +2,7 @@ PyQt6
 openpyxl
 playwright
 cryptography
+pikepdf
 nuitka
 ordered-set
 zstandard

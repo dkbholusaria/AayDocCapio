@@ -34,7 +34,6 @@ Built with **PyQt6** + **Playwright**. Runs on Windows and Linux/WSL.
 
 ## Project Structure
 
-```
 ITD-docs-downloader/
 ├── app.py                        # PyQt6 main application
 ├── vault.py                      # Encrypted credential vault manager
@@ -60,11 +59,10 @@ ITD-docs-downloader/
 └── outputs/                      # Downloaded files (created at runtime)
     └── <PAN>-<Name>/
         └── AY_<year>/
-            ├── <PAN>-26AS-*.pdf
-            ├── <PAN>-26AS-*.txt
+            ├── <PAN>-26AS-_.pdf
+            ├── <PAN>-26AS-_.txt
             ├── <PAN>-AIS-<FY>.pdf
             └── <PAN>-TIS-<FY>.pdf
-```
 
 ---
 
@@ -106,17 +104,20 @@ python app.py
 ## Usage
 
 ### Add a client manually
+
 1. Open the **Single Profile** tab in the left panel
 2. Fill in Full Name, PAN Number, Date of Birth (DD-MM-YYYY), and Portal Password
 3. Click **Save Profile**
 
 ### Bulk import clients
+
 1. Open the **Bulk Operations** tab
 2. Click **Generate Upload Template** to download a pre-formatted Excel file
 3. Fill in the template (Name, PAN, DOB, Password columns)
 4. Click **Import CSV / Excel** to load all records into the vault
 
 ### Download documents
+
 1. Select an **Assessment Year** from the settings bar
 2. Set the **Output Directory** (defaults to `outputs/` inside the project folder)
 3. Check one or more clients from the list (or use **Select / Deselect All**)
@@ -127,6 +128,7 @@ python app.py
 5. A **Batch Progress** popup shows live per-client status; use its **Stop** button to abort
 
 Downloaded files are saved to:
+
 ```
 <Output Directory>/<PAN>-<Client Name>/AY_<year>/
 ```
@@ -168,6 +170,7 @@ scripts\setup_and_build.ps1
 ```
 
 This script:
+
 1. Syncs the project from WSL to `C:\ITD-build`
 2. Creates a venv and installs dependencies
 3. Compiles with **Nuitka** (native machine code) to `dist\TaxDownloader\`
