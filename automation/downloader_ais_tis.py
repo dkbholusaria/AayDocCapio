@@ -371,14 +371,14 @@ async def request_ais(portal: Page, fiscal_year: str, download_dir: str,
 
     opened = await _open_ais_modal(portal, log)
     if not opened:
-        return {"status": "failed"}
+        return {"status": "failed", "reason": "AIS download icon not found or modal did not open"}
 
     modal = _modal_locator(portal)
     try:
         await modal.wait_for(state="visible", timeout=5000)
     except Exception:
         log("[AIS] Modal did not appear.")
-        return {"status": "failed"}
+        return {"status": "failed", "reason": "AIS modal did not appear after click"}
 
     step = make_step_logger(log, "AIS-DL")
     try:
@@ -457,7 +457,11 @@ async def request_ais(portal: Page, fiscal_year: str, download_dir: str,
     except Exception as e:
         log(f"[AIS] Request failed: {e}")
         await _close_modal(portal, log)
-        return {"status": "failed"}
+        # Build a short, human-readable reason (strip the internal class path)
+        reason_str = str(e).split('\n')[0].strip()
+        if len(reason_str) > 80:
+            reason_str = reason_str[:77] + "..."
+        return {"status": "failed", "reason": reason_str or "Unexpected error during AIS download"}
 
 
 async def _download_modal_row(portal: Page, row_text: str, save_path: str,
@@ -654,12 +658,18 @@ async def download_ais_from_activity_history(portal: Page, fiscal_year: str,
 # ── Top-level entry points (called from app.py) ───────────────────────────────
 
 async def run_request_ais(itd_page: Page, fiscal_year: str, download_dir: str,
-                          log, pan: str = "", dob: str = "") -> dict:
+                          log, pan: str = "", dob: str = "",
+                          status_callback=None) -> dict:
     """
     Phase 1 — Called from 'Request AIS' button.
     Opens portal, navigates to AIS tab, selects FY, requests AIS PDF generation.
     Returns result dict from request_ais().
+    status_callback: optional callable(str) to update the Batch Progress UI.
     """
+    def _status(msg):
+        if status_callback:
+            status_callback(msg)
+
     fy_start = int(fiscal_year.split("-")[0]) if "-" in fiscal_year else 0
     if fy_start < 2021:
         log(f"[AIS] Skipping — AIS not available before FY 2021-22.")
@@ -667,18 +677,32 @@ async def run_request_ais(itd_page: Page, fiscal_year: str, download_dir: str,
 
     portal = None
     try:
+        _status("⏳ Opening AIS portal...")
         portal = await _open_ais_portal(itd_page, log)
+        _status("⏳ Selecting Financial Year...")
         await _navigate_to_ais_tab(portal, log)
         await _select_fy(portal, fiscal_year, log)
 
         # AIS PDF (instant download or queued request)
+        _status("⏳ Downloading AIS PDF...")
         result = await request_ais(portal, fiscal_year, download_dir, log, pan=pan, dob=dob)
+
+        if result.get("status") in ("instant", "downloaded"):
+            _status("✅ AIS downloaded — fetching TIS...")
+        elif result.get("status") == "requested":
+            _status("🕐 AIS queued — fetching TIS...")
+        else:
+            _status("⚠️ AIS issue — fetching TIS...")
 
         # TIS PDF — always instant, lives in its own modal. Attempt it too so
         # 'Download / Request TIS & AIS' fetches both in one pass.
         try:
             tis_ok = await download_tis(portal, fiscal_year, download_dir, log, pan=pan, dob=dob)
             result["tis"] = "downloaded" if tis_ok else "failed"
+            if tis_ok:
+                _status("✅ TIS downloaded — wrapping up...")
+            else:
+                _status("⚠️ TIS could not be downloaded")
         except Exception as te:
             log(f"[TIS] TIS download error: {te}")
             result["tis"] = "failed"
@@ -687,10 +711,14 @@ async def run_request_ais(itd_page: Page, fiscal_year: str, download_dir: str,
         return result
     except Exception as e:
         log(f"[AIS] Request phase failed: {e}")
+        reason_str = str(e).split('\n')[0].strip()
+        if len(reason_str) > 80:
+            reason_str = reason_str[:77] + "..."
         if portal:
             try: await portal.close()
             except Exception: pass
-        return {"status": "failed"}
+        return {"status": "failed", "reason": reason_str or "Unexpected error"}
+
 
 
 async def run_download_ais_tis(itd_page: Page, fiscal_year: str, download_dir: str,

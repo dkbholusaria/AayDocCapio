@@ -1,4 +1,4 @@
-import os, asyncio, zipfile, shutil
+import os, asyncio, zipfile, shutil, re
 from playwright.async_api import Page, Frame
 from automation.downloader import update_browser_status
 
@@ -42,9 +42,17 @@ async def _open_hamburger(page: Page, log_callback):
             continue
 
 
-async def download_26as(page: Page, assessment_year: str, download_dir: str, log_callback, pan: str = "", dob: str = "") -> bool:
+async def download_26as(page: Page, assessment_year: str, download_dir: str, log_callback, pan: str = "", dob: str = "") -> tuple[bool, str]:
     try:
         await _open_hamburger(page, log_callback)
+        
+        # The ITD portal often leaves a full-screen loading spinner/overlay active 
+        # for a few seconds which intercepts pointer events. Wait for it to clear.
+        try:
+            await page.locator(".customLoaderBackdrop").wait_for(state="hidden", timeout=15000)
+        except Exception:
+            pass
+            
         log_callback("[26AS] Hovering over e-File menu...")
         efile = page.locator("//*[normalize-space(.)='e-File']").first
         await efile.wait_for(state="visible", timeout=15000)
@@ -62,8 +70,21 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
 
         # TRACES may open in a new tab or navigate in the same tab
         try:
-            async with page.context.expect_page(timeout=8000) as new_page_info:
+            async with page.context.expect_page(timeout=20000) as new_page_info:
                 await view_26as.click()
+                
+                # The ITD portal sometimes shows a "Disclaimer" popup asking to confirm 
+                # the redirect to TRACES. We MUST click "Confirm" if it appears, otherwise
+                # the new tab will never spawn and expect_page will time out.
+                try:
+                    confirm_btn = page.locator("button", has_text=re.compile(r"confirm|proceed", re.IGNORECASE)).first
+                    await confirm_btn.wait_for(state="visible", timeout=4000)
+                    await confirm_btn.click()
+                    log_callback("[26AS] Confirmed TRACES redirect popup on ITD portal.")
+                except Exception:
+                    # No confirm popup appeared, which is fine
+                    pass
+                    
             traces_page = await new_page_info.value
             await traces_page.wait_for_load_state("domcontentloaded", timeout=20000)
             log_callback("[26AS] TRACES opened in a new tab.")
@@ -204,7 +225,7 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
         await update_browser_status(traces_page, "TRACES: 26AS Download Complete!")
         await asyncio.sleep(1)
         await traces_page.close()
-        return True
+        return True, ""
     except Exception as e:
         log_callback(f"[Error] Failed to download Form 26AS: {e}")
-        return False
+        return False, str(e)
