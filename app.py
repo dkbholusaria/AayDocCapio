@@ -444,8 +444,10 @@ class BatchProgressDialog(QDialog):
         self.setWindowTitle("Batch Progress")
         self.setMinimumSize(620, 400)
         self.resize(680, min(100 + len(targets) * 38, 600))
+        # Dialog (not Window) so it stays attached to the parent and renders an
+        # active title bar when modal.
         self.setWindowFlags(
-            Qt.WindowType.Window |
+            Qt.WindowType.Dialog |
             Qt.WindowType.WindowTitleHint |
             Qt.WindowType.WindowCloseButtonHint)
         self.setStyleSheet("QDialog{background:#F8FAFC;}")
@@ -598,6 +600,7 @@ class TaxDownloaderApp(QMainWindow):
         self._ais_requested_time = None   # datetime when Request AIS last completed
         self._last_mode = None            # mode of last completed batch
         self._ais_results = {}            # pan → "instant" | "queued" | "failed" | "skipped"
+        self._last_errors = {}            # pan → error message string
 
         self._log_signal.connect(self._append_log)
         self._batch_done_signal.connect(self._on_batch_done)
@@ -1517,8 +1520,14 @@ class TaxDownloaderApp(QMainWindow):
         """Called on main thread to create and show the progress dialog."""
         self._progress_dialog = BatchProgressDialog(
             targets, mode, stop_callback=self.stop_automation, parent=self)
-        self._progress_dialog.setModal(False)
+        # Window-modal: blocks the parent window (so it can't be clicked behind
+        # the dialog) but still allows the worker thread's Qt-signal updates.
+        # We use show() rather than exec() so the event loop keeps processing
+        # the live status signals.
+        self._progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
         self._progress_dialog.show()
+        self._progress_dialog.raise_()
+        self._progress_dialog.activateWindow()
 
     def stop_automation(self):
         if not self.is_running:
@@ -1593,9 +1602,14 @@ class TaxDownloaderApp(QMainWindow):
                     f"&nbsp;&nbsp;Wait <b>~5 minutes</b>, then select these clients "
                     f"and click <b>⬇ Download AIS/TIS</b>.")
             if n_failed:
+                # Show the distinct error reasons so the user knows WHY.
+                reasons = sorted(set(self._last_errors.values()))
+                reason_html = ""
+                if reasons:
+                    reason_html = "<br>" + "<br>".join(
+                        f"&nbsp;&nbsp;• {r}" for r in reasons[:5])
                 lines.append(
-                    f"❌ <b>{n_failed} client(s)</b> — Request failed. "
-                    f"Check logs and try again.")
+                    f"❌ <b>{n_failed} client(s)</b> — Request failed.{reason_html}")
 
             msg = QMessageBox(self)
             msg.setWindowTitle("AIS Request Complete")
@@ -1612,6 +1626,7 @@ class TaxDownloaderApp(QMainWindow):
     async def _execute_batch(self, targets, ay, fy, root_dir, mode):
         self.log(f"[System] Batch: {len(targets)} client(s) | AY: {ay} | Mode: {mode}")
         self._ais_results = {}
+        self._last_errors = {}
 
         def set_status(pan, text):
             """Update the progress dialog row for this client (thread-safe)."""
@@ -1656,7 +1671,7 @@ class TaxDownloaderApp(QMainWindow):
                     result = await run_request_ais(page, fy, out, self.log, pan=pan)
                     ais_status = result.get("status")
 
-                    if ais_status == "instant":
+                    if ais_status in ("instant", "downloaded"):
                         self._ais_results[pan] = "instant"
                         set_status(pan, "✅ AIS Downloaded instantly")
                     elif ais_status == "requested":
@@ -1709,7 +1724,13 @@ class TaxDownloaderApp(QMainWindow):
             except Exception as e:
                 pan_masked = pan[:3] + "XXXXXXX" if pan and len(pan) >= 3 else "UNKNOWN"
                 self.log(f"[Error] {pan_masked}: {e}")
-                set_status(pan, "❌ Failed — see logs")
+                # Record the failure so the summary dialog/counts reflect it.
+                self._ais_results[pan] = "failed"
+                self._last_errors[pan] = str(e)
+                err_short = str(e)
+                if len(err_short) > 60:
+                    err_short = err_short[:57] + "..."
+                set_status(pan, f"❌ Failed — {err_short}")
                 if page:
                     try: await logout_itd(page, self.log)
                     except Exception: pass

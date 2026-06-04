@@ -14,8 +14,37 @@ async def _find_frame(page: Page, selector: str, timeout: int = 3000) -> Frame |
     return None
 
 
+async def _open_hamburger(page: Page, log_callback):
+    """
+    Open the collapsed nav (☰ = #hamburgerOpen) so e-File becomes clickable.
+    a#e-File exists in the DOM but only works once the panel is open, so click
+    the hamburger first whenever the button is present. Scroll to top first
+    in case the page is scrolled down and the nav bar is out of view.
+    """
+    try:
+        await page.evaluate("window.scrollTo(0, 0)")
+        await asyncio.sleep(0.5)
+    except Exception:
+        pass
+
+    for sel in ("#hamburgerOpen", "button[aria-label*='menu' i]", ".hamburger"):
+        try:
+            btn = page.locator(sel).first
+            if await btn.is_visible(timeout=500):
+                log_callback(f"[26AS] Opening hamburger menu: {sel}")
+                try:
+                    await btn.click(timeout=3000)
+                except Exception:
+                    await btn.click(force=True, timeout=3000)
+                await asyncio.sleep(1)
+                return
+        except Exception:
+            continue
+
+
 async def download_26as(page: Page, assessment_year: str, download_dir: str, log_callback, pan: str = "", dob: str = "") -> bool:
     try:
+        await _open_hamburger(page, log_callback)
         log_callback("[26AS] Hovering over e-File menu...")
         efile = page.locator("//*[normalize-space(.)='e-File']").first
         await efile.wait_for(state="visible", timeout=15000)
