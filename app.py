@@ -1047,6 +1047,21 @@ class TaxDownloaderApp(QMainWindow):
         bar.setStyleSheet("QFrame{background:#FFFFFF;border-radius:10px;}")
         hl = QHBoxLayout(bar)
         hl.setContentsMargins(22, 0, 16, 0)
+
+        # Headless toggle — when checked, the automation browser runs hidden.
+        # Default OFF so the browser is visible (helps with CAPTCHA / monitoring).
+        self.chk_headless = QCheckBox("Run in background (hide browser)")
+        self.chk_headless.setChecked(False)
+        self.chk_headless.setToolTip(
+            "When ON, the automation Chrome window is hidden (headless).\n"
+            "Keep OFF to watch progress or handle any CAPTCHA.")
+        self.chk_headless.setStyleSheet(
+            "QCheckBox{font-size:12px;color:#475569;background:transparent;spacing:6px;}"
+            "QCheckBox::indicator{width:15px;height:15px;border:1.5px solid #94A3B8;"
+            "border-radius:3px;background:#FFFFFF;}"
+            "QCheckBox::indicator:checked{background:#2563EB;border-color:#2563EB;}")
+        hl.addWidget(self.chk_headless)
+
         hl.addStretch()
 
         self.btn_delete_sel = _btn("🗑  Delete Selected", "danger", height=34, min_width=130)
@@ -1181,9 +1196,11 @@ class TaxDownloaderApp(QMainWindow):
     # ── Grid ──────────────────────────────────────────────────────────────────
 
     def _apply_row_style(self, row_idx, selected, index=0):
-        # Determine background color based on alternate rows and selection
-        bg = "#1E3A8A" if selected else ("#FFFFFF" if index % 2 == 0 else "#F8FAFC")
-        fg = "#FFFFFF" if selected else "#0F172A"
+        # Selected rows use a light-blue background with dark text so the text is
+        # always readable (a dark bg + per-item setBackground can be overridden by
+        # the table stylesheet, producing white-on-white).
+        bg = "#DBEAFE" if selected else ("#FFFFFF" if index % 2 == 0 else "#F8FAFC")
+        fg = "#1E3A8A" if selected else "#0F172A"
         
         # Apply style to all items in the row
         for col in range(self.client_table.columnCount()):
@@ -1624,7 +1641,8 @@ class TaxDownloaderApp(QMainWindow):
     def _lock_ui(self, lock: bool):
         widgets = [self.entry_name, self.entry_pan, self.entry_dob, self.entry_pwd,
                    self.btn_save, self.btn_clear, self.btn_bulk_import, self.btn_template,
-                   self.btn_export, self.ay_combo, self.btn_delete_sel, self.btn_run]
+                   self.btn_export, self.ay_combo, self.btn_delete_sel, self.btn_run,
+                   self.chk_headless]
         if hasattr(self, "header_cb"):
             widgets.append(self.header_cb)
         for w in widgets:
@@ -1791,7 +1809,9 @@ class TaxDownloaderApp(QMainWindow):
                 self._progress_dialog.set_status(pan, text)
 
         try:
-            context = await browser_manager.get_context(log_callback=self.log, interactive=True)
+            interactive = not self.chk_headless.isChecked()
+            context = await browser_manager.get_context(
+                log_callback=self.log, interactive=interactive)
         except Exception as e:
             self.log(f"[System Error] Browser init failed: {e}"); return
 
