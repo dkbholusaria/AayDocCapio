@@ -1049,9 +1049,9 @@ class TaxDownloaderApp(QMainWindow):
         hl.setContentsMargins(22, 0, 16, 0)
 
         # Headless toggle — when checked, the automation browser runs hidden.
-        # Default OFF so the browser is visible (helps with CAPTCHA / monitoring).
+        # Default ON; uncheck to watch progress or handle a CAPTCHA.
         self.chk_headless = QCheckBox("Run in background (hide browser)")
-        self.chk_headless.setChecked(False)
+        self.chk_headless.setChecked(True)
         self.chk_headless.setToolTip(
             "When ON, the automation Chrome window is hidden (headless).\n"
             "Keep OFF to watch progress or handle any CAPTCHA.")
@@ -1196,11 +1196,11 @@ class TaxDownloaderApp(QMainWindow):
     # ── Grid ──────────────────────────────────────────────────────────────────
 
     def _apply_row_style(self, row_idx, selected, index=0):
-        # Selected rows use a light-blue background with dark text so the text is
-        # always readable (a dark bg + per-item setBackground can be overridden by
-        # the table stylesheet, producing white-on-white).
-        bg = "#DBEAFE" if selected else ("#FFFFFF" if index % 2 == 0 else "#F8FAFC")
-        fg = "#1E3A8A" if selected else "#0F172A"
+        # Selected rows: solid blue background with white text. Both bg and fg are
+        # set explicitly per item (and the stylesheet leaves item bg unset) so it
+        # renders as a clear solid highlight, never white-on-white.
+        bg = "#2563EB" if selected else ("#FFFFFF" if index % 2 == 0 else "#F8FAFC")
+        fg = "#FFFFFF" if selected else "#0F172A"
         
         # Apply style to all items in the row
         for col in range(self.client_table.columnCount()):
