@@ -100,21 +100,56 @@ class BrowserManager:
                 log_callback("[Browser] Starting Playwright engine...")
             self._playwright = await async_playwright().start()
 
+    # No --start-maximized: it fights the fixed 1600x900 viewport and distorts
+    # the aspect ratio (collapsing the ITD nav). The competitor relies purely
+    # on the viewport, letting the window auto-size to it.
+    _LAUNCH_ARGS = [
+        "--disable-blink-features=AutomationControlled",
+        "--disable-features=IsolateOrigins,site-per-process",
+        "--password-store=basic",
+    ]
+    _IGNORE_DEFAULT_ARGS = ["--enable-automation"]
+
+    async def _launch(self, headless, log_callback=None):
+        """
+        Launch the browser. Prefer the user's installed Google Chrome
+        (channel='chrome') — the Insight/AIS portal's download buttons only
+        fire on real Chrome; bundled Chromium silently no-ops them.
+        Fall back to bundled Chromium if Chrome is absent (26AS still works,
+        but AIS/TIS downloads will fail — warn the user).
+        """
+        try:
+            browser = await self._playwright.chromium.launch(
+                headless=headless,
+                channel="chrome",
+                args=self._LAUNCH_ARGS,
+                ignore_default_args=self._IGNORE_DEFAULT_ARGS,
+            )
+            self._channel = "chrome"
+            return browser
+        except Exception:
+            if log_callback:
+                log_callback(
+                    "[Browser] WARNING: Google Chrome not found — using bundled Chromium. "
+                    "26AS will work, but AIS/TIS downloads need Google Chrome installed "
+                    "(https://www.google.com/chrome/)."
+                )
+            browser = await self._playwright.chromium.launch(
+                headless=headless,
+                args=self._LAUNCH_ARGS,
+                ignore_default_args=self._IGNORE_DEFAULT_ARGS,
+            )
+            self._channel = "chromium"
+            return browser
+
     async def _ensure_browser(self, log_callback=None, interactive=True):
         await self.initialize(log_callback)
         if self._browser is None or not self._browser.is_connected():
             headless = not interactive
             try:
-                self._browser = await self._playwright.chromium.launch(
-                    headless=headless,
-                    args=[
-                        "--start-maximized",
-                        "--disable-blink-features=AutomationControlled",
-                        "--disable-features=IsolateOrigins,site-per-process",
-                        "--password-store=basic",
-                    ],
-                    ignore_default_args=["--enable-automation"],
-                )
+                self._browser = await self._launch(headless, log_callback)
+                if log_callback:
+                    log_callback(f"[Browser] Launched via {getattr(self, '_channel', 'chromium')}")
             except Exception as e:
                 err_str = str(e).lower()
                 if any(k in err_str for k in ("executable", "not found", "doesn't exist", "none", "attribute")):
@@ -133,16 +168,7 @@ class BrowserManager:
                     # Re-init and retry
                     self._set_browsers_env()
                     await self.initialize(log_callback)
-                    self._browser = await self._playwright.chromium.launch(
-                        headless=headless,
-                        args=[
-                            "--start-maximized",
-                            "--disable-blink-features=AutomationControlled",
-                            "--disable-features=IsolateOrigins,site-per-process",
-                            "--password-store=basic",
-                        ],
-                        ignore_default_args=["--enable-automation"],
-                    )
+                    self._browser = await self._launch(headless, log_callback)
                 else:
                     if log_callback:
                         log_callback(f"[Error] Failed to launch browser: {e}")
@@ -157,14 +183,15 @@ class BrowserManager:
             self._browser = None
             await self._ensure_browser(log_callback, interactive)
 
+        # Match the competitor's working context exactly: fixed 1600x900 viewport,
+        # no bypass_csp (real Chrome handles CSP fine and the portal expects it).
         ctx = await self._browser.new_context(
-            no_viewport=True,
+            viewport={"width": 1600, "height": 900},
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/131.0.0.0 Safari/537.36"
             ),
-            bypass_csp=True,
             locale="en-IN",
             timezone_id="Asia/Kolkata",
             accept_downloads=True,

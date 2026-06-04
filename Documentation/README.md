@@ -11,10 +11,18 @@ Built with **PyQt6** + **Playwright**. Runs on Windows and Linux/WSL.
 - **Encrypted credential vault** — PAN, DOB, and portal passwords stored locally using PBKDF2HMAC + Fernet AES-128; never sent anywhere
 - **Bulk operations** — import assessees from Excel/CSV, export saved records, generate import templates
 - **One-click batch download** — logs in, downloads, logs out sequentially for every selected client
-- **Documents supported** — Form 26AS (PDF + TXT), AIS (PDF + JSON), TIS (PDF)
+- **Documents supported** — Form 26AS (PDF + TXT), AIS (PDF), TIS (PDF)
+- **Run dropdown** — single ▶ Run button with: Download 26AS · Download / Request TIS & AIS · Download Previously Requested AIS
+- **Live per-client progress popup** — a modal dialog shows one row per client with live status; Stop control lives here
 - **Assessment year management** — add/remove/toggle years via the built-in Manage Years dialog
-- **Live log console** — real-time status feed during automation runs
+- **Per-client error isolation** — one client's failure (e.g. wrong password) never aborts the batch; the reason is shown in the row, the summary dialog, and the live log
+- **Comprehensive step logging** — every automation step is logged with a numbered counter and URL for easy diagnosis
 - **Search / filter** — filter client list by name or PAN
+
+> **Important:** AIS/TIS downloads require **Google Chrome** to be installed.
+> The app launches real Chrome (`channel="chrome"`); the Insight/AIS portal's
+> download buttons do not work under Playwright's bundled Chromium. 26AS works
+> with either. See the [Development Log](DEVELOPMENT_LOG.md) for the full reason.
 
 ---
 
@@ -33,23 +41,29 @@ ITD-docs-downloader/
 ├── assessment_years.json         # Configured assessment / tax years
 ├── requirements.txt              # Python dependencies
 ├── automation/
-│   ├── browser.py                # Playwright browser manager (self-healing Chromium)
+│   ├── browser.py                # Playwright manager (prefers real Google Chrome)
 │   ├── auth.py                   # ITD login / logout automation
-│   ├── downloader.py             # Shared download utilities
+│   ├── downloader.py             # Shared utilities + step logger
 │   ├── downloader_26as.py        # Form 26AS download logic (TRACES)
-│   └── downloader_ais_tis.py     # AIS / TIS download logic (Compliance Portal)
-├── resources/
-│   ├── check.png                 # Checkbox tick icon
-│   └── chevron_down.png          # Dropdown arrow icon
-├── build_win.bat                 # Windows PyInstaller build script
+│   └── downloader_ais_tis.py     # AIS / TIS download logic (Insight portal)
+├── resources/                    # UI icons
+├── scripts/
+│   ├── setup_and_build.ps1       # Windows sync + Nuitka build + Inno Setup
+│   ├── installer.iss             # Inno Setup installer script
+│   └── setup.sh                  # Linux/WSL dev setup
+├── Documentation/
+│   ├── README.md                 # This file
+│   ├── DEVELOPMENT_LOG.md        # Design decisions + debugging history
+│   ├── CONTRIBUTING.md
+│   ├── implementation_plan.md
+│   └── walkthrough.md
 └── outputs/                      # Downloaded files (created at runtime)
     └── <PAN>-<Name>/
         └── AY_<year>/
-            ├── 26AS-*.pdf
-            ├── 26AS-*.txt
-            ├── AIS-*.pdf
-            ├── AIS-*.json
-            └── TIS-*.pdf
+            ├── <PAN>-26AS-*.pdf
+            ├── <PAN>-26AS-*.txt
+            ├── <PAN>-AIS-<FY>.pdf
+            └── <PAN>-TIS-<FY>.pdf
 ```
 
 ---
@@ -60,6 +74,7 @@ ITD-docs-downloader/
 
 - Python 3.10+
 - pip
+- **Google Chrome** installed (required for AIS/TIS downloads)
 
 ### Steps
 
@@ -76,8 +91,11 @@ source .venv/bin/activate        # Linux / WSL
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Install Playwright's Chromium browser
-playwright install chromium
+# 4. Install browsers
+#    - Real Google Chrome is used at runtime (channel="chrome").
+#    - Playwright's Chromium is the fallback (26AS only).
+playwright install chromium       # fallback engine
+playwright install chrome         # or install Google Chrome system-wide
 
 # 5. Run the app
 python app.py
@@ -100,15 +118,21 @@ python app.py
 
 ### Download documents
 1. Select an **Assessment Year** from the settings bar
-2. Tick the document types to download (26AS / AIS / TIS)
-3. Set the **Output Directory** (defaults to `outputs/` inside the project folder)
-4. Check one or more clients from the list (or use **Select / Deselect All**)
-5. Click **▶ Start Download**
+2. Set the **Output Directory** (defaults to `outputs/` inside the project folder)
+3. Check one or more clients from the list (or use **Select / Deselect All**)
+4. Click **▶ Run** and choose:
+   - **Download 26AS** — Form 26AS PDF + TXT (TRACES)
+   - **Download / Request TIS & AIS** — AIS PDF + TIS PDF (Insight portal)
+   - **Download Previously Requested AIS** — fetch a queued large AIS from Activity History
+5. A **Batch Progress** popup shows live per-client status; use its **Stop** button to abort
 
 Downloaded files are saved to:
 ```
 <Output Directory>/<PAN>-<Client Name>/AY_<year>/
 ```
+
+> A live status badge is also injected at the top of the automated browser
+> window so you can watch each step as it happens.
 
 ---
 
@@ -137,21 +161,35 @@ Downloaded files are saved to:
 
 ## Building a Windows Executable
 
-On a Windows machine with Python installed:
+On a Windows machine (with the project synced from WSL), run from PowerShell:
 
-```bat
-build_win.bat
+```powershell
+scripts\setup_and_build.ps1
 ```
 
-This runs PyInstaller and produces `dist/TaxDownloader.exe` — a single-file standalone executable with no Python installation required on the target machine.
+This script:
+1. Syncs the project from WSL to `C:\ITD-build`
+2. Creates a venv and installs dependencies
+3. Compiles with **Nuitka** (native machine code) to `dist\TaxDownloader\`
+4. Packages an installer with **Inno Setup** → `installer_output\ITDDocsDownloader_Setup_*.exe`
+
+> The build uses Nuitka (not PyInstaller). The installer also pre-installs the
+> Playwright Chromium fallback during setup.
 
 ---
 
 ## Known Limitations
 
-- AIS/TIS portal selectors may need updates if the ITD Compliance Portal UI changes
-- Logout occasionally fails with "Profile menu not found" — the session is still terminated safely
-- MSI/installer packaging not yet implemented (executable only)
+- **AIS/TIS require Google Chrome** — the Insight portal's download buttons only
+  fire on real Chrome (`channel="chrome"`). Without Chrome, only 26AS works.
+- AIS JSON is intentionally skipped (the portal gates it behind a CAPTCHA).
+- AIS/Insight portal selectors may need updates if the portal UI changes — the
+  step logs make this easy to diagnose.
+- PDF password removal is not yet implemented (downloaded AIS/TIS PDFs are
+  password-protected: PAN in lowercase + DOB `ddmmyyyy`).
+
+For the full design history and root-cause analysis of the AIS download work,
+see **[DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md)**.
 
 ---
 

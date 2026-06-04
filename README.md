@@ -9,6 +9,7 @@ Built with **PyQt6** + **Playwright**. Runs on Windows and Linux/WSL.
 ## Quick Links
 
 - [Full Documentation](Documentation/README.md)
+- [Development Log](Documentation/DEVELOPMENT_LOG.md) — design decisions & debugging history
 - [Contributing Guide](Documentation/CONTRIBUTING.md)
 - [License](Documentation/LICENSE)
 
@@ -23,3 +24,6 @@ pip install -r requirements.txt
 playwright install chromium
 python app.py
 ```
+
+> **Requires Google Chrome** for AIS/TIS downloads (the app launches real Chrome
+> via `channel="chrome"`). 26AS works without it.

@@ -58,6 +58,19 @@ async def login_itd(user_id: str, password: str, log_callback, context: BrowserC
     await update_browser_status(page, "Auth: Connecting to ITD Portal...")
     page.on("dialog", lambda d: asyncio.create_task(d.dismiss()))
 
+    try:
+        return await _do_login(page, user_id, uid_masked, password, log_callback)
+    except Exception:
+        # Close the orphaned login page so failed clients don't leak tabs.
+        try:
+            await page.close()
+        except Exception:
+            pass
+        raise
+
+
+async def _do_login(page, user_id, uid_masked, password, log_callback):
+
     log_callback("[Auth] Loading ITD Portal...")
     await page.goto(
         "https://eportal.incometax.gov.in/iec/foservices/#/login",
@@ -172,16 +185,24 @@ async def login_itd(user_id: str, password: str, log_callback, context: BrowserC
             except Exception:
                 pass
 
-            # Inline error — wrong password
+            # Inline error — wrong password / other auth failures
             try:
                 err = page.locator(
                     "mat-error, .mat-error1, .mat-mdc-form-field-error, "
-                    ".error-msg, div[role='alert']").first
+                    ".error-msg, .errorMessage, div[role='alert'], "
+                    "span.error, .invalid-feedback").first
                 if await err.is_visible(timeout=300):
-                    err_text = (await err.inner_text()).lower()
-                    if "invalid password" in err_text:
-                        raise RuntimeError("AUTHENTICATION FAILED: Incorrect Password.")
-                    return False   # other error — retry
+                    err_text = (await err.inner_text()).strip()
+                    err_low = err_text.lower()
+                    log_callback(f"[Auth] Portal error: {err_text}")
+                    # Any password/credential error → fail fast, don't retry
+                    if any(k in err_low for k in (
+                        "invalid password", "incorrect password", "wrong password",
+                        "valid password", "password is incorrect",
+                        "user id or password", "credentials")):
+                        raise RuntimeError(
+                            f"AUTHENTICATION FAILED: {err_text or 'Incorrect Password'}")
+                    return False   # other transient error — retry
             except RuntimeError:
                 raise
             except Exception:

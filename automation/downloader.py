@@ -2,6 +2,32 @@ import os
 import asyncio
 from playwright.async_api import Page, Download
 
+
+def make_step_logger(log_callback, prefix: str):
+    """
+    Returns a `step(msg, page=None)` function that emits granular progress logs
+    with a numbered counter and (optionally) the current page URL, so failures
+    pinpoint the exact step.
+
+        step = make_step_logger(log, "AIS")
+        step("Clicking a#AIS", page)
+        -> [AIS] (3) Clicking a#AIS  |  url: https://...
+    """
+    counter = {"n": 0}
+
+    def step(msg: str, page: Page = None):
+        counter["n"] += 1
+        line = f"[{prefix}] ({counter['n']}) {msg}"
+        if page is not None:
+            try:
+                line += f"  |  url: {page.url}"
+            except Exception:
+                pass
+        log_callback(line)
+
+    return step
+
+
 async def update_browser_status(page: Page, text: str):
     """
     Injects or updates a floating badge at the top of the browser page to display the current automation step.
@@ -225,7 +251,7 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
         log_callback("[26AS] Exporting Form 26AS to PDF...")
         await update_browser_status(traces_page, "TRACES: Downloading PDF File...")
         # Capture and save file download
-        async with traces_page.context.expect_download() as download_info:
+        async with traces_page.expect_download() as download_info:
             await pdf_btn.click()
         
         download = await download_info.value
@@ -339,7 +365,7 @@ async def download_ais_tis(page: Page, assessment_year: str, download_dir: str, 
             # Select format (PDF is typically option 1/default, or select button with text PDF)
             pdf_select = compliance_page.locator("//button[contains(., 'PDF') or contains(text(), 'PDF')] | //a[contains(., 'PDF')]").first
             
-            async with compliance_page.context.expect_download() as download_info:
+            async with compliance_page.expect_download() as download_info:
                 if await pdf_select.is_visible(timeout=3000):
                     await pdf_select.click()
                 else:
@@ -378,7 +404,7 @@ async def download_ais_tis(page: Page, assessment_year: str, download_dir: str, 
  
             # 2a. AIS PDF Download
             pdf_select = compliance_page.locator("//button[contains(., 'PDF') or contains(text(), 'PDF')] | //a[contains(., 'PDF')]").first
-            async with compliance_page.context.expect_download() as download_info_pdf:
+            async with compliance_page.expect_download() as download_info_pdf:
                 if await pdf_select.is_visible(timeout=3000):
                     await pdf_select.click()
                 else:
@@ -400,7 +426,7 @@ async def download_ais_tis(page: Page, assessment_year: str, download_dir: str, 
                 await asyncio.sleep(1)
                 json_select = compliance_page.locator("//button[contains(., 'JSON') or contains(text(), 'JSON')] | //a[contains(., 'JSON')]").first
                 
-            async with compliance_page.context.expect_download() as download_info_json:
+            async with compliance_page.expect_download() as download_info_json:
                 await json_select.click()
                 
             download_json = await download_info_json.value

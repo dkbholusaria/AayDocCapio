@@ -1,5 +1,12 @@
 # Walkthrough - Standalone GUI Tax Downloader
 
+> ⚠️ **HISTORICAL — describes the original prototype.** This walkthrough reflects
+> the first CustomTkinter/pandas/PyInstaller version. The current app uses
+> **PyQt6**, **openpyxl** (no pandas), **Nuitka** builds, real **Google Chrome**,
+> and a **Run dropdown** (no document checkboxes). AIS JSON is no longer
+> downloaded (CAPTCHA-gated). For the accurate, up-to-date picture see
+> **[README.md](README.md)** and **[DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md)**.
+
 We have created the standalone GUI Tax Downloader application in `/home/deepak/projects/tax-downloader`. The application allows a user to manage client/assessee credentials securely and download **Form 26AS**, **AIS**, and **TIS** from the Indian Income Tax Department (ITD) e-Filing portal sequentially.
 
 ## Changes Made
