@@ -138,17 +138,33 @@ python app.py
 
    | Status shown | What it means |
    |---|---|
-   | `⏳ Logging in to ITD...` | Browser opening ITD portal |
-   | `✅ Logged in — loading portal...` | ITD dashboard reached |
-   | `⏳ Opening AIS portal...` | Navigating to Insight |
-   | `⏳ Downloading AIS PDF...` / `⏳ Downloading 26AS...` | File in progress |
-   | `✅ AIS downloaded — fetching TIS...` | AIS saved, fetching TIS |
+   | `⏳ Logging in to ITD...` | Browser opening the ITD login page |
+   | `⏳ Opening Compliance Portal…` | Clicking the AIS link to open Insight |
+   | `⏳ Finding AIS menu…` | Locating the AIS nav link on the dashboard |
+   | `⏳ Opening AIS portal…` | AIS portal tab opening |
+   | `⏳ Loading AIS portal…` | Waiting for the Insight portal to finish loading |
+   | `⏳ Selecting F.Y. <year>…` | Choosing the financial year on AIS home |
+   | `⏳ Opening AIS download…` / `⏳ Opening TIS download…` | Opening the document download modal |
+   | `⏳ Downloading AIS PDF…` | AIS PDF download in progress |
+   | `⏳ Downloading TIS PDF…` | TIS PDF download in progress |
+   | `✅ TIS downloaded` | TIS PDF saved |
+   | `⏳ Downloading 26AS...` | 26AS (TRACES) download in progress |
+   | `✅ AIS downloaded — fetching TIS...` | AIS saved, now fetching TIS |
    | `🕐 AIS queued — fetching TIS...` | AIS is large; queued server-side |
-   | `⏳ Logging out...` | Clearing session |
-   | `✅ AIS Downloaded instantly` / `✅ 26AS Downloaded` | Done |
+   | `⏳ Opening Activity History…` | Opening the queued-files list |
+   | `⏳ AIS generating on ITD servers… (check N/19)` | Polling for a queued large AIS |
+   | `⏳ AIS ready — downloading…` | Queued AIS is ready; fetching it |
+   | `✅ AIS Downloaded instantly` / `✅ AIS Downloaded` / `✅ 26AS Downloaded` | Done |
    | `🕐 AIS request placed (Ref: …)` | Use *Download Previously Requested AIS* in ~5 min |
-   | `❌ Failed — <reason>` | Error; check the log panel below for details |
-   | `⏸ Cooling down... 5s → 1s` | Inter-client pause (prevents ITD rate-limits) |
+   | `⬜ No queued AIS for this FY — run Download / Request first` | Nothing was requested for that FY/client |
+   | `🕐 AIS still generating — try again in a few minutes` | Queued AIS not ready after ~10 min |
+   | `⬜ Skipped — AIS not available for this FY` | FY pre-dates AIS (before 2021-22) |
+   | `❌ Failed — <reason>` | Error; reason shown inline and in the log panel |
+   | `⏹ Stopped` | Aborted by the Stop button |
+
+   > These ⏳ progress messages update live for every step so you always know
+   > what the automation is doing in the background. Full step-by-step detail
+   > (with URLs) is also written to the **Live Logs** panel.
 
    Use the **Stop** button to abort mid-batch. Use **Close** once finished.
 

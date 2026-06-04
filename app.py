@@ -1844,7 +1844,9 @@ class TaxDownloaderApp(QMainWindow):
                 elif mode == "request_ais" and self.is_running:
                     await self._ensure_dashboard(page)
                     set_status(pan, "⏳ Opening AIS portal...")
-                    result = await run_request_ais(page, fy, out, self.log, pan=pan, dob=dob)
+                    result = await run_request_ais(
+                        page, fy, out, self.log, pan=pan, dob=dob,
+                        status_callback=lambda t, _p=pan: set_status(_p, t))
                     ais_status = result.get("status")
 
                     if ais_status in ("instant", "downloaded"):
@@ -1876,7 +1878,8 @@ class TaxDownloaderApp(QMainWindow):
                     status = await run_download_ais_tis(
                         page, fy, out, self.log, pan=pan, dob=dob,
                         dl_ais=True, dl_tis=False,
-                        should_continue=lambda: self.is_running)
+                        should_continue=lambda: self.is_running,
+                        status_callback=lambda t, _p=pan: set_status(_p, t))
 
                     if status == "downloaded":
                         set_status(pan, "✅ AIS Downloaded")
