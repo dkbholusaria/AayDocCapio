@@ -183,6 +183,11 @@ AIS only downloaded **after** `npx playwright install chrome` installed real
 Chrome. If Chrome is absent we fall back to bundled Chromium and warn the user:
 26AS works, but AIS/TIS downloads need Chrome.
 
+**Note:** the requirement is the *engine* (`channel="chrome"`), not a visible
+window. AIS/TIS download correctly in **headless** real-Chrome too (tested), so
+the app defaults to headless ("Run in background"); the user can uncheck it to
+watch the browser or handle a CAPTCHA.
+
 ### 4.3 Root cause #3 — viewport / window sizing
 
 `--start-maximized` **conflicts** with a fixed Playwright viewport and distorts

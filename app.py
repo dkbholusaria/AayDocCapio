@@ -1196,11 +1196,10 @@ class TaxDownloaderApp(QMainWindow):
     # ── Grid ──────────────────────────────────────────────────────────────────
 
     def _apply_row_style(self, row_idx, selected, index=0):
-        # Selected rows: solid blue background with white text. Both bg and fg are
-        # set explicitly per item (and the stylesheet leaves item bg unset) so it
-        # renders as a clear solid highlight, never white-on-white.
-        bg = "#2563EB" if selected else ("#FFFFFF" if index % 2 == 0 else "#F8FAFC")
-        fg = "#FFFFFF" if selected else "#0F172A"
+        # Selected rows are highlighted with RED text (always readable, never
+        # white-on-white). Background stays the normal alternating colour.
+        bg = "#FFFFFF" if index % 2 == 0 else "#F8FAFC"
+        fg = "#DC2626" if selected else "#0F172A"
         
         # Apply style to all items in the row
         for col in range(self.client_table.columnCount()):
