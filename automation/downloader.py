@@ -3,19 +3,21 @@ import asyncio
 from playwright.async_api import Page, Download
 
 
-def make_step_logger(log_callback, prefix: str):
+def make_step_logger(log_callback, prefix: str, status_cb=None):
     """
-    Returns a `step(msg, page=None)` function that emits granular progress logs
-    with a numbered counter and (optionally) the current page URL, so failures
-    pinpoint the exact step.
+    Returns a `step(msg, page=None, status=None)` function that:
+      - always writes a granular, numbered log line (for diagnosis), and
+      - optionally pushes a short, user-friendly `status` to the batch-progress
+        row via `status_cb` (so the user sees what's happening in the BG).
 
-        step = make_step_logger(log, "AIS")
-        step("Clicking a#AIS", page)
-        -> [AIS] (3) Clicking a#AIS  |  url: https://...
+        step = make_step_logger(log, "AIS", status_cb=set_status_for_this_pan)
+        step("Clicking a#AIS", page, status="Opening AIS portal…")
+        -> log:    [AIS] (3) Clicking a#AIS  |  url: https://...
+        -> status: ⏳ Opening AIS portal…
     """
     counter = {"n": 0}
 
-    def step(msg: str, page: Page = None):
+    def step(msg: str, page: Page = None, status: str = None):
         counter["n"] += 1
         line = f"[{prefix}] ({counter['n']}) {msg}"
         if page is not None:
@@ -24,6 +26,12 @@ def make_step_logger(log_callback, prefix: str):
             except Exception:
                 pass
         log_callback(line)
+        if status and status_cb:
+            try:
+                status_cb(f"⏳ {status}" if not status[:1].strip().startswith(
+                    ("✅", "❌", "🕐", "⬜", "⏹", "⏳")) else status)
+            except Exception:
+                pass
 
     return step
 
