@@ -1,8 +1,8 @@
-# ITD Docs Downloader - Windows Setup & Build Script
+# AayDocCapio - Windows Setup & Build Script
 # Run from PowerShell on Windows: .\setup_and_build.ps1
 # This script syncs the project from WSL, sets up venv, and builds the exe.
 
-$WSL_SRC  = "\\wsl.localhost\Ubuntu-24.04\home\deepak\projects\ITD-docs-downloader"
+$WSL_SRC  = "\\wsl.localhost\Ubuntu-24.04\home\deepak\projects\AayDocCapio"
 $WIN_DEST = "C:\ITD-build"
 $VENV     = "$WIN_DEST\.venv"
 $PYTHON   = "$VENV\Scripts\python.exe"
@@ -10,7 +10,7 @@ $PIP      = "$VENV\Scripts\pip.exe"
 
 Write-Host ""
 Write-Host "========================================================"
-Write-Host "  ITD Docs Downloader - Setup & Build"
+Write-Host "  AayDocCapio - Setup & Build"
 Write-Host "========================================================"
 
 # ── Step 1: Sync project files from WSL ──────────────────────────
@@ -80,7 +80,7 @@ Write-Host ""
     --standalone `
     --windows-console-mode=disable `
     --output-dir=dist `
-    --output-filename=TaxDownloader.exe `
+    --output-filename=AayDocCapio.exe `
     --include-data-file=assessment_years.json=assessment_years.json `
     --include-data-dir=resources=resources `
     --include-package=automation `
@@ -94,9 +94,9 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-if (Test-Path "dist\TaxDownloader") { Remove-Item -Recurse -Force "dist\TaxDownloader" }
-Rename-Item "dist\app.dist" "TaxDownloader"
-Write-Host "[OK] Compiled to dist\TaxDownloader\"
+if (Test-Path "dist\AayDocCapio") { Remove-Item -Recurse -Force "dist\AayDocCapio" }
+Rename-Item "dist\app.dist" "AayDocCapio"
+Write-Host "[OK] Compiled to dist\AayDocCapio\"
 
 # ── Step 6: Inno Setup ───────────────────────────────────────────
 Write-Host ""
@@ -112,7 +112,7 @@ $iscc = $isccPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
 
 if (-not $iscc) {
     Write-Host "[Warning] Inno Setup not found. Skipping installer."
-    Write-Host "[Done] App folder: dist\TaxDownloader\"
+    Write-Host "[Done] App folder: dist\AayDocCapio\"
     exit 0
 }
 
@@ -125,6 +125,6 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host ""
 Write-Host "========================================================"
 Write-Host "  Build complete!"
-Write-Host "  App folder : dist\TaxDownloader\"
-Write-Host "  Installer  : installer_output\ITDDocsDownloader_Setup_v1.0.0.exe"
+Write-Host "  App folder : dist\AayDocCapio\"
+Write-Host "  Installer  : installer_output\AayDocCapio_Setup_v1.0.0.exe"
 Write-Host "========================================================"

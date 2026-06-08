@@ -179,18 +179,18 @@ class ManageYearsDialog(ctk.CTkToplevel):
             messagebox.showerror("Save Error", str(ex), parent=self)
 
 
-class TaxDownloaderApp(ctk.CTk):
+class AayDocCapioApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("Tax Downloader — Standalone Secure Utility")
+        self.title("AayDocCapio — Standalone Secure Utility")
         self.geometry("1200x780")
         self.minsize(1100, 720)
 
         # Write session start boundary (appended)
         try:
             with open("app.log", "a", encoding="utf-8") as f:
-                f.write(f"\n=== Tax Downloader Session Started {get_timestamp()} ===\n")
+                f.write(f"\n=== AayDocCapio Session Started {get_timestamp()} ===\n")
         except Exception:
             pass
 
@@ -1036,5 +1036,5 @@ class TaxDownloaderApp(ctk.CTk):
         self.log("[System] Batch download run finished.")
 
 if __name__ == "__main__":
-    app = TaxDownloaderApp()
+    app = AayDocCapioApp()
     app.mainloop()

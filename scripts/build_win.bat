@@ -1,6 +1,6 @@
 @echo off
 echo ========================================================
-echo   ITD Docs Downloader - Windows Build Script (Nuitka)
+echo   AayDocCapio - Windows Build Script (Nuitka)
 echo ========================================================
 echo.
 
@@ -32,7 +32,7 @@ python -m nuitka ^
     --standalone ^
     --windows-console-mode=disable ^
     --output-dir=dist ^
-    --output-filename=TaxDownloader.exe ^
+    --output-filename=AayDocCapio.exe ^
     --include-data-file=assessment_years.json=assessment_years.json ^
     --include-data-dir=resources=resources ^
     --include-package=automation ^
@@ -47,10 +47,10 @@ if %errorlevel% neq 0 (
 )
 echo [OK] dist\app.dist\ folder created.
 
-:: ── Rename output folder to TaxDownloader ────────────────
-if exist "dist\TaxDownloader" rmdir /s /q "dist\TaxDownloader"
-rename "dist\app.dist" "TaxDownloader"
-echo [OK] Renamed to dist\TaxDownloader\
+:: ── Rename output folder to AayDocCapio ────────────────
+if exist "dist\AayDocCapio" rmdir /s /q "dist\AayDocCapio"
+rename "dist\app.dist" "AayDocCapio"
+echo [OK] Renamed to dist\AayDocCapio\
 
 :: ── Inno Setup — build the installer ─────────────────────
 echo.
@@ -66,7 +66,7 @@ if %ISCC%=="" (
     echo [Warning] Inno Setup not found. Skipping installer build.
     echo           Download from https://jrsoftware.org/isdl.php and re-run.
     echo.
-    echo [Done] App folder only: dist\TaxDownloader\
+    echo [Done] App folder only: dist\AayDocCapio\
     pause & exit /b 0
 )
 
@@ -79,7 +79,7 @@ if %errorlevel% neq 0 (
 echo.
 echo ========================================================
 echo   Build complete!
-echo   App folder : dist\TaxDownloader\
-echo   Installer  : installer_output\ITDDocsDownloader_Setup_v1.0.0.exe
+echo   App folder : dist\AayDocCapio\
+echo   Installer  : installer_output\AayDocCapio_Setup_v1.0.0.exe
 echo ========================================================
 pause

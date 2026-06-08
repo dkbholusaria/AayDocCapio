@@ -1,5 +1,5 @@
 """
-app_qt.py — PyQt6 port of Tax Downloader
+app_qt.py — PyQt6 port of AayDocCapio
 Install: pip install PyQt6
 Run:     python3 app_qt.py
 """
@@ -19,8 +19,8 @@ from PyQt6.QtCore import QRegularExpression
 def _app_dir() -> str:
     """
     Writable user-data directory for vault, settings, and outputs.
-    - Windows frozen .exe : %LOCALAPPDATA%\\ITDDocsDownloader
-    - Linux/WSL frozen    : ~/.local/share/ITDDocsDownloader
+    - Windows frozen .exe : %LOCALAPPDATA%\\AayDocCapio
+    - Linux/WSL frozen    : ~/.local/share/AayDocCapio
     - Running as script   : folder containing app.py
     """
     if getattr(sys, "frozen", False):
@@ -28,7 +28,7 @@ def _app_dir() -> str:
             base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
         else:
             base = os.path.join(os.path.expanduser("~"), ".local", "share")
-        data_dir = os.path.join(base, "ITDDocsDownloader")
+        data_dir = os.path.join(base, "AayDocCapio")
         os.makedirs(data_dir, exist_ok=True)
         return data_dir
     return os.path.dirname(os.path.abspath(__file__))
@@ -582,14 +582,14 @@ class BatchProgressDialog(QDialog):
 
 
 # ── Main Window ───────────────────────────────────────────────────────────────
-class TaxDownloaderApp(QMainWindow):
+class AayDocCapioApp(QMainWindow):
     _log_signal = pyqtSignal(str)
     _batch_done_signal = pyqtSignal()
     _show_progress_signal = pyqtSignal(list, str)   # (targets, mode)
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Tax Downloader — Standalone Secure Utility")
+        self.setWindowTitle("AayDocCapio — Standalone Secure Utility")
         self.setMinimumSize(1100, 720)
         self.resize(1200, 780)
 
@@ -1948,6 +1948,6 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setStyleSheet(APP_STYLE)
-    window = TaxDownloaderApp()
+    window = AayDocCapioApp()
     window.show()
     sys.exit(app.exec())

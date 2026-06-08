@@ -1,8 +1,8 @@
-#define MyAppName      "ITD Docs Downloader"
+#define MyAppName      "AayDocCapio"
 #define MyAppVersion   "1.0.0"
 #define MyAppPublisher "Deepak Bholusaria"
-#define MyAppExeName   "TaxDownloader.exe"
-#define MyAppDataDir   "{localappdata}\ITDDocsDownloader"
+#define MyAppExeName   "AayDocCapio.exe"
+#define MyAppDataDir   "{localappdata}\AayDocCapio"
 
 [Setup]
 AppId={{A3F2C1D4-8B7E-4F9A-BC12-3E5D6F7A8C90}
@@ -10,13 +10,13 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 ; Compatible with Inno Setup 6 and 7
-AppPublisherURL=https://github.com/dkbholusaria/ITD-docs-downloader
-AppSupportURL=https://github.com/dkbholusaria/ITD-docs-downloader/issues
+AppPublisherURL=https://github.com/dkbholusaria/AayDocCapio
+AppSupportURL=https://github.com/dkbholusaria/AayDocCapio/issues
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=installer_output
-OutputBaseFilename=ITDDocsDownloader_Setup_v{#MyAppVersion}
+OutputBaseFilename=AayDocCapio_Setup_v{#MyAppVersion}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -34,7 +34,7 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 
 [Files]
 ; All compiled app files from Nuitka one-dir build
-Source: "dist\TaxDownloader\*"; DestDir: "{app}"; \
+Source: "dist\AayDocCapio\*"; DestDir: "{app}"; \
     Flags: ignoreversion recursesubdirs createallsubdirs; \
     BeforeInstall: SetStep('Copying application files...')
 
