@@ -1,14 +1,14 @@
 [tool.briefcase]
-project_name = "Tax Downloader"
-bundle = "com.taxdownloader"
+project_name = "AayDocCapio"
+bundle = "com.aaydoccapio"
 version = "1.0.0"
-url = "https://github.com/your-org/tax-downloader"
+url = "https://github.com/your-org/aaydoccapio"
 license = "Proprietary"
 author = "Your Name"
 author_email = "you@example.com"
 
-[tool.briefcase.app.tax-downloader]
-formal_name = "Tax Downloader"
+[tool.briefcase.app.aaydoccapio]
+formal_name = "AayDocCapio"
 description = "ITD Bulk Document Downloader (Form 26AS, AIS, TIS)"
 icon = "resources/icon"
 sources = [
@@ -26,9 +26,9 @@ requires = [
 ]
 
 # Entry point — Briefcase calls main() in the app module
-[tool.briefcase.app.tax-downloader.sources]
+[tool.briefcase.app.aaydoccapio.sources]
 
-[tool.briefcase.app.tax-downloader.windows]
+[tool.briefcase.app.aaydoccapio.windows]
 requires = [
     "PyQt6",
     "pandas",

@@ -1,4 +1,4 @@
-# ITD Docs Downloader
+# AayDocCapio
 
 A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click.
 
