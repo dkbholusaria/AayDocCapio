@@ -746,7 +746,7 @@ class AayDocCapioApp(QMainWindow):
         vl.addSpacing(16)
 
         # ── Developer info ────────────────────────────────────────────────────
-        dev_title = QLabel("Developer")
+        dev_title = QLabel("Contact Us")
         dev_title.setStyleSheet("color:#94A3B8; font-size:10px; font-weight:700; letter-spacing:1px;")
         vl.addWidget(dev_title)
         vl.addSpacing(8)
