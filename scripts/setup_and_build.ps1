@@ -147,6 +147,7 @@ Write-Host ""
     --output-filename=AayDocCapio.exe `
     --include-data-file=assessment_years.json=assessment_years.json `
     --include-data-dir=resources=resources `
+    --include-data-dir=assets=assets `
     --include-package=automation `
     --include-module=vault `
     --enable-plugin=pyqt6 `
