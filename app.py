@@ -663,23 +663,34 @@ class AayDocCapioApp(QMainWindow):
         root.addWidget(self._mk_footer())
 
     def _mk_header(self):
-        HDR_H = 75
         hdr = QFrame()
-        hdr.setFixedHeight(HDR_H)
-        hdr.setStyleSheet("QFrame { background: #F0F4FF; }")
+        hdr.setFixedHeight(58)
+        hdr.setStyleSheet("QFrame { background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+                          "stop:0 #0F2056, stop:0.45 #1E3A8A, stop:1 #2563EB); }")
         hl = QHBoxLayout(hdr)
-        hl.setContentsMargins(0, 0, 0, 0)
+        hl.setContentsMargins(24, 0, 24, 0)
         hl.setSpacing(0)
 
-        logo_path = os.path.join(_bundled_dir(), "assets", "brand", "logo_full.png")
-        logo_label = QLabel()
-        logo_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        if os.path.exists(logo_path):
-            pix = QPixmap(logo_path)
-            logo_label.setPixmap(
-                pix.scaledToHeight(HDR_H, Qt.TransformationMode.SmoothTransformation)
-            )
-        hl.addWidget(logo_label)
+        accent = QFrame()
+        accent.setFixedSize(4, 32)
+        accent.setStyleSheet("background:#60A5FA; border-radius:2px;")
+        hl.addWidget(accent)
+        hl.addSpacing(14)
+
+        title = QLabel("AayDoc Capio")
+        title.setStyleSheet("color:#F8FAFC; font-size:18px; font-weight:700; letter-spacing:1px;")
+        hl.addWidget(title)
+        hl.addSpacing(16)
+
+        sep = QFrame()
+        sep.setFixedSize(1, 22)
+        sep.setStyleSheet("background:#3B5EA6;")
+        hl.addWidget(sep)
+        hl.addSpacing(16)
+
+        sub = QLabel("Tax Documents. Delivered to You.")
+        sub.setStyleSheet("color:#93C5FD; font-size:12px;")
+        hl.addWidget(sub)
         hl.addStretch()
         return hdr
 
