@@ -1949,6 +1949,8 @@ if __name__ == "__main__":
         sys.exit(0)
 
     app = QApplication(sys.argv)
+    app.setApplicationName("AayDocCapio")
+    app.setDesktopFileName("aay-doc-capio")
     app.setStyle("Fusion")
     app.setStyleSheet(APP_STYLE)
     window = AayDocCapioApp()
