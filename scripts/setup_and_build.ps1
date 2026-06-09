@@ -142,6 +142,7 @@ Write-Host ""
 & $PYTHON -m nuitka `
     --standalone `
     --windows-console-mode=disable `
+    --windows-icon-from-ico=resources\app_icon.ico `
     --output-dir=dist `
     --output-filename=AayDocCapio.exe `
     --include-data-file=assessment_years.json=assessment_years.json `

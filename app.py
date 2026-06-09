@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem, QHeaderView, QAbstractItemView, QToolButton, QMenu,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QMetaObject, Q_ARG, QModelIndex
-from PyQt6.QtGui import QFont, QTextCursor, QColor, QRegularExpressionValidator, QPalette, QAction
+from PyQt6.QtGui import QFont, QTextCursor, QColor, QRegularExpressionValidator, QPalette, QAction, QIcon
 from PyQt6.QtCore import QRegularExpression
 
 def _app_dir() -> str:
@@ -595,6 +595,9 @@ class AayDocCapioApp(QMainWindow):
         self.setWindowTitle("AayDocCapio — Standalone Secure Utility")
         self.setMinimumSize(1100, 720)
         self.resize(1200, 780)
+        _icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
+        if os.path.exists(_icon_path):
+            self.setWindowIcon(QIcon(_icon_path))
 
         self.vault = VaultManager(
             vault_path=os.path.join(_app_dir(), "tax_vault.json"))
@@ -1951,6 +1954,9 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setStyleSheet(APP_STYLE)
+    _app_icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
+    if os.path.exists(_app_icon_path):
+        app.setWindowIcon(QIcon(_app_icon_path))
     window = AayDocCapioApp()
     window.show()
     sys.exit(app.exec())
