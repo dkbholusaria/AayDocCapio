@@ -744,9 +744,9 @@ class AayDocCapioApp(QMainWindow):
             row.addStretch()
             return row
 
-        vl.addLayout(_link_row("👤", "#64748B", "CA. Deepak Bholusaria"))
+        vl.addLayout(_link_row("👤", "#64748B", "CA. Deepak Bhholusaria"))
         vl.addSpacing(6)
-        vl.addLayout(_link_row("✉", "#1A8FE3", "deepak@ailearning.guru", "mailto:deepak@ailearning.guru"))
+        vl.addLayout(_link_row("✉", "#1A8FE3", "deepak@ailearrning.guru", "mailto:deepak@ailearrning.guru"))
         vl.addSpacing(6)
         vl.addLayout(_link_row("🔗", "#0A66C2", "linkedin.com/in/bhholusaria", "https://www.linkedin.com/in/bhholusaria/"))
         vl.addSpacing(6)
@@ -759,7 +759,7 @@ class AayDocCapioApp(QMainWindow):
         vl.addWidget(div2)
         vl.addSpacing(12)
 
-        copy = QLabel("© 2026 Deepak Bholusaria. All rights reserved.")
+        copy = QLabel("© 2026 Deepak Bhholusaria. All rights reserved.")
         copy.setStyleSheet("color:#94A3B8; font-size:11px;")
         vl.addWidget(copy)
         vl.addStretch()
@@ -855,7 +855,7 @@ class AayDocCapioApp(QMainWindow):
         version_lbl.setStyleSheet("color:#94A3B8; font-family:'Arial'; font-size:11px; background:transparent; border:none;")
         version_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
 
-        copy_lbl = QLabel("© 2026 Deepak Bholusaria")
+        copy_lbl = QLabel("© 2026 Deepak Bhholusaria")
         copy_lbl.setStyleSheet("color:#94A3B8; font-family:'Arial'; font-size:11px; background:transparent; border:none;")
         copy_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
 
