@@ -30,7 +30,29 @@ Built with **PyQt6** + **Playwright**. Runs on Windows and Linux/WSL.
 
 ## Screenshots
 
-> _Add screenshots here after first run_
+### Main Window — Single Profile & Client List
+![Main Window](screenshots/ADC_26ASBatch.png)
+
+### Batch Progress — 26AS Download
+![26AS Batch Download](screenshots/ADC_26ASBatch.png)
+
+### Batch Progress — AIS Request Placed
+![AIS Request](screenshots/ADC_AISRequestPlaced.png)
+
+### AIS Request Result
+![AIS Request Result](screenshots/ADC_AISRequestResult.png)
+
+### AIS Download Progress
+![AIS Download](screenshots/ADC_AISDownload.png)
+
+### Bulk Import — File Picker
+![Import Dialog](screenshots/ADC_ImportDialog.png)
+
+### Bulk Import — Success
+![Import Success](screenshots/ADC_ImportSuccess.png)
+
+### About AayDocCapio
+![About Dialog](screenshots/ADC_Aboutus.png)
 
 ---
 
@@ -51,7 +73,14 @@ AayDocCapio/
 │   ├── downloader_26as.py        # Form 26AS download logic (TRACES fallback handling)
 │   ├── downloader_ais_tis.py     # AIS / TIS download logic (Insight portal modal triggers)
 │   └── pdf_unlocker.py           # Automated PDF password unlocking (uses PAN and DOB)
-├── resources/                    # UI icons (check.png, chevron_down.png)
+├── resources/                    # App icon (ICO/PNG), contact badge PNGs, fonts/
+│   ├── app_icon.ico              # Multi-size ICO for Windows exe (16–256px)
+│   ├── app_icon.png              # 256×256 PNG for PyQt6 window icon
+│   ├── icon_person.png           # "CA" badge for About dialog
+│   ├── icon_email.png            # "@" badge for About dialog
+│   ├── icon_linkedin.png         # LinkedIn badge for About dialog
+│   ├── icon_vcard.png            # Virtual card badge for About dialog
+│   └── fonts/                   # Bundled Avenir Next + Poppins TTF families
 ├── scripts/
 │   ├── setup_and_build.ps1       # Windows sync + Nuitka build + Inno Setup compilation
 │   ├── build_win.bat             # Batch script wrapper for building
@@ -215,7 +244,7 @@ scripts\setup_and_build.ps1
 
 This script:
 
-1. Syncs the project from WSL to `C:\ITD-build`
+1. Syncs the project from WSL to `C:\AayDocCapio-build\`
 2. Creates a venv and installs dependencies
 3. Compiles with **Nuitka** (native machine code) to `dist\AayDocCapio\`
 4. Packages an installer with **Inno Setup** → `installer_output\AayDocCapio_Setup_v*.exe`

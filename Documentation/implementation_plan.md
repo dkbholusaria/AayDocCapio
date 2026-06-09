@@ -1,6 +1,6 @@
 # Implementation Plan - Standalone GUI Tax Downloader
 
-The goal is to build a standalone, GUI-based desktop application (`/home/deepak/projects/tax-downloader`) for Windows and Linux. The application automates the sequential login, download of Form 26AS, AIS, and TIS, and logout from the Indian Income Tax Department (ITD) e-Filing portal for multiple clients.
+The goal is to build a standalone, GUI-based desktop application (`/home/deepak/projects/AayDocCapio`) for Windows and Linux. The application automates the sequential login, download of Form 26AS, AIS, and TIS, and logout from the Indian Income Tax Department (ITD) e-Filing portal for multiple clients.
 
 The GUI will be constructed using `customtkinter` (matching the modern design language and components of `KarOrbis`) and packaged for Windows distribution.
 
@@ -9,7 +9,7 @@ The GUI will be constructed using `customtkinter` (matching the modern design la
 > [!IMPORTANT]
 > **Data Security**: All assessee credentials (NAME, PAN, DOB, and ITD Password) will be stored in a dedicated encrypted local file `tax_vault.json` using PBKDF2HMAC + Fernet AES-128. The decryption/encryption key is derived from a configurable master password.
 >
-> **Packaging for Windows**: Since the development is on Linux/WSL, we will provide a `build_win.bat` script and a `setup.py`/`pyinstaller` configuration. This will enable packaging the entire application into a single-file standalone Windows executable (`TaxDownloader.exe`) with all dependencies (including Chromium/Playwright binaries) bundled or setup on first run.
+> **Packaging for Windows**: Since the development is on Linux/WSL, we will provide a `build_win.bat` script and a `setup.py`/`pyinstaller` configuration. This will enable packaging the entire application into a standalone Windows executable (`AayDocCapio.exe`) with all dependencies (including Chromium/Playwright binaries) bundled or setup on first run.
 
 ## Open Questions
 
@@ -21,7 +21,7 @@ The GUI will be constructed using `customtkinter` (matching the modern design la
 ## Proposed Architecture
 
 ```text
-/home/deepak/projects/tax-downloader/
+/home/deepak/projects/AayDocCapio/
 ├── requirements.txt         # GUI, Cryptography, and Scraping dependencies
 ├── app.py                   # Main entry point for the CustomTkinter GUI app
 ├── vault.py                 # Encrypted JSON database manager (manually + bulk CRUD operations)
@@ -38,10 +38,10 @@ The GUI will be constructed using `customtkinter` (matching the modern design la
 
 ### GUI Application Framework
 
-#### [NEW] [requirements.txt](file:///home/deepak/projects/tax-downloader/requirements.txt)
+#### [NEW] [requirements.txt](file:///home/deepak/projects/AayDocCapio/requirements.txt)
 Includes `customtkinter`, `Pillow`, `pandas`, `openpyxl`, `playwright`, `cryptography`, and `pyinstaller`.
 
-#### [NEW] [vault.py](file:///home/deepak/projects/tax-downloader/vault.py)
+#### [NEW] [vault.py](file:///home/deepak/projects/AayDocCapio/vault.py)
 Encrypted JSON vault manager. Provides:
 - Initialization of `tax_vault.json`.
 - Encryption and decryption of passwords.
@@ -49,23 +49,23 @@ Encrypted JSON vault manager. Provides:
 - Bulk import function from Excel/CSV (validating fields: PAN, DOB, etc.).
 - Bulk export / template generation function.
 
-#### [NEW] [automation/browser.py](file:///home/deepak/projects/tax-downloader/automation/browser.py)
+#### [NEW] [automation/browser.py](file:///home/deepak/projects/AayDocCapio/automation/browser.py)
 Playwright browser manager:
 - Handles initializing Chromium.
 - Installs Chromium automatically (via CLI process or UI status update) if binaries are missing on the target computer.
 
-#### [NEW] [automation/auth.py](file:///home/deepak/projects/tax-downloader/automation/auth.py)
+#### [NEW] [automation/auth.py](file:///home/deepak/projects/AayDocCapio/automation/auth.py)
 ITD Login & Logout:
 - Automates login steps: user ID, SAM check, password filling, and dashboard settlement.
 - Automates session logout by clicking the top-right profile and selecting Log Out to ensure clean handoff for subsequent accounts.
 
-#### [NEW] [automation/downloader.py](file:///home/deepak/projects/tax-downloader/automation/downloader.py)
+#### [NEW] [automation/downloader.py](file:///home/deepak/projects/AayDocCapio/automation/downloader.py)
 Document download manager:
 - For Form 26AS: handles TRACES redirect, agreement acceptance, AY selection, and PDF export.
 - For AIS/TIS: handles Compliance Portal redirect, alert dismissal, AY selection, and AIS/TIS file downloads.
 - Saves documents to `<ROOT>/<PAN>-<NAME>/AY_<AY>/`.
 
-#### [NEW] [app.py](file:///home/deepak/projects/tax-downloader/app.py)
+#### [NEW] [app.py](file:///home/deepak/projects/AayDocCapio/app.py)
 Stunning CustomTkinter Dashboard containing:
 - **Title Strip & Header**: Premium branding with dark theme styling.
 - **Assessee List / Table**: Displays saved assessees with check boxes for selective downloads.
