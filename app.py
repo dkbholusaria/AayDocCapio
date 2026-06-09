@@ -132,7 +132,7 @@ def get_timestamp():
 
 # ── Stylesheet ────────────────────────────────────────────────────────────────
 APP_STYLE = """
-QMainWindow, QDialog { background: #F5F7FA; }
+QMainWindow, QDialog { background: #FFFFFF; }
 QWidget { font-family: 'Segoe UI', 'Avenir Next', Arial, sans-serif; font-size: 13px; }
 QLabel { color: #1a1a1a; font-size: 13px; }
 
@@ -490,7 +490,7 @@ class BatchProgressDialog(QDialog):
         self._table.setStyleSheet(
             "QTableWidget{border:1.5px solid #E2E8F0;border-radius:8px;"
             "background:#FFFFFF;outline:0;gridline-color:#E2E8F0;"
-            "alternate-background-color:#F8FAFC;}"
+            "alternate-background-color:#FAFCFF;}"
             "QTableWidget::item{padding:6px 10px;border-bottom:1px solid #F1F5F9;}")
         self._table.setRowHeight(0, 36)
 
@@ -726,7 +726,7 @@ class AayDocCapioApp(QMainWindow):
 
         tabs = QTabWidget()
         tabs.setStyleSheet("QTabWidget::pane{border:none; background:transparent;}"
-                           "QTabBar{background:#F8FAFC; border-bottom:1px solid #E2E8F0;}"
+                           "QTabBar{background:#FFFFFF; border-bottom:1px solid #E2E8F0;}"
                            "QTabBar::tab{background:transparent;color:#64748B;padding:11px 20px;"
                            "border:none;font-size:12px;font-weight:600;"
                            "border-bottom:2px solid transparent;}"
@@ -824,7 +824,7 @@ class AayDocCapioApp(QMainWindow):
 
     def _mk_right_panel(self):
         panel = QWidget()
-        panel.setStyleSheet("background:#F5F7FA;")
+        panel.setStyleSheet("background:#FFFFFF;")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(14, 10, 14, 8)
         layout.setSpacing(6)
@@ -941,7 +941,7 @@ class AayDocCapioApp(QMainWindow):
         
         # Style the header section
         self.client_table.horizontalHeader().setStyleSheet(
-            "QHeaderView::section { background-color: #F1F5F9; border: none; border-right: 1px solid #CBD5E1; border-bottom: 1px solid #CBD5E1; font-weight: bold; color: #64748B; font-size: 11px; height: 34px; }"
+            "QHeaderView::section { background-color: #FFFFFF; border: none; border-right: 1px solid #CBD5E1; border-bottom: 1px solid #CBD5E1; font-weight: bold; color: #64748B; font-size: 11px; height: 34px; }"
         )
         self.client_table.verticalHeader().setVisible(False)
         self.client_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
