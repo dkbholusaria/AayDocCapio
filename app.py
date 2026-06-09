@@ -664,33 +664,45 @@ class AayDocCapioApp(QMainWindow):
 
     def _mk_header(self):
         hdr = QFrame()
-        hdr.setFixedHeight(58)
-        hdr.setStyleSheet("QFrame { background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
-                          "stop:0 #0F2056, stop:0.45 #1E3A8A, stop:1 #2563EB); }")
+        hdr.setFixedHeight(72)
+        hdr.setStyleSheet("QFrame { background: #FFFFFF; border-bottom: 1px solid #E2E8F0; }")
         hl = QHBoxLayout(hdr)
         hl.setContentsMargins(24, 0, 24, 0)
         hl.setSpacing(0)
 
-        accent = QFrame()
-        accent.setFixedSize(4, 32)
-        accent.setStyleSheet("background:#60A5FA; border-radius:2px;")
-        hl.addWidget(accent)
-        hl.addSpacing(14)
+        # App icon
+        icon_label = QLabel()
+        icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
+        if os.path.exists(icon_path):
+            icon_label.setPixmap(
+                QPixmap(icon_path).scaled(44, 44, Qt.AspectRatioMode.KeepAspectRatio,
+                                          Qt.TransformationMode.SmoothTransformation)
+            )
+        hl.addWidget(icon_label)
+        hl.addSpacing(12)
 
-        title = QLabel("AayDoc Capio")
-        title.setStyleSheet("color:#F8FAFC; font-family:'Ubuntu Sans'; font-size:20px; font-weight:700; letter-spacing:1px;")
-        hl.addWidget(title)
-        hl.addSpacing(16)
+        # Name + tagline stacked
+        name_block = QWidget()
+        name_block.setStyleSheet("background:transparent;")
+        vl = QVBoxLayout(name_block)
+        vl.setContentsMargins(0, 0, 0, 0)
+        vl.setSpacing(2)
 
-        sep = QFrame()
-        sep.setFixedSize(1, 22)
-        sep.setStyleSheet("background:#3B5EA6;")
-        hl.addWidget(sep)
-        hl.addSpacing(16)
+        # "AayDoc Capio™" using HTML for two-colour text
+        title = QLabel('<span style="color:#0D1F4E; font-size:22px; font-weight:700;">AayDoc </span>'
+                       '<span style="color:#1A8FE3; font-size:22px; font-weight:700;">Capio</span>'
+                       '<sup><span style="color:#1A8FE3; font-size:11px;">™</span></sup>')
+        title.setStyleSheet("background:transparent;")
 
-        sub = QLabel("Tax Documents. Delivered to You.")
-        sub.setStyleSheet("color:#93C5FD; font-family:'Ubuntu Sans'; font-size:12px;")
-        hl.addWidget(sub)
+        tagline = QLabel("Tax Documents. Delivered to You.")
+        tagline.setStyleSheet("color:#64748B; font-size:11px; background:transparent;")
+
+        vl.addStretch()
+        vl.addWidget(title)
+        vl.addWidget(tagline)
+        vl.addStretch()
+
+        hl.addWidget(name_block)
         hl.addStretch()
         return hdr
 
@@ -1953,8 +1965,9 @@ if __name__ == "__main__":
     app.setStyle("Fusion")
     app.setStyleSheet(APP_STYLE)
     from PyQt6.QtGui import QFontDatabase
-    _fonts_dir = os.path.join(_bundled_dir(), "resources", "fonts")
-    QFontDatabase.addApplicationFont(os.path.join(_fonts_dir, "UbuntuSans.ttf"))
+    _font_path = os.path.join(_bundled_dir(), "resources", "fonts", "UbuntuSans.ttf")
+    if os.path.exists(_font_path):
+        QFontDatabase.addApplicationFont(_font_path)
     window = AayDocCapioApp()
     _app_icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
     if os.path.exists(_app_icon_path):
