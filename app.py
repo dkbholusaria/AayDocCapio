@@ -677,70 +677,101 @@ class AayDocCapioApp(QMainWindow):
         root.addWidget(self._mk_footer())
 
     def _show_about(self):
+        import webbrowser
         dlg = QDialog(self)
         dlg.setWindowTitle("About AayDocCapio")
-        dlg.setFixedSize(480, 320)
-        dlg.setStyleSheet("QDialog { background:#FFFFFF; } QLabel { border:none; background:transparent; }")
+        dlg.setFixedSize(500, 420)
+        dlg.setStyleSheet(
+            "QDialog { background:#FFFFFF; }"
+            "QLabel { border:none; background:transparent; }"
+            "QLabel[link=true] { color:#1A8FE3; }"
+        )
 
         vl = QVBoxLayout(dlg)
-        vl.setContentsMargins(40, 32, 40, 32)
+        vl.setContentsMargins(36, 28, 36, 28)
         vl.setSpacing(0)
 
-        # Logo + name row
-        logo_row = QHBoxLayout()
-        logo_row.setSpacing(14)
+        # ── App logo + name ───────────────────────────────────────────────────
+        logo_row = QHBoxLayout(); logo_row.setSpacing(14)
         icon_lbl = QLabel()
         icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
         if os.path.exists(icon_path):
             icon_lbl.setPixmap(QPixmap(icon_path).scaled(52, 52, Qt.AspectRatioMode.KeepAspectRatio,
                                                           Qt.TransformationMode.SmoothTransformation))
         logo_row.addWidget(icon_lbl)
-
-        name_col = QVBoxLayout()
-        name_col.setSpacing(2)
-        name_lbl = QLabel('<span style="color:#0D1F4E; font-family:\'Avenir Next\'; font-size:22px; font-weight:700;">AayDoc </span>'
-                          '<span style="color:#1A8FE3; font-family:\'Avenir Next\'; font-size:22px; font-weight:700;">Capio™</span>')
+        name_col = QVBoxLayout(); name_col.setSpacing(2)
+        name_lbl = QLabel('<span style="color:#0D1F4E;font-family:\'Avenir Next\';font-size:22px;font-weight:700;">AayDoc </span>'
+                          '<span style="color:#1A8FE3;font-family:\'Avenir Next\';font-size:22px;font-weight:700;">Capio™</span>')
         ver_lbl = QLabel("Version 1.0.0")
         ver_lbl.setStyleSheet("color:#94A3B8; font-size:12px;")
-        name_col.addWidget(name_lbl)
-        name_col.addWidget(ver_lbl)
-        logo_row.addLayout(name_col)
-        logo_row.addStretch()
+        name_col.addWidget(name_lbl); name_col.addWidget(ver_lbl)
+        logo_row.addLayout(name_col); logo_row.addStretch()
         vl.addLayout(logo_row)
+        vl.addSpacing(14)
 
-        vl.addSpacing(20)
-
-        # Divider
-        div = QFrame(); div.setFrameShape(QFrame.Shape.HLine)
-        div.setStyleSheet("color:#E2E8F0;")
-        vl.addWidget(div)
-
-        vl.addSpacing(16)
-
-        desc = QLabel("AayDocCapio automates bulk download of tax documents\n"
-                      "(Form 26AS, AIS, TIS) from the Income Tax e-Filing portal.")
-        desc.setStyleSheet("color:#334155; font-size:13px; line-height:1.5;")
+        desc = QLabel("Automates bulk download of Form 26AS, AIS and TIS from the Income Tax e-Filing portal.")
+        desc.setStyleSheet("color:#334155; font-size:13px;")
         desc.setWordWrap(True)
         vl.addWidget(desc)
+        vl.addSpacing(16)
 
+        # ── Divider ───────────────────────────────────────────────────────────
+        div1 = QFrame(); div1.setFrameShape(QFrame.Shape.HLine)
+        div1.setStyleSheet("background:#E2E8F0; border:none; max-height:1px;")
+        vl.addWidget(div1)
+        vl.addSpacing(16)
+
+        # ── Developer info ────────────────────────────────────────────────────
+        dev_title = QLabel("Developer")
+        dev_title.setStyleSheet("color:#94A3B8; font-size:10px; font-weight:700; letter-spacing:1px;")
+        vl.addWidget(dev_title)
+        vl.addSpacing(8)
+
+        def _link_row(icon_char, icon_color, display_text, url=None):
+            row = QHBoxLayout(); row.setSpacing(10); row.setContentsMargins(0,0,0,0)
+            icon_l = QLabel(icon_char)
+            icon_l.setFixedWidth(22)
+            icon_l.setStyleSheet(f"color:{icon_color}; font-size:15px; background:transparent; border:none;")
+            row.addWidget(icon_l)
+            if url:
+                lbl = QLabel(f'<a href="{url}" style="color:#1A8FE3; text-decoration:none;">{display_text}</a>')
+                lbl.setOpenExternalLinks(True)
+            else:
+                lbl = QLabel(display_text)
+                lbl.setStyleSheet("color:#334155; font-size:13px; font-weight:600;")
+            lbl.setStyleSheet(lbl.styleSheet() + " background:transparent; border:none;")
+            row.addWidget(lbl)
+            row.addStretch()
+            return row
+
+        vl.addLayout(_link_row("👤", "#64748B", "CA. Deepak Bholusaria"))
+        vl.addSpacing(6)
+        vl.addLayout(_link_row("✉", "#1A8FE3", "deepak@ailearning.guru", "mailto:deepak@ailearning.guru"))
+        vl.addSpacing(6)
+        vl.addLayout(_link_row("🔗", "#0A66C2", "linkedin.com/in/bhholusaria", "https://www.linkedin.com/in/bhholusaria/"))
+        vl.addSpacing(6)
+        vl.addLayout(_link_row("📇", "#16A34A", "Virtual Card", "https://www.qrcodechimp.com/page/deepakb?chk1668183417"))
+        vl.addSpacing(16)
+
+        # ── Divider ───────────────────────────────────────────────────────────
+        div2 = QFrame(); div2.setFrameShape(QFrame.Shape.HLine)
+        div2.setStyleSheet("background:#E2E8F0; border:none; max-height:1px;")
+        vl.addWidget(div2)
         vl.addSpacing(12)
 
         copy = QLabel("© 2026 Deepak Bholusaria. All rights reserved.")
         copy.setStyleSheet("color:#94A3B8; font-size:11px;")
         vl.addWidget(copy)
-
         vl.addStretch()
 
-        # Close button
+        # ── Close button ──────────────────────────────────────────────────────
         close_btn = QPushButton("Close")
         close_btn.setFixedWidth(100)
         close_btn.setStyleSheet(
             "QPushButton { background:#1A8FE3; color:#FFFFFF; border:none; border-radius:6px; padding:8px 16px; font-size:13px; }"
             "QPushButton:hover { background:#1570C4; }")
         close_btn.clicked.connect(dlg.accept)
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        btn_row.addWidget(close_btn)
+        btn_row = QHBoxLayout(); btn_row.addStretch(); btn_row.addWidget(close_btn)
         vl.addLayout(btn_row)
 
         dlg.exec()
