@@ -715,8 +715,8 @@ class AayDocCapioApp(QMainWindow):
         tl.addWidget(sep)
 
         tagline = QLabel("Tax Documents. Delivered to You.")
-        tagline.setStyleSheet("color:#64748B; font-family:'Arial'; font-size:13px; font-weight:400; background:transparent; border:none; padding-top:10px;")
-        tagline.setAlignment(Qt.AlignmentFlag.AlignBottom)
+        tagline.setStyleSheet("color:#64748B; font-family:'Arial'; font-size:13px; font-weight:400; background:transparent; border:none;")
+        tagline.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         tl.addWidget(tagline)
         tl.addStretch()
 
