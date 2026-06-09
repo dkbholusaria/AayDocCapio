@@ -667,22 +667,34 @@ class AayDocCapioApp(QMainWindow):
 
     def _mk_header(self):
         hdr = QFrame()
-        hdr.setFixedHeight(72)
-        hdr.setStyleSheet("QFrame { background: #FFFFFF; }")
+        hdr.setFixedHeight(58)
+        hdr.setStyleSheet("QFrame { background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+                          "stop:0 #0F2056, stop:0.45 #1E3A8A, stop:1 #2563EB); }")
         hl = QHBoxLayout(hdr)
-        hl.setContentsMargins(0, 0, 0, 0)
+        hl.setContentsMargins(24, 0, 24, 0)
         hl.setSpacing(0)
 
-        logo_path = os.path.join(_bundled_dir(), "resources", "app_logo.png")
-        logo_label = QLabel()
-        logo_label.setScaledContents(False)
-        if os.path.exists(logo_path):
-            from PyQt6.QtGui import QPixmap
-            pixmap = QPixmap(logo_path)
-            scaled = pixmap.scaledToHeight(72, Qt.TransformationMode.SmoothTransformation)
-            logo_label.setPixmap(scaled)
-        logo_label.setFixedHeight(72)
-        hl.addWidget(logo_label)
+        # Accent bar on left
+        accent = QFrame()
+        accent.setFixedSize(4, 32)
+        accent.setStyleSheet("background:#60A5FA; border-radius:2px;")
+        hl.addWidget(accent)
+        hl.addSpacing(14)
+
+        title = QLabel("TAX DOWNLOADER")
+        title.setStyleSheet("color:#F8FAFC; font-size:16px; font-weight:700; letter-spacing:1px;")
+        hl.addWidget(title)
+        hl.addSpacing(16)
+
+        sep = QFrame()
+        sep.setFixedSize(1, 22)
+        sep.setStyleSheet("background:#3B5EA6;")
+        hl.addWidget(sep)
+        hl.addSpacing(16)
+
+        sub = QLabel("ITD Bulk Document Downloader  —  Form 26AS · AIS · TIS")
+        sub.setStyleSheet("color:#93C5FD; font-size:12px;")
+        hl.addWidget(sub)
         hl.addStretch()
         return hdr
 
