@@ -133,15 +133,15 @@ def get_timestamp():
 # ── Stylesheet ────────────────────────────────────────────────────────────────
 APP_STYLE = """
 QMainWindow, QDialog { background: #F5F7FA; }
-QWidget { font-family: 'Poppins', 'Segoe UI', Arial, sans-serif; }
-QLabel { color: #1a1a1a; font-size: 12px; }
+QWidget { font-family: 'Poppins', 'Segoe UI', Arial, sans-serif; font-size: 13px; }
+QLabel { color: #1a1a1a; font-size: 13px; }
 
 QLineEdit {
     background: #FFFFFF;
     border: 1.5px solid #E2E8F0;
     border-radius: 6px;
     padding: 4px 10px;
-    font-size: 12px;
+    font-size: 13px;
     color: #1a1a1a;
     min-height: 28px;
     selection-background-color: #BFDBFE;
@@ -156,7 +156,7 @@ QComboBox {
     border: 1.5px solid #E2E8F0;
     border-radius: 6px;
     padding: 4px 10px;
-    font-size: 12px;
+    font-size: 13px;
     color: #1a1a1a;
     min-height: 26px;
     min-width: 120px;
@@ -189,7 +189,7 @@ QTabBar::tab {
     color: #64748B;
     padding: 10px 18px;
     border: none;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     border-bottom: 2px solid transparent;
     margin-bottom: 0px;
@@ -197,7 +197,7 @@ QTabBar::tab {
 QTabBar::tab:selected { color: #1D4ED8; border-bottom: 2px solid #2563EB; }
 QTabBar::tab:hover:!selected { color: #334155; }
 
-QCheckBox { font-size: 12px; color: #1a1a1a; spacing: 8px; background: transparent; }
+QCheckBox { font-size: 13px; color: #1a1a1a; spacing: 8px; background: transparent; }
 QCheckBox::indicator {
     width: 17px; height: 17px;
     border: 1.5px solid #CBD5E1;
