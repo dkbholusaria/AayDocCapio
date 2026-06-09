@@ -859,16 +859,16 @@ class AayDocCapioApp(QMainWindow):
 
     def _mk_settings_bar(self):
         bar = QFrame()
-        bar.setFixedHeight(56)
+        bar.setFixedHeight(68)
         bar.setStyleSheet("QFrame{background:#FFFFFF;border-radius:10px;}")
         hl = QHBoxLayout(bar)
-        hl.setContentsMargins(16, 0, 16, 0)
+        hl.setContentsMargins(20, 0, 20, 0)
         hl.setSpacing(0)
         hl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         def _cap(text):
             l = QLabel(text)
-            l.setStyleSheet("color:#94A3B8;font-size:9px;font-weight:700;"
+            l.setStyleSheet("color:#94A3B8;font-size:10px;font-weight:700;"
                             "letter-spacing:0.8px;background:transparent;")
             return l
 
@@ -886,7 +886,7 @@ class AayDocCapioApp(QMainWindow):
         self.ay_combo.addItem("Select AY/TY")
         self.ay_combo.addItems(ay_labels)
         self.ay_combo.setCurrentText(saved_ay if saved_ay in ay_labels else "Select AY/TY")
-        self.ay_combo.setFixedWidth(185)
+        self.ay_combo.setFixedWidth(220)
         self.ay_combo.currentTextChanged.connect(self.save_ay_setting)
 
         manage_btn = QPushButton("⚙")
@@ -906,16 +906,16 @@ class AayDocCapioApp(QMainWindow):
         ay_vl.addLayout(ay_hl)
         hl.addWidget(ay_col)
 
-        hl.addSpacing(20); hl.addWidget(_divider()); hl.addSpacing(20)
+        hl.addSpacing(28); hl.addWidget(_divider()); hl.addSpacing(28)
 
         # ── Output Directory ──────────────────────────────────────────────────
         default_dir = self.vault.get_setting(
             "download_root_dir",
             os.path.join(os.path.dirname(os.path.abspath(__file__)), "outputs"))
         self.dir_lbl = QLabel(default_dir)
-        self.dir_lbl.setStyleSheet("color:#334155;font-size:11px;background:transparent;")
+        self.dir_lbl.setStyleSheet("color:#334155;font-size:12px;background:transparent;")
         self.dir_lbl.setWordWrap(False)
-        self.dir_lbl.setMaximumWidth(220)
+        self.dir_lbl.setMaximumWidth(320)
         self.dir_lbl.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         browse_btn = _btn("📂  Browse", "outline", height=26)
         browse_btn.clicked.connect(self.browse_output_dir)
