@@ -709,7 +709,7 @@ class AayDocCapioApp(QMainWindow):
         vl.addLayout(logo_row)
         vl.addSpacing(14)
 
-        desc = QLabel("Automates bulk download of Form 26AS, AIS and TIS from the Income Tax e-Filing portal.")
+        desc = QLabel("Automates the secure bulk retrieval of Form 26AS, AIS and TIS directly from the Income Tax e-Filing Portal.")
         desc.setStyleSheet("color:#334155; font-size:13px;")
         desc.setWordWrap(True)
         vl.addWidget(desc)
@@ -720,16 +720,17 @@ class AayDocCapioApp(QMainWindow):
         name_box.setStyleSheet("QFrame { background:#F0F7FF; border-radius:6px; border:1px solid #DBEAFE; }")
         nb_l = QVBoxLayout(name_box)
         nb_l.setContentsMargins(14, 10, 14, 10)
-        nb_l.setSpacing(4)
-        name_head = QLabel("What does AayDoc Capio mean?")
+        nb_l.setSpacing(6)
+        name_head = QLabel("Why AayDoc Capio?")
         name_head.setStyleSheet("color:#1A8FE3; font-size:11px; font-weight:700; letter-spacing:0.5px; background:transparent; border:none;")
         name_exp = QLabel(
             '<b style="color:#0D1F4E;">Aay</b> (Income) · '
             '<b style="color:#0D1F4E;">Doc</b> (Documents) · '
-            '<b style="color:#1A8FE3;">Capio</b> <span style="color:#64748B;">(Latin: To Retrieve)</span>'
+            '<b style="color:#1A8FE3;">Capio</b> <span style="color:#64748B;">(Latin: To Obtain)</span>'
         )
         name_exp.setStyleSheet("font-size:13px; background:transparent; border:none;")
-        name_sub = QLabel("Automatically fetching and delivering income tax documents securely and efficiently.")
+        name_sub = QLabel("AayDoc Capio is designed to securely retrieve and deliver income tax documents, "
+                          "eliminating repetitive manual downloads and improving efficiency for tax professionals.")
         name_sub.setStyleSheet("color:#64748B; font-size:12px; background:transparent; border:none;")
         name_sub.setWordWrap(True)
         nb_l.addWidget(name_head)
