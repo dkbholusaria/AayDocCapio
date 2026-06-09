@@ -689,12 +689,12 @@ class AayDocCapioApp(QMainWindow):
         vl.setContentsMargins(0, 0, 0, 0)
         vl.setSpacing(3)
 
+        # Title: AayDoc Capio™
         title_row = QWidget()
         title_row.setStyleSheet("background:transparent;")
         tl = QHBoxLayout(title_row)
         tl.setContentsMargins(0, 0, 0, 0)
         tl.setSpacing(0)
-        tl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         aay = QLabel("AayDoc ")
         aay.setStyleSheet("color:#0D1F4E; font-family:'Avenir Next'; font-size:36px; font-weight:700; background:transparent; text-decoration:none; border:none;")
@@ -707,26 +707,30 @@ class AayDocCapioApp(QMainWindow):
         tm = QLabel("™")
         tm.setStyleSheet("color:#1A8FE3; font-family:'Avenir Next'; font-size:14px; font-weight:700; background:transparent; padding-bottom:18px; text-decoration:none; border:none;")
         tl.addWidget(tm)
-
-        # Separator + tagline inline with title
-        sep = QLabel("  |  ")
-        sep.setStyleSheet("color:#CBD5E1; font-size:22px; background:transparent; border:none;")
-        sep.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        tl.addWidget(sep)
-
-        tagline = QLabel("Tax Documents. Delivered to You.")
-        tagline.setStyleSheet("color:#64748B; font-family:'Arial'; font-size:13px; font-weight:400; background:transparent; border:none;")
-        tagline.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        tl.addWidget(tagline)
         tl.addStretch()
 
-        title = title_row
-
         vl.addStretch()
-        vl.addWidget(title)
+        vl.addWidget(title_row)
         vl.addStretch()
 
         hl.addWidget(name_block)
+
+        # Separator + tagline as separate centered widget
+        hl.addSpacing(4)
+
+        sep = QLabel("|")
+        sep.setFixedHeight(28)
+        sep.setStyleSheet("color:#CBD5E1; font-size:20px; background:transparent; border:none;")
+        sep.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignHCenter)
+        hl.addWidget(sep, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        hl.addSpacing(12)
+
+        tagline = QLabel("Tax Documents. Delivered to You.")
+        tagline.setStyleSheet("color:#64748B; font-family:'Arial'; font-size:13px; background:transparent; border:none;")
+        tagline.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        hl.addWidget(tagline, 0, Qt.AlignmentFlag.AlignVCenter)
+
         hl.addStretch()
 
         # Copyright + version on the right
