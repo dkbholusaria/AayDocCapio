@@ -680,7 +680,7 @@ class AayDocCapioApp(QMainWindow):
         import webbrowser
         dlg = QDialog(self)
         dlg.setWindowTitle("About AayDocCapio")
-        dlg.setFixedSize(500, 420)
+        dlg.setFixedSize(500, 520)
         dlg.setStyleSheet(
             "QDialog { background:#FFFFFF; }"
             "QLabel { border:none; background:transparent; }"
@@ -713,6 +713,29 @@ class AayDocCapioApp(QMainWindow):
         desc.setStyleSheet("color:#334155; font-size:13px;")
         desc.setWordWrap(True)
         vl.addWidget(desc)
+        vl.addSpacing(12)
+
+        # Name explanation
+        name_box = QFrame()
+        name_box.setStyleSheet("QFrame { background:#F0F7FF; border-radius:6px; border:1px solid #DBEAFE; }")
+        nb_l = QVBoxLayout(name_box)
+        nb_l.setContentsMargins(14, 10, 14, 10)
+        nb_l.setSpacing(4)
+        name_head = QLabel("What does AayDoc Capio mean?")
+        name_head.setStyleSheet("color:#1A8FE3; font-size:11px; font-weight:700; letter-spacing:0.5px; background:transparent; border:none;")
+        name_exp = QLabel(
+            '<b style="color:#0D1F4E;">Aay</b> (Income) · '
+            '<b style="color:#0D1F4E;">Doc</b> (Documents) · '
+            '<b style="color:#1A8FE3;">Capio</b> <span style="color:#64748B;">(Latin: To Retrieve)</span>'
+        )
+        name_exp.setStyleSheet("font-size:13px; background:transparent; border:none;")
+        name_sub = QLabel("Automatically fetching and delivering income tax documents securely and efficiently.")
+        name_sub.setStyleSheet("color:#64748B; font-size:12px; background:transparent; border:none;")
+        name_sub.setWordWrap(True)
+        nb_l.addWidget(name_head)
+        nb_l.addWidget(name_exp)
+        nb_l.addWidget(name_sub)
+        vl.addWidget(name_box)
         vl.addSpacing(16)
 
         # ── Divider ───────────────────────────────────────────────────────────
