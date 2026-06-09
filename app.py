@@ -872,8 +872,8 @@ class AayDocCapioApp(QMainWindow):
         about_btn.setFixedSize(32, 32)
         about_btn.setToolTip("About AayDocCapio")
         about_btn.setStyleSheet(
-            "QPushButton { background:transparent; border:none; font-size:20px; color:#94A3B8; }"
-            "QPushButton:hover { color:#1A8FE3; }")
+            "QPushButton { background:transparent; border:none; font-size:20px; color:#DC2626; }"
+            "QPushButton:hover { color:#B91C1C; }")
         about_btn.clicked.connect(self._show_about)
         hl.addWidget(about_btn, 0, Qt.AlignmentFlag.AlignVCenter)
 
