@@ -688,12 +688,26 @@ class AayDocCapioApp(QMainWindow):
         vl.setContentsMargins(0, 0, 0, 0)
         vl.setSpacing(3)
 
-        title = QLabel(
-            '<span style="color:#0D1F4E; font-size:28px; font-weight:800; letter-spacing:-0.5px;">AayDoc </span>'
-            '<span style="color:#1A8FE3; font-size:28px; font-weight:800; letter-spacing:-0.5px;">Capio</span>'
-            '<sup><span style="color:#1A8FE3; font-size:13px; font-weight:700;">™</span></sup>'
-        )
-        title.setStyleSheet("background:transparent;")
+        title_row = QWidget()
+        title_row.setStyleSheet("background:transparent;")
+        tl = QHBoxLayout(title_row)
+        tl.setContentsMargins(0, 0, 0, 0)
+        tl.setSpacing(0)
+
+        aay = QLabel("AayDoc ")
+        aay.setStyleSheet("color:#0D1F4E; font-size:28px; font-weight:800; background:transparent;")
+        tl.addWidget(aay)
+
+        capio = QLabel("Capio")
+        capio.setStyleSheet("color:#1A8FE3; font-size:28px; font-weight:800; background:transparent;")
+        tl.addWidget(capio)
+
+        tm = QLabel("™")
+        tm.setStyleSheet("color:#1A8FE3; font-size:13px; font-weight:700; background:transparent; padding-bottom:14px;")
+        tl.addWidget(tm)
+        tl.addStretch()
+
+        title = title_row
 
         tagline = QLabel("Tax Documents. Delivered to You.")
         tagline.setStyleSheet("color:#64748B; font-size:12px; letter-spacing:0.3px; background:transparent;")
