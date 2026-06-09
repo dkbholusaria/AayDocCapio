@@ -663,7 +663,7 @@ class AayDocCapioApp(QMainWindow):
         root.addWidget(self._mk_footer())
 
     def _mk_header(self):
-        HDR_H = 70
+        HDR_H = 110
         hdr = QFrame()
         hdr.setFixedHeight(HDR_H)
         hdr.setStyleSheet("QFrame { background: #F0F4FF; }")
@@ -673,12 +673,14 @@ class AayDocCapioApp(QMainWindow):
 
         logo_path = os.path.join(_bundled_dir(), "assets", "brand", "logo_full.png")
         logo_label = QLabel()
-        logo_label.setFixedHeight(HDR_H)
-        logo_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        logo_label.setScaledContents(True)
+        logo_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         if os.path.exists(logo_path):
-            logo_label.setPixmap(QPixmap(logo_path))
+            pix = QPixmap(logo_path)
+            logo_label.setPixmap(
+                pix.scaledToHeight(HDR_H, Qt.TransformationMode.SmoothTransformation)
+            )
         hl.addWidget(logo_label)
+        hl.addStretch()
         return hdr
 
     def _mk_left_panel(self):
