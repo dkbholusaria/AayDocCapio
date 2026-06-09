@@ -60,6 +60,7 @@ AayDocCapio/
 │   └── setup.sh                  # Linux/WSL dev setup script
 ├── Documentation/
 │   ├── README.md                 # This file
+│   ├── windows_build.md          # Windows build guide (Nuitka, Inno Setup, WiX)
 │   ├── DEVELOPMENT_LOG.md        # Design decisions, architecture, and debugging history
 │   ├── CONTRIBUTING.md           # Contribution guidelines
 │   ├── implementation_plan.md    # Active engineering plans
@@ -217,7 +218,7 @@ This script:
 1. Syncs the project from WSL to `C:\ITD-build`
 2. Creates a venv and installs dependencies
 3. Compiles with **Nuitka** (native machine code) to `dist\AayDocCapio\`
-4. Packages an installer with **Inno Setup** → `installer_output\ITDDocsDownloader_Setup_*.exe`
+4. Packages an installer with **Inno Setup** → `installer_output\AayDocCapio_Setup_v*.exe`
 
 > The build uses Nuitka (not PyInstaller). The installer also pre-installs the
 > Playwright Chromium fallback during setup.

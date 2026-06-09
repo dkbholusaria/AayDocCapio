@@ -36,7 +36,7 @@ python -m nuitka ^
     --include-data-file=assessment_years.json=assessment_years.json ^
     --include-data-dir=resources=resources ^
     --include-package=automation ^
-    --include-package=vault ^
+    --include-module=vault ^
     --enable-plugin=pyqt6 ^
     --assume-yes-for-downloads ^
     app.py
