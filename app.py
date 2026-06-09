@@ -133,8 +133,8 @@ def get_timestamp():
 # ── Stylesheet ────────────────────────────────────────────────────────────────
 APP_STYLE = """
 QMainWindow, QDialog { background: #F5F7FA; }
-QWidget { font-family: 'Avenir Next', 'Segoe UI', Arial, sans-serif; font-size: 13px; }
-QLabel { color: #1a1a1a; font-size: 13px; }
+QWidget { font-family: 'Avenir Next', 'Segoe UI', Arial, sans-serif; font-size: 13px; font-weight: 500; }
+QLabel { color: #1a1a1a; font-size: 13px; font-weight: 500; }
 
 QLineEdit {
     background: #FFFFFF;
