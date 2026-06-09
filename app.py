@@ -663,7 +663,7 @@ class AayDocCapioApp(QMainWindow):
         root.addWidget(self._mk_footer())
 
     def _mk_header(self):
-        HDR_H = 110
+        HDR_H = 75
         hdr = QFrame()
         hdr.setFixedHeight(HDR_H)
         hdr.setStyleSheet("QFrame { background: #F0F4FF; }")
