@@ -694,6 +694,7 @@ class AayDocCapioApp(QMainWindow):
         tl = QHBoxLayout(title_row)
         tl.setContentsMargins(0, 0, 0, 0)
         tl.setSpacing(0)
+        tl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         aay = QLabel("AayDoc ")
         aay.setStyleSheet("color:#0D1F4E; font-family:'Avenir Next'; font-size:36px; font-weight:700; background:transparent; text-decoration:none; border:none;")
@@ -709,11 +710,13 @@ class AayDocCapioApp(QMainWindow):
 
         # Separator + tagline inline with title
         sep = QLabel("  |  ")
-        sep.setStyleSheet("color:#CBD5E1; font-size:28px; background:transparent; border:none;")
+        sep.setStyleSheet("color:#CBD5E1; font-size:22px; background:transparent; border:none;")
+        sep.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         tl.addWidget(sep)
 
         tagline = QLabel("Tax Documents. Delivered to You.")
-        tagline.setStyleSheet("color:#64748B; font-family:'Avenir Next'; font-size:14px; font-weight:500; background:transparent; border:none;")
+        tagline.setStyleSheet("color:#64748B; font-family:'Arial'; font-size:13px; font-weight:400; background:transparent; border:none;")
+        tagline.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         tl.addWidget(tagline)
         tl.addStretch()
 
@@ -735,11 +738,11 @@ class AayDocCapioApp(QMainWindow):
         ml.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         version_lbl = QLabel("v1.0.0")
-        version_lbl.setStyleSheet("color:#94A3B8; font-family:'Avenir Next'; font-size:11px; font-weight:500; background:transparent; border:none;")
+        version_lbl.setStyleSheet("color:#94A3B8; font-family:'Arial'; font-size:11px; background:transparent; border:none;")
         version_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
 
         copy_lbl = QLabel("© 2026 Deepak Bholusaria")
-        copy_lbl.setStyleSheet("color:#94A3B8; font-family:'Avenir Next'; font-size:11px; font-weight:500; background:transparent; border:none;")
+        copy_lbl.setStyleSheet("color:#94A3B8; font-family:'Arial'; font-size:11px; background:transparent; border:none;")
         copy_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
 
         ml.addStretch()
