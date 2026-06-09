@@ -1,6 +1,6 @@
 #define MyAppName      "AayDocCapio"
 #define MyAppVersion   "1.0.0"
-#define MyAppPublisher "Deepak Bholusaria"
+#define MyAppPublisher "Deepak Bhholusaria"
 #define MyAppExeName   "AayDocCapio.exe"
 #define MyAppDataDir   "{localappdata}\AayDocCapio"
 
