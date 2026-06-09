@@ -706,6 +706,15 @@ class AayDocCapioApp(QMainWindow):
         tm = QLabel("™")
         tm.setStyleSheet("color:#1A8FE3; font-family:'Avenir Next'; font-size:14px; font-weight:700; background:transparent; padding-bottom:18px; text-decoration:none; border:none;")
         tl.addWidget(tm)
+
+        # Separator + tagline inline with title
+        sep = QLabel("  |  ")
+        sep.setStyleSheet("color:#CBD5E1; font-size:28px; background:transparent; border:none;")
+        tl.addWidget(sep)
+
+        tagline = QLabel("Tax Documents. Delivered to You.")
+        tagline.setStyleSheet("color:#64748B; font-family:'Avenir Next'; font-size:14px; font-weight:500; background:transparent; border:none;")
+        tl.addWidget(tagline)
         tl.addStretch()
 
         title = title_row
@@ -716,6 +725,29 @@ class AayDocCapioApp(QMainWindow):
 
         hl.addWidget(name_block)
         hl.addStretch()
+
+        # Copyright + version on the right
+        meta_block = QWidget()
+        meta_block.setStyleSheet("background:transparent;")
+        ml = QVBoxLayout(meta_block)
+        ml.setContentsMargins(0, 0, 0, 0)
+        ml.setSpacing(2)
+        ml.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        version_lbl = QLabel("v1.0.0")
+        version_lbl.setStyleSheet("color:#94A3B8; font-family:'Avenir Next'; font-size:11px; font-weight:500; background:transparent; border:none;")
+        version_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
+
+        copy_lbl = QLabel("© 2026 Deepak Bholusaria")
+        copy_lbl.setStyleSheet("color:#94A3B8; font-family:'Avenir Next'; font-size:11px; font-weight:500; background:transparent; border:none;")
+        copy_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
+
+        ml.addStretch()
+        ml.addWidget(version_lbl)
+        ml.addWidget(copy_lbl)
+        ml.addStretch()
+
+        hl.addWidget(meta_block)
         return hdr
 
     def _mk_left_panel(self):
