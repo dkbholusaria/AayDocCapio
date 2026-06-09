@@ -133,7 +133,7 @@ def get_timestamp():
 # ── Stylesheet ────────────────────────────────────────────────────────────────
 APP_STYLE = """
 QMainWindow, QDialog { background: #F5F7FA; }
-QWidget { font-family: 'Roboto', 'Segoe UI', Arial, sans-serif; }
+QWidget { font-family: 'Poppins', 'Segoe UI', Arial, sans-serif; }
 QLabel { color: #1a1a1a; font-size: 12px; }
 
 QLineEdit {
@@ -1975,11 +1975,12 @@ if __name__ == "__main__":
     app.setApplicationName("AayDocCapio")
     app.setDesktopFileName("aay-doc-capio")
     app.setStyle("Fusion")
-    app.setStyleSheet(APP_STYLE)
     from PyQt6.QtGui import QFontDatabase
     _fonts_dir = os.path.join(_bundled_dir(), "resources", "fonts")
-    for _ttf in ["AvenirNext-Regular.ttf", "AvenirNext-Medium.ttf", "AvenirNext-DemiBold.ttf", "AvenirNext-Bold.ttf"]:
-        QFontDatabase.addApplicationFont(os.path.join(_fonts_dir, _ttf))
+    for _ttf in os.listdir(_fonts_dir):
+        if _ttf.endswith(".ttf"):
+            QFontDatabase.addApplicationFont(os.path.join(_fonts_dir, _ttf))
+    app.setStyleSheet(APP_STYLE)
     window = AayDocCapioApp()
     _app_icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
     if os.path.exists(_app_icon_path):
