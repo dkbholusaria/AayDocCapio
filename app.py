@@ -592,7 +592,7 @@ class AayDocCapioApp(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("AayDocCapio — Standalone Secure Utility")
+        self.setWindowTitle("AayDocCapio — Tax Documents. Delivered to You.")
         self.setMinimumSize(1100, 720)
         self.resize(1200, 780)
 
