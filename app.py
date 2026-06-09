@@ -650,9 +650,9 @@ class AayDocCapioApp(QMainWindow):
         root.addWidget(self._mk_header())
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setHandleWidth(1)
+        splitter.setHandleWidth(0)
         splitter.setChildrenCollapsible(False)
-        splitter.setStyleSheet("QSplitter::handle{background:#E2E8F0;}")
+        splitter.setStyleSheet("QSplitter::handle{background:transparent;}")
         left = self._mk_left_panel()
         left.setFixedWidth(340)
         splitter.addWidget(left)
