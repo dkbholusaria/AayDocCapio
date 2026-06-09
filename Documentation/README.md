@@ -36,7 +36,8 @@ Built with **PyQt6** + **Playwright**. Runs on Windows and Linux/WSL.
 
 ## Project Structure
 
-ITD-docs-downloader/
+```text
+AayDocCapio/
 ├── app.py                        # PyQt6 main application GUI and orchestration
 ├── vault.py                      # Encrypted credential vault manager (Fernet AES-128)
 ├── app.log                       # Rotating log of runtime events
@@ -55,7 +56,7 @@ ITD-docs-downloader/
 │   ├── setup_and_build.ps1       # Windows sync + Nuitka build + Inno Setup compilation
 │   ├── build_win.bat             # Batch script wrapper for building
 │   ├── installer.iss             # Inno Setup installer script definition
-│   ├── TaxDownloader.spec        # PyInstaller/Nuitka spec configuration
+│   ├── AayDocCapio.spec          # PyInstaller/Nuitka spec configuration
 │   └── setup.sh                  # Linux/WSL dev setup script
 ├── Documentation/
 │   ├── README.md                 # This file
@@ -70,6 +71,7 @@ ITD-docs-downloader/
             ├── <PAN>-26AS-_.txt
             ├── <PAN>-AIS-<FY>.pdf
             └── <PAN>-TIS-<FY>.pdf
+```
 
 ---
 
@@ -85,8 +87,8 @@ ITD-docs-downloader/
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/dkbholusaria/ITD-docs-downloader.git
-cd ITD-docs-downloader
+git clone https://github.com/dkbholusaria/AayDocCapio.git
+cd AayDocCapio
 
 # 2. Create and activate a virtual environment (recommended)
 python -m venv .venv
@@ -214,7 +216,7 @@ This script:
 
 1. Syncs the project from WSL to `C:\ITD-build`
 2. Creates a venv and installs dependencies
-3. Compiles with **Nuitka** (native machine code) to `dist\TaxDownloader\`
+3. Compiles with **Nuitka** (native machine code) to `dist\AayDocCapio\`
 4. Packages an installer with **Inno Setup** → `installer_output\ITDDocsDownloader_Setup_*.exe`
 
 > The build uses Nuitka (not PyInstaller). The installer also pre-installs the
