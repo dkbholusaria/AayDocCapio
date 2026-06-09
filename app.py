@@ -708,25 +708,24 @@ class AayDocCapioApp(QMainWindow):
         tm.setStyleSheet("color:#1A8FE3; font-family:'Avenir Next'; font-size:14px; font-weight:700; background:transparent; padding-bottom:18px; text-decoration:none; border:none;")
         tl.addWidget(tm)
 
-        # Separator + tagline inline with title
-        sep = QLabel("  |  ")
-        sep.setStyleSheet("color:#CBD5E1; font-size:22px; background:transparent; border:none;")
-        sep.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        tl.addWidget(sep)
-
-        tagline = QLabel("Tax Documents. Delivered to You.")
-        tagline.setStyleSheet("color:#64748B; font-family:'Arial'; font-size:13px; font-weight:400; background:transparent; border:none; padding-top:10px;")
-        tagline.setAlignment(Qt.AlignmentFlag.AlignBottom)
-        tl.addWidget(tagline)
         tl.addStretch()
 
-        title = title_row
-
         vl.addStretch()
-        vl.addWidget(title)
+        vl.addWidget(title_row)
         vl.addStretch()
 
         hl.addWidget(name_block)
+
+        sep = QLabel("|")
+        sep.setStyleSheet("color:#CBD5E1; font-size:24px; background:transparent; border:none;")
+        hl.addWidget(sep, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        hl.addSpacing(10)
+
+        tagline = QLabel("Tax Documents. Delivered to You.")
+        tagline.setStyleSheet("color:#64748B; font-family:'Arial'; font-size:13px; background:transparent; border:none;")
+        hl.addWidget(tagline, 0, Qt.AlignmentFlag.AlignVCenter)
+
         hl.addStretch()
 
         # Copyright + version on the right
