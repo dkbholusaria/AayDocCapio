@@ -664,7 +664,7 @@ class AayDocCapioApp(QMainWindow):
 
     def _mk_header(self):
         hdr = QFrame()
-        hdr.setFixedHeight(90)
+        hdr.setFixedHeight(70)
         hdr.setStyleSheet("QFrame { background: #FFFFFF; border-bottom: 2px solid #E2E8F0; }")
         hl = QHBoxLayout(hdr)
         hl.setContentsMargins(32, 0, 32, 0)
@@ -709,12 +709,8 @@ class AayDocCapioApp(QMainWindow):
 
         title = title_row
 
-        tagline = QLabel("Tax Documents. Delivered to You.")
-        tagline.setStyleSheet("color:#64748B; font-size:12px; letter-spacing:0.3px; background:transparent;")
-
         vl.addStretch()
         vl.addWidget(title)
-        vl.addWidget(tagline)
         vl.addStretch()
 
         hl.addWidget(name_block)
