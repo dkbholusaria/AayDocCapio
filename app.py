@@ -665,7 +665,8 @@ class AayDocCapioApp(QMainWindow):
     def _mk_header(self):
         hdr = QFrame()
         hdr.setFixedHeight(70)
-        hdr.setStyleSheet("QFrame { background: #FFFFFF; border-bottom: 2px solid #E2E8F0; }")
+        hdr.setStyleSheet("QFrame#header { background: #FFFFFF; border: none; } QLabel { border: none; text-decoration: none; }")
+        hdr.setObjectName("header")
         hl = QHBoxLayout(hdr)
         hl.setContentsMargins(32, 0, 32, 0)
         hl.setSpacing(0)
@@ -695,15 +696,15 @@ class AayDocCapioApp(QMainWindow):
         tl.setSpacing(0)
 
         aay = QLabel("AayDoc ")
-        aay.setStyleSheet("color:#0D1F4E; font-family:'Avenir Next'; font-size:26px; font-weight:700; background:transparent;")
+        aay.setStyleSheet("color:#0D1F4E; font-family:'Avenir Next'; font-size:26px; font-weight:700; background:transparent; text-decoration:none; border:none;")
         tl.addWidget(aay)
 
         capio = QLabel("Capio")
-        capio.setStyleSheet("color:#1A8FE3; font-family:'Avenir Next'; font-size:26px; font-weight:700; background:transparent;")
+        capio.setStyleSheet("color:#1A8FE3; font-family:'Avenir Next'; font-size:26px; font-weight:700; background:transparent; text-decoration:none; border:none;")
         tl.addWidget(capio)
 
         tm = QLabel("™")
-        tm.setStyleSheet("color:#1A8FE3; font-family:'Avenir Next'; font-size:12px; font-weight:700; background:transparent; padding-bottom:14px;")
+        tm.setStyleSheet("color:#1A8FE3; font-family:'Avenir Next'; font-size:12px; font-weight:700; background:transparent; padding-bottom:14px; text-decoration:none; border:none;")
         tl.addWidget(tm)
         tl.addStretch()
 
