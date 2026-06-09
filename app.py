@@ -641,6 +641,20 @@ class AayDocCapioApp(QMainWindow):
     # ── Build UI ──────────────────────────────────────────────────────────────
 
     def _build_ui(self):
+        # ── Menu bar ──────────────────────────────────────────────────────────
+        menubar = self.menuBar()
+        menubar.setStyleSheet(
+            "QMenuBar { background:#FFFFFF; color:#334155; font-size:13px; border-bottom:1px solid #E2E8F0; }"
+            "QMenuBar::item { background:transparent; padding:4px 10px; }"
+            "QMenuBar::item:selected { background:#F1F5F9; border-radius:4px; }"
+            "QMenu { background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; }"
+            "QMenu::item { padding:8px 24px; color:#334155; }"
+            "QMenu::item:selected { background:#DBEAFE; color:#1D4ED8; }")
+        help_menu = menubar.addMenu("Help")
+        about_action = QAction("About AayDocCapio", self)
+        about_action.triggered.connect(self._show_about)
+        help_menu.addAction(about_action)
+
         root_widget = QWidget()
         self.setCentralWidget(root_widget)
         root = QVBoxLayout(root_widget)
@@ -661,6 +675,75 @@ class AayDocCapioApp(QMainWindow):
         root.addWidget(splitter, 1)
 
         root.addWidget(self._mk_footer())
+
+    def _show_about(self):
+        dlg = QDialog(self)
+        dlg.setWindowTitle("About AayDocCapio")
+        dlg.setFixedSize(480, 320)
+        dlg.setStyleSheet("QDialog { background:#FFFFFF; } QLabel { border:none; background:transparent; }")
+
+        vl = QVBoxLayout(dlg)
+        vl.setContentsMargins(40, 32, 40, 32)
+        vl.setSpacing(0)
+
+        # Logo + name row
+        logo_row = QHBoxLayout()
+        logo_row.setSpacing(14)
+        icon_lbl = QLabel()
+        icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
+        if os.path.exists(icon_path):
+            icon_lbl.setPixmap(QPixmap(icon_path).scaled(52, 52, Qt.AspectRatioMode.KeepAspectRatio,
+                                                          Qt.TransformationMode.SmoothTransformation))
+        logo_row.addWidget(icon_lbl)
+
+        name_col = QVBoxLayout()
+        name_col.setSpacing(2)
+        name_lbl = QLabel('<span style="color:#0D1F4E; font-family:\'Avenir Next\'; font-size:22px; font-weight:700;">AayDoc </span>'
+                          '<span style="color:#1A8FE3; font-family:\'Avenir Next\'; font-size:22px; font-weight:700;">Capio™</span>')
+        ver_lbl = QLabel("Version 1.0.0")
+        ver_lbl.setStyleSheet("color:#94A3B8; font-size:12px;")
+        name_col.addWidget(name_lbl)
+        name_col.addWidget(ver_lbl)
+        logo_row.addLayout(name_col)
+        logo_row.addStretch()
+        vl.addLayout(logo_row)
+
+        vl.addSpacing(20)
+
+        # Divider
+        div = QFrame(); div.setFrameShape(QFrame.Shape.HLine)
+        div.setStyleSheet("color:#E2E8F0;")
+        vl.addWidget(div)
+
+        vl.addSpacing(16)
+
+        desc = QLabel("AayDocCapio automates bulk download of tax documents\n"
+                      "(Form 26AS, AIS, TIS) from the Income Tax e-Filing portal.")
+        desc.setStyleSheet("color:#334155; font-size:13px; line-height:1.5;")
+        desc.setWordWrap(True)
+        vl.addWidget(desc)
+
+        vl.addSpacing(12)
+
+        copy = QLabel("© 2026 Deepak Bholusaria. All rights reserved.")
+        copy.setStyleSheet("color:#94A3B8; font-size:11px;")
+        vl.addWidget(copy)
+
+        vl.addStretch()
+
+        # Close button
+        close_btn = QPushButton("Close")
+        close_btn.setFixedWidth(100)
+        close_btn.setStyleSheet(
+            "QPushButton { background:#1A8FE3; color:#FFFFFF; border:none; border-radius:6px; padding:8px 16px; font-size:13px; }"
+            "QPushButton:hover { background:#1570C4; }")
+        close_btn.clicked.connect(dlg.accept)
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        btn_row.addWidget(close_btn)
+        vl.addLayout(btn_row)
+
+        dlg.exec()
 
     def _mk_header(self):
         hdr = QFrame()
@@ -751,6 +834,18 @@ class AayDocCapioApp(QMainWindow):
         ml.addStretch()
 
         hl.addWidget(meta_block)
+        hl.addSpacing(12)
+
+        # ⓘ About button
+        about_btn = QPushButton("ⓘ")
+        about_btn.setFixedSize(32, 32)
+        about_btn.setToolTip("About AayDocCapio")
+        about_btn.setStyleSheet(
+            "QPushButton { background:transparent; border:none; font-size:20px; color:#94A3B8; }"
+            "QPushButton:hover { color:#1A8FE3; }")
+        about_btn.clicked.connect(self._show_about)
+        hl.addWidget(about_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+
         return hdr
 
     def _mk_left_panel(self):
