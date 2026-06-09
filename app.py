@@ -19,11 +19,12 @@ from PyQt6.QtCore import QRegularExpression
 def _app_dir() -> str:
     """
     Writable user-data directory for vault, settings, and outputs.
-    - Windows frozen .exe : %LOCALAPPDATA%\\AayDocCapio
-    - Linux/WSL frozen    : ~/.local/share/AayDocCapio
-    - Running as script   : folder containing app.py
+    - Windows compiled .exe : %LOCALAPPDATA%\\AayDocCapio
+    - Linux/WSL compiled    : ~/.local/share/AayDocCapio
+    - Running as script     : folder containing app.py
     """
-    if getattr(sys, "frozen", False):
+    # sys.frozen = PyInstaller; __compiled__ = Nuitka
+    if getattr(sys, "frozen", False) or globals().get("__compiled__"):
         if sys.platform == "win32":
             base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
         else:
@@ -36,11 +37,13 @@ def _app_dir() -> str:
 
 def _bundled_dir() -> str:
     """
-    Directory for read-only assets bundled inside the .exe (_MEIPASS).
-    Falls back to _app_dir() when running as a script.
+    Directory for read-only assets bundled inside the .exe.
+    PyInstaller uses _MEIPASS; Nuitka uses the exe directory.
     """
     if getattr(sys, "frozen", False):
         return sys._MEIPASS
+    if globals().get("__compiled__"):
+        return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
 
 

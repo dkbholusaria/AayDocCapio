@@ -3,7 +3,7 @@
 #
 # Works in two modes:
 #   WSL mode    - project lives in WSL; syncs to C:\AayDocCapio-build\ first
-#   Windows mode - project already on Windows; builds in place from the project root
+#   Windows mode - project cloned directly on C:\ ; builds in place
 
 $SCRIPT_DIR = $PSScriptRoot
 $PROJECT_ROOT_CANDIDATE = Split-Path -Parent $SCRIPT_DIR   # one level up from scripts\
@@ -14,29 +14,43 @@ $WIN_DEST = "C:\AayDocCapio-build"
 Write-Host ""
 Write-Host "========================================================"
 Write-Host "  AayDocCapio - Setup & Build"
+Write-Host "  $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 Write-Host "========================================================"
+Write-Host ""
+Write-Host "  Script dir   : $SCRIPT_DIR"
+Write-Host "  Project root : $PROJECT_ROOT_CANDIDATE"
 
 # ── Step 1: Locate / sync project files ──────────────────────────
 Write-Host ""
+Write-Host "--------------------------------------------------------"
+Write-Host "[Step 1] Locating project files..."
+Write-Host "--------------------------------------------------------"
 
-# Detect if project root is a real Windows path (not a symlink into WSL / not a UNC path)
+# Only C:\ is treated as a native Windows path; D:\ and others may be WSL symlink drives
 $appPyPath = Join-Path $PROJECT_ROOT_CANDIDATE "app.py"
 try { $resolved = (Resolve-Path $PROJECT_ROOT_CANDIDATE -ErrorAction Stop).ProviderPath } catch { $resolved = "" }
-$isNativeWindows = ($resolved -match '^[C-Z]:\\') -and ($resolved -notmatch '^\\\\.+')
+$isNativeWindows = ($resolved -match '^C:\\') -and ($resolved -notmatch '^\\\\.+')
+
+Write-Host "  Resolved path    : $resolved"
+Write-Host "  Is native Windows: $isNativeWindows"
 
 if ($isNativeWindows -and (Test-Path $appPyPath)) {
-    # Real Windows clone - build in place
     $WIN_DEST = $PROJECT_ROOT_CANDIDATE
-    Write-Host "[Step 1] Project found at $WIN_DEST - building in place."
+    Write-Host "  Mode: Windows clone - building in place at $WIN_DEST"
 } else {
-    # Sync from WSL
-    Write-Host "[Step 1] Syncing project files from WSL..."
+    Write-Host "  Mode: WSL source - syncing to $WIN_DEST"
+    Write-Host ""
+    Write-Host "  Source : $WSL_SRC"
+    Write-Host "  Dest   : $WIN_DEST"
 
     if (-not (Test-Path $WIN_DEST)) {
+        Write-Host "  Creating destination directory..."
         New-Item -ItemType Directory -Path $WIN_DEST | Out-Null
     }
 
     $excludes = @(".venv", ".venv_win", "__pycache__", "dist", "*.build", "tax_vault.json", "installer_output")
+    Write-Host "  Excluding: $($excludes -join ', ')"
+    Write-Host "  Running robocopy..."
     $robocopyArgs = @($WSL_SRC, $WIN_DEST, "/E", "/NFL", "/NDL", "/NJH", "/NJS", "/XD") + $excludes
     & robocopy @robocopyArgs
     if ($LASTEXITCODE -ge 8) {
@@ -50,52 +64,79 @@ $VENV   = "$WIN_DEST\.venv"
 $PYTHON = "$VENV\Scripts\python.exe"
 $PIP    = "$VENV\Scripts\pip.exe"
 
-Set-Location $WIN_DEST
+Write-Host ""
+Write-Host "  Build dir : $WIN_DEST"
+Write-Host "  Venv      : $VENV"
+Write-Host "  Python    : $PYTHON"
 
-# ── Step 2: Create venv if it doesn't exist ──────────────────────
+Set-Location $WIN_DEST
+Write-Host "  Working dir set to: $(Get-Location)"
+
+# ── Step 2: Create venv ───────────────────────────────────────────
+Write-Host ""
+Write-Host "--------------------------------------------------------"
+Write-Host "[Step 2] Python virtual environment"
+Write-Host "--------------------------------------------------------"
+
 if (-not (Test-Path $PYTHON)) {
-    Write-Host ""
-    Write-Host "[Step 2] Creating Python virtual environment..."
+    Write-Host "  Creating new venv at $VENV ..."
     python -m venv $VENV
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[Error] Failed to create virtual environment."
         exit 1
     }
-    Write-Host "[OK] Virtual environment created at $VENV"
+    Write-Host "[OK] Virtual environment created."
 } else {
-    Write-Host ""
-    Write-Host "[Step 2] Virtual environment already exists, skipping creation."
+    Write-Host "  Venv already exists at $VENV - skipping creation."
+    Write-Host "[OK] Using existing venv."
 }
+
+$pyVersion = & $PYTHON --version 2>&1
+Write-Host "  Python version: $pyVersion"
 
 # ── Step 3: Install dependencies ─────────────────────────────────
 Write-Host ""
-Write-Host "[Step 3] Installing dependencies..."
-& $PIP install -r requirements.txt --quiet
+Write-Host "--------------------------------------------------------"
+Write-Host "[Step 3] Installing dependencies"
+Write-Host "--------------------------------------------------------"
+Write-Host "  Installing from requirements.txt..."
+& $PIP install -r requirements.txt
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[Error] pip install failed."
     exit 1
 }
-& $PIP install nuitka ordered-set zstandard --quiet
+Write-Host ""
+Write-Host "  Installing build tools (nuitka, ordered-set, zstandard)..."
+& $PIP install nuitka ordered-set zstandard
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[Error] Failed to install build tools (nuitka)."
     exit 1
 }
-Write-Host "[OK] Dependencies installed."
+$nuitkaVersion = & $PYTHON -m nuitka --version 2>&1 | Select-Object -First 1
+Write-Host "[OK] Dependencies installed. Nuitka: $nuitkaVersion"
 
-# ── Step 4: Quick smoke test ──────────────────────────────────────
+# ── Step 4: Smoke test ────────────────────────────────────────────
 Write-Host ""
-Write-Host "[Step 4] Running smoke test..."
-& $PYTHON -c "from vault import VaultManager; from automation import downloader_26as; print('imports OK')"
+Write-Host "--------------------------------------------------------"
+Write-Host "[Step 4] Smoke test"
+Write-Host "--------------------------------------------------------"
+Write-Host "  Importing vault and automation modules..."
+& $PYTHON -c "from vault import VaultManager; from automation import downloader_26as; print('  imports OK')"
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "[Error] Smoke test failed. Check output above."
+    Write-Host "[Error] Smoke test failed."
     exit 1
 }
 Write-Host "[OK] Smoke test passed."
 
 # ── Step 5: Nuitka build ─────────────────────────────────────────
 Write-Host ""
-Write-Host "[Step 5] Compiling with Nuitka (this takes several minutes)..."
-Write-Host "         Python code will be compiled to native machine code."
+Write-Host "--------------------------------------------------------"
+Write-Host "[Step 5] Nuitka compilation"
+Write-Host "--------------------------------------------------------"
+Write-Host "  Compiling app.py to native machine code..."
+Write-Host "  Output dir  : dist\"
+Write-Host "  Executable  : AayDocCapio.exe"
+Write-Host "  This takes 10-20 minutes on first run."
 Write-Host ""
 
 & $PYTHON -m nuitka `
@@ -118,11 +159,14 @@ if ($LASTEXITCODE -ne 0) {
 
 if (Test-Path "dist\AayDocCapio") { Remove-Item -Recurse -Force "dist\AayDocCapio" }
 Rename-Item "dist\app.dist" "AayDocCapio"
-Write-Host "[OK] Compiled to dist\AayDocCapio\"
+$exeSize = [math]::Round((Get-ChildItem "dist\AayDocCapio" -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB, 1)
+Write-Host "[OK] Compiled to dist\AayDocCapio\ (${exeSize} MB total)"
 
 # ── Step 6: Inno Setup ───────────────────────────────────────────
 Write-Host ""
-Write-Host "[Step 6] Building installer with Inno Setup..."
+Write-Host "--------------------------------------------------------"
+Write-Host "[Step 6] Inno Setup installer"
+Write-Host "--------------------------------------------------------"
 
 $isccPaths = @(
     "C:\Program Files (x86)\Inno Setup 7\ISCC.exe",
@@ -133,40 +177,59 @@ $isccPaths = @(
 $iscc = $isccPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
 
 if (-not $iscc) {
-    Write-Host "[Warning] Inno Setup not found. Skipping installer."
+    Write-Host "  [Warning] Inno Setup not found in standard locations. Skipping."
+    Write-Host "  Install from: jrsoftware.org/isdl.php"
 } else {
+    Write-Host "  Using: $iscc"
+    Write-Host "  Building installer..."
     & $iscc scripts\installer.iss
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[Error] Inno Setup build failed."
         exit 1
     }
+    $setupSize = [math]::Round((Get-Item "installer_output\AayDocCapio_Setup_v1.0.0.exe").Length / 1MB, 1)
+    Write-Host "[OK] Installer created: installer_output\AayDocCapio_Setup_v1.0.0.exe (${setupSize} MB)"
 }
 
 # ── Step 7: WiX MSI ──────────────────────────────────────────────
 Write-Host ""
-Write-Host "[Step 7] Building MSI with WiX..."
+Write-Host "--------------------------------------------------------"
+Write-Host "[Step 7] WiX MSI"
+Write-Host "--------------------------------------------------------"
 
 $wix = Get-Command wix -ErrorAction SilentlyContinue
 if (-not $wix) {
-    Write-Host "[Warning] WiX not found in PATH. Skipping MSI build."
-    Write-Host "          Install with: dotnet tool install --global wix"
+    Write-Host "  [Warning] WiX not found in PATH. Skipping MSI build."
+    Write-Host "  Install with: dotnet tool install --global wix"
 } else {
+    Write-Host "  WiX found at: $($wix.Source)"
+    $wixVer = & wix --version 2>&1
+    Write-Host "  WiX version : $wixVer"
+
     if (-not (Test-Path "installer_output")) { New-Item -ItemType Directory -Path "installer_output" | Out-Null }
-    # Accept OSMF EULA required by WiX v7 (WIX7015); no-op if already accepted
+
+    Write-Host "  Accepting OSMF EULA..."
     & wix eula accept wix7
-    # Install UI extension if not already present (no-op if installed)
+
+    Write-Host "  Ensuring UI extension is installed..."
     & wix extension add WixToolset.UI.wixext --global 2>$null
-    & wix build scripts\installer.wxs -out installer_output\AayDocCapio.msi -ext WixToolset.UI.wixext
+
+    Write-Host "  Building MSI..."
+    & wix build scripts\installer.wxs -out installer_output\AayDocCapio.msi -ext WixToolset.UI.wixext -arch x64
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[Error] WiX MSI build failed."
         exit 1
     }
-    Write-Host "[OK] MSI created: installer_output\AayDocCapio.msi"
+    $msiSize = [math]::Round((Get-Item "installer_output\AayDocCapio.msi").Length / 1MB, 1)
+    Write-Host "[OK] MSI created: installer_output\AayDocCapio.msi (${msiSize} MB)"
 }
 
+# ── Summary ───────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "========================================================"
-Write-Host "  Build complete!"
+Write-Host "  Build complete! $(Get-Date -Format 'HH:mm:ss')"
+Write-Host "========================================================"
+Write-Host "  Build dir  : $WIN_DEST"
 Write-Host "  App folder : dist\AayDocCapio\"
 Write-Host "  Installer  : installer_output\AayDocCapio_Setup_v1.0.0.exe"
 Write-Host "  MSI        : installer_output\AayDocCapio.msi"

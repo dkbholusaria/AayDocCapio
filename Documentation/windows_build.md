@@ -130,7 +130,7 @@ Prerequisite: Nuitka output exists at `dist\AayDocCapio\`, WiX installed.
 ```powershell
 cd C:\AayDocCapio-build
 wix eula accept wix7
-wix build scripts\installer.wxs -out installer_output\AayDocCapio.msi -ext WixToolset.UI.wixext
+wix build scripts\installer.wxs -out installer_output\AayDocCapio.msi -ext WixToolset.UI.wixext -arch x64
 ```
 
 Output: `installer_output\AayDocCapio.msi`
