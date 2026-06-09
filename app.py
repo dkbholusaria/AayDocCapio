@@ -673,15 +673,12 @@ class AayDocCapioApp(QMainWindow):
 
         logo_path = os.path.join(_bundled_dir(), "assets", "brand", "logo_full.png")
         logo_label = QLabel()
-        logo_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        logo_label.setFixedHeight(HDR_H)
+        logo_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        logo_label.setScaledContents(True)
         if os.path.exists(logo_path):
-            pix = QPixmap(logo_path)
-            # scale to header height preserving aspect ratio
-            logo_label.setPixmap(
-                pix.scaledToHeight(HDR_H, Qt.TransformationMode.SmoothTransformation)
-            )
+            logo_label.setPixmap(QPixmap(logo_path))
         hl.addWidget(logo_label)
-        hl.addStretch()
         return hdr
 
     def _mk_left_panel(self):
