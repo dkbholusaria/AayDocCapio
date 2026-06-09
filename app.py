@@ -595,9 +595,6 @@ class AayDocCapioApp(QMainWindow):
         self.setWindowTitle("AayDocCapio — Standalone Secure Utility")
         self.setMinimumSize(1100, 720)
         self.resize(1200, 780)
-        _icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
-        if os.path.exists(_icon_path):
-            self.setWindowIcon(QIcon(_icon_path))
 
         self.vault = VaultManager(
             vault_path=os.path.join(_app_dir(), "tax_vault.json"))
@@ -1954,9 +1951,11 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setStyleSheet(APP_STYLE)
+    window = AayDocCapioApp()
     _app_icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
     if os.path.exists(_app_icon_path):
-        app.setWindowIcon(QIcon(_app_icon_path))
-    window = AayDocCapioApp()
+        _icon = QIcon(_app_icon_path)
+        app.setWindowIcon(_icon)
+        window.setWindowIcon(_icon)
     window.show()
     sys.exit(app.exec())
