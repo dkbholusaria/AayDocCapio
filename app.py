@@ -664,38 +664,39 @@ class AayDocCapioApp(QMainWindow):
 
     def _mk_header(self):
         hdr = QFrame()
-        hdr.setFixedHeight(72)
-        hdr.setStyleSheet("QFrame { background: #FFFFFF; border-bottom: 1px solid #E2E8F0; }")
+        hdr.setFixedHeight(90)
+        hdr.setStyleSheet("QFrame { background: #FFFFFF; border-bottom: 2px solid #E2E8F0; }")
         hl = QHBoxLayout(hdr)
-        hl.setContentsMargins(24, 0, 24, 0)
+        hl.setContentsMargins(32, 0, 32, 0)
         hl.setSpacing(0)
 
-        # App icon
+        # App icon — large enough to anchor the header
         icon_label = QLabel()
         icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
         if os.path.exists(icon_path):
             icon_label.setPixmap(
-                QPixmap(icon_path).scaled(44, 44, Qt.AspectRatioMode.KeepAspectRatio,
+                QPixmap(icon_path).scaled(62, 62, Qt.AspectRatioMode.KeepAspectRatio,
                                           Qt.TransformationMode.SmoothTransformation)
             )
         hl.addWidget(icon_label)
-        hl.addSpacing(12)
+        hl.addSpacing(18)
 
         # Name + tagline stacked
         name_block = QWidget()
         name_block.setStyleSheet("background:transparent;")
         vl = QVBoxLayout(name_block)
         vl.setContentsMargins(0, 0, 0, 0)
-        vl.setSpacing(2)
+        vl.setSpacing(3)
 
-        # "AayDoc Capio™" using HTML for two-colour text
-        title = QLabel('<span style="color:#0D1F4E; font-size:22px; font-weight:700;">AayDoc </span>'
-                       '<span style="color:#1A8FE3; font-size:22px; font-weight:700;">Capio</span>'
-                       '<sup><span style="color:#1A8FE3; font-size:11px;">™</span></sup>')
+        title = QLabel(
+            '<span style="color:#0D1F4E; font-size:28px; font-weight:800; letter-spacing:-0.5px;">AayDoc </span>'
+            '<span style="color:#1A8FE3; font-size:28px; font-weight:800; letter-spacing:-0.5px;">Capio</span>'
+            '<sup><span style="color:#1A8FE3; font-size:13px; font-weight:700;">™</span></sup>'
+        )
         title.setStyleSheet("background:transparent;")
 
         tagline = QLabel("Tax Documents. Delivered to You.")
-        tagline.setStyleSheet("color:#64748B; font-size:11px; background:transparent;")
+        tagline.setStyleSheet("color:#64748B; font-size:12px; letter-spacing:0.3px; background:transparent;")
 
         vl.addStretch()
         vl.addWidget(title)
