@@ -751,30 +751,34 @@ class AayDocCapioApp(QMainWindow):
         vl.addWidget(dev_title)
         vl.addSpacing(8)
 
-        def _link_row(icon_char, icon_color, display_text, url=None):
+        def _link_row(icon_file, display_text, url=None):
             row = QHBoxLayout(); row.setSpacing(10); row.setContentsMargins(0,0,0,0)
-            icon_l = QLabel(icon_char)
-            icon_l.setFixedWidth(22)
-            icon_l.setStyleSheet(f"color:{icon_color}; font-size:15px; background:transparent; border:none;")
+            icon_l = QLabel()
+            icon_l.setFixedSize(22, 22)
+            icon_path = os.path.join(_bundled_dir(), "resources", icon_file)
+            if os.path.exists(icon_path):
+                icon_l.setPixmap(QPixmap(icon_path).scaled(22, 22, Qt.AspectRatioMode.KeepAspectRatio,
+                                                            Qt.TransformationMode.SmoothTransformation))
+            icon_l.setStyleSheet("background:transparent; border:none;")
             row.addWidget(icon_l)
             if url:
                 lbl = QLabel(f'<a href="{url}" style="color:#1A8FE3; text-decoration:none;">{display_text}</a>')
                 lbl.setOpenExternalLinks(True)
+                lbl.setStyleSheet("background:transparent; border:none; font-size:13px;")
             else:
                 lbl = QLabel(display_text)
-                lbl.setStyleSheet("color:#334155; font-size:13px; font-weight:600;")
-            lbl.setStyleSheet(lbl.styleSheet() + " background:transparent; border:none;")
+                lbl.setStyleSheet("color:#334155; font-size:13px; font-weight:600; background:transparent; border:none;")
             row.addWidget(lbl)
             row.addStretch()
             return row
 
-        vl.addLayout(_link_row("👤", "#64748B", "CA. Deepak Bhholusaria"))
+        vl.addLayout(_link_row("icon_person.png",   "CA. Deepak Bhholusaria"))
         vl.addSpacing(6)
-        vl.addLayout(_link_row("✉", "#1A8FE3", "deepak@ailearrning.guru", "mailto:deepak@ailearrning.guru"))
+        vl.addLayout(_link_row("icon_email.png",    "deepak@ailearrning.guru",          "mailto:deepak@ailearrning.guru"))
         vl.addSpacing(6)
-        vl.addLayout(_link_row("🔗", "#0A66C2", "linkedin.com/in/bhholusaria", "https://www.linkedin.com/in/bhholusaria/"))
+        vl.addLayout(_link_row("icon_linkedin.png", "linkedin.com/in/bhholusaria",      "https://www.linkedin.com/in/bhholusaria/"))
         vl.addSpacing(6)
-        vl.addLayout(_link_row("📇", "#16A34A", "Virtual Card", "https://www.qrcodechimp.com/page/deepakb?chk1668183417"))
+        vl.addLayout(_link_row("icon_vcard.png",    "Virtual Card",                     "https://www.qrcodechimp.com/page/deepakb?chk1668183417"))
         vl.addSpacing(16)
 
         # ── Divider ───────────────────────────────────────────────────────────
