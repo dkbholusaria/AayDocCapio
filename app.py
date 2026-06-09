@@ -678,7 +678,7 @@ class AayDocCapioApp(QMainWindow):
         hl.addSpacing(14)
 
         title = QLabel("AayDoc Capio")
-        title.setStyleSheet("color:#F8FAFC; font-family:'Nunito'; font-size:20px; font-weight:700; letter-spacing:1px;")
+        title.setStyleSheet("color:#F8FAFC; font-family:'Ubuntu Sans'; font-size:20px; font-weight:700; letter-spacing:1px;")
         hl.addWidget(title)
         hl.addSpacing(16)
 
@@ -689,7 +689,7 @@ class AayDocCapioApp(QMainWindow):
         hl.addSpacing(16)
 
         sub = QLabel("Tax Documents. Delivered to You.")
-        sub.setStyleSheet("color:#93C5FD; font-family:'Nunito'; font-size:12px;")
+        sub.setStyleSheet("color:#93C5FD; font-family:'Ubuntu Sans'; font-size:12px;")
         hl.addWidget(sub)
         hl.addStretch()
         return hdr
@@ -1954,8 +1954,7 @@ if __name__ == "__main__":
     app.setStyleSheet(APP_STYLE)
     from PyQt6.QtGui import QFontDatabase
     _fonts_dir = os.path.join(_bundled_dir(), "resources", "fonts")
-    for _ttf in ["Nunito-Regular.ttf", "Nunito-SemiBold.ttf", "Nunito-Bold.ttf"]:
-        QFontDatabase.addApplicationFont(os.path.join(_fonts_dir, _ttf))
+    QFontDatabase.addApplicationFont(os.path.join(_fonts_dir, "UbuntuSans.ttf"))
     window = AayDocCapioApp()
     _app_icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
     if os.path.exists(_app_icon_path):
