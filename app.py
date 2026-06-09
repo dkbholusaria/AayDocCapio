@@ -695,15 +695,15 @@ class AayDocCapioApp(QMainWindow):
         tl.setSpacing(0)
 
         aay = QLabel("AayDoc ")
-        aay.setStyleSheet("color:#0D1F4E; font-size:28px; font-weight:800; background:transparent;")
+        aay.setStyleSheet("color:#0D1F4E; font-family:'Avenir Next'; font-size:26px; font-weight:700; background:transparent;")
         tl.addWidget(aay)
 
         capio = QLabel("Capio")
-        capio.setStyleSheet("color:#1A8FE3; font-size:28px; font-weight:800; background:transparent;")
+        capio.setStyleSheet("color:#1A8FE3; font-family:'Avenir Next'; font-size:26px; font-weight:700; background:transparent;")
         tl.addWidget(capio)
 
         tm = QLabel("™")
-        tm.setStyleSheet("color:#1A8FE3; font-size:13px; font-weight:700; background:transparent; padding-bottom:14px;")
+        tm.setStyleSheet("color:#1A8FE3; font-family:'Avenir Next'; font-size:12px; font-weight:700; background:transparent; padding-bottom:14px;")
         tl.addWidget(tm)
         tl.addStretch()
 
@@ -1976,9 +1976,9 @@ if __name__ == "__main__":
     app.setStyle("Fusion")
     app.setStyleSheet(APP_STYLE)
     from PyQt6.QtGui import QFontDatabase
-    _font_path = os.path.join(_bundled_dir(), "resources", "fonts", "UbuntuSans.ttf")
-    if os.path.exists(_font_path):
-        QFontDatabase.addApplicationFont(_font_path)
+    _fonts_dir = os.path.join(_bundled_dir(), "resources", "fonts")
+    for _ttf in ["AvenirNext-Regular.ttf", "AvenirNext-Medium.ttf", "AvenirNext-DemiBold.ttf", "AvenirNext-Bold.ttf"]:
+        QFontDatabase.addApplicationFont(os.path.join(_fonts_dir, _ttf))
     window = AayDocCapioApp()
     _app_icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
     if os.path.exists(_app_icon_path):
