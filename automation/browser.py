@@ -15,7 +15,7 @@ def _playwright_browsers_dir() -> str:
         base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
     else:
         base = os.path.join(os.path.expanduser("~"), ".local", "share")
-    path = os.path.join(base, "ITDDocsDownloader", "browsers")
+    path = os.path.join(base, "AayDocCapio", "browsers")
     os.makedirs(path, exist_ok=True)
     return path
 
@@ -50,21 +50,28 @@ async def _install_chromium(log_callback=None):
     if log_callback:
         log_callback("[Browser] Downloading Chromium — this only happens once, please wait...")
 
-    cli = _playwright_cli()
-    if cli is None or cli == "playwright":
-        # Normal Python environment
-        cmd = [sys.executable, "-m", "playwright", "install", "chromium"]
-    else:
-        # Frozen: run the bundled __main__.py with the system Python
-        # Find system python
-        py = os.environ.get("PYTHONPATH_FOR_PLAYWRIGHT") or "python"
-        cmd = [py, cli, "install", "chromium"]
+    try:
+        from playwright._impl._driver import compute_driver_executable, get_driver_env
+        driver_executable, driver_cli = compute_driver_executable()
+        cmd = [driver_executable, driver_cli, "install", "chromium"]
+        env = {**os.environ, **get_driver_env(), "PLAYWRIGHT_BROWSERS_PATH": browsers_dir}
+    except Exception as e:
+        # Fallback to system execution if playwright internals change
+        if log_callback:
+            log_callback(f"[Browser] Internals error: {e}, falling back to system execution...")
+        cli = _playwright_cli()
+        if cli is None or cli == "playwright":
+            cmd = [sys.executable, "-m", "playwright", "install", "chromium"]
+        else:
+            py = os.environ.get("PYTHONPATH_FOR_PLAYWRIGHT") or "python"
+            cmd = [py, cli, "install", "chromium"]
+        env = {**os.environ, "PLAYWRIGHT_BROWSERS_PATH": browsers_dir}
 
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        env={**os.environ, "PLAYWRIGHT_BROWSERS_PATH": browsers_dir}
+        env=env
     )
     stdout, stderr = await proc.communicate()
     if proc.returncode != 0:

@@ -2,8 +2,8 @@
 # Exit immediately if any command exits with a non-zero status
 set -e
 
-# Change directory to the script's directory
-cd "$(dirname "${BASH_SOURCE[0]}")"
+# Change directory to the project root (one level up from scripts)
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 echo "========================================================"
 echo "   Tax Downloader - Python Virtual Environment Setup    "

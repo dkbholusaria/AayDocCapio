@@ -15,6 +15,7 @@ AppSupportURL=https://github.com/dkbholusaria/AayDocCapio/issues
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
+SourceDir=..
 OutputDir=installer_output
 OutputBaseFilename=AayDocCapio_Setup_v{#MyAppVersion}
 Compression=lzma2/ultra64

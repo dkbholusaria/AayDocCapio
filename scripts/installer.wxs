@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package
+    Name="AayDocCapio"
+    Version="1.0.0"
+    Manufacturer="Deepak Bholusaria"
+    UpgradeCode="FDE0FF07-C5AF-4909-BCD4-150EB9E14AA2"
+    Scope="perMachine"
+    InstallerVersion="500"
+    Platform="x64">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of AayDocCapio is already installed." />
+
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <WixVariable Id="WixUILicenseRtf" Value="$(sys.SOURCEFILEDIR)license.rtf" />
+
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+
+    <!-- ── Install directory ───────────────────────────────────── -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="AayDocCapio" />
+    </StandardDirectory>
+
+    <!-- ── App data directory ─────────────────────────────────── -->
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="APPDATAFOLDER" Name="AayDocCapio" />
+    </StandardDirectory>
+
+    <!-- ── Start Menu ─────────────────────────────────────────── -->
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="AayDocCapio" />
+    </StandardDirectory>
+
+    <!-- ── Features ───────────────────────────────────────────── -->
+    <Feature Id="MainApplication" Title="AayDocCapio" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentGroupRef Id="AppDataFiles" />
+      <ComponentRef Id="ApplicationShortcut" />
+    </Feature>
+
+  </Package>
+
+  <!-- ── App files (entire dist\AayDocCapio\ folder) ─────────── -->
+  <Fragment>
+    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
+      <Files Include="..\dist\AayDocCapio\**" />
+    </ComponentGroup>
+  </Fragment>
+
+  <!-- ── Seed assessment_years.json to AppData ────────────────── -->
+  <Fragment>
+    <ComponentGroup Id="AppDataFiles" Directory="APPDATAFOLDER">
+      <Component Id="AssessmentYears" Guid="C5D4E3F2-1A2B-3C4D-5E6F-7A8B9C0D1E2F">
+        <File Source="$(sys.SOURCEFILEDIR)..\assessment_years.json" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+
+  <!-- ── Start Menu shortcut ───────────────────────────────────── -->
+  <Fragment>
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <Component Id="ApplicationShortcut" Guid="87A38D23-1A20-437F-A179-415CBAFE4F92">
+        <Shortcut
+          Id="ApplicationStartMenuShortcut"
+          Name="AayDocCapio"
+          Target="[INSTALLFOLDER]AayDocCapio.exe"
+          WorkingDirectory="INSTALLFOLDER" />
+        <Shortcut
+          Id="UninstallShortcut"
+          Name="Uninstall AayDocCapio"
+          Target="[SystemFolder]msiexec.exe"
+          Arguments="/x [ProductCode]" />
+        <RemoveFolder Id="CleanUpShortCut" On="uninstall" />
+        <RegistryValue
+          Root="HKCU"
+          Key="Software\AayDocCapio"
+          Name="installed"
+          Type="integer"
+          Value="1"
+          KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+
+</Wix>

@@ -9,6 +9,7 @@ Built with **PyQt6** + **Playwright**. Runs on Windows and Linux/WSL.
 ## Quick Links
 
 - [Full Documentation](Documentation/README.md)
+- [Windows Build Guide](Documentation/windows_build.md) — Nuitka, Inno Setup, WiX MSI
 - [Development Log](Documentation/DEVELOPMENT_LOG.md) — design decisions & debugging history
 - [Contributing Guide](Documentation/CONTRIBUTING.md)
 - [License](Documentation/LICENSE)
