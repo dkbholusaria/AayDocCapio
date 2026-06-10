@@ -44,11 +44,14 @@ def _get_system_proxy() -> dict | None:
 def _playwright_browsers_dir() -> str:
     """
     Stable directory for Playwright browser binaries.
-    Always stored in AppData (or ~/.local/share on Linux) so they
-    survive app updates and are shared across runs.
+    Always stored in AppData (~/Library/Application Support on macOS,
+    ~/.local/share on Linux) so they survive app updates and are
+    shared across runs.
     """
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
+    elif sys.platform == "darwin":
+        base = os.path.join(os.path.expanduser("~"), "Library", "Application Support")
     else:
         base = os.path.join(os.path.expanduser("~"), ".local", "share")
     path = os.path.join(base, "AayDocCapio", "browsers")
