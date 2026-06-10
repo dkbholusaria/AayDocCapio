@@ -530,7 +530,7 @@ def _status_style(text: str):
 class BatchProgressDialog(QDialog):
     """
     Live progress popup shown during any batch run.
-    Columns: Name | Save Path | 📂 | Status
+    Columns: Name | PAN | Status | Save Path | ...
     Status and path updates arrive from the worker thread via Qt signals.
     """
     # (pan, status_text) and (pan, folder_path)
@@ -539,9 +539,10 @@ class BatchProgressDialog(QDialog):
 
     # column indices
     _COL_NAME   = 0
-    _COL_PATH   = 1
-    _COL_FOLDER = 2
-    _COL_STATUS = 3
+    _COL_PAN    = 1
+    _COL_STATUS = 2
+    _COL_PATH   = 3
+    _COL_FOLDER = 4
 
     def __init__(self, targets: list, mode: str, ay: str = "",
                  stop_callback=None, output_dir: str = "", parent=None):
@@ -585,17 +586,19 @@ class BatchProgressDialog(QDialog):
         layout.addWidget(title)
 
         # ── Table ────────────────────────────────────────────────────────────
-        self._table = QTableWidget(len(targets), 4)
-        self._table.setHorizontalHeaderLabels(["Name", "Save Path", "", "Status"])
+        self._table = QTableWidget(len(targets), 5)
+        self._table.setHorizontalHeaderLabels(["Name", "PAN", "Status", "Save Path", ""])
 
         hdr = self._table.horizontalHeader()
         hdr.setSectionResizeMode(self._COL_NAME,   QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(self._COL_PAN,    QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(self._COL_STATUS, QHeaderView.ResizeMode.Interactive)
         hdr.setSectionResizeMode(self._COL_PATH,   QHeaderView.ResizeMode.Stretch)
         hdr.setSectionResizeMode(self._COL_FOLDER, QHeaderView.ResizeMode.Fixed)
-        hdr.setSectionResizeMode(self._COL_STATUS, QHeaderView.ResizeMode.Interactive)
-        self._table.setColumnWidth(self._COL_NAME,   200)
-        self._table.setColumnWidth(self._COL_FOLDER, 36)
-        self._table.setColumnWidth(self._COL_STATUS, 280)
+        self._table.setColumnWidth(self._COL_NAME,   180)
+        self._table.setColumnWidth(self._COL_PAN,    120)
+        self._table.setColumnWidth(self._COL_STATUS, 260)
+        self._table.setColumnWidth(self._COL_FOLDER, 40)
 
         hdr.setStyleSheet(
             "QHeaderView::section{"
@@ -631,27 +634,35 @@ class BatchProgressDialog(QDialog):
             name_item.setForeground(QColor("#1E293B"))
             self._table.setItem(row, self._COL_NAME, name_item)
 
+            pan_item = QTableWidgetItem(pan)
+            pan_item.setForeground(QColor("#475569"))
+            pan_item.setTextAlignment(
+                Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
+            self._table.setItem(row, self._COL_PAN, pan_item)
+
+            self._set_status_item(row, "⬜ Waiting")
+
             path_item = QTableWidgetItem("—")
             path_item.setForeground(QColor("#94A3B8"))
             path_item.setFont(QFont(_UI_FONT, 9))
             self._table.setItem(row, self._COL_PATH, path_item)
 
-            # 📂 open-folder button (disabled until path is set)
-            folder_btn = QPushButton("📂")
-            folder_btn.setFixedSize(30, 30)
+            # "..." open-folder button (disabled until path is set)
+            folder_btn = QPushButton("...")
+            folder_btn.setFixedSize(34, 28)
             folder_btn.setEnabled(False)
             folder_btn.setToolTip("Open client folder")
             folder_btn.setStyleSheet(
-                "QPushButton{border:none;background:transparent;font-size:14px;}"
-                "QPushButton:enabled:hover{background:#F1F5F9;border-radius:4px;}"
-                "QPushButton:disabled{color:#CBD5E1;}")
+                "QPushButton{border:1px solid #CBD5E1;background:#F8FAFC;"
+                "border-radius:4px;font-size:12px;font-weight:600;color:#475569;}"
+                "QPushButton:enabled:hover{background:#E2E8F0;border-color:#94A3B8;}"
+                "QPushButton:disabled{color:#CBD5E1;border-color:#E2E8F0;}")
             folder_btn.clicked.connect(lambda _checked, p=pan: self._open_client_folder(p))
             cell_w = QWidget(); cell_l = QHBoxLayout(cell_w)
             cell_l.setContentsMargins(3, 0, 3, 0)
+            cell_l.setAlignment(Qt.AlignmentFlag.AlignCenter)
             cell_l.addWidget(folder_btn)
             self._table.setCellWidget(row, self._COL_FOLDER, cell_w)
-
-            self._set_status_item(row, "⬜ Waiting")
 
         layout.addWidget(self._table, stretch=1)
 
