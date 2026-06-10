@@ -1,6 +1,9 @@
 # Vault — contains encrypted credentials, never commit
 tax_vault.json
 
+# Downloaded client documents — never commit
+outputs/
+
 # Logs
 app.log
 *.log
