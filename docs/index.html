@@ -7,65 +7,92 @@
   <meta name="description" content="Automates secure bulk retrieval of Form 26AS, AIS and TIS from the Income Tax e-Filing Portal for multiple clients in one click." />
   <style>
     :root {
-      --navy:  #0A1628;
-      --blue:  #2563EB;
-      --cyan:  #0EA5E9;
-      --text:  #0F172A;
-      --muted: #64748B;
-      --bg:    #F8FAFC;
-      --card:  #FFFFFF;
-      --line:  #E2E8F0;
+      --navy:      #0D1F5C;
+      --navy-dark: #0A1628;
+      --gold:      #C8922A;
+      --gold-lt:   #F0BE6A;
+      --white:     #FFFFFF;
+      --bg:        #F7F8FC;
+      --bg2:       #EEF1F8;
+      --text:      #0D1F5C;
+      --muted:     #5A6A8A;
+      --line:      #D8DEED;
+      --card:      #FFFFFF;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-      background: var(--bg);
+      background: var(--white);
       color: var(--text);
-      line-height: 1.6;
-      font-size: 0.95rem;
+      line-height: 1.65;
+      font-size: 0.97rem;
     }
 
-    a { color: var(--blue); text-decoration: none; }
-    a:hover { text-decoration: underline; }
+    a { color: var(--navy); text-decoration: none; }
+    a:hover { color: var(--gold); text-decoration: underline; }
+
     code {
-      background: #EFF6FF;
-      color: #1E40AF;
-      padding: 2px 6px;
+      background: #EEF1F8;
+      color: var(--navy);
+      padding: 2px 7px;
       border-radius: 4px;
-      font-size: 0.88rem;
+      font-size: 0.87rem;
+      font-family: "Consolas", "Menlo", monospace;
     }
 
-    /* ── Header ──────────────────────────────────────────────── */
-    header {
-      background: linear-gradient(135deg, var(--navy), #1E3A8A, #2563EB);
+    /* ── Nav bar ─────────────────────────────────────────────── */
+    nav {
+      background: var(--navy-dark);
+      padding: 0 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 52px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .nav-brand {
       color: #fff;
-      text-align: center;
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+    .nav-brand span { color: var(--gold-lt); }
+
+    .nav-links { display: flex; gap: 24px; }
+    .nav-links a {
+      color: rgba(255,255,255,0.75);
+      font-size: 0.88rem;
+      font-weight: 500;
+      transition: color 0.15s;
+    }
+    .nav-links a:hover { color: var(--gold-lt); text-decoration: none; }
+
+    /* ── Hero ────────────────────────────────────────────────── */
+    .hero {
+      background: var(--white);
+      border-bottom: 3px solid var(--gold);
       padding: 64px 24px 56px;
+      text-align: center;
     }
 
-    .hdr-logo {
-      width: 72px;
-      height: 72px;
-      border-radius: 16px;
-      margin-bottom: 20px;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+    .hero-logo {
+      max-width: 560px;
+      width: 90%;
+      margin: 0 auto 36px;
+      display: block;
     }
 
-    header h1 {
-      font-size: 2.4rem;
-      font-weight: 800;
-      letter-spacing: -0.5px;
-      margin-bottom: 6px;
-    }
-
-    header h1 span { color: var(--cyan); }
-
-    .tagline {
-      font-size: 1.1rem;
-      opacity: 0.85;
-      margin-bottom: 32px;
+    .hero-desc {
+      font-size: 1.15rem;
+      color: var(--muted);
+      max-width: 560px;
+      margin: 0 auto 36px;
+      line-height: 1.7;
     }
 
     .btn-row {
@@ -73,401 +100,561 @@
       gap: 14px;
       justify-content: center;
       flex-wrap: wrap;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
     }
 
     .btn {
       display: inline-flex;
+      flex-direction: column;
       align-items: center;
-      gap: 8px;
-      padding: 14px 28px;
-      border-radius: 10px;
-      font-size: 1.05rem;
-      font-weight: 600;
+      padding: 14px 32px;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 700;
       cursor: pointer;
       transition: transform 0.12s ease, box-shadow 0.12s ease;
       text-decoration: none;
+      line-height: 1.3;
     }
-    .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.2); text-decoration: none; }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(13,31,92,0.18); text-decoration: none; }
 
-    .btn-primary { background: #fff; color: #1E40AF; }
-    .btn-secondary { background: transparent; color: #fff; border: 1.5px solid rgba(255,255,255,0.4); }
+    .btn-primary {
+      background: var(--navy);
+      color: #fff;
+    }
+    .btn-primary:hover { color: #fff; }
+
+    .btn-secondary {
+      background: var(--white);
+      color: var(--navy);
+      border: 2px solid var(--navy);
+    }
 
     .btn-sub {
-      font-size: 0.8rem;
-      opacity: 0.7;
+      font-size: 0.75rem;
       font-weight: 400;
-      display: block;
-      margin-top: 2px;
+      opacity: 0.75;
+      margin-top: 3px;
     }
 
-    .all-releases {
-      font-size: 0.85rem;
-      color: rgba(255,255,255,0.65);
-      margin-top: 16px;
+    .hero-meta {
+      font-size: 0.83rem;
+      color: var(--muted);
+      margin-top: 14px;
     }
-    .all-releases a { color: rgba(255,255,255,0.85); text-decoration: underline; }
+    .hero-meta a { color: var(--gold); }
+
+    /* ── Divider strip ───────────────────────────────────────── */
+    .strip {
+      background: var(--navy);
+      color: rgba(255,255,255,0.9);
+      text-align: center;
+      padding: 18px 24px;
+      font-size: 0.95rem;
+      letter-spacing: 0.2px;
+    }
+    .strip strong { color: var(--gold-lt); }
 
     /* ── Layout ──────────────────────────────────────────────── */
     .wrap {
-      max-width: 920px;
+      max-width: 940px;
       margin: 0 auto;
       padding: 0 24px;
     }
 
-    section { padding: 48px 0; }
+    section { padding: 56px 0; }
+    section.alt { background: var(--bg); }
     section + section { border-top: 1px solid var(--line); }
+    section.alt + section, section + section.alt { border-top: none; }
+
+    .section-label {
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 8px;
+    }
 
     h2 {
-      font-size: 1.5rem;
-      font-weight: 700;
-      margin-bottom: 24px;
-      color: var(--text);
+      font-size: 1.65rem;
+      font-weight: 800;
+      color: var(--navy);
+      margin-bottom: 28px;
+      line-height: 1.25;
     }
 
     /* ── Feature cards ───────────────────────────────────────── */
     .cards {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
       gap: 20px;
     }
 
     .card {
       background: var(--card);
       border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 24px;
+      border-top: 3px solid var(--navy);
+      border-radius: 10px;
+      padding: 24px 22px;
+      transition: box-shadow 0.15s;
     }
+    .card:hover { box-shadow: 0 6px 24px rgba(13,31,92,0.10); }
 
-    .card h3 {
-      font-size: 1.05rem;
-      font-weight: 700;
-      margin-bottom: 8px;
-    }
-
-    .card p { color: var(--muted); font-size: 0.95rem; }
+    .card-icon { font-size: 1.6rem; margin-bottom: 12px; display: block; }
+    .card h3 { font-size: 1rem; font-weight: 700; color: var(--navy); margin-bottom: 8px; }
+    .card p  { color: var(--muted); font-size: 0.93rem; line-height: 1.6; }
 
     /* ── Steps ───────────────────────────────────────────────── */
-    .steps { counter-reset: step; }
+    .steps { counter-reset: step; display: flex; flex-direction: column; gap: 14px; }
 
     .step {
       position: relative;
       background: var(--card);
       border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 20px 24px 20px 64px;
-      margin-bottom: 14px;
+      border-radius: 10px;
+      padding: 20px 24px 20px 72px;
       counter-increment: step;
     }
 
     .step::before {
       content: counter(step);
       position: absolute;
-      left: 18px;
+      left: 20px;
       top: 50%;
       transform: translateY(-50%);
-      width: 30px;
-      height: 30px;
-      background: var(--blue);
+      width: 32px;
+      height: 32px;
+      background: var(--gold);
       color: #fff;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-weight: 700;
+      font-weight: 800;
       font-size: 0.9rem;
     }
 
-    .step h3 { font-size: 1rem; font-weight: 700; margin-bottom: 4px; }
-    .step p  { color: var(--muted); font-size: 0.95rem; }
+    .step h3 { font-size: 1rem; font-weight: 700; color: var(--navy); margin-bottom: 5px; }
+    .step p  { color: var(--muted); font-size: 0.93rem; }
 
     /* ── Screenshots ─────────────────────────────────────────── */
     .shot-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
-      gap: 20px;
+      gap: 24px;
     }
 
-    .shot-item { }
-    .shot-item p {
-      font-size: 0.85rem;
-      color: var(--muted);
-      margin-top: 6px;
-      text-align: center;
-    }
-
-    .shot {
+    .shot-item figure { margin: 0; }
+    .shot-item img {
       width: 100%;
-      border-radius: 12px;
+      border-radius: 10px;
       border: 1px solid var(--line);
       display: block;
+      box-shadow: 0 4px 16px rgba(13,31,92,0.08);
+    }
+    .shot-item figcaption {
+      font-size: 0.83rem;
+      color: var(--muted);
+      text-align: center;
+      margin-top: 8px;
     }
 
-    /* ── Notes ───────────────────────────────────────────────── */
-    .note {
-      background: #FEF9C3;
-      border: 1px solid #FDE047;
-      border-radius: 10px;
+    /* ── Alert boxes ─────────────────────────────────────────── */
+    .alert {
+      border-radius: 8px;
       padding: 14px 18px;
       font-size: 0.92rem;
-      margin-top: 16px;
+      margin-top: 18px;
+      border-left: 4px solid;
     }
-
-    .ok {
-      background: #DCFCE7;
-      border: 1px solid #86EFAC;
-      border-radius: 10px;
-      padding: 14px 18px;
-      font-size: 0.92rem;
-      margin-top: 16px;
-    }
+    .alert-warn  { background: #FEF9EB; border-color: var(--gold); color: #7A5A10; }
+    .alert-ok    { background: #EAF8EE; border-color: #3DAB5A;    color: #1A6630; }
+    .alert-info  { background: #EEF1F8; border-color: var(--navy); color: var(--navy); }
 
     /* ── FAQ ─────────────────────────────────────────────────── */
     details.faq {
       background: var(--card);
       border: 1px solid var(--line);
-      border-radius: 10px;
+      border-left: 4px solid var(--navy);
+      border-radius: 8px;
       padding: 14px 18px;
       margin-bottom: 10px;
+      transition: box-shadow 0.15s;
     }
+    details.faq[open] { box-shadow: 0 4px 16px rgba(13,31,92,0.08); }
 
     details.faq summary {
       cursor: pointer;
-      font-weight: 600;
+      font-weight: 700;
       font-size: 0.97rem;
+      color: var(--navy);
       list-style: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
     details.faq summary::-webkit-details-marker { display: none; }
-    details.faq summary::before { content: "▶ "; font-size: 0.7rem; color: var(--blue); }
-    details.faq[open] summary::before { content: "▼ "; }
+    details.faq summary::after { content: "+"; color: var(--gold); font-size: 1.2rem; font-weight: 700; }
+    details.faq[open] summary::after { content: "−"; }
 
-    details.faq p {
-      margin-top: 10px;
-      color: var(--muted);
-      font-size: 0.95rem;
-    }
+    details.faq p { margin-top: 10px; color: var(--muted); font-size: 0.93rem; }
 
     /* ── About ───────────────────────────────────────────────── */
-    .about-box {
-      background: var(--card);
-      border: 1px solid var(--line);
+    .about-card {
+      background: var(--navy);
       border-radius: 12px;
-      padding: 28px 32px;
+      padding: 36px 40px;
       display: flex;
-      gap: 24px;
-      align-items: flex-start;
+      gap: 32px;
+      align-items: center;
+      color: rgba(255,255,255,0.9);
     }
 
-    .about-box img { width: 56px; height: 56px; border-radius: 10px; flex-shrink: 0; }
+    .about-card img {
+      width: 72px;
+      height: 72px;
+      border-radius: 12px;
+      flex-shrink: 0;
+      border: 2px solid var(--gold);
+    }
 
-    .about-box h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
-    .about-box p  { color: var(--muted); font-size: 0.95rem; margin-bottom: 6px; }
-    .about-box a  { color: var(--blue); font-size: 0.9rem; }
+    .about-card h3 { font-size: 1.2rem; font-weight: 800; color: #fff; margin-bottom: 6px; }
+    .about-card p  { font-size: 0.93rem; color: rgba(255,255,255,0.75); margin-bottom: 10px; line-height: 1.65; }
+
+    .about-links { display: flex; gap: 16px; flex-wrap: wrap; }
+    .about-links a {
+      color: var(--gold-lt);
+      font-size: 0.9rem;
+      font-weight: 600;
+      border-bottom: 1px solid rgba(200,146,42,0.35);
+      padding-bottom: 1px;
+    }
+    .about-links a:hover { color: #fff; text-decoration: none; border-color: #fff; }
+
+    /* ── Etymology box ───────────────────────────────────────── */
+    .etym {
+      background: var(--bg2);
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--gold);
+      border-radius: 8px;
+      padding: 20px 24px;
+      margin-bottom: 32px;
+    }
+    .etym h3 { font-size: 0.95rem; font-weight: 800; color: var(--navy); margin-bottom: 10px; }
+    .etym .parts { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 10px; }
+    .etym .part span { font-weight: 800; color: var(--navy); }
+    .etym .part em   { color: var(--gold); font-style: normal; font-weight: 700; }
+    .etym .part small { display: block; color: var(--muted); font-size: 0.83rem; }
+    .etym p { color: var(--muted); font-size: 0.92rem; }
+
+    /* ── Security table ──────────────────────────────────────── */
+    .sec-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    .sec-table th, .sec-table td { padding: 11px 14px; text-align: left; font-size: 0.92rem; border-bottom: 1px solid var(--line); }
+    .sec-table th { background: var(--navy); color: #fff; font-weight: 700; }
+    .sec-table tr:last-child td { border-bottom: none; }
+    .sec-table tr:nth-child(even) td { background: var(--bg); }
+    .sec-table td:first-child { font-weight: 600; color: var(--navy); width: 38%; }
 
     /* ── Footer ──────────────────────────────────────────────── */
     footer {
-      border-top: 1px solid var(--line);
-      padding: 28px 24px 40px;
+      background: var(--navy-dark);
+      color: rgba(255,255,255,0.55);
       text-align: center;
-      color: var(--muted);
-      font-size: 0.88rem;
+      padding: 32px 24px 40px;
+      font-size: 0.87rem;
+    }
+    footer a { color: var(--gold-lt); }
+    footer a:hover { color: #fff; text-decoration: none; }
+    .footer-logo {
+      max-width: 200px;
+      opacity: 0.85;
+      margin: 0 auto 16px;
+      display: block;
     }
 
-    footer a { color: var(--blue); }
-
     /* ── Responsive ──────────────────────────────────────────── */
-    @media (max-width: 560px) {
-      header h1 { font-size: 1.7rem; }
-      .about-box { flex-direction: column; }
+    @media (max-width: 600px) {
+      h2 { font-size: 1.35rem; }
+      .hero-logo { max-width: 100%; }
+      .hero-desc { font-size: 1rem; }
+      .about-card { flex-direction: column; padding: 28px 24px; }
       .shot-grid { grid-template-columns: 1fr; }
+      nav .nav-links { display: none; }
+      .step { padding-left: 60px; }
     }
   </style>
 </head>
 <body>
 
-<!-- ── Header ──────────────────────────────────────────────────── -->
-<header>
-  <img src="app_icon.png" alt="AayDocCapio icon" class="hdr-logo" />
-  <h1>AayDoc <span>Capio</span><sup style="font-size:1rem;vertical-align:super;">™</sup></h1>
-  <p class="tagline">Tax Documents. Delivered to You.</p>
+<!-- ── Nav ──────────────────────────────────────────────────────── -->
+<nav>
+  <span class="nav-brand">AayDoc <span>Capio</span>™</span>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#how">How it works</a>
+    <a href="#screenshots">Screenshots</a>
+    <a href="#faq">FAQ</a>
+    <a href="https://github.com/dkbholusaria/AayDocCapio" target="_blank">GitHub</a>
+  </div>
+</nav>
+
+<!-- ── Hero ─────────────────────────────────────────────────────── -->
+<div class="hero">
+  <img src="AayDoc_FullLogo.png" alt="AayDocCapio — Tax Documents. Delivered to You." class="hero-logo" />
+
+  <p class="hero-desc">
+    Automates the secure bulk retrieval of <strong>Form 26AS, AIS and TIS</strong>
+    directly from the Income Tax e-Filing Portal — for multiple clients, in one click.
+  </p>
 
   <div class="btn-row">
     <a class="btn btn-primary"
        href="https://github.com/dkbholusaria/AayDocCapio/releases/download/v1.0.0/AayDocCapio_Setup_v1.0.0.exe">
       ⬇ Download for Windows
-      <span class="btn-sub">v1.0.0 · Wizard Installer · 56 MB</span>
+      <span class="btn-sub">v1.0.0 &nbsp;·&nbsp; Wizard Installer &nbsp;·&nbsp; 56 MB</span>
     </a>
     <a class="btn btn-secondary"
        href="https://github.com/dkbholusaria/AayDocCapio/releases/download/v1.0.0/AayDocCapio.msi">
       ⬇ Download MSI
-      <span class="btn-sub">Enterprise / Silent Install · 67 MB</span>
+      <span class="btn-sub">Enterprise / Silent Install &nbsp;·&nbsp; 67 MB</span>
     </a>
   </div>
 
-  <p class="all-releases">
-    Windows 10/11 (64-bit) &nbsp;·&nbsp;
-    <a href="https://github.com/dkbholusaria/AayDocCapio/releases">All releases</a>
+  <p class="hero-meta">
+    Windows 10 / 11 &nbsp;(64-bit) &nbsp;·&nbsp; Requires Google Chrome for AIS/TIS &nbsp;·&nbsp;
+    <a href="https://github.com/dkbholusaria/AayDocCapio/releases">All releases →</a>
   </p>
-</header>
+</div>
 
-<!-- ── What it does ────────────────────────────────────────────── -->
-<section>
+<!-- ── Strip ─────────────────────────────────────────────────────── -->
+<div class="strip">
+  Built for <strong>Chartered Accountants &amp; Tax Professionals</strong> — eliminate repetitive manual downloads across all your clients.
+</div>
+
+<!-- ── Etymology ─────────────────────────────────────────────────── -->
+<section id="about-name">
   <div class="wrap">
-    <h2>What it does</h2>
+    <div class="etym">
+      <h3>Why AayDoc Capio?</h3>
+      <div class="parts">
+        <div class="part"><span>Aay</span> <em>(आय)</em><small>Income</small></div>
+        <div class="part"><span>·</span></div>
+        <div class="part"><span>Doc</span><small>Documents</small></div>
+        <div class="part"><span>·</span></div>
+        <div class="part"><span>Capio</span> <em>(Latin)</em><small>To Obtain / Retrieve</small></div>
+      </div>
+      <p>AayDocCapio is designed to securely retrieve and deliver income tax documents, eliminating repetitive manual downloads and improving efficiency for tax professionals.</p>
+    </div>
+
+<!-- ── Features ───────────────────────────────────────────────────── -->
+    <div class="section-label">Features</div>
+    <h2 id="features">Everything you need for bulk tax downloads</h2>
     <div class="cards">
       <div class="card">
-        <h3>🔐 Encrypted Credential Vault</h3>
-        <p>PAN, DOB, and portal passwords stored locally using PBKDF2HMAC + Fernet AES-128. Nothing leaves your machine.</p>
+        <span class="card-icon">🔐</span>
+        <h3>Encrypted Credential Vault</h3>
+        <p>PAN, DOB, and portal passwords stored locally with PBKDF2HMAC + Fernet AES-128. Nothing leaves your machine.</p>
       </div>
       <div class="card">
-        <h3>📑 Bulk Download</h3>
-        <p>Download Form 26AS (PDF + TXT), AIS (PDF), and TIS (PDF) for multiple clients in one click.</p>
+        <span class="card-icon">📑</span>
+        <h3>One-Click Bulk Download</h3>
+        <p>Download Form 26AS (PDF + TXT), AIS (PDF), and TIS (PDF) for all selected clients in a single run.</p>
       </div>
       <div class="card">
-        <h3>🔓 Auto PDF Unlocking</h3>
-        <p>Downloaded PDFs are automatically unlocked using PAN and DOB — open immediately without passwords.</p>
+        <span class="card-icon">🔓</span>
+        <h3>Auto PDF Unlocking</h3>
+        <p>Downloaded PDFs are automatically unlocked using PAN and DOB — open immediately, no passwords needed.</p>
       </div>
       <div class="card">
-        <h3>📊 Live Batch Progress</h3>
-        <p>Per-client real-time status popup with step-by-step logs. Stop mid-batch at any time.</p>
+        <span class="card-icon">📊</span>
+        <h3>Live Batch Progress</h3>
+        <p>Per-client real-time status with step-by-step logs. Isolates failures — one client never aborts the rest.</p>
       </div>
       <div class="card">
-        <h3>📥 Excel / CSV Import</h3>
-        <p>Bulk-import assessees from Excel or CSV. Generate a pre-formatted import template in one click.</p>
+        <span class="card-icon">📥</span>
+        <h3>Excel / CSV Import</h3>
+        <p>Bulk-load assessees from Excel or CSV. Generate a pre-formatted import template in one click.</p>
       </div>
       <div class="card">
-        <h3>🌐 Headless by Default</h3>
-        <p>Browser runs invisibly in the background for speed. Toggle "Show Browser" for step-by-step debugging.</p>
+        <span class="card-icon">🌐</span>
+        <h3>Silent Background Mode</h3>
+        <p>Runs fully headless — no browser windows flashing. Toggle "Show Browser" only when debugging is needed.</p>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ── Screenshots ─────────────────────────────────────────────── -->
-<section>
+<!-- ── How it works ───────────────────────────────────────────────── -->
+<section class="alt" id="how">
   <div class="wrap">
-    <h2>Screenshots</h2>
-    <div class="shot-grid">
-      <div class="shot-item">
-        <img src="screenshots/ADC_26ASBatch.png" alt="26AS Batch Download" class="shot" />
-        <p>Batch Progress — 26AS Download</p>
-      </div>
-      <div class="shot-item">
-        <img src="screenshots/ADC_AISRequestPlaced.png" alt="AIS Request" class="shot" />
-        <p>Batch Progress — AIS Generation Request</p>
-      </div>
-      <div class="shot-item">
-        <img src="screenshots/ADC_AISDownload.png" alt="AIS Download" class="shot" />
-        <p>Batch Progress — AIS Download</p>
-      </div>
-      <div class="shot-item">
-        <img src="screenshots/ADC_AISRequestResult.png" alt="AIS Request Result" class="shot" />
-        <p>AIS Request Result</p>
-      </div>
-      <div class="shot-item">
-        <img src="screenshots/ADC_ImportDialog.png" alt="Import Dialog" class="shot" />
-        <p>Bulk Import — File Picker</p>
-      </div>
-      <div class="shot-item">
-        <img src="screenshots/ADC_Aboutus.png" alt="About Dialog" class="shot" />
-        <p>About AayDocCapio</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ── How to get started ───────────────────────────────────────── -->
-<section>
-  <div class="wrap">
-    <h2>How to get started</h2>
+    <div class="section-label">How it works</div>
+    <h2>Up and running in 5 steps</h2>
     <div class="steps">
       <div class="step">
-        <h3>Download & Install</h3>
-        <p>Run <code>AayDocCapio_Setup_v1.0.0.exe</code>. The wizard installs the app and downloads the Chromium browser engine automatically (one-time, ~150 MB).</p>
+        <h3>Install the app</h3>
+        <p>Run <code>AayDocCapio_Setup_v1.0.0.exe</code>. The wizard installs the app and downloads the Chromium browser engine automatically — a one-time ~150 MB download.</p>
       </div>
       <div class="step">
         <h3>Add your clients</h3>
-        <p>Use the <strong>Single Profile</strong> tab to add clients manually, or use <strong>Bulk Operations → Import CSV / Excel</strong> to load multiple assessees at once.</p>
+        <p>Use the <strong>Single Profile</strong> tab to add clients manually, or go to <strong>Bulk Operations → Import CSV / Excel</strong> to load multiple assessees at once.</p>
       </div>
       <div class="step">
-        <h3>Select Assessment Year & Output Folder</h3>
-        <p>Pick the Assessment Year from the dropdown and set your preferred output directory.</p>
+        <h3>Select Assessment Year &amp; Output Folder</h3>
+        <p>Pick the Assessment Year from the dropdown and choose where downloaded files should be saved.</p>
       </div>
       <div class="step">
         <h3>Select clients and click Run</h3>
-        <p>Tick the clients you want, click <strong>▶ Run</strong>, and choose <em>Download 26AS</em> or <em>Download / Request AIS &amp; TIS</em>. A live progress popup tracks every client.</p>
+        <p>Tick one or more clients, click <strong>▶ Run</strong>, and choose <em>Download 26AS</em> or <em>Download / Request AIS &amp; TIS</em>. A live progress popup tracks every client in real time.</p>
       </div>
       <div class="step">
         <h3>Collect your files</h3>
-        <p>Downloaded PDFs are saved to <code>&lt;Output Directory&gt;/&lt;PAN&gt;-&lt;Name&gt;/AY_&lt;year&gt;/</code> and auto-unlocked — ready to use immediately.</p>
+        <p>Files are saved to <code>&lt;Output Dir&gt;/&lt;PAN&gt;-&lt;Name&gt;/AY_&lt;year&gt;/</code> and auto-unlocked — ready to use immediately.</p>
       </div>
     </div>
 
-    <div class="note">
-      ⚠️ <strong>AIS/TIS require Google Chrome.</strong> Form 26AS works without it. Make sure Chrome is installed before downloading AIS or TIS.
+    <div class="alert alert-warn" style="margin-top:24px;">
+      ⚠️ <strong>AIS/TIS require Google Chrome.</strong> Form 26AS works without it. Ensure Chrome is installed before downloading AIS or TIS.
     </div>
-    <div class="ok">
+    <div class="alert alert-ok">
       ✅ <strong>Large AIS files?</strong> If the ITD server queues your AIS, AayDocCapio notifies you. Wait ~5 minutes, then use <em>Download Previously Requested AIS</em> to fetch it automatically.
     </div>
   </div>
 </section>
 
-<!-- ── FAQ ─────────────────────────────────────────────────────── -->
-<section>
+<!-- ── Screenshots ────────────────────────────────────────────────── -->
+<section id="screenshots">
   <div class="wrap">
-    <h2>Common questions</h2>
-
-    <details class="faq">
-      <summary>Is my data safe? Where are credentials stored?</summary>
-      <p>All credentials (PAN, DOB, portal password) are stored in an encrypted local file <code>tax_vault.json</code> on your machine using PBKDF2HMAC + Fernet AES-128 encryption. Nothing is sent to any server — the app only communicates directly with the official ITD e-Filing portal.</p>
-    </details>
-
-    <details class="faq">
-      <summary>Why does AIS/TIS require Google Chrome?</summary>
-      <p>The Insight/AIS portal's download buttons only fire correctly in real Google Chrome. Playwright's bundled Chromium does not trigger the download event on that portal. Form 26AS works fine with either.</p>
-    </details>
-
-    <details class="faq">
-      <summary>What does "AIS request queued" mean?</summary>
-      <p>When an AIS file is large, the ITD server queues its generation. AayDocCapio will show a notification with a reference number. Wait ~5 minutes, select those clients again, and click <em>Download Previously Requested AIS</em>.</p>
-    </details>
-
-    <details class="faq">
-      <summary>Can one client's failure stop the whole batch?</summary>
-      <p>No. Each client is isolated — if one fails (e.g. wrong password, portal timeout), the reason is shown in the progress popup and the batch continues for the remaining clients.</p>
-    </details>
-
-    <details class="faq">
-      <summary>Can I use this without installing it?</summary>
-      <p>Yes. The portable folder <code>dist\AayDocCapio\</code> from the build can be zipped and run directly without installation. For most users the installer is easier.</p>
-    </details>
-  </div>
-</section>
-
-<!-- ── About ────────────────────────────────────────────────────── -->
-<section>
-  <div class="wrap">
-    <h2>About</h2>
-    <div class="about-box">
-      <img src="app_icon.png" alt="AayDocCapio" />
-      <div>
-        <h3>CA. Deepak Bhholusaria</h3>
-        <p>AayDocCapio was built to eliminate the repetitive manual effort of downloading income tax documents for multiple clients. <em>Aay</em> (Income) · <em>Doc</em> (Documents) · <em>Capio</em> (Latin: To Obtain).</p>
-        <p>Built with PyQt6 · Playwright · Python &nbsp;|&nbsp; Free &amp; Open Source</p>
-        <a href="mailto:deepak@ailearrning.guru">deepak@ailearrning.guru</a> &nbsp;·&nbsp;
-        <a href="https://www.linkedin.com/in/bhholusaria/" target="_blank">LinkedIn</a> &nbsp;·&nbsp;
-        <a href="https://github.com/dkbholusaria/AayDocCapio" target="_blank">GitHub</a>
+    <div class="section-label">Screenshots</div>
+    <h2>See it in action</h2>
+    <div class="shot-grid">
+      <div class="shot-item">
+        <figure>
+          <img src="screenshots/ADC_26ASBatch.png" alt="26AS Batch Download" />
+          <figcaption>Batch Progress — 26AS Download for multiple clients</figcaption>
+        </figure>
+      </div>
+      <div class="shot-item">
+        <figure>
+          <img src="screenshots/ADC_AISRequestPlaced.png" alt="AIS Request" />
+          <figcaption>Batch Progress — AIS Generation Request</figcaption>
+        </figure>
+      </div>
+      <div class="shot-item">
+        <figure>
+          <img src="screenshots/ADC_AISDownload.png" alt="AIS Download" />
+          <figcaption>Batch Progress — AIS/TIS Download in progress</figcaption>
+        </figure>
+      </div>
+      <div class="shot-item">
+        <figure>
+          <img src="screenshots/ADC_AISRequestResult.png" alt="AIS Request Result" />
+          <figcaption>AIS Request Result — queued on ITD servers</figcaption>
+        </figure>
+      </div>
+      <div class="shot-item">
+        <figure>
+          <img src="screenshots/ADC_ImportDialog.png" alt="Import Dialog" />
+          <figcaption>Bulk Import — Excel / CSV file picker</figcaption>
+        </figure>
+      </div>
+      <div class="shot-item">
+        <figure>
+          <img src="screenshots/ADC_Aboutus.png" alt="About Dialog" />
+          <figcaption>About AayDocCapio</figcaption>
+        </figure>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ── Footer ───────────────────────────────────────────────────── -->
+<!-- ── Security ───────────────────────────────────────────────────── -->
+<section class="alt">
+  <div class="wrap">
+    <div class="section-label">Security</div>
+    <h2>Your data stays on your machine</h2>
+    <table class="sec-table">
+      <thead>
+        <tr><th>Concern</th><th>How it's handled</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Credential storage</td><td>AES-128 (Fernet) encrypted local file — <code>tax_vault.json</code></td></tr>
+        <tr><td>Key derivation</td><td>PBKDF2HMAC / SHA-256, 100,000 iterations</td></tr>
+        <tr><td>PAN in logs</td><td>PAN is never included in error or log output</td></tr>
+        <tr><td>Vault in git</td><td><code>tax_vault.json</code> is in <code>.gitignore</code> — never committed</td></tr>
+        <tr><td>Network</td><td>Credentials only submitted to the official ITD portal — no third-party services</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ── FAQ ────────────────────────────────────────────────────────── -->
+<section id="faq">
+  <div class="wrap">
+    <div class="section-label">FAQ</div>
+    <h2>Common questions</h2>
+
+    <details class="faq">
+      <summary>Is my data safe? Where are credentials stored?</summary>
+      <p>All credentials (PAN, DOB, portal password) are stored in an encrypted local file <code>tax_vault.json</code> on your machine using PBKDF2HMAC + Fernet AES-128. Nothing is sent to any server — the app only communicates directly with the official ITD e-Filing portal.</p>
+    </details>
+
+    <details class="faq">
+      <summary>Why does AIS/TIS require Google Chrome?</summary>
+      <p>The Insight/AIS portal's download buttons only fire correctly in real Google Chrome. Playwright's bundled Chromium does not trigger the download event on that portal. Form 26AS works fine without Chrome.</p>
+    </details>
+
+    <details class="faq">
+      <summary>What does "AIS request queued" mean?</summary>
+      <p>When an AIS file is large, the ITD server queues its generation. AayDocCapio will show a notification with a reference number. Wait ~5 minutes, select those clients, and click <em>Download Previously Requested AIS</em>.</p>
+    </details>
+
+    <details class="faq">
+      <summary>Can one client's failure stop the whole batch?</summary>
+      <p>No. Each client is fully isolated — if one fails (wrong password, portal timeout, etc.), the reason is shown in the progress popup and the batch continues for all remaining clients.</p>
+    </details>
+
+    <details class="faq">
+      <summary>Where are the downloaded files saved?</summary>
+      <p>Files are saved to the output directory you choose, in the structure: <code>&lt;Output Dir&gt;/&lt;PAN&gt;-&lt;Client Name&gt;/AY_&lt;year&gt;/</code>. PDFs are automatically unlocked and ready to open.</p>
+    </details>
+
+    <details class="faq">
+      <summary>Can I use it without installing?</summary>
+      <p>Yes. The portable <code>dist\AayDocCapio\</code> build folder can be zipped and run directly without installation. The installer is recommended for most users.</p>
+    </details>
+  </div>
+</section>
+
+<!-- ── About ──────────────────────────────────────────────────────── -->
+<section class="alt">
+  <div class="wrap">
+    <div class="section-label">About</div>
+    <h2>Built by a CA, for CAs</h2>
+    <div class="about-card">
+      <img src="app_icon.png" alt="AayDocCapio" />
+      <div>
+        <h3>CA. Deepak Bhholusaria</h3>
+        <p>AayDocCapio was created to eliminate the repetitive manual effort of downloading income tax documents for multiple clients every season. It is free, open source, and built entirely with Python.</p>
+        <div class="about-links">
+          <a href="mailto:deepak@ailearrning.guru">✉ deepak@ailearrning.guru</a>
+          <a href="https://www.linkedin.com/in/bhholusaria/" target="_blank">in LinkedIn</a>
+          <a href="https://www.qrcodechimp.com/page/deepakb?chk1668183417" target="_blank">Virtual Card</a>
+          <a href="https://github.com/dkbholusaria/AayDocCapio" target="_blank">GitHub Repo</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ─────────────────────────────────────────────────────── -->
 <footer>
-  <p>© 2026 Deepak Bhholusaria &nbsp;·&nbsp;
-     <a href="https://github.com/dkbholusaria/AayDocCapio">GitHub</a> &nbsp;·&nbsp;
-     <a href="https://github.com/dkbholusaria/AayDocCapio/releases">Releases</a> &nbsp;·&nbsp;
-     MIT License
+  <img src="AayDoc_FullLogo.png" alt="AayDocCapio" class="footer-logo" />
+  <p>
+    © 2026 Deepak Bhholusaria &nbsp;·&nbsp;
+    <a href="https://github.com/dkbholusaria/AayDocCapio">GitHub</a> &nbsp;·&nbsp;
+    <a href="https://github.com/dkbholusaria/AayDocCapio/releases">Releases</a> &nbsp;·&nbsp;
+    MIT License
   </p>
 </footer>
 
