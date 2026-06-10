@@ -711,7 +711,7 @@ class BatchProgressDialog(QDialog):
             "QProgressBar{border:1px solid #CBD5E1;border-radius:9px;"
             "background:#94A3B8;text-align:center;font-size:11px;"
             "font-weight:600;color:#FFFFFF;}"
-            "QProgressBar::chunk{background:#2563EB;border-radius:9px;}")
+            "QProgressBar::chunk{background:#16A34A;border-radius:9px;}")
         layout.addWidget(self._progress_bar)
 
         # ── Footer: saving-to + buttons ───────────────────────────────────────
