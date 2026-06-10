@@ -1071,14 +1071,39 @@ class AayDocCapioApp(QMainWindow):
 
     def _build_ui(self):
         # ── Menu bar ──────────────────────────────────────────────────────────
-        menubar = self.menuBar()
-        menubar.setStyleSheet(
+        _menu_ss = (
             "QMenuBar { background:#FFFFFF; color:#334155; font-size:13px; border-bottom:1px solid #E2E8F0; }"
             "QMenuBar::item { background:transparent; padding:4px 10px; }"
             "QMenuBar::item:selected { background:#F1F5F9; border-radius:4px; }"
             "QMenu { background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; }"
             "QMenu::item { padding:8px 24px; color:#334155; }"
-            "QMenu::item:selected { background:#DBEAFE; color:#1D4ED8; }")
+            "QMenu::item:selected { background:#DBEAFE; color:#1D4ED8; }"
+            "QMenu::separator { height:1px; background:#E2E8F0; margin:4px 0; }"
+        )
+        menubar = self.menuBar()
+        menubar.setStyleSheet(_menu_ss)
+
+        # Client Master menu
+        cm_menu = menubar.addMenu("Client Master")
+        act_add  = QAction("➕  Add New Client",          self); act_add.triggered.connect(self._open_add_client)
+        act_imp  = QAction("📥  Import from CSV / Excel", self); act_imp.triggered.connect(self.bulk_import)
+        act_exp  = QAction("📤  Export Client Data",      self); act_exp.triggered.connect(self.export_data)
+        act_tpl  = QAction("📄  Download Import Template",self); act_tpl.triggered.connect(self.generate_template)
+        cm_menu.addAction(act_add)
+        cm_menu.addSeparator()
+        cm_menu.addAction(act_imp)
+        cm_menu.addAction(act_exp)
+        cm_menu.addSeparator()
+        cm_menu.addAction(act_tpl)
+
+        # Settings menu
+        st_menu = menubar.addMenu("Settings")
+        act_yr   = QAction("📅  Manage Assessment Years", self); act_yr.triggered.connect(self.open_manage_years)
+        act_dir  = QAction("📂  Change Output Folder",    self); act_dir.triggered.connect(self.browse_output_dir)
+        st_menu.addAction(act_yr)
+        st_menu.addAction(act_dir)
+
+        # Help menu
         help_menu = menubar.addMenu("Help")
         about_action = QAction("About AayDocCapio", self)
         about_action.triggered.connect(self._show_about)
@@ -1091,18 +1116,7 @@ class AayDocCapioApp(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
 
         root.addWidget(self._mk_header())
-
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setHandleWidth(0)
-        splitter.setChildrenCollapsible(False)
-        splitter.setStyleSheet("QSplitter::handle{background:transparent;}")
-        left = self._mk_left_panel()
-        left.setFixedWidth(340)
-        splitter.addWidget(left)
-        splitter.addWidget(self._mk_right_panel())
-        splitter.setStretchFactor(1, 1)
-        root.addWidget(splitter, 1)
-
+        root.addWidget(self._mk_main_panel(), 1)
         root.addWidget(self._mk_footer())
 
     def _show_about(self):
@@ -1338,111 +1352,7 @@ class AayDocCapioApp(QMainWindow):
 
         return hdr
 
-    def _mk_left_panel(self):
-        panel = QWidget()
-        panel.setStyleSheet("background:#FFFFFF;")
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        tabs = QTabWidget()
-        tabs.setStyleSheet("QTabWidget::pane{border:none; background:transparent;}"
-                           "QTabBar{background:#FFFFFF; border-bottom:1px solid #E2E8F0;}"
-                           "QTabBar::tab{background:transparent;color:#64748B;padding:11px 20px;"
-                           "border:none;font-size:12px;font-weight:600;"
-                           "border-bottom:2px solid transparent;}"
-                           "QTabBar::tab:selected{color:#1D4ED8;border-bottom:2px solid #2563EB;}"
-                           "QTabBar::tab:hover:!selected{color:#334155;}")
-        layout.addWidget(tabs)
-
-        # ── Tab 1: Single Profile ─────────────────────────────────────────────
-        t1 = QWidget(); t1.setStyleSheet("background:transparent;")
-        fl = QVBoxLayout(t1); fl.setSpacing(3); fl.setContentsMargins(14, 10, 14, 10)
-
-        section_lbl = QLabel("CLIENT PROFILE")
-        section_lbl.setStyleSheet(
-            "color:#94A3B8; font-size:10px; font-weight:700; letter-spacing:1px;")
-        fl.addWidget(section_lbl)
-        fl.addSpacing(2)
-
-        for attr, label, ph, is_pwd in [
-            ("entry_name", "Full Name",       "e.g. John Doe", False),
-            ("entry_pan",  "PAN Number",      "e.g. AAAPT0001A",       False),
-            ("entry_dob",  "Date of Birth",   "DD-MM-YYYY",            False),
-            ("entry_pwd",  "Portal Password", "Enter password",         True),
-        ]:
-            lbl_w = QLabel(label)
-            lbl_w.setStyleSheet("color:#1a1a1a; font-size:11px; font-weight:600;")
-            fl.addWidget(lbl_w)
-            e = QLineEdit(); e.setPlaceholderText(ph)
-            if is_pwd:
-                e.setEchoMode(QLineEdit.EchoMode.Password)
-            e.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
-            setattr(self, attr, e)
-            fl.addWidget(e)
-            fl.addSpacing(1)
-
-        # PAN: max 10 chars, uppercase alphanumeric only, auto-uppercase
-        self.entry_pan.setMaxLength(10)
-        self.entry_pan.setValidator(
-            QRegularExpressionValidator(QRegularExpression("[A-Za-z0-9]{0,10}")))
-        self.entry_pan.textChanged.connect(
-            lambda t: self.entry_pan.setText(t.upper()) if t != t.upper() else None)
-
-        show_pwd = QCheckBox("Show password")
-        show_pwd.setStyleSheet("color:#64748B; font-size:11px; background:transparent;")
-        show_pwd.toggled.connect(
-            lambda v: self.entry_pwd.setEchoMode(
-                QLineEdit.EchoMode.Normal if v else QLineEdit.EchoMode.Password))
-        fl.addWidget(show_pwd)
-        fl.addSpacing(6)
-
-        self.btn_save = _btn("💾  Save Profile", "primary", height=32)
-        self.btn_save.clicked.connect(self.save_assessee)
-        fl.addWidget(self.btn_save)
-
-        self.btn_clear = _btn("✕  Clear Fields", "secondary", height=28)
-        self.btn_clear.clicked.connect(self.clear_form)
-        fl.addWidget(self.btn_clear)
-        fl.addStretch()
-        tabs.addTab(t1, "👤  Single Profile")
-
-        # ── Tab 2: Bulk Operations ────────────────────────────────────────────
-        t2 = QWidget(); t2.setStyleSheet("background:transparent;")
-        bl = QVBoxLayout(t2); bl.setSpacing(10); bl.setContentsMargins(18, 14, 18, 14)
-
-        section_lbl2 = QLabel("BULK OPERATIONS")
-        section_lbl2.setStyleSheet(
-            "color:#94A3B8; font-size:10px; font-weight:700; letter-spacing:1px;")
-        bl.addWidget(section_lbl2)
-        bl.addSpacing(4)
-
-        hint = QFrame()
-        hint.setStyleSheet("QFrame{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;}")
-        hl2 = QVBoxLayout(hint); hl2.setContentsMargins(14, 12, 14, 12)
-        hl2.addWidget(_lbl(
-            "1. Generate an Excel template.\n"
-            "2. Fill Name, PAN, DOB, Password.\n"
-            "3. Import to batch-load all records.",
-            11, color="#64748B"))
-        bl.addWidget(hint)
-
-        self.btn_bulk_import = _btn("📥  Import CSV / Excel", "success", height=38)
-        self.btn_bulk_import.clicked.connect(self.bulk_import)
-        bl.addWidget(self.btn_bulk_import)
-
-        self.btn_template = _btn("📄  Generate Upload Template", "outline", height=34)
-        self.btn_template.clicked.connect(self.generate_template)
-        bl.addWidget(self.btn_template)
-
-        self.btn_export = _btn("💾  Export Saved Data", "outline", height=34)
-        self.btn_export.clicked.connect(self.export_data)
-        bl.addWidget(self.btn_export)
-        bl.addStretch()
-        tabs.addTab(t2, "📂  Bulk Operations")
-
-        return panel
-
-    def _mk_right_panel(self):
+    def _mk_main_panel(self):
         panel = QWidget()
         panel.setStyleSheet("background:#FFFFFF;")
         layout = QVBoxLayout(panel)
@@ -1469,7 +1379,6 @@ class AayDocCapioApp(QMainWindow):
         self.search_box.textChanged.connect(self._apply_filter)
         layout.addWidget(self.search_box)
 
-        # True Table Widget instead of Col Header & Client Scroll Area
         layout.addWidget(self._mk_client_table(), 1)
 
         ctrl = self._mk_control_bar()
@@ -1508,6 +1417,7 @@ class AayDocCapioApp(QMainWindow):
         self.ay_combo.setCurrentText(saved_ay if saved_ay in ay_labels else "Select AY/TY")
         self.ay_combo.setFixedWidth(220)
         self.ay_combo.currentTextChanged.connect(self.save_ay_setting)
+        self.ay_combo.currentTextChanged.connect(lambda _: self.refresh_grid())
 
         manage_btn = QPushButton("⚙")
         manage_btn.setFixedSize(24, 24)
@@ -1560,22 +1470,33 @@ class AayDocCapioApp(QMainWindow):
 
         return bar
 
+    # Column indices for client table
+    _TC_CHK    = 0
+    _TC_NAME   = 1
+    _TC_PAN    = 2
+    _TC_DOB    = 3
+    _TC_STATUS = 4
+    _TC_PATH   = 5
+    _TC_ACTS   = 6
+
     def _mk_client_table(self):
-        # Create Table Widget with 0 rows and 5 columns
-        self.client_table = QTableWidget(0, 5)
-        self.client_table.setHorizontalHeaderLabels(["", "Name  ⇅", "PAN  ⇅", "Date of Birth", "Actions"])
-        
-        # Style the header section
+        self.client_table = QTableWidget(0, 7)
+        self.client_table.setHorizontalHeaderLabels([
+            "", "Name  ⇅", "PAN  ⇅", "Date of Birth",
+            "Last Download Status", "Last Saved Location", "Actions"
+        ])
+
         self.client_table.horizontalHeader().setStyleSheet(
-            "QHeaderView::section { background-color: #FFFFFF; border: none; border-right: 1px solid #CBD5E1; border-bottom: 1px solid #CBD5E1; font-weight: bold; color: #64748B; font-size: 11px; height: 34px; }"
+            "QHeaderView::section { background-color: #FFFFFF; border: none; "
+            "border-right: 1px solid #CBD5E1; border-bottom: 1px solid #CBD5E1; "
+            "font-weight: bold; color: #64748B; font-size: 11px; height: 34px; }"
         )
         self.client_table.verticalHeader().setVisible(False)
         self.client_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.client_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.client_table.setShowGrid(True)
         self.client_table.setAlternatingRowColors(False)
-        
-        # Style checkboxes and table
+
         chk_path = self.checkmark_path.replace("\\", "/")
         checkbox_style = (
             "QCheckBox { background: transparent; }"
@@ -1583,54 +1504,52 @@ class AayDocCapioApp(QMainWindow):
             "QCheckBox::indicator:hover { border-color: #0284C7; }"
             f"QCheckBox::indicator:checked {{ background-color: #0284C7; border-color: #0284C7; image: url('{chk_path}'); }}"
         )
-        
         self.client_table.setStyleSheet(
             "QTableWidget { border: 1.5px solid #CBD5E1; border-radius: 8px; background: #FFFFFF; outline: 0; gridline-color: #E2E8F0; }"
             "QTableWidget::item { border-bottom: 1px solid #E2E8F0; padding: 5px; }"
             + checkbox_style
         )
-        
-        # Set alignments for header items
+
         for col, align in [
-            (1, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
-            (2, Qt.AlignmentFlag.AlignCenter),
-            (3, Qt.AlignmentFlag.AlignCenter),
-            (4, Qt.AlignmentFlag.AlignCenter),
+            (self._TC_NAME,   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+            (self._TC_PAN,    Qt.AlignmentFlag.AlignCenter),
+            (self._TC_DOB,    Qt.AlignmentFlag.AlignCenter),
+            (self._TC_STATUS, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+            (self._TC_PATH,   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+            (self._TC_ACTS,   Qt.AlignmentFlag.AlignCenter),
         ]:
             item = self.client_table.horizontalHeaderItem(col)
             if item:
                 item.setTextAlignment(align)
-                
-        # Column width settings
-        self.client_table.setColumnWidth(0, 45)
-        self.client_table.setColumnWidth(2, 140)
-        self.client_table.setColumnWidth(3, 130)
-        self.client_table.setColumnWidth(4, 90)
-        
-        # Resize behaviors
+
+        self.client_table.setColumnWidth(self._TC_CHK,    45)
+        self.client_table.setColumnWidth(self._TC_PAN,   130)
+        self.client_table.setColumnWidth(self._TC_DOB,   120)
+        self.client_table.setColumnWidth(self._TC_STATUS, 170)
+        self.client_table.setColumnWidth(self._TC_ACTS,   72)
+
         header = self.client_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
-        
-        # Interactive sorting
+        header.setSectionResizeMode(self._TC_CHK,    QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(self._TC_NAME,   QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(self._TC_PAN,    QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(self._TC_DOB,    QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(self._TC_STATUS, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(self._TC_PATH,   QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(self._TC_ACTS,   QHeaderView.ResizeMode.Interactive)
+
         header.setSortIndicatorShown(False)
         header.sectionClicked.connect(self._on_header_clicked)
         self._current_sort_col = -1
         self._current_sort_order = Qt.SortOrder.AscendingOrder
-        
-        # Cell click listener
+
         self.client_table.cellClicked.connect(self._on_cell_clicked)
-        
-        # Create Header Checkbox
+
         self.header_cb = QCheckBox(header)
         self.header_cb.setFixedSize(18, 18)
         self.header_cb.setStyleSheet(checkbox_style)
         self.header_cb.toggled.connect(self.toggle_select_all)
         header.geometriesChanged.connect(self._position_header_checkbox)
-        
+
         self.client_table.setMinimumHeight(200)
         return self.client_table
 
@@ -1646,8 +1565,7 @@ class AayDocCapioApp(QMainWindow):
         self.header_cb.move(cb_x, cb_y)
 
     def _on_cell_clicked(self, row, col):
-        # Ignore columns 0 (checkbox) and 4 (actions) since they have their own click handlers
-        if col in (0, 4):
+        if col in (self._TC_CHK, self._TC_PATH, self._TC_ACTS):
             return
         # Guard: check if combo popup is open
         if hasattr(self, "ay_combo") and self.ay_combo._popup_was_open:
@@ -1660,7 +1578,7 @@ class AayDocCapioApp(QMainWindow):
                 cb.setChecked(not cb.isChecked())
 
     def _on_header_clicked(self, logical_index):
-        if logical_index not in (1, 2):  # Only sort on Name (1) and PAN (2)
+        if logical_index not in (self._TC_NAME, self._TC_PAN):
             return
             
         header = self.client_table.horizontalHeader()
@@ -1685,9 +1603,8 @@ class AayDocCapioApp(QMainWindow):
         self.client_table.sortByColumn(self._current_sort_col, self._current_sort_order)
         self.client_table.setSortingEnabled(False)
         
-        # Re-apply alternating colors after sort
         for row_idx in range(self.client_table.rowCount()):
-            item = self.client_table.item(row_idx, 1)
+            item = self.client_table.item(row_idx, self._TC_NAME)
             if item:
                 row_id = item.data(Qt.ItemDataRole.UserRole)
                 row_selected = row_id in self.selected_ids
@@ -1865,15 +1782,14 @@ class AayDocCapioApp(QMainWindow):
                 font.setBold(col == 2 or selected)
                 item.setFont(font)
         
-        # Apply background to cell widgets
-        cb_container = self.client_table.cellWidget(row_idx, 0)
+        cb_container = self.client_table.cellWidget(row_idx, self._TC_CHK)
         if cb_container:
             cb_container.setStyleSheet(f"background:{bg}; border:none;")
             cb = cb_container.findChild(QCheckBox)
             if cb:
                 cb.setStyleSheet("background:transparent;")
-                
-        acts_container = self.client_table.cellWidget(row_idx, 4)
+
+        acts_container = self.client_table.cellWidget(row_idx, self._TC_ACTS)
         if acts_container:
             acts_container.setStyleSheet(f"background:{bg}; border:none;")
 
@@ -1882,8 +1798,8 @@ class AayDocCapioApp(QMainWindow):
             return
         q = text.strip().lower()
         for row_idx in range(self.client_table.rowCount()):
-            name_item = self.client_table.item(row_idx, 1)
-            pan_item = self.client_table.item(row_idx, 2)
+            name_item = self.client_table.item(row_idx, self._TC_NAME)
+            pan_item = self.client_table.item(row_idx, self._TC_PAN)
             if not name_item or not pan_item:
                 continue
             visible = (not q
@@ -1915,13 +1831,23 @@ class AayDocCapioApp(QMainWindow):
         if hasattr(self, "header_cb"):
             self.header_cb.setEnabled(True)
             
+        # Load download history for currently selected AY
+        current_ay = self.ay_combo.currentText() if hasattr(self, "ay_combo") else ""
+        dl_history = {}
+        if current_ay and current_ay != "Select AY/TY":
+            try:
+                dl_history = self.vault.get_download_history(current_ay)
+            except Exception:
+                pass
+
         for i, a in enumerate(self.assessee_list):
             a_id = a.get("id")
+            pan  = a.get("pan", "")
             is_selected = a_id in self.selected_ids
-            
+
             self.client_table.insertRow(i)
-            
-            # Col 0: Checkbox inside a centered widget
+
+            # Col 0: Checkbox
             cb_container = QWidget()
             cb_layout = QHBoxLayout(cb_container)
             cb_layout.setContentsMargins(0, 0, 0, 0)
@@ -1931,62 +1857,90 @@ class AayDocCapioApp(QMainWindow):
             cb.toggled.connect(lambda checked, id_=a_id: self._on_check(id_, checked))
             self._checkbox_map[a_id] = cb
             cb_layout.addWidget(cb)
-            self.client_table.setCellWidget(i, 0, cb_container)
-            
-            # Col 1: Name item
+            self.client_table.setCellWidget(i, self._TC_CHK, cb_container)
+
+            # Col 1: Name
             name_item = QTableWidgetItem(a.get("name", ""))
             name_item.setData(Qt.ItemDataRole.UserRole, a_id)
             name_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            self.client_table.setItem(i, 1, name_item)
-            
-            # Col 2: PAN item
-            pan_item = QTableWidgetItem(a.get("pan", ""))
+            self.client_table.setItem(i, self._TC_NAME, name_item)
+
+            # Col 2: PAN (monospace)
+            pan_item = QTableWidgetItem(pan)
             pan_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.client_table.setItem(i, 2, pan_item)
-            
-            # Col 3: Date of Birth item
+            f = pan_item.font(); f.setFamily(_MONO_FONT); pan_item.setFont(f)
+            self.client_table.setItem(i, self._TC_PAN, pan_item)
+
+            # Col 3: Date of Birth
             dob_item = QTableWidgetItem(a.get("dob", ""))
             dob_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.client_table.setItem(i, 3, dob_item)
-            
-            # Col 4: Action buttons
+            self.client_table.setItem(i, self._TC_DOB, dob_item)
+
+            # Col 4: Last Download Status (from history)
+            hist = dl_history.get(pan, {})
+            status_text = hist.get("status", "—")
+            status_item = QTableWidgetItem(status_text)
+            status_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            if status_text.startswith("✅"):
+                status_item.setForeground(QColor("#15803D"))
+            elif status_text.startswith("❌"):
+                status_item.setForeground(QColor("#DC2626"))
+            else:
+                status_item.setForeground(QColor("#64748B"))
+            self.client_table.setItem(i, self._TC_STATUS, status_item)
+
+            # Col 5: Last Saved Location (hyperlink QLabel)
+            saved_path = hist.get("path", "")
+            path_lbl = QLabel()
+            path_lbl.setContentsMargins(6, 0, 6, 0)
+            path_lbl.setStyleSheet("background:transparent; border:none; font-size:11px;")
+            if saved_path and os.path.isdir(saved_path):
+                path_lbl.setText(
+                    f'<a href="{saved_path}" style="color:#1D4ED8;text-decoration:underline;">'
+                    f'{saved_path}</a>'
+                )
+                path_lbl.setToolTip(saved_path)
+                path_lbl.linkActivated.connect(lambda p=saved_path: _open_path(p))
+            else:
+                path_lbl.setText('<span style="color:#94A3B8;">—</span>')
+            self.client_table.setCellWidget(i, self._TC_PATH, path_lbl)
+
+            # Col 6: Actions
             edit_btn = QPushButton("✏")
             edit_btn.setFixedSize(28, 28)
-            edit_btn.setToolTip("Edit")
+            edit_btn.setToolTip("Edit client")
             edit_btn.setStyleSheet(
                 "QPushButton { background:transparent; border:none; font-size:16px; }"
                 "QPushButton:hover { color:#0284C7; }")
-            edit_btn.clicked.connect(lambda _, av=a: self.load_for_editing(av))
-            
+            edit_btn.clicked.connect(lambda _, av=a: self._open_edit_client(av))
+
             del_btn = QPushButton("🗑")
             del_btn.setFixedSize(28, 28)
-            del_btn.setToolTip("Delete")
+            del_btn.setToolTip("Delete client")
             del_btn.setStyleSheet(
                 "QPushButton { background:transparent; border:none; font-size:16px; }"
                 "QPushButton:hover { color:#DC2626; }")
             del_btn.clicked.connect(lambda _, id_=a_id: self.delete_assessee(id_))
-            
+
             acts_container = QWidget()
             acts_layout = QHBoxLayout(acts_container)
             acts_layout.setContentsMargins(0, 0, 0, 0)
-            acts_layout.setSpacing(6)
+            acts_layout.setSpacing(4)
             acts_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
             acts_layout.addWidget(edit_btn)
             acts_layout.addWidget(del_btn)
-            self.client_table.setCellWidget(i, 4, acts_container)
-            
-            # Apply row colors and styles
+            self.client_table.setCellWidget(i, self._TC_ACTS, acts_container)
+
             self._apply_row_style(i, is_selected, i)
-            
+
         # Re-apply active sort if any
-        if self._current_sort_col in (1, 2):
+        if self._current_sort_col in (self._TC_NAME, self._TC_PAN):
             self.client_table.setSortingEnabled(True)
             self.client_table.sortByColumn(self._current_sort_col, self._current_sort_order)
             self.client_table.setSortingEnabled(False)
-            
-            # Re-apply alternating colors after sort
+
             for row_idx in range(self.client_table.rowCount()):
-                item = self.client_table.item(row_idx, 1)
+                item = self.client_table.item(row_idx, self._TC_NAME)
                 if item:
                     row_id = item.data(Qt.ItemDataRole.UserRole)
                     row_selected = row_id in self.selected_ids
@@ -2008,7 +1962,7 @@ class AayDocCapioApp(QMainWindow):
         # Find the row in table widget and apply selection style
         if hasattr(self, "client_table"):
             for row_idx in range(self.client_table.rowCount()):
-                item = self.client_table.item(row_idx, 1)
+                item = self.client_table.item(row_idx, self._TC_NAME)
                 if item and item.data(Qt.ItemDataRole.UserRole) == id_:
                     self._apply_row_style(row_idx, checked, row_idx)
                     break
@@ -2025,12 +1979,10 @@ class AayDocCapioApp(QMainWindow):
             else:
                 self.selected_ids.discard(a_id)
                 
-        # Re-apply styling to all rows
         if hasattr(self, "client_table"):
             for row_idx in range(self.client_table.rowCount()):
-                item = self.client_table.item(row_idx, 1)
+                item = self.client_table.item(row_idx, self._TC_NAME)
                 if item:
-                    row_id = item.data(Qt.ItemDataRole.UserRole)
                     self._apply_row_style(row_idx, checked, row_idx)
                     
         self._update_count()
@@ -2048,40 +2000,109 @@ class AayDocCapioApp(QMainWindow):
 
     # ── Form Operations ───────────────────────────────────────────────────────
 
-    def load_for_editing(self, a):
-        self.editing_id = a.get("id")
-        self.entry_name.setText(a.get("name", ""))
-        self.entry_pan.setText(a.get("pan", ""))
-        self.entry_dob.setText(a.get("dob", ""))
-        self.entry_pwd.setText(a.get("password", ""))
-        self.btn_save.setText("💾 Update Profile")
-        self.btn_save.setStyleSheet(
-            "QPushButton{background:#EAB308;color:white;border:none;border-radius:6px;"
-            "padding:6px 16px;font-weight:bold;font-size:12px;}"
-            "QPushButton:hover{background:#CA8A04;}")
+    # ── Client Dialog (Add / Edit popup) ─────────────────────────────────────
 
-    def clear_form(self):
-        self.editing_id = None
-        for e in (self.entry_name, self.entry_pan, self.entry_dob, self.entry_pwd):
-            e.clear()
-        self.btn_save.setText("💾 Save Profile")
-        self.btn_save.setStyleSheet(
-            "QPushButton{background:#2563EB;color:white;border:none;border-radius:6px;"
-            "padding:6px 16px;font-weight:bold;font-size:12px;}"
-            "QPushButton:hover{background:#1D4ED8;}")
+    def _open_add_client(self):
+        self._client_dialog(None)
+
+    def _open_edit_client(self, a):
+        self._client_dialog(a)
+
+    def _client_dialog(self, a=None):
+        editing = a is not None
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Edit Client" if editing else "Add New Client")
+        dlg.setFixedWidth(400)
+        dlg.setStyleSheet(
+            "QDialog{background:#FFFFFF;}"
+            "QLabel{background:transparent;border:none;color:#334155;font-size:12px;}"
+            "QLineEdit{border:1px solid #CBD5E1;border-radius:6px;padding:6px 10px;"
+            "font-size:12px;background:#F8FAFC;}"
+            "QLineEdit:focus{border-color:#2563EB;background:#FFFFFF;}"
+        )
+        vl = QVBoxLayout(dlg)
+        vl.setContentsMargins(28, 24, 28, 24)
+        vl.setSpacing(0)
+
+        title_lbl = QLabel("Edit Client" if editing else "Add New Client")
+        title_lbl.setStyleSheet("font-size:16px;font-weight:700;color:#0F172A;")
+        vl.addWidget(title_lbl)
+        vl.addSpacing(18)
+
+        fields = {}
+        for attr, label, ph, is_pwd in [
+            ("name", "Full Name",       "e.g. Deepak Bholusaria", False),
+            ("pan",  "PAN Number",      "e.g. AEKPB0205L",        False),
+            ("dob",  "Date of Birth",   "DD-MM-YYYY",             False),
+            ("pwd",  "Portal Password", "Enter password",          True),
+        ]:
+            lbl_w = QLabel(label)
+            lbl_w.setStyleSheet("font-size:11px;font-weight:600;color:#475569;margin-bottom:3px;")
+            vl.addWidget(lbl_w)
+            e = QLineEdit()
+            e.setPlaceholderText(ph)
+            e.setFixedHeight(34)
+            if is_pwd:
+                e.setEchoMode(QLineEdit.EchoMode.Password)
+            e.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
+            vl.addWidget(e)
+            vl.addSpacing(10)
+            fields[attr] = e
+
+        # PAN: uppercase + alphanumeric
+        fields["pan"].setMaxLength(10)
+        fields["pan"].setValidator(
+            QRegularExpressionValidator(QRegularExpression("[A-Za-z0-9]{0,10}")))
+        fields["pan"].textChanged.connect(
+            lambda t, e=fields["pan"]: e.setText(t.upper()) if t != t.upper() else None)
+
+        # Show password toggle
+        show_cb = QCheckBox("Show password")
+        show_cb.setStyleSheet("color:#64748B;font-size:11px;background:transparent;")
+        show_cb.toggled.connect(
+            lambda v: fields["pwd"].setEchoMode(
+                QLineEdit.EchoMode.Normal if v else QLineEdit.EchoMode.Password))
+        vl.addWidget(show_cb)
+        vl.addSpacing(18)
+
+        # Pre-fill if editing
+        if editing:
+            fields["name"].setText(a.get("name", ""))
+            fields["pan"].setText(a.get("pan", ""))
+            fields["dob"].setText(a.get("dob", ""))
+            fields["pwd"].setText(a.get("password", ""))
+
+        # Buttons
+        btn_row = QHBoxLayout()
+        btn_cancel = _btn("Cancel", "secondary", height=34)
+        btn_save   = _btn("Update Client" if editing else "Add Client", "primary", height=34)
+        btn_row.addWidget(btn_cancel)
+        btn_row.addStretch()
+        btn_row.addWidget(btn_save)
+        vl.addLayout(btn_row)
+
+        btn_cancel.clicked.connect(dlg.reject)
+
+        def _save():
+            try:
+                edit_id = a.get("id") if editing else None
+                self.vault.add_update_assessee(
+                    fields["name"].text(), fields["pan"].text(),
+                    fields["dob"].text(), fields["pwd"].text(), edit_id)
+                action = "updated" if editing else "added"
+                self.log(f"[Vault] {fields['pan'].text()} {action}.")
+                dlg.accept()
+                self.refresh_grid()
+            except ValueError as ve:
+                QMessageBox.critical(dlg, "Validation Error", str(ve))
+            except Exception as ex:
+                QMessageBox.critical(dlg, "Error", str(ex))
+
+        btn_save.clicked.connect(_save)
+        dlg.exec()
 
     def save_assessee(self):
-        try:
-            self.vault.add_update_assessee(
-                self.entry_name.text(), self.entry_pan.text(),
-                self.entry_dob.text(), self.entry_pwd.text(), self.editing_id)
-            action = "updated" if self.editing_id else "added"
-            self.log(f"[Vault] Profile {self.entry_pan.text()} successfully {action}.")
-            self.clear_form(); self.refresh_grid()
-        except ValueError as ve:
-            QMessageBox.critical(self, "Validation Error", str(ve))
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to save profile: {e}")
+        self._open_add_client()
 
     def delete_assessee(self, assessee_id):
         if QMessageBox.question(self, "Confirm Delete",
@@ -2294,14 +2315,17 @@ class AayDocCapioApp(QMainWindow):
     # ── Automation ────────────────────────────────────────────────────────────
 
     def _lock_ui(self, lock: bool):
-        widgets = [self.entry_name, self.entry_pan, self.entry_dob, self.entry_pwd,
-                   self.btn_save, self.btn_clear, self.btn_bulk_import, self.btn_template,
-                   self.btn_export, self.ay_combo, self.btn_delete_sel, self.btn_run,
-                   self.chk_headless]
+        widgets = [self.ay_combo, self.btn_delete_sel, self.btn_run, self.chk_headless]
         if hasattr(self, "header_cb"):
             widgets.append(self.header_cb)
         for w in widgets:
             w.setEnabled(not lock)
+        # Disable Client Master / Settings menus during batch
+        menubar = self.menuBar()
+        for action in menubar.actions():
+            if action.text() in ("Client Master", "Settings"):
+                if action.menu():
+                    action.menu().setEnabled(not lock)
 
     def start_automation(self, mode: str):
         """
@@ -2332,7 +2356,7 @@ class AayDocCapioApp(QMainWindow):
 
         targets = [a for a in self.assessee_list if a.get("id") in self.selected_ids]
         output_dir = self.dir_lbl.text()
-        self._last_batch_params = (ay, fy, output_dir, mode)
+        self._last_batch_params = (ay, fy, output_dir, mode, ay_label)
 
         self.btn_run.setText("⏳ Running...")
 
@@ -2354,7 +2378,7 @@ class AayDocCapioApp(QMainWindow):
 
         threading.Thread(
             target=self._run_wrapper,
-            args=(targets, ay, fy, output_dir, mode),
+            args=(targets, ay, fy, output_dir, mode, ay_label),
             daemon=True).start()
 
     def _show_progress_dialog(self, targets: list, mode: str, ay: str, output_dir: str = ""):
@@ -2389,7 +2413,7 @@ class AayDocCapioApp(QMainWindow):
         """Called from the dialog Resume button — restart batch with unfinished clients."""
         if not self._last_batch_params or not remaining_targets:
             return
-        ay, fy, root_dir, mode = self._last_batch_params
+        ay, fy, root_dir, mode, ay_label = self._last_batch_params
         self.is_running = True
         self._batch_aborted = False
         self._lock_ui(True)
@@ -2399,10 +2423,10 @@ class AayDocCapioApp(QMainWindow):
             self._progress_dialog.batch_resumed()
         threading.Thread(
             target=self._run_wrapper,
-            args=(remaining_targets, ay, fy, root_dir, mode),
+            args=(remaining_targets, ay, fy, root_dir, mode, ay_label),
             daemon=True).start()
 
-    def _run_wrapper(self, targets, ay, fy, root_dir, mode):
+    def _run_wrapper(self, targets, ay, fy, root_dir, mode, ay_label=""):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         self._batch_loop = loop
@@ -2431,7 +2455,7 @@ class AayDocCapioApp(QMainWindow):
 
         try:
             self._batch_task = loop.create_task(
-                self._execute_batch(targets, ay, fy, root_dir, mode))
+                self._execute_batch(targets, ay, fy, root_dir, mode, ay_label))
             loop.run_until_complete(self._batch_task)
         except asyncio.CancelledError:
             self.log("[System] Batch cancelled.")
@@ -2452,6 +2476,8 @@ class AayDocCapioApp(QMainWindow):
         self.btn_run.setText("▶  Run")
         self._lock_ui(False)
         self.log("[System] Engine Idle.")
+        # Refresh grid so Last Download Status / Last Saved Location columns update
+        QTimer.singleShot(200, self.refresh_grid)
 
         mode = self._last_mode
 
@@ -2521,15 +2547,24 @@ class AayDocCapioApp(QMainWindow):
             self.ais_status_bar.setVisible(False)
             self._ais_requested_time = None
 
-    async def _execute_batch(self, targets, ay, fy, root_dir, mode):
+    async def _execute_batch(self, targets, ay, fy, root_dir, mode, ay_label=""):
         self.log(f"[System] Batch: {len(targets)} client(s) | AY: {ay} | Mode: {mode}")
         self._ais_results = {}
         self._last_errors = {}
 
+        _client_out = {}   # pan → out path, populated below
+
         def set_status(pan, text):
-            """Update the progress dialog row for this client (thread-safe)."""
+            """Update progress dialog and persist terminal status to vault."""
             if self._progress_dialog:
                 self._progress_dialog.set_status(pan, text)
+            terminal = ("✅", "❌", "🕐", "⏹", "⬜")
+            if ay_label and any(text.startswith(p) for p in terminal):
+                try:
+                    self.vault.record_download(
+                        pan, ay_label, text, _client_out.get(pan, ""))
+                except Exception:
+                    pass
 
         try:
             interactive = not self.chk_headless.isChecked()
@@ -2552,6 +2587,7 @@ class AayDocCapioApp(QMainWindow):
                 name_safe = "".join(c if c.isalnum() or c in " _-" else "" for c in name)
                 out = os.path.join(root_dir, f"{pan}-{name_safe}", f"AY_{ay.replace('-','_')}")
 
+                _client_out[pan] = out
                 # Tell the progress dialog the client's save folder immediately
                 if self._progress_dialog:
                     self._progress_dialog.set_client_path(pan, out)

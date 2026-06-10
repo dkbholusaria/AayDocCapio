@@ -233,6 +233,30 @@ class VaultManager:
         raw_data["assessees"] = [a for a in raw_data["assessees"] if a.get("id") != assessee_id]
         self._save_raw(raw_data)
 
+    # --- Download History ---
+
+    def record_download(self, pan: str, ay_label: str, status: str, path: str):
+        """Record the last download status + path for a client/AY pair."""
+        raw_data = self._get_raw()
+        pan = pan.strip().upper()
+        hist = raw_data.setdefault("download_history", {})
+        hist.setdefault(pan, {})[ay_label] = {
+            "status": status,
+            "path": path,
+            "ts": datetime.datetime.now().strftime("%d-%b-%Y %H:%M:%S"),
+        }
+        self._save_raw(raw_data)
+
+    def get_download_history(self, ay_label: str) -> dict:
+        """Return {pan: {"status":..., "path":..., "ts":...}} for the given AY label."""
+        raw_data = self._get_raw()
+        hist = raw_data.get("download_history", {})
+        result = {}
+        for pan, ay_map in hist.items():
+            if ay_label in ay_map:
+                result[pan] = ay_map[ay_label]
+        return result
+
     # --- Bulk Import / Export ---
 
     def import_bulk(self, file_path: str) -> tuple:
