@@ -3,7 +3,7 @@ app_qt.py — PyQt6 port of AayDocCapio
 Install: pip install PyQt6
 Run:     python3 app_qt.py
 """
-import sys, os, json, asyncio, threading, datetime
+import sys, os, json, asyncio, threading, datetime, time
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton,
     QLineEdit, QCheckBox, QComboBox, QFileDialog, QScrollArea,
@@ -20,6 +20,7 @@ def _app_dir() -> str:
     """
     Writable user-data directory for vault, settings, and outputs.
     - Windows compiled .exe : %LOCALAPPDATA%\\AayDocCapio
+    - macOS compiled app    : ~/Library/Application Support/AayDocCapio
     - Linux/WSL compiled    : ~/.local/share/AayDocCapio
     - Running as script     : folder containing app.py
     """
@@ -27,6 +28,8 @@ def _app_dir() -> str:
     if getattr(sys, "frozen", False) or globals().get("__compiled__"):
         if sys.platform == "win32":
             base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
+        elif sys.platform == "darwin":
+            base = os.path.join(os.path.expanduser("~"), "Library", "Application Support")
         else:
             base = os.path.join(os.path.expanduser("~"), ".local", "share")
         data_dir = os.path.join(base, "AayDocCapio")
@@ -107,6 +110,12 @@ class _ComboListView(QListView):
         )
 
     def mouseReleaseEvent(self, event):
+        # macOS opens the popup on mouse-press, so the release of that same
+        # click can land inside the popup and would instantly select + close
+        # it ("vanishing" dropdown). Ignore releases right after opening.
+        if time.monotonic() - getattr(self._combo, "_popup_opened_at", 0.0) < 0.30:
+            super().mouseReleaseEvent(event)
+            return
         index = self.indexAt(event.pos())
         if index.isValid():
             self._combo.setCurrentIndex(index.row())
@@ -125,6 +134,7 @@ class StyledComboBox(QComboBox):
 
     def showPopup(self):
         self._popup_was_open = True
+        self._popup_opened_at = time.monotonic()
         super().showPopup()
 
     def hidePopup(self):
@@ -147,6 +157,10 @@ def get_timestamp():
 
 
 # ── Stylesheet ────────────────────────────────────────────────────────────────
+# 'Segoe UI'/'Cascadia Code' only exist on Windows; listing a missing family
+# makes Qt scan every installed font for aliases on startup (slow on macOS).
+_UI_FONT = "Segoe UI" if sys.platform == "win32" else "Avenir Next"
+_MONO_FONT = "Cascadia Code" if sys.platform == "win32" else "Menlo"
 APP_STYLE = """
 QMainWindow, QDialog { background: #FFFFFF; }
 QWidget { font-family: 'Segoe UI', 'Avenir Next', Arial, sans-serif; font-size: 13px; }
@@ -253,6 +267,13 @@ QToolTip {
     padding: 5px 9px; font-size: 11px;
 }
 """
+if sys.platform != "win32":
+    APP_STYLE = APP_STYLE.replace("'Segoe UI', ", "")
+if sys.platform == "darwin":
+    # Qt on macOS resolves the generic 'sans-serif' by scanning every
+    # installed font; Avenir Next and Arial always exist, so drop it.
+    APP_STYLE = APP_STYLE.replace(", sans-serif", "")
+    APP_STYLE = APP_STYLE.replace("'Cascadia Code', 'Consolas'", "'Menlo'")
 
 
 def _shadow(blur=18, offset_y=3, alpha=22):
@@ -566,7 +587,7 @@ class BatchProgressDialog(QDialog):
         item = QTableWidgetItem(text)
         item.setForeground(QColor(fg))
         item.setBackground(QColor(bg))
-        item.setFont(QFont("Segoe UI", 10))
+        item.setFont(QFont(_UI_FONT, 10))
         self._table.setItem(row, 1, item)
 
     def _on_update(self, pan: str, status: str):
@@ -1419,7 +1440,7 @@ class AayDocCapioApp(QMainWindow):
         self.log_box.setReadOnly(True)
         self.log_box.setStyleSheet(
             "QTextEdit{background:#0F172A;border:none;"
-            "font-family:'Cascadia Code','Consolas',monospace;"
+            f"font-family:'{_MONO_FONT}',monospace;"
             "font-size:11px;color:#7DD3FC;padding:8px 16px;}")
         fl.addWidget(self.log_box)
         return footer
@@ -2207,12 +2228,10 @@ if __name__ == "__main__":
         sys.exit(0)
 
     # Write a startup trace log using only builtins — before any Qt call
-    _diag_path = os.path.join(
-        os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
-        "AayDocCapio", "startup_diag.log"
-    )
+    _diag_path = os.path.join(_app_dir(), "startup_diag.log")
     def _diag(msg):
         try:
+            os.makedirs(os.path.dirname(_diag_path), exist_ok=True)
             with open(_diag_path, "a", encoding="utf-8") as _f:
                 _f.write(msg + "\n")
         except Exception:
@@ -2231,6 +2250,13 @@ if __name__ == "__main__":
         app.setApplicationName("AayDocCapio")
         app.setDesktopFileName("aay-doc-capio")
         app.setStyle("Fusion")
+        # Force light palette so macOS dark mode doesn't corrupt unstyled
+        # native widgets (dialogs, menus, headers). Will be overridden once
+        # the theme system initialises inside AayDocCapioApp.
+        try:
+            app.styleHints().setColorScheme(Qt.ColorScheme.Light)
+        except AttributeError:
+            pass  # Qt < 6.8
         _diag("Step 3: font loading")
         from PyQt6.QtGui import QFontDatabase
         _fonts_dir = os.path.join(_bundled_dir(), "resources", "fonts")
