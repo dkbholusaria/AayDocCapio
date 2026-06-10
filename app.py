@@ -2274,19 +2274,55 @@ class AayDocCapioApp(QMainWindow):
             popup.setWindowTitle("Pick Date of Birth")
             popup.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
             popup.setStyleSheet(
+                # Dialog shell
                 f"QDialog{{background:{t.bg_panel};border:1px solid {t.border};border-radius:8px;}}"
-                f"QCalendarWidget{{background:{t.bg_panel};color:{t.text_primary};}}"
-                f"QCalendarWidget QWidget{{background:{t.bg_panel};color:{t.text_primary};}}"
-                f"QCalendarWidget QAbstractItemView{{background:{t.bg_input};color:{t.text_primary};"
-                f"selection-background-color:{t.accent};selection-color:{t.accent_text};}}"
-                f"QCalendarWidget QToolButton{{color:{t.text_primary};background:{t.bg_input};"
-                f"border:none;border-radius:4px;padding:4px 8px;}}"
-                f"QCalendarWidget QToolButton:hover{{background:{t.accent};"
-                f"color:{t.accent_text};}}"
-                f"QCalendarWidget QSpinBox{{color:{t.text_primary};background:{t.bg_input};"
-                f"border:1px solid {t.border};border-radius:4px;}}"
-                f"QCalendarWidget #qt_calendar_navigationbar{{background:{t.bg_header};"
-                f"padding:4px;}}"
+
+                # Navigation bar (month/year row at top)
+                f"QCalendarWidget #qt_calendar_navigationbar{{"
+                f"  background:{t.bg_header};padding:4px 8px;}}"
+
+                # Prev / Next arrow buttons
+                f"QCalendarWidget QToolButton{{"
+                f"  color:{t.text_primary};background:transparent;"
+                f"  border:none;border-radius:4px;padding:3px 8px;font-size:12px;}}"
+                f"QCalendarWidget QToolButton:hover{{"
+                f"  background:{t.accent};color:{t.accent_text};}}"
+
+                # Month/year drop-down menu that appears when clicking the month label
+                f"QCalendarWidget QToolButton::menu-indicator{{image:none;}}"
+                f"QCalendarWidget QMenu{{"
+                f"  background:{t.bg_menu};color:{t.text_primary};"
+                f"  border:1px solid {t.border};}}"
+                f"QCalendarWidget QMenu::item:selected{{"
+                f"  background:{t.accent};color:{t.accent_text};}}"
+
+                # Year spin-box
+                f"QCalendarWidget QSpinBox{{"
+                f"  color:{t.text_primary};background:{t.bg_input};"
+                f"  border:1px solid {t.border};border-radius:4px;"
+                f"  padding:2px 4px;selection-background-color:{t.accent};}}"
+                f"QCalendarWidget QSpinBox::up-button,QCalendarWidget QSpinBox::down-button{{"
+                f"  background:transparent;border:none;}}"
+
+                # Day-names header row (Mon Tue … Sun)
+                f"QCalendarWidget QWidget#qt_calendar_calendarview{{"
+                f"  background:{t.bg_table};}}"
+                f"QCalendarWidget QAbstractItemView{{"
+                f"  background:{t.bg_table};color:{t.text_primary};"
+                f"  selection-background-color:{t.accent};"
+                f"  selection-color:{t.accent_text};"
+                f"  outline:none;}}"
+                f"QCalendarWidget QAbstractItemView:enabled{{"
+                f"  color:{t.text_primary};background:{t.bg_table};}}"
+                f"QCalendarWidget QAbstractItemView:disabled{{"
+                f"  color:{t.text_muted};}}"
+
+                # Weekday header (the Mon/Tue/… row)
+                f"QCalendarWidget QHeaderView{{"
+                f"  background:{t.bg_header};}}"
+                f"QCalendarWidget QHeaderView::section{{"
+                f"  background:{t.bg_header};color:{t.text_muted};"
+                f"  border:none;font-size:11px;font-weight:600;padding:4px 0;}}"
             )
             pl = QVBoxLayout(popup)
             pl.setContentsMargins(8, 8, 8, 8)
