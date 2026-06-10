@@ -1089,6 +1089,16 @@ class AayDocCapioApp(QMainWindow):
                 f"color:{t.text_muted};font-size:10px;font-weight:700;"
                 f"letter-spacing:0.8px;background:transparent;")
 
+        # ── Search box ────────────────────────────────────────────────────────
+        if hasattr(self, "search_box"):
+            self.search_box.setStyleSheet(
+                f"QLineEdit{{background:{t.bg_input};border:1.5px solid {t.border};"
+                f"border-radius:6px;padding:4px 10px;font-size:13px;"
+                f"color:{t.text_primary};min-height:28px;}}"
+                f"QLineEdit:focus{{border-color:{t.border_focus};background:{t.bg_input_focus};}}"
+                f"QLineEdit::placeholder{{color:{t.text_muted};}}"
+            )
+
         # ── dir_lbl (output directory path) ──────────────────────────────────
         if hasattr(self, "dir_lbl"):
             self.dir_lbl.setStyleSheet(
@@ -1117,6 +1127,27 @@ class AayDocCapioApp(QMainWindow):
                     f"QMenu::item{{padding:8px 18px;font-size:13px;color:{t.text_primary};}}"
                     f"QMenu::item:selected{{background:{t.accent};color:{t.accent_text};}}"
                     f"QMenu::separator{{height:1px;background:{t.border};margin:4px 0;}}")
+
+        # ── CLIENTS caption + selected count label ────────────────────────────
+        if hasattr(self, "_lbl_clients_cap"):
+            self._lbl_clients_cap.setStyleSheet(
+                f"color:{t.text_muted};font-size:10px;font-weight:bold;background:transparent;")
+        if hasattr(self, "lbl_selected"):
+            cur = self.lbl_selected.text()
+            self.lbl_selected.setStyleSheet(
+                f"color:{t.accent};font-size:11px;font-weight:bold;background:transparent;")
+
+        # ── Header checkbox (select-all) ──────────────────────────────────────
+        if hasattr(self, "header_cb"):
+            _chk_path2 = self.checkmark_path.replace("\\", "/")
+            self.header_cb.setStyleSheet(
+                f"QCheckBox{{background:transparent;}}"
+                f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {t.border};"
+                f"border-radius:3px;background:{t.bg_checkbox};}}"
+                f"QCheckBox::indicator:hover{{border-color:{t.border_focus};}}"
+                f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};"
+                f"image:url('{_chk_path2}');}}"
+            )
 
         # ── Table widget stylesheet + header ──────────────────────────────────
         if hasattr(self, "client_table"):
@@ -1397,9 +1428,10 @@ class AayDocCapioApp(QMainWindow):
 
         # Grid label row
         grid_hdr_row = QHBoxLayout()
-        grid_hdr_row.addWidget(_lbl("CLIENTS", 10, bold=True, color="#94A3B8"))
+        self._lbl_clients_cap = _lbl("CLIENTS", 10, bold=True)
+        grid_hdr_row.addWidget(self._lbl_clients_cap)
         grid_hdr_row.addStretch()
-        self.lbl_selected = _lbl("0 selected", 11, bold=True, color="#2563EB")
+        self.lbl_selected = _lbl("0 selected", 11, bold=True, color=_t().accent)
         grid_hdr_row.addWidget(self.lbl_selected)
         layout.addLayout(grid_hdr_row)
 
@@ -1914,11 +1946,22 @@ class AayDocCapioApp(QMainWindow):
             self.client_table.insertRow(i)
 
             # Col 0: Checkbox
+            _ct = _t()
+            _chk_path = self.checkmark_path.replace("\\", "/")
             cb_container = QWidget()
+            cb_container.setStyleSheet(f"background:{_ct.bg_table};")
             cb_layout = QHBoxLayout(cb_container)
             cb_layout.setContentsMargins(0, 0, 0, 0)
             cb_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
             cb = QCheckBox()
+            cb.setStyleSheet(
+                f"QCheckBox{{background:transparent;}}"
+                f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {_ct.border};"
+                f"border-radius:3px;background:{_ct.bg_checkbox};}}"
+                f"QCheckBox::indicator:hover{{border-color:{_ct.border_focus};}}"
+                f"QCheckBox::indicator:checked{{background:{_ct.accent};border-color:{_ct.accent};"
+                f"image:url('{_chk_path}');}}"
+            )
             cb.setChecked(is_selected)
             cb.toggled.connect(lambda checked, id_=a_id: self._on_check(id_, checked))
             self._checkbox_map[a_id] = cb
