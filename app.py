@@ -2035,7 +2035,7 @@ class AayDocCapioApp(QMainWindow):
             if n_queued:
                 self.ais_status_lbl.setText(
                     f"⏳  AIS at {t}: {status_summary} — "
-                    f"wait ~5 min then click ⬇ Download AIS/TIS for the {n_queued} queued client(s).")
+                    f"wait ~5 min then click ▶ Run → Download Previously Requested AIS for the {n_queued} queued client(s).")
                 self.ais_status_bar.setVisible(True)
             else:
                 # All instant or failed — no need to show the waiting reminder
@@ -2052,7 +2052,7 @@ class AayDocCapioApp(QMainWindow):
                     f"⏳ <b>{n_queued} client(s)</b> — AIS file is large, "
                     f"generation request queued on ITD servers.<br>"
                     f"&nbsp;&nbsp;Wait <b>~5 minutes</b>, then select these clients "
-                    f"and click <b>⬇ Download AIS/TIS</b>.")
+                    f"and click <b>▶ Run → ⬇ Download Previously Requested AIS</b>.")
             if n_failed:
                 # Show the distinct error reasons so the user knows WHY.
                 reasons = sorted(set(self._last_errors.values()))
