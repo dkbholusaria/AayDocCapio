@@ -59,7 +59,7 @@ def _validate_fields(name: str, pan: str, dob: str, password: str):
             "  · Character 4    : P/C/H/F/A/T/B/L/J/G (taxpayer type)\n"
             "  · Character 5    : any letter (A–Z)\n"
             "  · Characters 6–9 : 4 digits\n"
-            "  · Character 10   : any letter\n\n"
+            "  · Character 10   : any letter (A–Z)\n\n"
             "Note: PAN does not change when a person's name changes.\n"
             "Example: AAAPT0001A")
 
