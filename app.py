@@ -2347,9 +2347,17 @@ class AayDocCapioApp(QMainWindow):
             exc = ctx.get("exception")
             if exc is not None:
                 name = type(exc).__name__
-                # These are expected when the browser is force-closed on abort
+                msg  = str(exc).lower()
+                # Suppress orphaned futures from browser close / abort
                 if name in ("TargetClosedError", "ConnectionClosedError",
                             "CancelledError"):
+                    return
+                # Playwright base Error with net:: abort codes that appear when
+                # the browser is closed mid-navigation after Stop
+                if name == "Error" and any(code in msg for code in (
+                        "err_aborted", "err_empty_response",
+                        "err_connection_reset", "err_connection_refused",
+                        "target page, context or browser has been closed")):
                     return
             loop.default_exception_handler(ctx)
 
