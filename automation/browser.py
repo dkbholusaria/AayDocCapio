@@ -5,6 +5,42 @@ import asyncio
 from playwright.async_api import async_playwright
 
 
+def _get_system_proxy() -> dict | None:
+    """
+    Read Windows system proxy settings from the registry.
+    Returns a Playwright-compatible proxy dict or None if no proxy is set.
+    """
+    if sys.platform != "win32":
+        return None
+    try:
+        import winreg
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Internet Settings"
+        )
+        proxy_enable, _ = winreg.QueryValueEx(key, "ProxyEnable")
+        if not proxy_enable:
+            return None
+        proxy_server, _ = winreg.QueryValueEx(key, "ProxyServer")
+        winreg.CloseKey(key)
+        if not proxy_server:
+            return None
+        # ProxyServer may be "host:port" or "http=host:port;https=host:port"
+        if "=" in proxy_server:
+            # Parse per-protocol format
+            for part in proxy_server.split(";"):
+                if part.startswith("https="):
+                    proxy_server = part[6:]
+                    break
+                if part.startswith("http="):
+                    proxy_server = part[5:]
+        if not proxy_server.startswith("http"):
+            proxy_server = "http://" + proxy_server
+        return {"server": proxy_server}
+    except Exception:
+        return None
+
+
 def _playwright_browsers_dir() -> str:
     """
     Stable directory for Playwright browser binaries.
@@ -125,13 +161,21 @@ class BrowserManager:
         fire on real Chrome; bundled Chromium silently no-ops them.
         Fall back to bundled Chromium if Chrome is absent (26AS still works,
         but AIS/TIS downloads will fail — warn the user).
+        Automatically picks up Windows system proxy from the registry.
         """
+        proxy = _get_system_proxy()
+        if proxy and log_callback:
+            log_callback(f"[Browser] System proxy detected: {proxy['server']}")
+        launch_kwargs = dict(
+            headless=headless,
+            args=self._LAUNCH_ARGS,
+            ignore_default_args=self._IGNORE_DEFAULT_ARGS,
+        )
+        if proxy:
+            launch_kwargs["proxy"] = proxy
         try:
             browser = await self._playwright.chromium.launch(
-                headless=headless,
-                channel="chrome",
-                args=self._LAUNCH_ARGS,
-                ignore_default_args=self._IGNORE_DEFAULT_ARGS,
+                channel="chrome", **launch_kwargs
             )
             self._channel = "chrome"
             return browser
@@ -142,11 +186,7 @@ class BrowserManager:
                     "26AS will work, but AIS/TIS downloads need Google Chrome installed "
                     "(https://www.google.com/chrome/)."
                 )
-            browser = await self._playwright.chromium.launch(
-                headless=headless,
-                args=self._LAUNCH_ARGS,
-                ignore_default_args=self._IGNORE_DEFAULT_ARGS,
-            )
+            browser = await self._playwright.chromium.launch(**launch_kwargs)
             self._channel = "chromium"
             return browser
 
