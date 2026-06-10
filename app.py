@@ -515,13 +515,12 @@ class BatchProgressDialog(QDialog):
         super().__init__(parent)
         self._stop_callback = stop_callback
 
-        # Human-readable label and year-type per mode
-        _mode_meta = {
-            "26as":        ("Downloading 26AS",          "TY"),
-            "request_ais": ("Requesting AIS Generation", "AY"),
-            "ais_tis":     ("Downloading AIS / TIS",     "AY"),
-        }
-        mode_label, year_type = _mode_meta.get(mode, ("Batch Run", "AY"))
+        # Human-readable label per mode
+        mode_label = {
+            "26as":        "Downloading 26AS",
+            "request_ais": "Requesting AIS Generation",
+            "ais_tis":     "Downloading AIS / TIS",
+        }.get(mode, "Batch Run")
 
         self.setWindowTitle(f"{mode_label} — Batch Progress")
         self.setMinimumSize(700, 460)
@@ -542,9 +541,8 @@ class BatchProgressDialog(QDialog):
         layout.setContentsMargins(16, 16, 16, 12)
         layout.setSpacing(10)
 
-        # Title
-        ay_tag = (f" &nbsp;·&nbsp; <span style='color:#2563EB'>"
-                  f"{year_type} {ay}</span>") if ay else ""
+        # Title — `ay` is a pre-formatted tag like "AY 2025-26", "TY 2025-26", or "FY 2024-25"
+        ay_tag = (f" &nbsp;·&nbsp; <span style='color:#2563EB'>{ay}</span>") if ay else ""
         title = QLabel(f"<b>{mode_label}</b> — {len(targets)} client(s){ay_tag}")
         title.setStyleSheet("font-size:14px; color:#0F172A; background:transparent;")
         layout.addWidget(title)
@@ -1823,11 +1821,15 @@ class AayDocCapioApp(QMainWindow):
             ]
 
     def _resolve_ay_fy(self, label: str):
+        """Returns (ay_or_ty_value, fy_value, year_type) where year_type is 'AY' or 'TY'."""
         for e in self._ay_entries:
             if e["label"] == label:
                 y = e["year"]
-                return (y.get("AY") or y.get("TY")), y.get("FY")
-        return None, None
+                if y.get("AY"):
+                    return y["AY"], y.get("FY"), "AY"
+                if y.get("TY"):
+                    return y["TY"], y.get("FY"), "TY"
+        return None, None, "AY"
 
     def open_manage_years(self):
         ManageYearsDialog(self, self._ay_json_path(), on_save=self.refresh_ay_combo).exec()
@@ -1981,7 +1983,7 @@ class AayDocCapioApp(QMainWindow):
             QMessageBox.warning(self, "Selection Required",
                 "Please select an Assessment / Tax Year.")
             return
-        ay, fy = self._resolve_ay_fy(ay_label)
+        ay, fy, year_type = self._resolve_ay_fy(ay_label)
         if not ay:
             QMessageBox.warning(self, "Invalid", f"Cannot resolve year: {ay_label}")
             return
@@ -1999,9 +2001,17 @@ class AayDocCapioApp(QMainWindow):
                     "ais_tis": "AIS/TIS download"}
         self.log(f"[System] Starting {mode_log[mode]}...")
 
+        # Year tag shown in progress dialog:
+        #   26AS  → "AY 2025-26" or "TY 2025-26" (whatever the user configured)
+        #   AIS/TIS → "FY 2024-25"
+        if mode == "26as":
+            year_tag = f"{year_type} {ay}"
+        else:
+            year_tag = f"FY {fy}" if fy else ay
+
         # Show progress dialog (on main thread via signal)
         output_dir = self.dir_lbl.text()
-        self._show_progress_signal.emit(targets, mode, ay, output_dir)
+        self._show_progress_signal.emit(targets, mode, year_tag, output_dir)
 
         threading.Thread(
             target=self._run_wrapper,
