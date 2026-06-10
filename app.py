@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QMessageBox, QTextEdit, QDialog, QRadioButton, QSplitter, QSizePolicy,
     QGraphicsDropShadowEffect, QListView, QStyledItemDelegate, QTableWidget,
     QTableWidgetItem, QHeaderView, QAbstractItemView, QToolButton, QMenu,
+    QProgressBar,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QMetaObject, Q_ARG, QModelIndex
 from PyQt6.QtGui import QFont, QTextCursor, QColor, QRegularExpressionValidator, QPalette, QAction, QIcon, QPixmap
@@ -699,44 +700,47 @@ class BatchProgressDialog(QDialog):
 
         layout.addWidget(self._table, stretch=1)
 
-        # ── Saving-to strip ───────────────────────────────────────────────────
-        if output_dir:
-            loc_row = QHBoxLayout()
-            loc_row.setContentsMargins(2, 2, 2, 0)
-            loc_row.setSpacing(6)
-            loc_cap = QLabel("📁  Saving to:")
-            loc_cap.setStyleSheet(
-                "color:#64748B;font-size:11px;font-weight:600;background:transparent;")
-            loc_val = QLabel(output_dir)
-            loc_val.setStyleSheet(
-                "color:#334155;font-size:11px;background:transparent;")
-            loc_val.setWordWrap(False)
-            loc_val.setTextInteractionFlags(
-                Qt.TextInteractionFlag.TextSelectableByMouse)
-            loc_row.addWidget(loc_cap)
-            loc_row.addWidget(loc_val, stretch=1)
-            layout.addLayout(loc_row)
+        # ── Progress bar row ──────────────────────────────────────────────────
+        self._progress_bar = QProgressBar()
+        self._progress_bar.setRange(0, len(targets))
+        self._progress_bar.setValue(0)
+        self._progress_bar.setFixedHeight(18)
+        self._progress_bar.setTextVisible(True)
+        self._progress_bar.setFormat(f"0 / {len(targets)} done")
+        self._progress_bar.setStyleSheet(
+            "QProgressBar{border:1px solid #CBD5E1;border-radius:9px;"
+            "background:#E2E8F0;text-align:center;font-size:11px;color:#334155;}"
+            "QProgressBar::chunk{background:#2563EB;border-radius:9px;}")
+        layout.addWidget(self._progress_bar)
 
-        # ── Footer ────────────────────────────────────────────────────────────
+        # ── Footer: saving-to + buttons ───────────────────────────────────────
         footer = QHBoxLayout()
         footer.setSpacing(8)
+        footer.setContentsMargins(0, 0, 0, 0)
 
-        self._progress_lbl = QLabel(f"0 / {len(targets)} done")
-        self._progress_lbl.setStyleSheet(
-            "color:#64748B;font-size:11px;background:transparent;")
-        footer.addWidget(self._progress_lbl)
-        footer.addStretch()
+        # Saving-to (left side, stretches)
+        loc_cap = QLabel("📁")
+        loc_cap.setStyleSheet("font-size:13px;background:transparent;")
+        loc_cap.setFixedWidth(18)
+        footer.addWidget(loc_cap)
 
-        # Open Download Folder
-        self._open_folder_btn = QPushButton("📂  Open Download Folder")
+        self._loc_val = QLabel(output_dir or "—")
+        self._loc_val.setStyleSheet("color:#475569;font-size:11px;background:transparent;")
+        self._loc_val.setWordWrap(False)
+        self._loc_val.setMinimumWidth(0)
+        self._loc_val.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self._loc_val.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        footer.addWidget(self._loc_val, stretch=1)
+
+        # Open Download Folder (right next to the path label)
+        self._open_folder_btn = QPushButton("📂  Open Folder")
         self._open_folder_btn.setFixedHeight(32)
         self._open_folder_btn.setStyleSheet(
             "QPushButton{background:#F1F5F9;color:#334155;border:1px solid #CBD5E1;"
             "border-radius:6px;font-size:12px;padding:0 12px;}"
             "QPushButton:hover{background:#E2E8F0;}"
             "QPushButton:disabled{color:#94A3B8;border-color:#E2E8F0;}")
-        self._open_folder_btn.clicked.connect(
-            lambda: _open_path(self._output_dir))
+        self._open_folder_btn.clicked.connect(lambda: _open_path(self._output_dir))
         footer.addWidget(self._open_folder_btn)
 
         # Download Report
@@ -807,11 +811,12 @@ class BatchProgressDialog(QDialog):
         terminal = ("✅", "❌", "🕐", "⬜", "⏹")
         if any(status.startswith(p) for p in terminal):
             self._done_count += 1
-            self._progress_lbl.setText(f"{self._done_count} / {self._total} done")
+            self._progress_bar.setValue(self._done_count)
+            self._progress_bar.setFormat(f"{self._done_count} / {self._total} done")
         if self._done_count >= self._total:
             self._close_btn.setEnabled(True)
             self._report_btn.setEnabled(True)
-            self._progress_lbl.setText(f"All {self._total} done — review results above")
+            self._progress_bar.setFormat(f"All {self._total} done")
 
     def _on_path_update(self, pan: str, folder: str):
         row = self._pan_to_row.get(pan)
@@ -953,7 +958,10 @@ class BatchProgressDialog(QDialog):
         self._stop_btn.setVisible(False)
         self._close_btn.setEnabled(True)
         self._report_btn.setEnabled(True)
-        self._progress_lbl.setText(f"All {self._total} done — review results above")
+        n = self._done_count
+        self._progress_bar.setValue(n)
+        label = "Stopped" if aborted else "All done"
+        self._progress_bar.setFormat(f"{label} — {n} / {self._total} processed")
 
 
 # ── Main Window ───────────────────────────────────────────────────────────────
