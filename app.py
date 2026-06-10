@@ -41,28 +41,33 @@ def _app_dir() -> str:
 def _default_download_dir() -> str:
     """
     Sensible default output directory per platform.
-    - Windows : %USERPROFILE%\\Downloads, fallback to Documents
-    - macOS   : ~/Downloads  (always exists on Mac)
-    - Linux   : ~/Downloads if it exists, otherwise ~ (never create it)
+    - Windows (native or WSL): %USERPROFILE%\\Downloads → Documents → USERPROFILE
+    - macOS  : ~/Downloads  (always exists on Mac)
+    - Linux  : ~/Downloads if it exists, otherwise ~  (never create it)
+
+    USERPROFILE takes priority over sys.platform so that WSL dev runs
+    (sys.platform == 'linux' but USERPROFILE points to a real Windows path
+    like C:\\Users\\deepak) pick the Windows Downloads folder correctly.
     Never creates the folder — just returns the path.
     """
-    home = os.path.expanduser("~")
-    if sys.platform == "win32":
-        # Try Downloads first (USERPROFILE\Downloads)
-        downloads = os.path.join(os.environ.get("USERPROFILE", home), "Downloads")
+    userprofile = os.environ.get("USERPROFILE", "")
+    # USERPROFILE is only set on Windows (native) and WSL environments that
+    # inherit the Windows environment. Treat its presence as "Windows paths apply."
+    if userprofile and os.path.isdir(userprofile):
+        downloads = os.path.join(userprofile, "Downloads")
         if os.path.isdir(downloads):
             return downloads
-        # Fallback to Documents
-        documents = os.path.join(os.environ.get("USERPROFILE", home), "Documents")
+        documents = os.path.join(userprofile, "Documents")
         if os.path.isdir(documents):
             return documents
-        return home
-    elif sys.platform == "darwin":
+        return userprofile
+
+    home = os.path.expanduser("~")
+    if sys.platform == "darwin":
         return os.path.join(home, "Downloads")
-    else:
-        # Linux — use ~/Downloads only if it already exists
-        downloads = os.path.join(home, "Downloads")
-        return downloads if os.path.isdir(downloads) else home
+    # Linux (no USERPROFILE) — use ~/Downloads only if it already exists
+    downloads = os.path.join(home, "Downloads")
+    return downloads if os.path.isdir(downloads) else home
 
 
 def _bundled_dir() -> str:
@@ -505,18 +510,30 @@ class BatchProgressDialog(QDialog):
     """
     _update_signal = pyqtSignal(str, str)   # (pan, status_text)
 
-    def __init__(self, targets: list, mode: str, ay: str = "", stop_callback=None, parent=None):
+    def __init__(self, targets: list, mode: str, ay: str = "",
+                 stop_callback=None, output_dir: str = "", parent=None):
         super().__init__(parent)
         self._stop_callback = stop_callback
-        self.setWindowTitle("Batch Progress")
-        self.setMinimumSize(620, 400)
-        self.resize(680, min(100 + len(targets) * 38, 600))
+
+        # Human-readable label and year-type per mode
+        _mode_meta = {
+            "26as":        ("Downloading 26AS",          "TY"),
+            "request_ais": ("Requesting AIS Generation", "AY"),
+            "ais_tis":     ("Downloading AIS / TIS",     "AY"),
+        }
+        mode_label, year_type = _mode_meta.get(mode, ("Batch Run", "AY"))
+
+        self.setWindowTitle(f"{mode_label} — Batch Progress")
+        self.setMinimumSize(700, 460)
+        self.resize(780, min(140 + len(targets) * 40, 680))
+        self.setSizeGripEnabled(True)
         # Dialog (not Window) so it stays attached to the parent and renders an
         # active title bar when modal.
         self.setWindowFlags(
             Qt.WindowType.Dialog |
             Qt.WindowType.WindowTitleHint |
-            Qt.WindowType.WindowCloseButtonHint)
+            Qt.WindowType.WindowCloseButtonHint |
+            Qt.WindowType.WindowMaximizeButtonHint)
         self.setStyleSheet("QDialog{background:#F8FAFC;}")
 
         self._pan_to_row = {}   # pan → table row index
@@ -526,44 +543,42 @@ class BatchProgressDialog(QDialog):
         layout.setSpacing(10)
 
         # Title
-        mode_label = {
-            "26as":        "Downloading 26AS",
-            "request_ais": "Requesting AIS Generation",
-            "ais_tis":     "Downloading AIS / TIS",
-        }.get(mode, "Batch Run")
-        ay_tag = f" &nbsp;·&nbsp; <span style='color:#2563EB'>{ay}</span>" if ay else ""
+        ay_tag = (f" &nbsp;·&nbsp; <span style='color:#2563EB'>"
+                  f"{year_type} {ay}</span>") if ay else ""
         title = QLabel(f"<b>{mode_label}</b> — {len(targets)} client(s){ay_tag}")
         title.setStyleSheet("font-size:14px; color:#0F172A; background:transparent;")
         layout.addWidget(title)
 
-        # Table
+        # Table — stretch to fill available space
         self._table = QTableWidget(len(targets), 2)
         self._table.setHorizontalHeaderLabels(["Name", "Status"])
         self._table.horizontalHeader().setSectionResizeMode(
             0, QHeaderView.ResizeMode.Interactive)
         self._table.horizontalHeader().setSectionResizeMode(
             1, QHeaderView.ResizeMode.Stretch)
-        self._table.setColumnWidth(0, 250)
+        self._table.setColumnWidth(0, 220)
         self._table.horizontalHeader().setStyleSheet(
             "QHeaderView::section{background:#E2E8F0;color:#475569;"
-            "font-size:11px;font-weight:600;padding:6px;border:none;}")
+            "font-size:11px;font-weight:600;padding:6px 10px;border:none;}")
         self._table.verticalHeader().setVisible(False)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self._table.setShowGrid(True)
         self._table.setAlternatingRowColors(True)
+        self._table.setWordWrap(True)
         self._table.setStyleSheet(
             "QTableWidget{border:1.5px solid #E2E8F0;border-radius:8px;"
             "background:#FFFFFF;outline:0;gridline-color:#E2E8F0;"
             "alternate-background-color:#FAFCFF;}"
-            "QTableWidget::item{padding:6px 10px;border-bottom:1px solid #F1F5F9;}")
-        self._table.setRowHeight(0, 36)
+            "QTableWidget::item{padding:8px 10px;border-bottom:1px solid #F1F5F9;}")
+        self._table.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         for row, t in enumerate(targets):
             pan  = t.get("pan", "")
             name = t.get("name", "—")
             self._pan_to_row[pan] = row
-            self._table.setRowHeight(row, 36)
+            self._table.setRowHeight(row, 40)
 
             name_item = QTableWidgetItem(name)
             name_item.setForeground(QColor("#1E293B"))
@@ -571,7 +586,28 @@ class BatchProgressDialog(QDialog):
 
             self._set_status_item(row, "⬜ Waiting")
 
-        layout.addWidget(self._table)
+        layout.addWidget(self._table, stretch=1)
+
+        # Download location bar
+        if output_dir:
+            loc_row = QHBoxLayout()
+            loc_row.setContentsMargins(0, 2, 0, 0)
+            loc_row.setSpacing(6)
+            loc_icon = QLabel("📁")
+            loc_icon.setStyleSheet("font-size:13px; background:transparent;")
+            loc_lbl_cap = QLabel("Saving to:")
+            loc_lbl_cap.setStyleSheet(
+                "color:#64748B; font-size:11px; font-weight:600; background:transparent;")
+            loc_path = QLabel(output_dir)
+            loc_path.setStyleSheet(
+                "color:#334155; font-size:11px; background:transparent;")
+            loc_path.setWordWrap(False)
+            loc_path.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse)
+            loc_row.addWidget(loc_icon)
+            loc_row.addWidget(loc_lbl_cap)
+            loc_row.addWidget(loc_path, stretch=1)
+            layout.addLayout(loc_row)
 
         # Footer: progress counter + stop + close buttons
         footer = QHBoxLayout()
@@ -582,7 +618,7 @@ class BatchProgressDialog(QDialog):
         footer.addStretch()
 
         self._stop_btn = QPushButton("⏹  Stop")
-        self._stop_btn.setFixedSize(90, 30)
+        self._stop_btn.setFixedSize(90, 32)
         self._stop_btn.setStyleSheet(
             "QPushButton{background:#EF4444;color:#FFFFFF;border:none;"
             "border-radius:6px;font-size:12px;font-weight:600;}"
@@ -593,7 +629,7 @@ class BatchProgressDialog(QDialog):
         footer.addSpacing(8)
 
         self._close_btn = QPushButton("Close")
-        self._close_btn.setFixedSize(80, 30)
+        self._close_btn.setFixedSize(80, 32)
         self._close_btn.setEnabled(False)  # disabled until batch finishes
         self._close_btn.setStyleSheet(
             "QPushButton{background:#E2E8F0;color:#475569;border:none;"
@@ -653,7 +689,7 @@ class BatchProgressDialog(QDialog):
 class AayDocCapioApp(QMainWindow):
     _log_signal = pyqtSignal(str)
     _batch_done_signal = pyqtSignal()
-    _show_progress_signal = pyqtSignal(list, str, str)   # (targets, mode, ay)
+    _show_progress_signal = pyqtSignal(list, str, str, str)   # (targets, mode, ay, output_dir)
 
     def __init__(self):
         super().__init__()
@@ -1964,17 +2000,19 @@ class AayDocCapioApp(QMainWindow):
         self.log(f"[System] Starting {mode_log[mode]}...")
 
         # Show progress dialog (on main thread via signal)
-        self._show_progress_signal.emit(targets, mode, ay)
+        output_dir = self.dir_lbl.text()
+        self._show_progress_signal.emit(targets, mode, ay, output_dir)
 
         threading.Thread(
             target=self._run_wrapper,
-            args=(targets, ay, fy, self.dir_lbl.text(), mode),
+            args=(targets, ay, fy, output_dir, mode),
             daemon=True).start()
 
-    def _show_progress_dialog(self, targets: list, mode: str, ay: str):
+    def _show_progress_dialog(self, targets: list, mode: str, ay: str, output_dir: str = ""):
         """Called on main thread to create and show the progress dialog."""
         self._progress_dialog = BatchProgressDialog(
-            targets, mode, ay=ay, stop_callback=self.stop_automation, parent=self)
+            targets, mode, ay=ay, stop_callback=self.stop_automation,
+            output_dir=output_dir, parent=self)
         # Window-modal: blocks the parent window (so it can't be clicked behind
         # the dialog) but still allows the worker thread's Qt-signal updates.
         # We use show() rather than exec() so the event loop keeps processing
