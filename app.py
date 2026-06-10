@@ -295,18 +295,31 @@ class ManageYearsDialog(QDialog):
         self._build_ui(entries)
 
     def _build_ui(self, entries):
+        t = _t()
+        self.setStyleSheet(
+            f"QDialog{{background:{t.bg_window};}}"
+            f"QLabel{{color:{t.text_primary};background:transparent;}}"
+            f"QRadioButton{{color:{t.text_primary};background:transparent;spacing:6px;}}"
+            f"QRadioButton::indicator{{width:14px;height:14px;border:1.5px solid {t.border};"
+            f"border-radius:7px;background:{t.bg_checkbox};}}"
+            f"QRadioButton::indicator:checked{{background:{t.accent};border-color:{t.accent};}}"
+            f"QScrollArea{{background:{t.bg_input};border:1px solid {t.border};border-radius:6px;}}"
+            f"QScrollArea > QWidget > QWidget{{background:{t.bg_input};}}"
+        )
         main = QVBoxLayout(self)
         main.setContentsMargins(20, 16, 20, 16)
         main.setSpacing(8)
 
         main.addWidget(_lbl("Manage Assessment / Tax Years", 13, bold=True))
-        main.addWidget(_lbl("Toggle enabled/disabled or add new years.", 10, color="#64748B"))
-        main.addWidget(_lbl("Existing Entries", 11, bold=True, color="#475569"))
+        main.addWidget(_lbl("Toggle enabled/disabled or add new years.", 10, color=t.text_muted))
+        main.addWidget(_lbl("Existing Entries", 11, bold=True, color=t.text_muted))
 
         scroll = QScrollArea()
         scroll.setFixedHeight(180)
         scroll.setWidgetResizable(True)
         inner = QWidget()
+        inner.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        inner.setStyleSheet(f"QWidget{{background:{t.bg_input};}}")
         self._list_layout = QVBoxLayout(inner)
         self._list_layout.setSpacing(2)
         self._list_layout.addStretch()
@@ -317,9 +330,10 @@ class ManageYearsDialog(QDialog):
             self._add_row(e)
 
         sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet("color:#E2E8F0;"); main.addWidget(sep)
+        sep.setStyleSheet(f"background:{t.border};border:none;max-height:1px;")
+        main.addWidget(sep)
 
-        main.addWidget(_lbl("Add New Year", 11, bold=True, color="#475569"))
+        main.addWidget(_lbl("Add New Year", 11, bold=True, color=t.text_muted))
 
         # Type radio
         type_row = QHBoxLayout()
@@ -340,7 +354,7 @@ class ManageYearsDialog(QDialog):
         self._fy_edit = QLineEdit(); self._fy_edit.setPlaceholderText("auto-filled")
         self._fy_edit.setFixedWidth(120)
         yr_row.addWidget(self._fy_edit)
-        yr_row.addWidget(_lbl("(editable)", 10, color="#94A3B8"))
+        yr_row.addWidget(_lbl("(editable)", 10, color=t.text_muted))
         yr_row.addStretch(); main.addLayout(yr_row)
 
         add_btn = _btn("＋ Add to List", "outline", height=32, min_width=130)
@@ -348,7 +362,8 @@ class ManageYearsDialog(QDialog):
         main.addWidget(add_btn, alignment=Qt.AlignmentFlag.AlignLeft)
 
         sep2 = QFrame(); sep2.setFrameShape(QFrame.Shape.HLine)
-        sep2.setStyleSheet("color:#E2E8F0;"); main.addWidget(sep2)
+        sep2.setStyleSheet(f"background:{t.border};border:none;max-height:1px;")
+        main.addWidget(sep2)
 
         btns_row = QHBoxLayout()
         save_btn = _btn("💾 Save & Close", "primary", height=36)
@@ -359,8 +374,15 @@ class ManageYearsDialog(QDialog):
         main.addLayout(btns_row)
 
     def _add_row(self, entry):
+        t = _t()
         cb = QCheckBox(entry["label"])
         cb.setChecked(entry.get("enabled", True))
+        cb.setStyleSheet(
+            f"QCheckBox{{color:{t.text_primary};background:transparent;spacing:6px;}}"
+            f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {t.border};"
+            f"border-radius:3px;background:{t.bg_checkbox};}}"
+            f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};}}"
+        )
         self._checkboxes.append((entry, cb))
         self._list_layout.insertWidget(self._list_layout.count() - 1, cb)
 
