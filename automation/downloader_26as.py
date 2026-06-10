@@ -49,28 +49,28 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
         # The ITD portal often leaves a full-screen loading spinner/overlay active 
         # for a few seconds which intercepts pointer events. Wait for it to clear.
         try:
-            await page.locator(".customLoaderBackdrop").wait_for(state="hidden", timeout=15000)
+            await page.locator(".customLoaderBackdrop").wait_for(state="hidden", timeout=30000)
         except Exception:
             pass
             
         log_callback("[26AS] Hovering over e-File menu...")
         efile = page.locator("//*[normalize-space(.)='e-File']").first
-        await efile.wait_for(state="visible", timeout=15000)
+        await efile.wait_for(state="visible", timeout=30000)
         await efile.hover()
         await asyncio.sleep(1.0)
         log_callback("[26AS] Hovering over Income Tax Returns...")
         returns = page.locator("//*[text()='Income Tax Returns']").first
-        await returns.wait_for(state="visible", timeout=15000)
+        await returns.wait_for(state="visible", timeout=30000)
         await returns.hover()
         await asyncio.sleep(1.0)
         log_callback("[26AS] Clicking View Form 26AS — waiting for TRACES to load...")
         await update_browser_status(page, "26AS: Opening TRACES portal...")
         view_26as = page.locator("//*[text()='View Form 26AS']").first
-        await view_26as.wait_for(state="visible", timeout=15000)
+        await view_26as.wait_for(state="visible", timeout=30000)
 
         # TRACES may open in a new tab or navigate in the same tab
         try:
-            async with page.context.expect_page(timeout=20000) as new_page_info:
+            async with page.context.expect_page(timeout=40000) as new_page_info:
                 await view_26as.click()
                 
                 # The ITD portal sometimes shows a "Disclaimer" popup asking to confirm 
@@ -86,11 +86,11 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
                     pass
                     
             traces_page = await new_page_info.value
-            await traces_page.wait_for_load_state("domcontentloaded", timeout=20000)
+            await traces_page.wait_for_load_state("domcontentloaded", timeout=40000)
             log_callback("[26AS] TRACES opened in a new tab.")
         except Exception:
             traces_page = page
-            await page.wait_for_load_state("domcontentloaded", timeout=20000)
+            await page.wait_for_load_state("domcontentloaded", timeout=40000)
             log_callback("[26AS] TRACES loaded in the same tab.")
 
         log_callback(f"[26AS] TRACES portal ready. Frames: {len(traces_page.frames)}")
@@ -98,7 +98,7 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
 
         # Dismiss agreement popup — TRACES loads content in frames, so search all of them
         try:
-            agree_frame = await _find_frame(traces_page, "input#Details, input[type='checkbox']", timeout=10000)
+            agree_frame = await _find_frame(traces_page, "input#Details, input[type='checkbox']", timeout=20000)
             if agree_frame:
                 log_callback(f"[26AS] Agreement modal found in frame: {agree_frame.url[:60]}")
                 await update_browser_status(traces_page, "TRACES: Accepting Terms & Conditions...")
@@ -106,10 +106,10 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
                 await chk.click()  # click (not check) so onclick JS fires and enables the Proceed button
                 await asyncio.sleep(0.3)
                 proceed_btn = agree_frame.locator("input#btn").first
-                await proceed_btn.wait_for(state="visible", timeout=5000)
+                await proceed_btn.wait_for(state="visible", timeout=10000)
                 await proceed_btn.click()
                 log_callback("[26AS] Accepted TRACES agreement popup.")
-                await traces_page.wait_for_load_state("domcontentloaded", timeout=15000)
+                await traces_page.wait_for_load_state("domcontentloaded", timeout=30000)
                 await asyncio.sleep(1.5)
             else:
                 log_callback("[26AS] No agreement popup found — continuing.")
@@ -121,7 +121,7 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
         base_url = traces_page.url.rsplit('/serv/', 1)[0]
         view_url = f"{base_url}/serv/tapn/view26AS.xhtml"
         log_callback(f"[26AS] Going to: {view_url}")
-        await traces_page.goto(view_url, wait_until="domcontentloaded", timeout=20000)
+        await traces_page.goto(view_url, wait_until="domcontentloaded", timeout=40000)
         await asyncio.sleep(1.5)
 
         # Handle TDS defaults intermediate page (view26ASThrdPrty.xhtml) — appears when the PAN
@@ -130,15 +130,15 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
             log_callback("[26AS] TDS defaults page detected — clicking Proceed to View Annual Tax Statement...")
             await update_browser_status(traces_page, "TRACES: Bypassing TDS defaults page...")
             proceed = traces_page.locator("input[value*='Proceed to View']").first
-            await proceed.wait_for(state="visible", timeout=10000)
+            await proceed.wait_for(state="visible", timeout=20000)
             await proceed.click()
-            await traces_page.wait_for_load_state("domcontentloaded", timeout=20000)
+            await traces_page.wait_for_load_state("domcontentloaded", timeout=40000)
             await asyncio.sleep(1.5)
             log_callback(f"[26AS] Proceeded — now on: {traces_page.url}")
 
         log_callback(f"[26AS] Selecting Assessment Year: {assessment_year}")
         await update_browser_status(traces_page, f"TRACES: Selecting AY {assessment_year}...")
-        ay_frame = await _find_frame(traces_page, "select#AssessmentYearDropDown", timeout=15000)
+        ay_frame = await _find_frame(traces_page, "select#AssessmentYearDropDown", timeout=30000)
         if not ay_frame:
             raise Exception("Could not find AssessmentYearDropDown on TRACES view26AS page.")
         await ay_frame.locator("select#AssessmentYearDropDown").first.select_option(label=assessment_year)
@@ -147,14 +147,14 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
 
         log_callback("[26AS] Selecting View As: HTML")
         await update_browser_status(traces_page, "TRACES: Selecting HTML format...")
-        fmt_frame = await _find_frame(traces_page, "select#viewType", timeout=10000)
+        fmt_frame = await _find_frame(traces_page, "select#viewType", timeout=20000)
         if fmt_frame:
             await fmt_frame.locator("select#viewType").first.select_option(label="HTML")
             await asyncio.sleep(0.5)
 
         log_callback("[26AS] Clicking View / Download...")
         await update_browser_status(traces_page, "TRACES: Fetching Form data...")
-        view_btn_frame = await _find_frame(traces_page, "input#btnSubmit", timeout=10000)
+        view_btn_frame = await _find_frame(traces_page, "input#btnSubmit", timeout=20000)
         if not view_btn_frame:
             raise Exception("Could not find btnSubmit on TRACES view26AS page.")
         await view_btn_frame.locator("input#btnSubmit").first.click()
@@ -174,7 +174,7 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
         os.makedirs(download_dir, exist_ok=True)
 
         # ── PDF download ──────────────────────────────────────────────────────
-        pdf_frame = await _find_frame(traces_page, "input#pdfBtn", timeout=5000)
+        pdf_frame = await _find_frame(traces_page, "input#pdfBtn", timeout=10000)
         if not pdf_frame:
             raise Exception("Could not find pdfBtn on TRACES view26AS page.")
         pdf_btn = pdf_frame.locator("input#pdfBtn").first
@@ -192,11 +192,11 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
         log_callback("[26AS] Switching to Text format for TXT download...")
         await update_browser_status(traces_page, "TRACES: Downloading TXT file...")
         try:
-            txt_fmt_frame = await _find_frame(traces_page, "select#viewType", timeout=5000)
+            txt_fmt_frame = await _find_frame(traces_page, "select#viewType", timeout=10000)
             if txt_fmt_frame:
                 await txt_fmt_frame.locator("select#viewType").first.select_option(label="Text")
                 await asyncio.sleep(0.5)
-            txt_btn_frame = await _find_frame(traces_page, "input#btnSubmit", timeout=5000)
+            txt_btn_frame = await _find_frame(traces_page, "input#btnSubmit", timeout=10000)
             if not txt_btn_frame:
                 raise Exception("btnSubmit not found for TXT download")
             output_txt = os.path.join(download_dir, f"{prefix}26AS-{ay_str}.txt")

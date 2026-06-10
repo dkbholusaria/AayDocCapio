@@ -98,7 +98,7 @@ async def _open_ais_portal(itd_page: Page, log, status_cb=None) -> Page:
     ais_link = itd_page.locator("a#AIS").first
     step("Waiting for a#AIS to be visible", status="Finding AIS menu…")
     try:
-        await ais_link.wait_for(state="visible", timeout=15000)
+        await ais_link.wait_for(state="visible", timeout=30000)
         step("a#AIS is visible")
     except Exception:
         step("a#AIS NOT visible after 15s — dumping not available, raising")
@@ -107,15 +107,15 @@ async def _open_ais_portal(itd_page: Page, log, status_cb=None) -> Page:
     # Set up the new-tab listener BEFORE clicking.
     step("Arming new-tab listener")
     new_page_task = asyncio.ensure_future(
-        itd_page.context.wait_for_event("page", timeout=15000))
+        itd_page.context.wait_for_event("page", timeout=30000))
 
     step("Clicking a#AIS", status="Opening AIS portal…")
     try:
-        await ais_link.click(timeout=10000)
+        await ais_link.click(timeout=20000)
         step("a#AIS click sent")
     except Exception as e:
         step(f"normal click failed ({e}) — trying force click")
-        await ais_link.click(force=True, timeout=10000)
+        await ais_link.click(force=True, timeout=20000)
 
     # Optional "Yes" confirmation dialog before the portal opens.
     try:
@@ -123,9 +123,9 @@ async def _open_ais_portal(itd_page: Page, log, status_cb=None) -> Page:
         if await yes.is_visible(timeout=1000):
             step("'Yes' confirmation dialog detected — confirming")
             try:
-                await yes.click(timeout=5000)
+                await yes.click(timeout=10000)
             except Exception:
-                await yes.click(force=True, timeout=5000)
+                await yes.click(force=True, timeout=10000)
         else:
             step("No 'Yes' confirmation dialog")
     except Exception:
@@ -142,7 +142,7 @@ async def _open_ais_portal(itd_page: Page, log, status_cb=None) -> Page:
         step("No new tab — checking same-tab navigation to insight.gov.in")
         try:
             await itd_page.wait_for_url(re.compile(r"ais\.insight\.gov\.in", re.I),
-                                        timeout=15000)
+                                        timeout=30000)
             portal = itd_page
             step("Portal opened in SAME tab", portal)
         except Exception:
@@ -167,7 +167,7 @@ async def _navigate_to_ais_tab(portal: Page, log, status_cb=None):
     step = make_step_logger(log, "AIS-NAV", status_cb=status_cb)
     step("Waiting for AIS portal networkidle", portal, status="Loading AIS portal…")
     try:
-        await portal.wait_for_load_state("networkidle", timeout=20000)
+        await portal.wait_for_load_state("networkidle", timeout=40000)
     except Exception as e:
         step(f"networkidle wait failed: {e}")
     await asyncio.sleep(2)
@@ -189,7 +189,7 @@ async def _select_fy(portal: Page, fiscal_year: str, log, status_cb=None):
     try:
         ais_tab = portal.locator("nav.sub-navbar a").nth(1)
         step("Waiting for AIS sub-nav tab")
-        await ais_tab.wait_for(state="visible", timeout=5000)
+        await ais_tab.wait_for(state="visible", timeout=10000)
         step("Clicking AIS sub-nav tab")
         await ais_tab.click()
         await asyncio.sleep(2)
@@ -207,7 +207,7 @@ async def _select_fy(portal: Page, fiscal_year: str, log, status_cb=None):
                 f".fy-dropdown button.dropdown-item:has-text('F.Y. {fiscal_year}')"
             ).first
             step(f"Selecting 'F.Y. {fiscal_year}' option")
-            await option.wait_for(state="visible", timeout=5000)
+            await option.wait_for(state="visible", timeout=10000)
             await option.click()
             await asyncio.sleep(1)
             step(f"F.Y. {fiscal_year} selected — staying on AIS home tab")
@@ -249,7 +249,7 @@ async def _open_download_modal(portal: Page, log, label: str, status_cb=None) ->
              status=f"Opening {label} download…")
         await icon.wait_for(state="visible", timeout=6000)
         step(f"Clicking {label} download icon")
-        await icon.click(timeout=10000)
+        await icon.click(timeout=20000)
         await asyncio.sleep(1)
         modal = portal.locator("mat-dialog-container").first
         vis = await modal.is_visible(timeout=3000)
@@ -265,7 +265,7 @@ async def _open_download_modal(portal: Page, log, label: str, status_cb=None) ->
         btn = portal.locator("button:has-text('Download AIS/TIS')").first
         await btn.wait_for(state="visible", timeout=7000)
         step("Clicking 'Download AIS/TIS' button")
-        await btn.click(timeout=10000)
+        await btn.click(timeout=20000)
         await asyncio.sleep(1)
         modal = portal.locator("mat-dialog-container").first
         vis = await modal.is_visible(timeout=3000)
@@ -340,7 +340,7 @@ async def download_tis(portal: Page, fiscal_year: str, download_dir: str,
             return False
         modal = _modal_locator(portal)
         try:
-            await modal.wait_for(state="visible", timeout=5000)
+            await modal.wait_for(state="visible", timeout=10000)
         except Exception:
             log("[TIS] Modal did not appear.")
             return False
@@ -381,7 +381,7 @@ async def request_ais(portal: Page, fiscal_year: str, download_dir: str,
 
     modal = _modal_locator(portal)
     try:
-        await modal.wait_for(state="visible", timeout=5000)
+        await modal.wait_for(state="visible", timeout=10000)
     except Exception:
         log("[AIS] Modal did not appear.")
         return {"status": "failed", "reason": "AIS modal did not appear after click"}
@@ -396,7 +396,7 @@ async def request_ais(portal: Page, fiscal_year: str, download_dir: str,
         dl_btn = ais_pdf_row.locator("button").first
         cnt = await modal.locator("button.dialog-outline-btn, button").count()
         step(f"Found {cnt} download button(s) in modal — targeting AIS-PDF row")
-        await dl_btn.wait_for(state="visible", timeout=5000)
+        await dl_btn.wait_for(state="visible", timeout=10000)
         step("AIS PDF Download button visible")
         await update_browser_status(portal, "AIS: Requesting AIS PDF...")
 
@@ -408,7 +408,7 @@ async def request_ais(portal: Page, fiscal_year: str, download_dir: str,
         step("Clicking AIS PDF Download button", status="Downloading AIS PDF…")
         dl_task = asyncio.ensure_future(_wait_for_download(portal))
         await asyncio.sleep(0.2)  # let the download listener attach
-        await dl_btn.click(timeout=10000)
+        await dl_btn.click(timeout=20000)
         step("Click sent; detecting instant-download vs large-file-queued…")
 
         download = None
@@ -485,10 +485,10 @@ async def _download_modal_row(portal: Page, row_text: str, save_path: str,
         ).first
         dl_btn = row.locator("button.dialog-outline-btn").first
         step(f"Waiting for '{row_text}' Download button")
-        await dl_btn.wait_for(state="visible", timeout=5000)
+        await dl_btn.wait_for(state="visible", timeout=10000)
         step("Clicking Download")
         async with portal.expect_download(timeout=60000) as dl_info:
-            await dl_btn.click(timeout=10000)
+            await dl_btn.click(timeout=20000)
             await asyncio.sleep(0.5)
         download = await dl_info.value
         await download.save_as(save_path)
@@ -530,9 +530,9 @@ async def download_ais_from_activity_history(portal: Page, fiscal_year: str,
     await update_browser_status(portal, "AIS: Opening Activity History...")
     try:
         act_link = portal.locator("nav.ctm-navbar li.item a:has-text('Activity History')").first
-        await act_link.wait_for(state="visible", timeout=10000)
+        await act_link.wait_for(state="visible", timeout=20000)
         await act_link.click()
-        await portal.wait_for_load_state("domcontentloaded", timeout=20000)
+        await portal.wait_for_load_state("domcontentloaded", timeout=40000)
         await asyncio.sleep(2)
         step("Activity History loaded", portal)
     except Exception as e:
@@ -612,7 +612,7 @@ async def download_ais_from_activity_history(portal: Page, fiscal_year: str,
                     return "aborted"
                 await asyncio.sleep(1)
             try:
-                await portal.reload(wait_until="domcontentloaded", timeout=20000)
+                await portal.reload(wait_until="domcontentloaded", timeout=40000)
                 await asyncio.sleep(2)
             except Exception:
                 pass
@@ -632,7 +632,7 @@ async def download_ais_from_activity_history(portal: Page, fiscal_year: str,
                     return "not_found"
                 continue
 
-            await row.wait_for(state="visible", timeout=5000)
+            await row.wait_for(state="visible", timeout=10000)
             dl_cell = row.locator("td.mat-column-download").first
 
             try:
