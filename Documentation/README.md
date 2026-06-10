@@ -113,6 +113,30 @@ AayDocCapio/
 - pip
 - **Google Chrome** installed (required for AIS/TIS downloads)
 
+### Windows Defender / Antivirus Warning
+
+> **Windows may flag the installer as a threat. This is a false positive.**
+>
+> AayDocCapio is compiled from Python source using Nuitka. Compiled Python
+> binaries are commonly flagged by heuristic scanners because their byte
+> patterns resemble packed executables. The app is fully open source —
+> you can audit every line at [github.com/dkbholusaria/AayDocCapio](https://github.com/dkbholusaria/AayDocCapio).
+
+**If Brave / Chrome blocks the download:**
+1. Click the download icon (↓) in the toolbar
+2. Click **…** next to `AayDocCapio_Setup_v1.0.0.exe`
+3. Click **Keep** → **Show more** → **Keep anyway**
+
+**If Windows Defender shows "Threats found":**
+1. Open **Windows Security** → **Virus & threat protection** → **Protection history**
+2. Find the `AayDocCapio_Setup_v1.0.0.exe` entry
+3. Click **Actions** → **Allow on device**
+
+**If Windows SmartScreen blocks the installer from running:**
+1. Right-click `AayDocCapio_Setup_v1.0.0.exe` → **Properties**
+2. Tick **Unblock** at the bottom → **Apply** → **OK**
+3. Double-click to run — if SmartScreen still appears, click **More info** → **Run anyway**
+
 ### Steps
 
 ```bash

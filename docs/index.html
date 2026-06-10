@@ -438,6 +438,11 @@
     Windows 10 / 11 &nbsp;(64-bit) &nbsp;·&nbsp; Requires Google Chrome for AIS/TIS &nbsp;·&nbsp;
     <a href="https://github.com/dkbholusaria/AayDocCapio/releases">All releases →</a>
   </p>
+
+  <div style="margin-top:18px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.18); border-radius:8px; padding:12px 18px; font-size:0.85rem; color:rgba(255,255,255,0.82); text-align:left; max-width:540px; margin-left:auto; margin-right:auto;">
+    <strong style="color:#F0BE6A;">⚠ Windows Defender / browser may flag the installer</strong> — this is a false positive common with compiled Python apps.
+    &nbsp;<a href="#faq" style="color:#F0BE6A; text-decoration:underline;">How to allow it →</a>
+  </div>
 </div>
 
 <!-- ── Strip ─────────────────────────────────────────────────────── -->
@@ -635,6 +640,18 @@
     <details class="faq">
       <summary>Can I use it without installing?</summary>
       <p>Yes. The portable <code>dist\AayDocCapio\</code> build folder can be zipped and run directly without installation. The installer is recommended for most users.</p>
+    </details>
+
+    <details class="faq">
+      <summary>Windows Defender or my browser says "Virus detected" — is it safe?</summary>
+      <p><strong>Yes, this is a false positive.</strong> AayDocCapio is compiled from Python source using Nuitka. Compiled Python binaries are commonly flagged by heuristic antivirus scanners because their byte patterns resemble packed executables — even though the code is entirely safe and open source.</p>
+      <p style="margin-top:10px"><strong>If Brave / Chrome blocks the download:</strong><br>
+      Click the ↓ download icon → click <strong>…</strong> next to the file → <strong>Keep</strong> → <strong>Show more</strong> → <strong>Keep anyway</strong>.</p>
+      <p style="margin-top:10px"><strong>If Windows Defender shows "Threats found":</strong><br>
+      Open <strong>Windows Security → Virus &amp; threat protection → Protection history</strong>, find the entry, click <strong>Actions → Allow on device</strong>.</p>
+      <p style="margin-top:10px"><strong>If Windows SmartScreen blocks the installer:</strong><br>
+      Right-click the file → <strong>Properties</strong> → tick <strong>Unblock</strong> → <strong>Apply</strong>. Then run it — if SmartScreen still appears, click <strong>More info → Run anyway</strong>.</p>
+      <p style="margin-top:10px">You can audit every line of code at <a href="https://github.com/dkbholusaria/AayDocCapio" target="_blank">github.com/dkbholusaria/AayDocCapio</a>.</p>
     </details>
   </div>
 </section>
