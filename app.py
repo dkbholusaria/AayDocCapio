@@ -709,7 +709,8 @@ class BatchProgressDialog(QDialog):
         self._progress_bar.setFormat(f"0 / {len(targets)} done")
         self._progress_bar.setStyleSheet(
             "QProgressBar{border:1px solid #CBD5E1;border-radius:9px;"
-            "background:#E2E8F0;text-align:center;font-size:11px;color:#334155;}"
+            "background:#94A3B8;text-align:center;font-size:11px;"
+            "font-weight:600;color:#FFFFFF;}"
             "QProgressBar::chunk{background:#2563EB;border-radius:9px;}")
         layout.addWidget(self._progress_bar)
 
