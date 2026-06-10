@@ -5,6 +5,77 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.2.0] — 2026-06-10
+
+### New Features
+
+- **Light / Dark Navy theme support**
+  - Full dual-theme system under Settings → Appearance
+  - Theme persisted in vault across sessions
+  - Dark Navy: deep navy backgrounds (#0A1628 window, #0D1F3C panels) with high-contrast text
+  - Theme applies instantly to all widgets — no restart required
+
+- **Centralised colour system (`themes.py`)**
+  - New `ThemeColors` dataclass with 27 semantic colour fields
+  - `build_stylesheet()` generates full Qt stylesheet from any theme
+  - `THEMES` registry: add a new theme by adding one dict entry, nothing else changes
+  - Module-level `_t()` helper so dialogs, delegates, and menus always read the active theme
+
+- **Redesigned main window**
+  - Left panel removed — replaced with full-width client table
+  - Client Master and Settings moved to menu bar
+  - Assessment Year and Output Directory shown as a settings bar above the table
+  - Table gains two new columns: **Last Download Status** and **Last Saved Location**
+  - Last Saved Location is a clickable hyperlink that opens the client's folder
+  - Last Download Status colour-coded: green for success, red for failure, amber for partial
+
+- **Add / Edit client as popup dialog**
+  - Client form is now a modal QDialog instead of a side panel
+  - Accessible via Client Master → Add Single Client or the ••• row menu
+
+- **••• row action menu**
+  - Each client row has a ••• dots column; clicking shows Edit / Delete menu
+  - Replaces dedicated Edit/Delete buttons
+
+- **Search clear button**
+  - Search box has a built-in ✕ clear button (Qt `setClearButtonEnabled`)
+
+- **Download history per AY**
+  - `vault.record_download(pan, ay_label, status, path)` persists last download per client per year
+  - `vault.get_download_history(ay_label)` returns the table data for the selected year
+  - Table refreshes automatically after each batch and on AY dropdown change
+
+- **User-friendly error messages**
+  - ERR_EMPTY_RESPONSE → portal maintenance message with instruction to check browser
+  - ERR_CONNECTION_REFUSED, ERR_NAME_NOT_RESOLVED, ERR_TIMED_OUT — plain English equivalents
+
+- **Per-row timestamps in Excel report**
+  - Each row records its own completion timestamp instead of a single run time
+
+### Improvements
+
+- All inline `setStyleSheet()` calls replaced with `_t()` theme-aware values
+- `_repaint_theme()` repaints header, bars, table, checkboxes, search box, buttons on theme switch
+- `QMessageBox` (Stop/Abort confirm) is now theme-aware
+- ManageYearsDialog, BatchProgressDialog, About dialog all fully themed
+- Row checkboxes use `WA_StyledBackground` so Qt paints dark backgrounds on Windows
+- `_btn()` and `_lbl()` helpers read active theme for outline/secondary styles
+- Windows Downloads path always preferred when `USERPROFILE` env var is set (fixes WSL dev path leaking into Windows runs)
+
+### Bug Fixes
+
+- Fixed AY dropdown items invisible on scroll (null index data crash in delegate)
+- Fixed ••• action boxes too large — replaced QToolButton widget with plain text item
+- Fixed all timestamps identical in Excel report (now recorded per-row at completion time)
+- Fixed dark theme not applying to settings bar, header, Batch Progress dialog, About dialog
+- Fixed checkboxes showing white indicator background in dark theme on Windows
+- Fixed Browse button text invisible in dark theme
+- Fixed ManageYearsDialog scroll area white in dark theme
+- Fixed `text_muted` too dark in dark theme (#475569 → #94A3B8)
+- Fixed Linux/WSL path persisting in Output Directory on Windows
+
+---
+
 ## [1.1.0] — 2026-06-10
 
 ### New Features
