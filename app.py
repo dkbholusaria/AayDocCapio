@@ -5,6 +5,7 @@ Run:  python3 app.py
 APP_VERSION = "1.1.0"
 
 import sys, os, json, asyncio, threading, datetime, time, subprocess
+from themes import THEMES, ThemeColors, build_stylesheet, get_theme, MONO_FONT_NAME as _MONO_FONT
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton,
     QLineEdit, QCheckBox, QComboBox, QFileDialog, QScrollArea,
@@ -218,217 +219,8 @@ def get_timestamp():
 
 
 # ── Stylesheet ────────────────────────────────────────────────────────────────
-# 'Segoe UI'/'Cascadia Code' only exist on Windows; listing a missing family
-# makes Qt scan every installed font for aliases on startup (slow on macOS).
-_UI_FONT = "Segoe UI" if sys.platform == "win32" else "Avenir Next"
-_MONO_FONT = "Cascadia Code" if sys.platform == "win32" else "Menlo"
-APP_STYLE = """
-QMainWindow, QDialog { background: #FFFFFF; }
-QWidget { font-family: 'Segoe UI', 'Avenir Next', Arial, sans-serif; font-size: 13px; }
-QLabel { color: #1a1a1a; font-size: 13px; }
-
-QLineEdit {
-    background: #FFFFFF;
-    border: 1.5px solid #E2E8F0;
-    border-radius: 6px;
-    padding: 4px 10px;
-    font-size: 13px;
-    color: #1a1a1a;
-    min-height: 28px;
-    selection-background-color: #BFDBFE;
-}
-QLineEdit:hover { border-color: #CBD5E1; }
-QLineEdit:focus { border: 1.5px solid #3B82F6; background: #FAFBFF; outline: none; }
-QLineEdit:disabled { background: #F8FAFC; color: #94A3B8; border-color: #F1F5F9; }
-QLineEdit::placeholder { color: #94A3B8; }
-
-QComboBox {
-    background: #FFFFFF;
-    border: 1.5px solid #E2E8F0;
-    border-radius: 6px;
-    padding: 4px 10px;
-    font-size: 13px;
-    color: #1a1a1a;
-    min-height: 26px;
-    min-width: 120px;
-}
-QComboBox:hover { border-color: #CBD5E1; }
-QComboBox:focus { border: 1.5px solid #3B82F6; }
-QComboBox::drop-down {
-    border: none;
-    width: 28px;
-    subcontrol-origin: padding;
-    subcontrol-position: right center;
-}
-QComboBox::down-arrow {
-    image: url(resources/chevron_down.png);
-    width: 10px;
-    height: 6px;
-}
-QComboBox QAbstractItemView {
-    border: 1px solid #CBD5E1;
-    background: #FFFFFF;
-    color: #1a1a1a;
-    outline: none;
-    selection-background-color: #DBEAFE;
-    selection-color: #1E40AF;
-    show-decoration-selected: 1;
-}
-
-QTabWidget::pane { border: none; background: transparent; }
-QTabBar { background: transparent; qproperty-drawBase: 0; }
-QTabBar::tab {
-    background: transparent;
-    color: #64748B;
-    padding: 10px 18px;
-    border: none;
-    font-size: 13px;
-    font-weight: 600;
-    border-bottom: 2px solid transparent;
-    margin-bottom: 0px;
-}
-QTabBar::tab:selected { color: #1D4ED8; border-bottom: 2px solid #2563EB; }
-QTabBar::tab:hover:!selected { color: #334155; }
-
-QCheckBox { font-size: 13px; color: #1a1a1a; spacing: 8px; background: transparent; }
-QCheckBox::indicator {
-    width: 17px; height: 17px;
-    border: 1.5px solid #CBD5E1;
-    border-radius: 4px;
-    background: #FFFFFF;
-}
-QCheckBox::indicator:hover { border-color: #3B82F6; }
-QCheckBox::indicator:checked {
-    background: #2563EB;
-    border-color: #2563EB;
-    image: url(resources/check.png);
-}
-QCheckBox::indicator:disabled { background: #F1F5F9; border-color: #E2E8F0; }
-
-QScrollArea { border: none; background: transparent; }
-QScrollBar:vertical {
-    background: transparent; width: 6px; border-radius: 3px; margin: 4px 2px;
-}
-QScrollBar::handle:vertical {
-    background: #CBD5E1; border-radius: 3px; min-height: 28px;
-}
-QScrollBar::handle:vertical:hover { background: #94A3B8; }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-
-QTextEdit {
-    background: #0F172A;
-    border: none;
-    font-family: 'Cascadia Code', 'Consolas', monospace;
-    font-size: 11px;
-    color: #7DD3FC;
-    padding: 8px 12px;
-}
-
-QToolTip {
-    background: #1E293B; color: #F1F5F9;
-    border: none; border-radius: 4px;
-    padding: 5px 9px; font-size: 11px;
-}
-"""
-if sys.platform != "win32":
-    APP_STYLE = APP_STYLE.replace("'Segoe UI', ", "")
-if sys.platform == "darwin":
-    APP_STYLE = APP_STYLE.replace(", sans-serif", "")
-    APP_STYLE = APP_STYLE.replace("'Cascadia Code', 'Consolas'", "'Menlo'")
-
-DARK_STYLE = """
-QMainWindow, QDialog { background: #0A1628; }
-QWidget { font-family: 'Segoe UI', 'Avenir Next', Arial, sans-serif; font-size: 13px; color: #E2E8F0; }
-QLabel { color: #E2E8F0; font-size: 13px; }
-
-QLineEdit {
-    background: #0F2040;
-    border: 1.5px solid #1E3A5F;
-    border-radius: 6px;
-    padding: 4px 10px;
-    font-size: 13px;
-    color: #E2E8F0;
-    min-height: 28px;
-    selection-background-color: #1D4ED8;
-}
-QLineEdit:hover { border-color: #2563EB; }
-QLineEdit:focus { border: 1.5px solid #3B82F6; background: #0D1F3C; outline: none; }
-QLineEdit:disabled { background: #0A1628; color: #475569; border-color: #1E3A5F; }
-QLineEdit::placeholder { color: #475569; }
-
-QComboBox {
-    background: #0F2040;
-    border: 1.5px solid #1E3A5F;
-    border-radius: 6px;
-    padding: 4px 10px;
-    font-size: 13px;
-    color: #E2E8F0;
-    min-height: 26px;
-    min-width: 120px;
-}
-QComboBox:hover { border-color: #2563EB; }
-QComboBox:focus { border: 1.5px solid #3B82F6; }
-QComboBox::drop-down { border: none; width: 28px; subcontrol-origin: padding; subcontrol-position: right center; }
-QComboBox::down-arrow { image: url(resources/chevron_down.png); width: 10px; height: 6px; }
-QComboBox QAbstractItemView {
-    border: 1px solid #1E3A5F;
-    background: #0F2040;
-    color: #E2E8F0;
-    outline: none;
-    selection-background-color: #1D4ED8;
-    selection-color: #FFFFFF;
-    show-decoration-selected: 1;
-}
-
-QCheckBox { font-size: 13px; color: #CBD5E1; spacing: 8px; background: transparent; }
-QCheckBox::indicator {
-    width: 17px; height: 17px;
-    border: 1.5px solid #1E3A5F;
-    border-radius: 4px;
-    background: #0F2040;
-}
-QCheckBox::indicator:hover { border-color: #3B82F6; }
-QCheckBox::indicator:checked {
-    background: #2563EB;
-    border-color: #2563EB;
-    image: url(resources/check.png);
-}
-QCheckBox::indicator:disabled { background: #0A1628; border-color: #1E3A5F; }
-
-QScrollArea { border: none; background: transparent; }
-QScrollBar:vertical { background: transparent; width: 6px; border-radius: 3px; margin: 4px 2px; }
-QScrollBar::handle:vertical { background: #1E3A5F; border-radius: 3px; min-height: 28px; }
-QScrollBar::handle:vertical:hover { background: #2563EB; }
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-
-QTextEdit {
-    background: #060F1E;
-    border: none;
-    font-family: 'Cascadia Code', 'Consolas', monospace;
-    font-size: 11px;
-    color: #7DD3FC;
-    padding: 8px 12px;
-}
-
-QToolTip {
-    background: #0F2040; color: #E2E8F0;
-    border: 1px solid #1E3A5F; border-radius: 4px;
-    padding: 5px 9px; font-size: 11px;
-}
-
-QMenu { background: #0F2040; border: 1px solid #1E3A5F; border-radius: 6px; }
-QMenu::item { padding: 8px 24px; color: #CBD5E1; }
-QMenu::item:selected { background: #1D4ED8; color: #FFFFFF; }
-QMenu::separator { height: 1px; background: #1E3A5F; margin: 4px 0; }
-QMenuBar { background: #060F1E; color: #CBD5E1; border-bottom: 1px solid #1E3A5F; }
-QMenuBar::item { background: transparent; padding: 4px 10px; }
-QMenuBar::item:selected { background: #0F2040; border-radius: 4px; }
-"""
-if sys.platform != "win32":
-    DARK_STYLE = DARK_STYLE.replace("'Segoe UI', ", "")
-if sys.platform == "darwin":
-    DARK_STYLE = DARK_STYLE.replace(", sans-serif", "")
-    DARK_STYLE = DARK_STYLE.replace("'Cascadia Code', 'Consolas'", "'Menlo'")
+# Font names for QFont() Python calls — full stacks live in themes.py
+_UI_FONT   = "Segoe UI"      if sys.platform == "win32" else "Avenir Next"
 
 
 def _shadow(blur=18, offset_y=3, alpha=22):
@@ -1193,14 +985,15 @@ class AayDocCapioApp(QMainWindow):
         st_menu.addAction(act_dir)
         st_menu.addSeparator()
 
-        # Appearance submenu
+        # Appearance submenu — built dynamically from THEMES registry
         appear_menu = st_menu.addMenu("🎨  Appearance")
-        self._theme_light_act = QAction("☀  Light",      self, checkable=True)
-        self._theme_dark_act  = QAction("🌙  Dark Navy",  self, checkable=True)
-        self._theme_light_act.triggered.connect(lambda: self._apply_theme("light"))
-        self._theme_dark_act.triggered.connect(lambda:  self._apply_theme("dark"))
-        appear_menu.addAction(self._theme_light_act)
-        appear_menu.addAction(self._theme_dark_act)
+        _icons = {"light": "☀", "dark": "🌙"}
+        for theme_key, theme_colors in THEMES.items():
+            icon = _icons.get(theme_key, "●")
+            act = QAction(f"{icon}  {theme_colors.name}", self, checkable=True)
+            act.triggered.connect(lambda _, k=theme_key: self._apply_theme(k))
+            setattr(self, f"_theme_{theme_key}_act", act)
+            appear_menu.addAction(act)
 
         # Help menu
         help_menu = menubar.addMenu("Help")
@@ -1219,71 +1012,55 @@ class AayDocCapioApp(QMainWindow):
         root.addWidget(self._mk_footer())
 
     def _apply_theme(self, theme: str):
-        """Switch between 'light' and 'dark' themes and persist the choice."""
+        """Switch theme by name and persist the choice."""
         self._current_theme = theme
         self.vault.update_setting("theme", theme)
+        t = get_theme(theme)
         app = QApplication.instance()
         if app:
-            app.setStyleSheet(DARK_STYLE if theme == "dark" else APP_STYLE)
-        # Update checkmarks
+            app.setStyleSheet(build_stylesheet(t))
         if hasattr(self, "_theme_light_act"):
-            self._theme_light_act.setChecked(theme == "light")
-            self._theme_dark_act.setChecked(theme == "dark")
-        # Repaint dynamic elements that use hardcoded colours
-        self._repaint_theme()
+            for name, action in THEMES.items():
+                act = getattr(self, f"_theme_{name}_act", None)
+                if act:
+                    act.setChecked(name == theme)
+        self._repaint_theme(t)
 
-    def _repaint_theme(self):
-        """Repaint widgets whose colours are set imperatively, not via QSS."""
-        dark = self._current_theme == "dark"
-        bg_main   = "#0A1628" if dark else "#FFFFFF"
-        bg_panel  = "#0A1628" if dark else "#FFFFFF"
-        bg_bar    = "#0D1F3C" if dark else "#FFFFFF"
-        bg_log    = "#060F1E" if dark else "#0F172A"
-        bg_loghdr = "#0F2040" if dark else "#1E293B"
-        fg_muted  = "#475569" if dark else "#94A3B8"
-        border    = "#1E3A5F" if dark else "#E2E8F0"
-        tbl_grid  = "#1E3A5F" if dark else "#E2E8F0"
-        tbl_bg    = "#0A1628" if dark else "#FFFFFF"
-        tbl_alt   = "#0D1F3C" if dark else "#F8FAFC"
+    def _repaint_theme(self, t: ThemeColors = None):
+        """Repaint widgets whose colours are set imperatively (not via QSS)."""
+        if t is None:
+            t = get_theme(self._current_theme)
 
-        # Main window + panels
-        for w in self.findChildren(QFrame):
-            ss = w.styleSheet()
-            if "background:#FFFFFF" in ss or "background:#0A1628" in ss:
-                w.setStyleSheet(ss.replace("#FFFFFF", bg_main).replace("#0A1628", bg_main)
-                                  .replace("#0D1F3C", bg_bar))
-
-        # Table
+        # Table widget stylesheet + header
         if hasattr(self, "client_table"):
             chk_path = self.checkmark_path.replace("\\", "/")
             chk_ss = (
                 "QCheckBox { background: transparent; }"
-                "QCheckBox::indicator { width: 15px; height: 15px; border: 1.5px solid "
-                + ("#1E3A5F" if dark else "#475569") +
-                "; border-radius: 3px; background: " + ("#0F2040" if dark else "#FFFFFF") + "; }"
+                f"QCheckBox::indicator {{ width: 15px; height: 15px; border: 1.5px solid {t.border};"
+                f" border-radius: 3px; background: {t.bg_checkbox}; }}"
                 "QCheckBox::indicator:hover { border-color: #0284C7; }"
                 f"QCheckBox::indicator:checked {{ background-color: #0284C7; border-color: #0284C7; image: url('{chk_path}'); }}"
             )
             self.client_table.setStyleSheet(
-                f"QTableWidget {{ border: 1.5px solid {border}; border-radius: 8px; "
-                f"background: {tbl_bg}; outline: 0; gridline-color: {tbl_grid}; }}"
-                f"QTableWidget::item {{ border-bottom: 1px solid {tbl_grid}; padding: 5px; color: {'#CBD5E1' if dark else '#0F172A'}; }}"
+                f"QTableWidget {{ border: 1.5px solid {t.border}; border-radius: 8px;"
+                f" background: {t.bg_table}; outline: 0; gridline-color: {t.grid}; }}"
+                f"QTableWidget::item {{ border-bottom: 1px solid {t.grid}; padding: 5px; color: {t.text_primary}; }}"
                 + chk_ss
             )
             self.client_table.horizontalHeader().setStyleSheet(
-                f"QHeaderView::section {{ background-color: {bg_bar}; border: none; "
-                f"border-right: 1px solid {border}; border-bottom: 1px solid {border}; "
-                f"font-weight: bold; color: {fg_muted}; font-size: 11px; height: 34px; }}"
+                f"QHeaderView::section {{ background-color: {t.bg_header}; border: none;"
+                f" border-right: 1px solid {t.border}; border-bottom: 1px solid {t.border};"
+                f" font-weight: bold; color: {t.text_muted}; font-size: 11px; height: 34px; }}"
             )
-            # Refresh grid to repaint row colours
             self.refresh_grid()
 
         # Log box
         if hasattr(self, "log_box"):
             self.log_box.setStyleSheet(
-                f"QTextEdit{{background:{bg_log};border:none;"
-                f"font-family:'{_MONO_FONT}',monospace;"
-                f"font-size:11px;color:#7DD3FC;padding:8px 16px;}}")
+                f"QTextEdit {{ background: {t.bg_log}; border: none;"
+                f" font-family: '{_MONO_FONT}', monospace;"
+                f" font-size: 11px; color: {t.text_log}; padding: 8px 16px; }}"
+            )
 
     def _show_about(self):
         import webbrowser
@@ -1964,10 +1741,9 @@ class AayDocCapioApp(QMainWindow):
     # ── Grid ──────────────────────────────────────────────────────────────────
 
     def _apply_row_style(self, row_idx, selected, index=0):
-        # Selected rows are highlighted with RED text (always readable, never
-        # white-on-white). Background stays the normal alternating colour.
-        bg = "#FFFFFF" if index % 2 == 0 else "#F8FAFC"
-        fg = "#DC2626" if selected else "#0F172A"
+        t  = get_theme(getattr(self, "_current_theme", "light"))
+        bg = t.bg_table if index % 2 == 0 else t.bg_table_alt
+        fg = t.row_selected_fg if selected else t.text_primary
         
         # Apply style to all items in the row
         for col in range(self.client_table.columnCount()):
@@ -2959,7 +2735,7 @@ if __name__ == "__main__":
                 if _ttf.endswith(".ttf"):
                     QFontDatabase.addApplicationFont(os.path.join(_fonts_dir, _ttf))
         _diag("Step 4: setStyleSheet")
-        app.setStyleSheet(APP_STYLE)
+        app.setStyleSheet(build_stylesheet(get_theme("light")))
         _diag("Step 5: AayDocCapioApp()")
         window = AayDocCapioApp()
         _diag("Step 6: setWindowIcon")
