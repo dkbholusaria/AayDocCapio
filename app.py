@@ -72,7 +72,13 @@ def _default_download_dir() -> str:
 
 def _open_path(path: str):
     """Open a file or folder in the OS file manager / default app."""
-    if not path or not os.path.exists(path):
+    if not path:
+        return
+    if not os.path.exists(path):
+        from PyQt6.QtWidgets import QMessageBox
+        QMessageBox.information(None, "Folder Not Found",
+            f"The folder has not been created yet:\n{path}\n\n"
+            "It will be created when the first file is downloaded.")
         return
     if sys.platform == "win32":
         os.startfile(path)
@@ -1418,8 +1424,15 @@ class AayDocCapioApp(QMainWindow):
         hl.addSpacing(28); hl.addWidget(_divider()); hl.addSpacing(28)
 
         # ── Output Directory ──────────────────────────────────────────────────
-        default_dir = self.vault.get_setting(
-            "download_root_dir", _default_download_dir())
+        # Validate the saved path — it may be a Linux path stored from WSL dev
+        # that is invalid on Windows (e.g. /home/deepak/Downloads). If it doesn't
+        # exist on this platform, reset to the platform-correct default and persist.
+        _saved_dir = self.vault.get_setting("download_root_dir", "")
+        if _saved_dir and os.path.isdir(_saved_dir):
+            default_dir = _saved_dir
+        else:
+            default_dir = _default_download_dir()
+            self.vault.update_setting("download_root_dir", default_dir)
         self.dir_lbl = QLabel(default_dir)
         self.dir_lbl.setStyleSheet("color:#334155;font-size:12px;background:transparent;")
         self.dir_lbl.setWordWrap(False)
