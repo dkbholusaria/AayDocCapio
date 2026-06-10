@@ -1487,7 +1487,7 @@ class AayDocCapioApp(QMainWindow):
         self.client_table = QTableWidget(0, 7)
         self.client_table.setHorizontalHeaderLabels([
             "", "Name  ⇅", "PAN  ⇅", "Date of Birth",
-            "Last Download Status", "Last Saved Location", "Actions"
+            "Last Download Status", "Last Saved Location", ""
         ])
 
         self.client_table.horizontalHeader().setStyleSheet(
@@ -1530,7 +1530,7 @@ class AayDocCapioApp(QMainWindow):
         self.client_table.setColumnWidth(self._TC_PAN,   130)
         self.client_table.setColumnWidth(self._TC_DOB,   120)
         self.client_table.setColumnWidth(self._TC_STATUS, 170)
-        self.client_table.setColumnWidth(self._TC_ACTS,   72)
+        self.client_table.setColumnWidth(self._TC_ACTS,   52)
 
         header = self.client_table.horizontalHeader()
         header.setSectionResizeMode(self._TC_CHK,    QHeaderView.ResizeMode.Interactive)
@@ -1910,29 +1910,38 @@ class AayDocCapioApp(QMainWindow):
             self.client_table.setCellWidget(i, self._TC_PATH, path_lbl)
 
             # Col 6: Actions
-            edit_btn = QPushButton("✏")
-            edit_btn.setFixedSize(28, 28)
-            edit_btn.setToolTip("Edit client")
-            edit_btn.setStyleSheet(
-                "QPushButton { background:transparent; border:none; font-size:16px; }"
-                "QPushButton:hover { color:#0284C7; }")
-            edit_btn.clicked.connect(lambda _, av=a: self._open_edit_client(av))
-
-            del_btn = QPushButton("🗑")
-            del_btn.setFixedSize(28, 28)
-            del_btn.setToolTip("Delete client")
-            del_btn.setStyleSheet(
-                "QPushButton { background:transparent; border:none; font-size:16px; }"
-                "QPushButton:hover { color:#DC2626; }")
-            del_btn.clicked.connect(lambda _, id_=a_id: self.delete_assessee(id_))
+            more_btn = QToolButton()
+            more_btn.setText("⋯")
+            more_btn.setFixedSize(32, 28)
+            more_btn.setToolTip("Actions")
+            more_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+            more_btn.setStyleSheet(
+                "QToolButton { background:transparent; border:1px solid #E2E8F0; border-radius:5px;"
+                "  font-size:15px; color:#475569; }"
+                "QToolButton:hover { background:#F1F5F9; border-color:#CBD5E1; color:#1a1a1a; }"
+                "QToolButton::menu-indicator { image:none; }"
+            )
+            row_menu = QMenu(more_btn)
+            row_menu.setStyleSheet(
+                "QMenu { background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:4px 0; }"
+                "QMenu::item { padding:7px 20px; font-size:12px; color:#334155; }"
+                "QMenu::item:selected { background:#F1F5F9; color:#0F172A; }"
+                "QMenu::separator { height:1px; background:#E2E8F0; margin:3px 0; }"
+            )
+            act_edit = QAction("✏  Edit Client", more_btn)
+            act_edit.triggered.connect(lambda _, av=a: self._open_edit_client(av))
+            act_del  = QAction("🗑  Delete Client", more_btn)
+            act_del.triggered.connect(lambda _, id_=a_id: self.delete_assessee(id_))
+            row_menu.addAction(act_edit)
+            row_menu.addSeparator()
+            row_menu.addAction(act_del)
+            more_btn.setMenu(row_menu)
 
             acts_container = QWidget()
             acts_layout = QHBoxLayout(acts_container)
             acts_layout.setContentsMargins(0, 0, 0, 0)
-            acts_layout.setSpacing(4)
             acts_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            acts_layout.addWidget(edit_btn)
-            acts_layout.addWidget(del_btn)
+            acts_layout.addWidget(more_btn)
             self.client_table.setCellWidget(i, self._TC_ACTS, acts_container)
 
             self._apply_row_style(i, is_selected, i)
