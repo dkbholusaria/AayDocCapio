@@ -512,7 +512,7 @@ class ManageYearsDialog(QDialog):
 # Status → (icon prefix, background colour, text colour)
 _STATUS_STYLE = {
     "waiting":  ("⬜", "#F8FAFC", "#64748B"),
-    "running":  ("⏳", "#EFF6FF", "#1D4ED8"),
+    "running":  ("⏳", "#FFF7ED", "#92400E"),
     "success":  ("✅", "#F0FDF4", "#15803D"),
     "queued":   ("🕐", "#FFFBEB", "#92400E"),
     "failed":   ("❌", "#FEF2F2", "#B91C1C"),
@@ -778,7 +778,7 @@ class BatchProgressDialog(QDialog):
         lbl = self._table.cellWidget(row, self._COL_PATH)
         if isinstance(lbl, QLabel):
             lbl.setText(
-                f'<a href="{folder}" style="color:#2563EB;text-decoration:none;">'
+                f'<a href="{folder}" style="color:#2563EB;text-decoration:underline;">'
                 f'{folder}</a>')
             lbl.setToolTip(folder)
             lbl.setStyleSheet(
