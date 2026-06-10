@@ -938,11 +938,22 @@ class BatchProgressDialog(QDialog):
         """Thread-safe path update — call once the client folder is known."""
         self._path_signal.emit(pan, folder)
 
-    def batch_finished(self):
-        """Called when batch ends to enable Close/Report and hide Stop."""
+    def batch_finished(self, aborted: bool = False):
+        """Called when batch ends to enable Close/Report and hide Stop.
+        If aborted, sweeps any non-terminal rows to ⏹ Stopped."""
+        if aborted:
+            terminal = ("✅", "❌", "🕐", "⏹", "⬜ Skipped")
+            for pan, row in self._pan_to_row.items():
+                item = self._table.item(row, self._COL_STATUS)
+                current = item.text() if item else ""
+                if not any(current.startswith(t) for t in terminal):
+                    self._set_status_item(row, "⏹ Stopped")
+                    if pan in self._rows_data:
+                        self._rows_data[pan]["status"] = "⏹ Stopped"
         self._stop_btn.setVisible(False)
         self._close_btn.setEnabled(True)
         self._report_btn.setEnabled(True)
+        self._progress_lbl.setText(f"All {self._total} done — review results above")
 
 
 # ── Main Window ───────────────────────────────────────────────────────────────
@@ -2350,7 +2361,7 @@ class AayDocCapioApp(QMainWindow):
             self.is_running = False
             self._last_mode = mode
             if self._progress_dialog:
-                self._progress_dialog.batch_finished()
+                self._progress_dialog.batch_finished(aborted=self._batch_aborted)
             self._batch_done_signal.emit()
 
     def _on_batch_done(self):
