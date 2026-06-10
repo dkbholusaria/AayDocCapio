@@ -2267,6 +2267,21 @@ class AayDocCapioApp(QMainWindow):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         self._batch_loop = loop
+
+        # Suppress "Future exception was never retrieved" noise from Playwright
+        # futures that are orphaned when the browser closes mid-await after Stop.
+        def _exc_handler(loop, ctx):
+            exc = ctx.get("exception")
+            if exc is not None:
+                name = type(exc).__name__
+                # These are expected when the browser is force-closed on abort
+                if name in ("TargetClosedError", "ConnectionClosedError",
+                            "CancelledError"):
+                    return
+            loop.default_exception_handler(ctx)
+
+        loop.set_exception_handler(_exc_handler)
+
         try:
             self._batch_task = loop.create_task(
                 self._execute_batch(targets, ay, fy, root_dir, mode))
