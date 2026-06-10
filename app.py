@@ -2205,26 +2205,54 @@ if __name__ == "__main__":
             loop.close()
         sys.exit(0)
 
+    # Write a startup trace log using only builtins — before any Qt call
+    _diag_path = os.path.join(
+        os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
+        "AayDocCapio", "startup_diag.log"
+    )
+    def _diag(msg):
+        try:
+            with open(_diag_path, "a", encoding="utf-8") as _f:
+                _f.write(msg + "\n")
+        except Exception:
+            pass
+
+    _diag(f"\n=== Startup {datetime.datetime.now()} ===")
+    _diag(f"bundled_dir : {_bundled_dir()}")
+    _diag(f"app_dir     : {_app_dir()}")
+    _diag(f"sys.argv    : {sys.argv}")
+    _diag(f"platform    : {sys.platform}")
+
     try:
+        _diag("Step 1: QApplication()")
         app = QApplication(sys.argv)
+        _diag("Step 2: setApplicationName")
         app.setApplicationName("AayDocCapio")
         app.setDesktopFileName("aay-doc-capio")
         app.setStyle("Fusion")
+        _diag("Step 3: font loading")
         from PyQt6.QtGui import QFontDatabase
         _fonts_dir = os.path.join(_bundled_dir(), "resources", "fonts")
         if os.path.isdir(_fonts_dir):
             for _ttf in os.listdir(_fonts_dir):
                 if _ttf.endswith(".ttf"):
                     QFontDatabase.addApplicationFont(os.path.join(_fonts_dir, _ttf))
+        _diag("Step 4: setStyleSheet")
         app.setStyleSheet(APP_STYLE)
+        _diag("Step 5: AayDocCapioApp()")
         window = AayDocCapioApp()
+        _diag("Step 6: setWindowIcon")
         _app_icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
         if os.path.exists(_app_icon_path):
             _icon = QIcon(_app_icon_path)
             app.setWindowIcon(_icon)
             window.setWindowIcon(_icon)
+        _diag("Step 7: window.show()")
         window.show()
+        _diag("Step 8: app.exec() — entering event loop")
         sys.exit(app.exec())
     except Exception as _startup_err:
         import traceback
-        _fatal(traceback.format_exc())
+        _tb = traceback.format_exc()
+        _diag(f"CRASH:\n{_tb}")
+        _fatal(_tb)
