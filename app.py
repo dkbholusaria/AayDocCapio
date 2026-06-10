@@ -505,7 +505,7 @@ class BatchProgressDialog(QDialog):
     """
     _update_signal = pyqtSignal(str, str)   # (pan, status_text)
 
-    def __init__(self, targets: list, mode: str, stop_callback=None, parent=None):
+    def __init__(self, targets: list, mode: str, ay: str = "", stop_callback=None, parent=None):
         super().__init__(parent)
         self._stop_callback = stop_callback
         self.setWindowTitle("Batch Progress")
@@ -531,7 +531,8 @@ class BatchProgressDialog(QDialog):
             "request_ais": "Requesting AIS Generation",
             "ais_tis":     "Downloading AIS / TIS",
         }.get(mode, "Batch Run")
-        title = QLabel(f"<b>{mode_label}</b> — {len(targets)} client(s)")
+        ay_tag = f" &nbsp;·&nbsp; <span style='color:#2563EB'>{ay}</span>" if ay else ""
+        title = QLabel(f"<b>{mode_label}</b> — {len(targets)} client(s){ay_tag}")
         title.setStyleSheet("font-size:14px; color:#0F172A; background:transparent;")
         layout.addWidget(title)
 
@@ -652,7 +653,7 @@ class BatchProgressDialog(QDialog):
 class AayDocCapioApp(QMainWindow):
     _log_signal = pyqtSignal(str)
     _batch_done_signal = pyqtSignal()
-    _show_progress_signal = pyqtSignal(list, str)   # (targets, mode)
+    _show_progress_signal = pyqtSignal(list, str, str)   # (targets, mode, ay)
 
     def __init__(self):
         super().__init__()
@@ -1961,17 +1962,17 @@ class AayDocCapioApp(QMainWindow):
         self.log(f"[System] Starting {mode_log[mode]}...")
 
         # Show progress dialog (on main thread via signal)
-        self._show_progress_signal.emit(targets, mode)
+        self._show_progress_signal.emit(targets, mode, ay)
 
         threading.Thread(
             target=self._run_wrapper,
             args=(targets, ay, fy, self.dir_lbl.text(), mode),
             daemon=True).start()
 
-    def _show_progress_dialog(self, targets: list, mode: str):
+    def _show_progress_dialog(self, targets: list, mode: str, ay: str):
         """Called on main thread to create and show the progress dialog."""
         self._progress_dialog = BatchProgressDialog(
-            targets, mode, stop_callback=self.stop_automation, parent=self)
+            targets, mode, ay=ay, stop_callback=self.stop_automation, parent=self)
         # Window-modal: blocks the parent window (so it can't be clicked behind
         # the dialog) but still allows the worker thread's Qt-signal updates.
         # We use show() rather than exec() so the event loop keeps processing
