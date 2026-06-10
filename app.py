@@ -571,7 +571,7 @@ class BatchProgressDialog(QDialog):
             Qt.WindowType.WindowTitleHint |
             Qt.WindowType.WindowCloseButtonHint |
             Qt.WindowType.WindowMaximizeButtonHint)
-        self.setStyleSheet("QDialog{background:#FFFFFF;}")
+        self.setStyleSheet("QDialog{background:#F0F4F8;}")
 
         self._pan_to_row = {}
 
@@ -587,7 +587,7 @@ class BatchProgressDialog(QDialog):
 
         # ── Table ────────────────────────────────────────────────────────────
         self._table = QTableWidget(len(targets), 5)
-        self._table.setHorizontalHeaderLabels(["Name", "PAN", "Status", "Save Path", ""])
+        self._table.setHorizontalHeaderLabels(["Name", "PAN", "Status", "Save Path", "Open"])
 
         hdr = self._table.horizontalHeader()
         hdr.setSectionResizeMode(self._COL_NAME,   QHeaderView.ResizeMode.Interactive)
@@ -598,7 +598,7 @@ class BatchProgressDialog(QDialog):
         self._table.setColumnWidth(self._COL_NAME,   180)
         self._table.setColumnWidth(self._COL_PAN,    120)
         self._table.setColumnWidth(self._COL_STATUS, 260)
-        self._table.setColumnWidth(self._COL_FOLDER, 50)
+        self._table.setColumnWidth(self._COL_FOLDER, 58)
 
         hdr.setStyleSheet(
             "QHeaderView::section{"
@@ -649,7 +649,7 @@ class BatchProgressDialog(QDialog):
 
             # "..." open-folder button (disabled until path is set)
             folder_btn = QPushButton("...")
-            folder_btn.setFixedSize(42, 28)
+            folder_btn.setFixedSize(50, 28)
             folder_btn.setEnabled(False)
             folder_btn.setToolTip("Open client folder")
             folder_btn.setStyleSheet(
@@ -658,8 +658,10 @@ class BatchProgressDialog(QDialog):
                 "QPushButton:enabled:hover{background:#E2E8F0;border-color:#94A3B8;}"
                 "QPushButton:disabled{color:#CBD5E1;border-color:#E2E8F0;}")
             folder_btn.clicked.connect(lambda _checked, p=pan: self._open_client_folder(p))
-            cell_w = QWidget(); cell_l = QHBoxLayout(cell_w)
-            cell_l.setContentsMargins(2, 0, 2, 0)
+            cell_w = QWidget()
+            cell_w.setStyleSheet("background:transparent;")
+            cell_l = QHBoxLayout(cell_w)
+            cell_l.setContentsMargins(4, 0, 4, 0)
             cell_l.setAlignment(Qt.AlignmentFlag.AlignCenter)
             cell_l.addWidget(folder_btn)
             self._table.setCellWidget(row, self._COL_FOLDER, cell_w)
