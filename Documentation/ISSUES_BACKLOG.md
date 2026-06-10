@@ -8,18 +8,12 @@ loss risk), **P2** (significant UX friction), **P3** (nice-to-have).
 
 ## Bugs
 
-### B-01 — Assessment Year dropdown closes immediately on click `P2`
+### ~~B-01 — Assessment Year dropdown closes immediately on click~~ ✅ FIXED
 
-**Reported:** 2026-06-10  
-**Symptom:** Clicking the Assessment Year selector in the toolbar causes the
-dropdown to open and close in the same click. The user has to navigate with
-keyboard Up/Down arrow keys instead of clicking an item.  
-**Video:** Recording 2026-06-10 115414.mp4  
-**Likely cause:** The `QComboBox` popup receives the same mouse-release event
-that opened it, treating it as a close. Common on some Qt/platform combinations
-when the combo box overlaps its own popup geometry.  
-**Fix direction:** Override `showPopup()` or use `QAbstractItemView` with
-`setMouseTracking` to absorb the opening click before handing off to the popup.
+**Reported:** 2026-06-10 · **Fixed:** 2026-06-10 (merged from dhruvdua88/macos-support)  
+**Fix:** 300ms debounce in `StyledComboBox.showPopup()` / `_ComboListView.mouseReleaseEvent`.
+Records `_popup_opened_at = time.monotonic()` on open; ignores mouse releases
+within 300ms. Fixes all platforms.
 
 ---
 
