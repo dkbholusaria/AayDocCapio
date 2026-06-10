@@ -1,15 +1,17 @@
 #define MyAppName      "AayDocCapio"
-#define MyAppVersion   "1.0.0"
-#define MyAppPublisher "Deepak Bhholusaria"
+#define MyAppVersion   "1.1.0"
+#define MyAppPublisher "Deepak Bholusaria"
 #define MyAppExeName   "AayDocCapio.exe"
 #define MyAppDataDir   "{localappdata}\AayDocCapio"
 
 [Setup]
+; AppId must NEVER change — same GUID = in-place upgrade, no uninstall needed
 AppId={{A3F2C1D4-8B7E-4F9A-BC12-3E5D6F7A8C90}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+; AppVerName shown in Add/Remove Programs
+AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-; Compatible with Inno Setup 6 and 7
 AppPublisherURL=https://github.com/dkbholusaria/AayDocCapio
 AppSupportURL=https://github.com/dkbholusaria/AayDocCapio/issues
 DefaultDirName={autopf}\{#MyAppName}
@@ -24,8 +26,16 @@ WizardStyle=modern
 PrivilegesRequired=admin
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
-; Keep installer on screen during Chromium download
 DisableFinishedPage=no
+
+; ── Upgrade / reinstall behaviour ─────────────────────────────────────────────
+; Close the running app automatically before overwriting files,
+; then do NOT restart it (user chooses via the post-install Run checkbox).
+CloseApplications=yes
+CloseApplicationsFilter=*.exe
+RestartApplications=no
+; Allow same-version reinstall and downgrades (useful for IT support)
+AllowDowngrade=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

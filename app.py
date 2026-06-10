@@ -1,8 +1,9 @@
 """
-app_qt.py — PyQt6 port of AayDocCapio
-Install: pip install PyQt6
-Run:     python3 app_qt.py
+AayDocCapio — ITD Bulk Document Downloader (Form 26AS, AIS, TIS)
+Run:  python3 app.py
 """
+APP_VERSION = "1.1.0"
+
 import sys, os, json, asyncio, threading, datetime, time, subprocess
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton,
@@ -1307,7 +1308,7 @@ class AayDocCapioApp(QMainWindow):
         ml.setSpacing(2)
         ml.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
-        version_lbl = QLabel("v1.0.0")
+        version_lbl = QLabel(f"v{APP_VERSION}")
         version_lbl.setStyleSheet("color:#94A3B8; font-family:'Arial'; font-size:11px; background:transparent; border:none;")
         version_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
 
