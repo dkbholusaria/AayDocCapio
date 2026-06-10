@@ -1795,7 +1795,7 @@ class AayDocCapioApp(QMainWindow):
 
         acts_container = self.client_table.cellWidget(row_idx, self._TC_ACTS)
         if acts_container:
-            acts_container.setStyleSheet(f"background:{bg}; border:none;")
+            acts_container.setStyleSheet("background:transparent; border:none;")
 
     def _apply_filter(self, text=""):
         if not hasattr(self, "client_table"):
@@ -1912,14 +1912,14 @@ class AayDocCapioApp(QMainWindow):
             # Col 6: Actions
             more_btn = QToolButton()
             more_btn.setText("⋯")
-            more_btn.setFixedSize(32, 28)
+            more_btn.setFixedSize(32, 26)
             more_btn.setToolTip("Actions")
             more_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
             more_btn.setStyleSheet(
-                "QToolButton { background:transparent; border:1px solid #E2E8F0; border-radius:5px;"
-                "  font-size:15px; color:#475569; }"
-                "QToolButton:hover { background:#F1F5F9; border-color:#CBD5E1; color:#1a1a1a; }"
-                "QToolButton::menu-indicator { image:none; }"
+                "QToolButton { background:#F8FAFC; border:1px solid #E2E8F0; border-radius:5px;"
+                "  font-size:14px; color:#64748B; padding:0px; }"
+                "QToolButton:hover { background:#E2E8F0; border-color:#CBD5E1; color:#334155; }"
+                "QToolButton::menu-indicator { image:none; width:0px; }"
             )
             row_menu = QMenu(more_btn)
             row_menu.setStyleSheet(
@@ -1938,8 +1938,9 @@ class AayDocCapioApp(QMainWindow):
             more_btn.setMenu(row_menu)
 
             acts_container = QWidget()
+            acts_container.setStyleSheet("background:transparent; border:none;")
             acts_layout = QHBoxLayout(acts_container)
-            acts_layout.setContentsMargins(0, 0, 0, 0)
+            acts_layout.setContentsMargins(8, 3, 8, 3)
             acts_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
             acts_layout.addWidget(more_btn)
             self.client_table.setCellWidget(i, self._TC_ACTS, acts_container)
