@@ -246,30 +246,32 @@ def _btn(text, style="secondary", height=36, min_width=None):
     b.setMinimumHeight(height)
     if min_width:
         b.setMinimumWidth(min_width)
+    t = _t()
     COLORS = {
-        "primary":   ("#2563EB", "#1D4ED8", "white"),
-        "success":   ("#16A34A", "#15803D", "white"),
-        "danger":    ("#EF4444", "#DC2626", "white"),
-        "secondary": ("#64748B", "#475569", "white"),
-        "warning":   ("#EAB308", "#CA8A04", "white"),
-        "outline":   ("transparent", "#F1F5F9", "#475569"),
-        "edit":      ("#0284C7", "#0369A1", "white"),
-        "delete":    ("#DC2626", "#991B1B", "white"),
+        "primary":   ("#2563EB",      "#1D4ED8",      "white"),
+        "success":   ("#16A34A",      "#15803D",      "white"),
+        "danger":    ("#EF4444",      "#DC2626",      "white"),
+        "secondary": ("#64748B",      "#475569",      "white"),
+        "warning":   ("#EAB308",      "#CA8A04",      "white"),
+        "outline":   ("transparent",  t.bg_table_alt, t.text_primary),
+        "edit":      ("#0284C7",      "#0369A1",      "white"),
+        "delete":    ("#DC2626",      "#991B1B",      "white"),
     }
     bg, hov, fg = COLORS.get(style, COLORS["secondary"])
-    border = "1px solid #CBD5E1" if style == "outline" else "none"
+    border = f"1px solid {t.border}" if style == "outline" else "none"
     b.setStyleSheet(
         f"QPushButton {{ background:{bg}; color:{fg}; border:{border}; "
         f"border-radius:6px; padding:6px 14px; font-weight:bold; font-size:12px; }}"
         f"QPushButton:hover {{ background:{hov}; }}"
-        f"QPushButton:disabled {{ background:#CBD5E1; color:#94A3B8; }}"
+        f"QPushButton:disabled {{ background:{t.border}; color:{t.text_muted}; }}"
     )
     return b
 
 
-def _lbl(text, size=12, bold=False, color="#0F172A"):
+def _lbl(text, size=12, bold=False, color=None):
     l = QLabel(text)
-    l.setStyleSheet(f"color:{color}; font-size:{size}px;" + (" font-weight:bold;" if bold else ""))
+    c = color or _t().text_primary
+    l.setStyleSheet(f"color:{c}; font-size:{size}px;" + (" font-weight:bold;" if bold else ""))
     return l
 
 
@@ -1044,15 +1046,88 @@ class AayDocCapioApp(QMainWindow):
         if t is None:
             t = get_theme(self._current_theme)
 
-        # Table widget stylesheet + header
+        # ── Header ────────────────────────────────────────────────────────────
+        if hasattr(self, "_hdr_frame"):
+            self._hdr_frame.setStyleSheet(
+                f"QFrame#header {{ background: {t.bg_window}; border: none; }}"
+                f" QLabel {{ border: none; text-decoration: none; }}"
+            )
+        if hasattr(self, "_hdr_aay"):
+            self._hdr_aay.setStyleSheet(
+                f"color:{t.text_primary}; font-family:'Avenir Next'; font-size:36px;"
+                f" font-weight:700; background:transparent; text-decoration:none; border:none;")
+        if hasattr(self, "_hdr_capio"):
+            self._hdr_capio.setStyleSheet(
+                f"color:{t.accent}; font-family:'Avenir Next'; font-size:36px;"
+                f" font-weight:700; background:transparent; text-decoration:none; border:none;")
+        if hasattr(self, "_hdr_tm"):
+            self._hdr_tm.setStyleSheet(
+                f"color:{t.accent}; font-family:'Avenir Next'; font-size:14px;"
+                f" font-weight:700; background:transparent; padding-bottom:18px;"
+                f" text-decoration:none; border:none;")
+        if hasattr(self, "_hdr_sep"):
+            self._hdr_sep.setStyleSheet(
+                f"color:{t.border}; font-size:22px; background:transparent; border:none;")
+        if hasattr(self, "_hdr_tagline"):
+            self._hdr_tagline.setStyleSheet(
+                f"color:{t.text_muted}; font-family:'Arial'; font-size:13px;"
+                f" font-weight:400; background:transparent; border:none;")
+        for lbl in (getattr(self, "_hdr_version", None), getattr(self, "_hdr_copy", None)):
+            if lbl:
+                lbl.setStyleSheet(
+                    f"color:{t.text_muted}; font-family:'Arial'; font-size:11px;"
+                    f" background:transparent; border:none;")
+
+        # ── Settings bar + control bar backgrounds ────────────────────────────
+        for bar in (getattr(self, "_settings_bar", None), getattr(self, "_control_bar", None)):
+            if bar:
+                bar.setStyleSheet(f"QFrame{{background:{t.bg_panel};border-radius:10px;}}")
+
+        # ── Settings bar caption labels ───────────────────────────────────────
+        for lbl in getattr(self, "_settings_caps", []):
+            lbl.setStyleSheet(
+                f"color:{t.text_muted};font-size:10px;font-weight:700;"
+                f"letter-spacing:0.8px;background:transparent;")
+
+        # ── dir_lbl (output directory path) ──────────────────────────────────
+        if hasattr(self, "dir_lbl"):
+            self.dir_lbl.setStyleSheet(
+                f"color:{t.text_primary};font-size:12px;background:transparent;")
+
+        # ── chk_headless ──────────────────────────────────────────────────────
+        if hasattr(self, "chk_headless"):
+            self.chk_headless.setStyleSheet(
+                f"QCheckBox{{font-size:12px;color:{t.text_muted};background:transparent;spacing:6px;}}"
+                f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {t.border};"
+                f"border-radius:3px;background:{t.bg_checkbox};}}"
+                f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};}}")
+
+        # ── Run button ────────────────────────────────────────────────────────
+        if hasattr(self, "btn_run"):
+            self.btn_run.setStyleSheet(
+                f"QToolButton{{background:{t.accent};color:{t.accent_text};border:none;"
+                f"border-radius:6px;font-size:13px;font-weight:600;padding:0 14px;}}"
+                f"QToolButton:hover{{background:{t.accent_hover};}}"
+                f"QToolButton::menu-button{{border:none;width:20px;}}"
+                f"QToolButton:disabled{{background:{t.border};color:{t.text_muted};}}")
+            if hasattr(self.btn_run, "menu") and self.btn_run.menu():
+                self.btn_run.menu().setStyleSheet(
+                    f"QMenu{{background:{t.bg_menu};border:1px solid {t.border};"
+                    f"border-radius:8px;padding:4px 0;}}"
+                    f"QMenu::item{{padding:8px 18px;font-size:13px;color:{t.text_primary};}}"
+                    f"QMenu::item:selected{{background:{t.accent};color:{t.accent_text};}}"
+                    f"QMenu::separator{{height:1px;background:{t.border};margin:4px 0;}}")
+
+        # ── Table widget stylesheet + header ──────────────────────────────────
         if hasattr(self, "client_table"):
             chk_path = self.checkmark_path.replace("\\", "/")
             chk_ss = (
                 "QCheckBox { background: transparent; }"
                 f"QCheckBox::indicator {{ width: 15px; height: 15px; border: 1.5px solid {t.border};"
                 f" border-radius: 3px; background: {t.bg_checkbox}; }}"
-                "QCheckBox::indicator:hover { border-color: #0284C7; }"
-                f"QCheckBox::indicator:checked {{ background-color: #0284C7; border-color: #0284C7; image: url('{chk_path}'); }}"
+                f"QCheckBox::indicator:hover {{ border-color: {t.border_focus}; }}"
+                f"QCheckBox::indicator:checked {{ background-color: {t.accent}; border-color: {t.accent};"
+                f" image: url('{chk_path}'); }}"
             )
             self.client_table.setStyleSheet(
                 f"QTableWidget {{ border: 1.5px solid {t.border}; border-radius: 8px;"
@@ -1067,7 +1142,7 @@ class AayDocCapioApp(QMainWindow):
             )
             self.refresh_grid()
 
-        # Log box
+        # ── Log box ───────────────────────────────────────────────────────────
         if hasattr(self, "log_box"):
             self.log_box.setStyleSheet(
                 f"QTextEdit {{ background: {t.bg_log}; border: none;"
@@ -1209,8 +1284,8 @@ class AayDocCapioApp(QMainWindow):
     def _mk_header(self):
         hdr = QFrame()
         hdr.setFixedHeight(80)
-        hdr.setStyleSheet(f"QFrame#header {{ background: {_t().bg_window}; border: none; }} QLabel {{ border: none; text-decoration: none; }}")
         hdr.setObjectName("header")
+        self._hdr_frame = hdr
         hl = QHBoxLayout(hdr)
         hl.setContentsMargins(32, 0, 32, 0)
         hl.setSpacing(0)
@@ -1241,25 +1316,25 @@ class AayDocCapioApp(QMainWindow):
         tl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         aay = QLabel("AayDoc ")
-        aay.setStyleSheet("color:#0D1F4E; font-family:'Avenir Next'; font-size:36px; font-weight:700; background:transparent; text-decoration:none; border:none;")
+        self._hdr_aay = aay
         tl.addWidget(aay)
 
         capio = QLabel("Capio")
-        capio.setStyleSheet("color:#1A8FE3; font-family:'Avenir Next'; font-size:36px; font-weight:700; background:transparent; text-decoration:none; border:none;")
+        self._hdr_capio = capio
         tl.addWidget(capio)
 
         tm = QLabel("™")
-        tm.setStyleSheet("color:#1A8FE3; font-family:'Avenir Next'; font-size:14px; font-weight:700; background:transparent; padding-bottom:18px; text-decoration:none; border:none;")
+        self._hdr_tm = tm
         tl.addWidget(tm)
 
         # Separator + tagline inline with title
         sep = QLabel("  |  ")
-        sep.setStyleSheet("color:#CBD5E1; font-size:22px; background:transparent; border:none;")
+        self._hdr_sep = sep
         sep.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         tl.addWidget(sep)
 
         tagline = QLabel("Tax Documents. Delivered to You.")
-        tagline.setStyleSheet(f"color:{_t().text_muted}; font-family:'Arial'; font-size:13px; font-weight:400; background:transparent; border:none;")
+        self._hdr_tagline = tagline
         tagline.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         tl.addWidget(tagline)
         tl.addStretch()
@@ -1282,11 +1357,11 @@ class AayDocCapioApp(QMainWindow):
         ml.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         version_lbl = QLabel(f"v{APP_VERSION}")
-        version_lbl.setStyleSheet("color:#94A3B8; font-family:'Arial'; font-size:11px; background:transparent; border:none;")
+        self._hdr_version = version_lbl
         version_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
 
         copy_lbl = QLabel("© 2026 Deepak Bhholusaria")
-        copy_lbl.setStyleSheet("color:#94A3B8; font-family:'Arial'; font-size:11px; background:transparent; border:none;")
+        self._hdr_copy = copy_lbl
         copy_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
 
         ml.addStretch()
@@ -1346,17 +1421,18 @@ class AayDocCapioApp(QMainWindow):
 
     def _mk_settings_bar(self):
         bar = QFrame()
+        self._settings_bar = bar
         bar.setFixedHeight(68)
         bar.setStyleSheet(f"QFrame{{background:{_t().bg_panel};border-radius:10px;}}")
         hl = QHBoxLayout(bar)
         hl.setContentsMargins(20, 0, 20, 0)
         hl.setSpacing(0)
         hl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        self._settings_caps = []
 
         def _cap(text):
             l = QLabel(text)
-            l.setStyleSheet("color:#94A3B8;font-size:10px;font-weight:700;"
-                            "letter-spacing:0.8px;background:transparent;")
+            self._settings_caps.append(l)
             return l
 
         def _divider():
@@ -1603,6 +1679,7 @@ class AayDocCapioApp(QMainWindow):
 
     def _mk_control_bar(self):
         bar = QFrame()
+        self._control_bar = bar
         bar.setFixedHeight(54)
         bar.setStyleSheet(f"QFrame{{background:{_t().bg_panel};border-radius:10px;}}")
         hl = QHBoxLayout(bar)
@@ -2375,8 +2452,21 @@ class AayDocCapioApp(QMainWindow):
     def stop_automation(self):
         if not self.is_running:
             return
-        if QMessageBox.question(self, "Stop",
-            "Abort the active batch?") == QMessageBox.StandardButton.Yes:
+        _sm = _t()
+        _mb = QMessageBox(self)
+        _mb.setWindowTitle("Stop")
+        _mb.setText("Abort the active batch?")
+        _mb.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        _mb.setDefaultButton(QMessageBox.StandardButton.No)
+        _mb.setStyleSheet(
+            f"QMessageBox{{background:{_sm.bg_window};color:{_sm.text_primary};}}"
+            f"QLabel{{color:{_sm.text_primary};background:transparent;}}"
+            f"QPushButton{{background:{_sm.accent};color:{_sm.accent_text};border:none;"
+            f"border-radius:5px;padding:6px 18px;font-size:13px;}}"
+            f"QPushButton:hover{{background:{_sm.accent_hover};}}"
+            f"QPushButton[text='No']{{background:{_sm.border};color:{_sm.text_primary};}}"
+        )
+        if _mb.exec() == QMessageBox.StandardButton.Yes:
             self.log("[System] Abort requested...")
             self.is_running = False
             self._batch_aborted = True

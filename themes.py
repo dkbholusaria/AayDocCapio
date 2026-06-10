@@ -159,6 +159,13 @@ THEMES: dict[str, ThemeColors] = {
 def build_stylesheet(t: ThemeColors) -> str:
     return f"""
 QMainWindow, QDialog {{ background: {t.bg_window}; }}
+QMessageBox {{ background: {t.bg_window}; }}
+QMessageBox QLabel {{ color: {t.text_primary}; background: transparent; }}
+QMessageBox QPushButton {{
+    background: {t.accent}; color: {t.accent_text}; border: none;
+    border-radius: 5px; padding: 6px 18px; font-size: 13px; min-width: 70px;
+}}
+QMessageBox QPushButton:hover {{ background: {t.accent_hover}; }}
 QWidget {{ font-family: {UI_FONT}; font-size: 13px; color: {t.text_primary}; }}
 QLabel  {{ color: {t.text_primary}; font-size: 13px; }}
 
