@@ -427,6 +427,17 @@ async def request_ais(portal: Page, fiscal_year: str, download_dir: str,
                 txt = await modal.inner_text()
             except Exception:
                 txt = ""
+            # Portal-side error: data too large for PDF — must use AIS Utility
+            if _re.search(r"too large|ais utility|unable to generate", txt, _re.IGNORECASE):
+                step("Portal error: AIS data too large for PDF generation")
+                log(f"[Warning] AIS PDF unavailable — portal says data is too large. "
+                    f"Client must use the AIS Utility to view their AIS.")
+                if not dl_task.done():
+                    dl_task.cancel()
+                await _close_modal(portal, log)
+                return {"status": "failed",
+                        "reason": "AIS data is too large to generate as PDF. "
+                                  "Client must download AIS JSON and use the AIS Utility app."}
             if _re.search(r"reference\s*id|activity history|submitted successfully|"
                           r"file is large", txt, _re.IGNORECASE):
                 queued_text = txt
@@ -489,12 +500,30 @@ async def _download_modal_row(portal: Page, row_text: str, save_path: str,
         step("Clicking Download")
         async with portal.expect_download(timeout=60000) as dl_info:
             await dl_btn.click(timeout=20000)
-            await asyncio.sleep(0.5)
+            # Brief pause to let any inline portal error render before
+            # we check for it (e.g. "data too large, use AIS Utility")
+            await asyncio.sleep(1.5)
+            # Check for portal-side error shown inside the modal row
+            try:
+                err_el = row.locator("p.error, .error-msg, [class*='error'], mat-error").first
+                if await err_el.is_visible(timeout=800):
+                    err_text = (await err_el.inner_text()).strip()
+                    if err_text:
+                        raise RuntimeError(f"Portal error: {err_text}")
+            except RuntimeError:
+                raise
+            except Exception:
+                pass
         download = await dl_info.value
         await download.save_as(save_path)
         step(f"Saved: {os.path.basename(save_path)}")
         log(f"[Victory] {label} PDF downloaded: {os.path.basename(save_path)}")
         return True
+    except RuntimeError as e:
+        # Portal-reported error (e.g. data too large) — log clearly and surface
+        step(f"Portal error: {e}")
+        log(f"[Warning] {label}: {e}")
+        return False
     except Exception as e:
         step(f"Download failed: {e}")
         return False
