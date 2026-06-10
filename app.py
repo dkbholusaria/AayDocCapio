@@ -509,6 +509,52 @@ class ManageYearsDialog(QDialog):
 
 # ── Batch Progress Dialog ─────────────────────────────────────────────────────
 
+def _friendly_error(raw: str) -> str:
+    """
+    Translate technical Playwright / network exception messages into plain
+    English suitable for display in the progress table status column.
+    """
+    r = raw.lower()
+    # Wrong password / auth failures (already human-readable from auth.py)
+    if "authentication failed" in r:
+        # Strip the "AUTHENTICATION FAILED: " prefix, keep the reason
+        for prefix in ("authentication failed: ", "authentication failed"):
+            if raw.lower().startswith(prefix):
+                return raw[len(prefix):].strip() or "Incorrect credentials"
+        return raw
+    # Network / portal unreachable
+    if "err_empty_response" in r or "empty response" in r:
+        return "Portal did not respond — check internet connection or try again"
+    if "err_connection_refused" in r or "connection refused" in r:
+        return "Connection refused — portal may be down"
+    if "err_name_not_resolved" in r or "name not resolved" in r:
+        return "Cannot reach ITD portal — check internet connection"
+    if "err_timed_out" in r or "timed out" in r or "timeout" in r:
+        return "Portal timed out — try again in a few minutes"
+    if "err_connection_reset" in r or "connection reset" in r:
+        return "Connection reset by portal — try again"
+    if "net::" in r:
+        # Generic net:: error — strip the technical prefix
+        import re as _re
+        m = _re.search(r"net::(\w+)", raw)
+        code = m.group(1) if m else "NETWORK_ERROR"
+        return f"Network error ({code}) — check connection and retry"
+    # Playwright target/browser closed
+    if "target closed" in r or "browser has been closed" in r:
+        return "Browser closed unexpectedly — try again"
+    # Aborted by user
+    if "aborted by user" in r or "cancelled" in r:
+        return "Stopped by user"
+    # 2FA
+    if "2fa" in r or "otp" in r:
+        return raw  # already human-readable
+    # Generic fallback — truncate but don't show raw technical noise
+    clean = raw.split("\n")[0].strip()   # first line only
+    if len(clean) > 72:
+        clean = clean[:69] + "..."
+    return clean
+
+
 # Status → (icon prefix, background colour, text colour)
 _STATUS_STYLE = {
     "waiting":  ("⬜", "#F8FAFC", "#64748B"),
@@ -2496,10 +2542,7 @@ class AayDocCapioApp(QMainWindow):
                     # Record the failure so the summary dialog/counts reflect it.
                     self._ais_results[pan] = "failed"
                     self._last_errors[pan] = str(e)
-                    err_short = str(e)
-                    if len(err_short) > 60:
-                        err_short = err_short[:57] + "..."
-                    set_status(pan, f"❌ Failed — {err_short}")
+                    set_status(pan, f"❌ Failed — {_friendly_error(str(e))}")
                     if page:
                         try: await logout_itd(page, self.log)
                         except Exception: pass
