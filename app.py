@@ -526,21 +526,21 @@ def _friendly_error(raw: str) -> str:
         return raw
     # Network / portal unreachable
     if "err_empty_response" in r or "empty response" in r:
-        return "Portal did not respond — check internet connection or try again"
+        return "ITD portal is not responding — portal may be down for maintenance. Open incometax.gov.in in a browser to check, then retry."
     if "err_connection_refused" in r or "connection refused" in r:
-        return "Connection refused — portal may be down"
+        return "ITD portal refused the connection — it may be down for maintenance. Try again in a few minutes."
     if "err_name_not_resolved" in r or "name not resolved" in r:
-        return "Cannot reach ITD portal — check internet connection"
+        return "Cannot reach ITD portal — check your internet connection and try again."
     if "err_timed_out" in r or "timed out" in r or "timeout" in r:
-        return "Portal timed out — try again in a few minutes"
+        return "ITD portal took too long to respond — portal may be busy. Try again in a few minutes."
     if "err_connection_reset" in r or "connection reset" in r:
-        return "Connection reset by portal — try again"
+        return "Connection was reset by the portal — try again in a few minutes."
     if "net::" in r:
         # Generic net:: error — strip the technical prefix
         import re as _re
         m = _re.search(r"net::(\w+)", raw)
         code = m.group(1) if m else "NETWORK_ERROR"
-        return f"Network error ({code}) — check connection and retry"
+        return f"Network error — ITD portal may be temporarily unavailable. ({code})"
     # Playwright target/browser closed
     if "target closed" in r or "browser has been closed" in r:
         return "Browser closed unexpectedly — try again"
