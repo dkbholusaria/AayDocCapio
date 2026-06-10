@@ -38,6 +38,33 @@ def _app_dir() -> str:
     return os.path.dirname(os.path.abspath(__file__))
 
 
+def _default_download_dir() -> str:
+    """
+    Sensible default output directory per platform.
+    - Windows : %USERPROFILE%\\Downloads, fallback to Documents
+    - macOS   : ~/Downloads  (always exists on Mac)
+    - Linux   : ~/Downloads if it exists, otherwise ~ (never create it)
+    Never creates the folder — just returns the path.
+    """
+    home = os.path.expanduser("~")
+    if sys.platform == "win32":
+        # Try Downloads first (USERPROFILE\Downloads)
+        downloads = os.path.join(os.environ.get("USERPROFILE", home), "Downloads")
+        if os.path.isdir(downloads):
+            return downloads
+        # Fallback to Documents
+        documents = os.path.join(os.environ.get("USERPROFILE", home), "Documents")
+        if os.path.isdir(documents):
+            return documents
+        return home
+    elif sys.platform == "darwin":
+        return os.path.join(home, "Downloads")
+    else:
+        # Linux — use ~/Downloads only if it already exists
+        downloads = os.path.join(home, "Downloads")
+        return downloads if os.path.isdir(downloads) else home
+
+
 def _bundled_dir() -> str:
     """
     Directory for read-only assets bundled inside the .exe.
@@ -1136,8 +1163,7 @@ class AayDocCapioApp(QMainWindow):
 
         # ── Output Directory ──────────────────────────────────────────────────
         default_dir = self.vault.get_setting(
-            "download_root_dir",
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), "outputs"))
+            "download_root_dir", _default_download_dir())
         self.dir_lbl = QLabel(default_dir)
         self.dir_lbl.setStyleSheet("color:#334155;font-size:12px;background:transparent;")
         self.dir_lbl.setWordWrap(False)
