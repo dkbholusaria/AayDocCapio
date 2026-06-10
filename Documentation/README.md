@@ -191,7 +191,9 @@ python app.py
    | `⬜ No queued AIS for this FY — run Download / Request first` | Nothing was requested for that FY/client |
    | `🕐 AIS still generating — try again in a few minutes` | Queued AIS not ready after ~10 min |
    | `⬜ Skipped — AIS not available for this FY` | FY pre-dates AIS (before 2021-22) |
-   | `❌ Failed — <reason>` | Error; reason shown inline and in the log panel |
+   | `❌ Failed — AUTHENTICATION FAILED: Invalid Password` | Wrong password in vault |
+   | `❌ Failed — AUTHENTICATION FAILED: 2FA (OTP) enabled` | Client has Two-Step Auth on; must disable it on the ITD portal |
+   | `❌ Failed — <reason>` | Other error; reason shown inline and in the log panel |
    | `⏹ Stopped` | Aborted by the Stop button |
 
    > These ⏳ progress messages update live for every step so you always know
@@ -258,6 +260,11 @@ This script:
 
 - **AIS/TIS require Google Chrome** — the Insight portal's download buttons only
   fire on real Chrome (`channel="chrome"`). Without Chrome, only 26AS works.
+- **2FA accounts cannot be automated** — if a client has Two-Step Authentication
+  enabled on the ITD portal, the app will detect it immediately and log
+  `AUTHENTICATION FAILED: This account has 2FA (OTP) enabled`. The client must
+  go to ITD portal → Profile → Login Settings → disable Two-Step Authentication,
+  then retry.
 - AIS JSON is intentionally skipped (the portal gates it behind a CAPTCHA).
 - AIS/Insight portal selectors may need updates if the portal UI changes — the
   step logs make this easy to diagnose.
