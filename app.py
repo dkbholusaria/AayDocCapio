@@ -804,7 +804,7 @@ class BatchProgressDialog(QDialog):
 
         for t in targets:
             self._rows_data[t.get("pan", "")] = {
-                "name": t.get("name", ""), "path": "", "status": "Waiting"}
+                "name": t.get("name", ""), "path": "", "status": "Waiting", "ts": ""}
 
         self._update_signal.connect(self._on_update)
         self._path_signal.connect(self._on_path_update)
@@ -826,6 +826,7 @@ class BatchProgressDialog(QDialog):
         self._set_status_item(row, status)
         if pan in self._rows_data:
             self._rows_data[pan]["status"] = status
+            self._rows_data[pan]["ts"] = datetime.datetime.now().strftime("%d-%b-%Y %H:%M:%S")
         terminal = ("✅", "❌", "🕐", "⬜", "⏹")
         if any(status.startswith(p) for p in terminal):
             self._done_count += 1
@@ -904,8 +905,6 @@ class BatchProgressDialog(QDialog):
 
         ws.row_dimensions[1].height = 22
 
-        run_ts = datetime.datetime.now().strftime("%d-%b-%Y %H:%M")
-
         for seq, t in enumerate(self._targets, start=1):
             pan  = t.get("pan", "")
             data = self._rows_data.get(pan, {})
@@ -914,6 +913,7 @@ class BatchProgressDialog(QDialog):
             folder = data.get("path", "")
             status = data.get("status", "—")
             name   = data.get("name", t.get("name", ""))
+            row_ts = data.get("ts", "")
 
             ws.cell(row=row_num, column=1, value=seq).alignment = center
 
@@ -933,7 +933,7 @@ class BatchProgressDialog(QDialog):
             status_clean = _re.sub(r'[^\x00-\x7F✅❌🕐⬜⏹⏳]+', '', status).strip()
             ws.cell(row=row_num, column=4, value=status_clean).alignment = left
 
-            ws.cell(row=row_num, column=5, value=run_ts).alignment = center
+            ws.cell(row=row_num, column=5, value=row_ts or "—").alignment = center
 
             for col_idx in range(1, 6):
                 cell = ws.cell(row=row_num, column=col_idx)
