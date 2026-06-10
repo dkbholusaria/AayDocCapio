@@ -2270,79 +2270,75 @@ class AayDocCapioApp(QMainWindow):
 
         # Calendar popup
         def _show_calendar():
+            from PyQt6.QtCore import QDate
+            from PyQt6.QtGui import QPalette, QColor
+            from vault import _normalise_dob, _DOB_RE
+
             popup = QDialog(dlg)
             popup.setWindowTitle("Pick Date of Birth")
             popup.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
             popup.setStyleSheet(
-                # Dialog shell
-                f"QDialog{{background:{t.bg_panel};border:1px solid {t.border};border-radius:8px;}}"
-
-                # Navigation bar (month/year row at top)
-                f"QCalendarWidget #qt_calendar_navigationbar{{"
-                f"  background:{t.bg_header};padding:4px 8px;}}"
-
-                # Prev / Next arrow buttons
-                f"QCalendarWidget QToolButton{{"
-                f"  color:{t.text_primary};background:transparent;"
-                f"  border:none;border-radius:4px;padding:3px 8px;font-size:12px;}}"
-                f"QCalendarWidget QToolButton:hover{{"
-                f"  background:{t.accent};color:{t.accent_text};}}"
-
-                # Month/year drop-down menu that appears when clicking the month label
-                f"QCalendarWidget QToolButton::menu-indicator{{image:none;}}"
-                f"QCalendarWidget QMenu{{"
-                f"  background:{t.bg_menu};color:{t.text_primary};"
-                f"  border:1px solid {t.border};}}"
-                f"QCalendarWidget QMenu::item:selected{{"
-                f"  background:{t.accent};color:{t.accent_text};}}"
-
-                # Year spin-box
-                f"QCalendarWidget QSpinBox{{"
-                f"  color:{t.text_primary};background:{t.bg_input};"
-                f"  border:1px solid {t.border};border-radius:4px;"
-                f"  padding:2px 4px;selection-background-color:{t.accent};}}"
-                f"QCalendarWidget QSpinBox::up-button,QCalendarWidget QSpinBox::down-button{{"
-                f"  background:transparent;border:none;}}"
-
-                # Day-names header row (Mon Tue … Sun)
-                f"QCalendarWidget QWidget#qt_calendar_calendarview{{"
-                f"  background:{t.bg_table};}}"
-                f"QCalendarWidget QAbstractItemView{{"
-                f"  background:{t.bg_table};color:{t.text_primary};"
-                f"  selection-background-color:{t.accent};"
-                f"  selection-color:{t.accent_text};"
-                f"  outline:none;}}"
-                f"QCalendarWidget QAbstractItemView:enabled{{"
-                f"  color:{t.text_primary};background:{t.bg_table};}}"
-                f"QCalendarWidget QAbstractItemView:disabled{{"
-                f"  color:{t.text_muted};}}"
-
-                # Weekday header (the Mon/Tue/… row)
-                f"QCalendarWidget QHeaderView{{"
-                f"  background:{t.bg_header};}}"
-                f"QCalendarWidget QHeaderView::section{{"
-                f"  background:{t.bg_header};color:{t.text_muted};"
-                f"  border:none;font-size:11px;font-weight:600;padding:4px 0;}}"
+                f"QDialog{{background:{t.bg_panel};border:2px solid {t.border};border-radius:8px;}}"
+                f"QToolButton{{color:{t.text_primary};background:transparent;border:none;"
+                f"border-radius:4px;padding:3px 8px;font-size:12px;font-weight:600;}}"
+                f"QToolButton:hover{{background:{t.accent};color:{t.accent_text};}}"
+                f"QToolButton::menu-indicator{{image:none;}}"
+                f"QSpinBox{{color:{t.text_primary};background:{t.bg_input};"
+                f"border:1px solid {t.border};border-radius:4px;padding:2px 6px;}}"
+                f"QSpinBox::up-button,QSpinBox::down-button{{background:transparent;border:none;}}"
+                f"QMenu{{background:{t.bg_menu};color:{t.text_primary};border:1px solid {t.border};}}"
+                f"QMenu::item:selected{{background:{t.accent};color:{t.accent_text};}}"
+                f"QHeaderView::section{{background:{t.bg_header};color:{t.text_muted};"
+                f"border:none;font-size:11px;font-weight:600;padding:4px 0;}}"
+                f"#qt_calendar_navigationbar{{background:{t.bg_header};padding:6px 8px;}}"
+                f"QAbstractItemView{{background:{t.bg_table};color:{t.text_primary};"
+                f"selection-background-color:{t.accent};selection-color:{t.accent_text};"
+                f"outline:none;border:none;}}"
             )
+
             pl = QVBoxLayout(popup)
-            pl.setContentsMargins(8, 8, 8, 8)
+            pl.setContentsMargins(0, 0, 0, 0)
+            pl.setSpacing(0)
+
             cal = QCalendarWidget(popup)
             cal.setGridVisible(False)
             cal.setVerticalHeaderFormat(QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader)
+
+            # Set QPalette on the calendar so Qt's internal painter uses theme colours
+            pal = QPalette()
+            pal.setColor(QPalette.ColorRole.Window,      QColor(t.bg_table))
+            pal.setColor(QPalette.ColorRole.Base,        QColor(t.bg_table))
+            pal.setColor(QPalette.ColorRole.AlternateBase, QColor(t.bg_table_alt))
+            pal.setColor(QPalette.ColorRole.Text,        QColor(t.text_primary))
+            pal.setColor(QPalette.ColorRole.BrightText,  QColor(t.accent_text))
+            pal.setColor(QPalette.ColorRole.Highlight,   QColor(t.accent))
+            pal.setColor(QPalette.ColorRole.HighlightedText, QColor(t.accent_text))
+            pal.setColor(QPalette.ColorRole.ButtonText,  QColor(t.text_primary))
+            pal.setColor(QPalette.ColorRole.Button,      QColor(t.bg_input))
+            pal.setColor(QPalette.ColorRole.WindowText,  QColor(t.text_primary))
+            pal.setColor(QPalette.ColorRole.ToolTipBase, QColor(t.bg_menu))
+            pal.setColor(QPalette.ColorRole.ToolTipText, QColor(t.text_primary))
+
+            # Disabled role — other-month days
+            pal.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text,
+                         QColor(t.text_muted))
+            cal.setPalette(pal)
+
+            # Apply palette to all child widgets (nav bar, table view, header)
+            for child in cal.findChildren(QWidget):
+                child.setPalette(pal)
+                child.setAutoFillBackground(True)
+
             # Pre-select current value if valid
-            from vault import _normalise_dob, _DOB_RE
-            import datetime as _dt
             raw = dob_edit.text().strip()
             normed = _normalise_dob(raw) if raw else ""
             if _DOB_RE.match(normed):
                 try:
                     d, m, y = normed.split("-")
-                    cal.setSelectedDate(
-                        __import__("PyQt6.QtCore", fromlist=["QDate"]).QDate(int(y), int(m), int(d)))
+                    cal.setSelectedDate(QDate(int(y), int(m), int(d)))
                 except Exception:
                     pass
-            # Limit max date to today
-            from PyQt6.QtCore import QDate
+
             cal.setMaximumDate(QDate.currentDate())
             pl.addWidget(cal)
 
@@ -2351,7 +2347,6 @@ class AayDocCapioApp(QMainWindow):
                 popup.accept()
 
             cal.clicked.connect(_picked)
-            # Position below the cal_btn
             pos = cal_btn.mapToGlobal(cal_btn.rect().bottomLeft())
             popup.move(pos)
             popup.exec()
