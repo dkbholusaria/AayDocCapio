@@ -214,15 +214,18 @@ clicking `a#AIS` (or `e-File` for 26AS) we:
 1. Navigate to `#/login`, wait for Angular hydration.
 2. Fill `#panAdhaarUserId`, click **Continue**.
 3. Wait for SAM (Secure Access Message) checkbox `#passwordCheckBox-input`, tick it.
-4. Click **Continue**, then select the **Password** radio
-   (`//label[text()='Password']`).
-5. Fill `#loginPasswordField`, click **Continue** (up to 4 attempts).
-6. Handle `#loginMaxAttemptsPopup` → "Login Here".
-7. Detect wrong password from inline error text (portal says
-   *"Error : Invalid Password, Please retry."*) and **fail fast** with that
-   message rather than retrying.
-8. Dashboard success = URL no longer contains `/login`.
-9. On any failure the login page is closed (no orphan-tab leaks across clients).
+4. Click **Continue** → portal shows method-selection page (`#/login/otpOptions`).
+5. Select the **Password** radio using a 3-level fallback selector chain; click **Continue**.
+6. If URL is already `otpOptions` at this point → **fail fast** with 2FA error.
+7. Fill `#loginPasswordField`, click **Continue** (up to 4 attempts).
+8. On each poll tick: if URL is `otpOptions` → **fail fast** with 2FA error.
+9. Handle `#loginMaxAttemptsPopup` → "Login Here".
+10. Detect wrong password from inline error text (portal says
+    *"Error : Invalid Password, Please retry."*) and **fail fast** with that
+    message rather than retrying.
+11. Dashboard success = URL no longer contains `/login`.
+12. On any failure the login page is closed (no orphan-tab leaks across clients).
+13. `is_running` callback checked before each submit retry — honours Stop/Abort.
 
 ### 5.2 Opening the AIS portal (`_open_ais_portal`)
 
@@ -315,11 +318,142 @@ and AIS/TIS — they make any future portal change trivially diagnosable.
 
 ---
 
-## 10. Status (as of 2026-06-04)
+## 10. Corporate Network / Proxy Support
+
+### 10.1 Problem
+
+On corporate machines (CA firms, etc.) Windows may route all traffic through a
+proxy server configured in Internet Explorer / Windows Settings. Without picking
+this up, Playwright's Chromium connects directly and gets blocked.
+
+### 10.2 Fix — `_get_system_proxy()` in `browser.py`
+
+Reads the Windows registry at launch:
+
+```
+HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings
+  ProxyEnable  (DWORD)  — 1 = proxy active
+  ProxyServer  (String) — "host:port"  or  "http=host:port;https=host:port"
+```
+
+The per-protocol format (`http=…;https=…`) is parsed; `https=` takes priority,
+then `http=`. If no scheme prefix present, `http://` is prepended. The resulting
+`{"server": "http://host:port"}` dict is passed directly to `chromium.launch(proxy=…)`.
+
+No proxy is set on non-Windows platforms (Linux / WSL dev environment).
+
+---
+
+## 11. Slow Network / Timeout Increases
+
+### 11.1 Problem
+
+On slow broadband or congested networks the ITD portal returns
+`net::ERR_EMPTY_RESPONSE` or simply times out before the previous shorter
+timeouts expired, causing premature failures.
+
+### 11.2 Fix
+
+All timeouts in the login and download flows were doubled:
+
+| File | What changed |
+|---|---|
+| `auth.py` | Portal `goto`: 60s→90s; networkidle: 30s→60s; SAM loop: 30s→60s; Continue buttons: 10s→20s / 5s→15s; password field: 5s→15s |
+| `downloader_26as.py` | All element waits and timeouts doubled |
+| `downloader_ais_tis.py` | All element waits and timeouts doubled |
+
+---
+
+## 12. Startup Diagnostics
+
+### 12.1 Problem
+
+A colleague's machine silently crashed on double-click with no `app.log` created.
+The exe was dying before `AayDocCapioApp.__init__()` ran — before any Qt or
+logging code could execute.
+
+### 12.2 Fixes in `app.py`
+
+**Module import guard:** Wrapped the top-level `from vault import …` / `from automation …`
+imports in a `try/except`. On failure, a `ctypes.windll.user32.MessageBoxW` dialog
+is shown (works before Qt is initialised) with the full traceback.
+
+**`startup_diag.log`:** Written using only Python builtins (no logging module,
+no Qt) to `%LOCALAPPDATA%\AayDocCapio\startup_diag.log`. Records 8 numbered
+steps from import success through to `QApplication` creation, so the exact
+crash point is always visible even when `app.log` is never created.
+
+**`_fatal()` helper:** Falls back from `QMessageBox` → `ctypes.MessageBoxW` → silent
+`sys.exit(1)`, so a visible error is always shown regardless of whether Qt is up.
+
+### 12.3 VC++ Redistributable (installer fix)
+
+Added `VCRedistInstalled()` registry check in `installer.iss`. If not present,
+the installer silently downloads `vc_redist.x64.exe` from Microsoft's official
+CDN and runs it before the Chromium install step.
+
+---
+
+## 13. Login Flow Updates
+
+### 13.1 Password method selection (robustness fix)
+
+The original selector `//label[normalize-space(text())='Password']` was fragile
+on Angular Material — the label text may contain nested spans or extra whitespace.
+It silently failed, leaving the portal on the OTP path.
+
+**Fix:** 3-level fallback selector chain:
+1. `//label[contains(normalize-space(.), 'Password') and not(contains(…, 'OTP'))]`
+2. `input[type='radio']#mat-radio-0-input` (Password is always the first radio)
+3. `input[type='radio']:first-of-type`
+
+Additionally, a **second Continue click** is now made after selecting the Password
+radio — this was the missing step that caused the portal to never advance to the
+password field.
+
+### 13.2 2FA / OTP detection (fast-fail)
+
+Some client accounts have two-factor authentication enabled on the ITD portal.
+After entering the password the portal navigates to `#/login/otpOptions` and
+presents a 6-digit OTP entry form (Aadhaar-registered mobile). This cannot be
+automated.
+
+**Previous behaviour:** Code kept clicking Continue on the OTP page through all 4
+retry attempts, taking ~3 minutes before failing with a cryptic message.
+
+**Fix:** URL is checked for `otpOptions` at two points:
+1. Immediately after the method-selection step (before filling the password field)
+2. Inside `_submit_once` on every 0.5s poll tick
+
+On detection a `RuntimeError` is raised immediately:
+```
+AUTHENTICATION FAILED: This account has 2FA (OTP) enabled on the ITD portal.
+Automated login is not possible. The client must disable 2FA or log in manually.
+```
+
+**Resolution for affected clients:** Go to ITD portal → Profile → Login Settings
+→ disable Two-Step Authentication.
+
+### 13.3 Abort mid-login (Stop button fix)
+
+The Stop button set `is_running = False` on the main window but `auth.py` had
+no access to this flag. The batch would only check it *between* clients, so
+pressing Stop mid-login still waited up to 3 minutes for all 4 submit attempts
+to exhaust.
+
+**Fix:** `login_itd()` now accepts an optional `is_running` callable. The submit
+retry loop checks `is_running()` before each attempt and raises
+`RuntimeError("Aborted by user.")` immediately if it returns `False`.
+
+---
+
+## 14. Status (as of 2026-06-10)
 
 Working end to end:
 
 - Login with robust error handling and fast-fail on bad password
+- 2FA/OTP accounts detected immediately with a clear, actionable error message
+- Stop/Abort respected mid-login (not just between clients)
 - 26AS download (TRACES) — robustly handles full-screen loader intercepts and slow new-tab spawning
 - AIS + TIS download for all years (instant) — respects FY selection
 - FY switching
@@ -327,9 +461,12 @@ Working end to end:
 - Permanent step logging
 - Automated PDF Unlocking (`pikepdf` decrypts using PAN+DOB seamlessly)
 - Headless Automation by default (with UI checkbox for visual debug mode)
+- Corporate proxy auto-detection from Windows registry
+- Startup diagnostics written before Qt initialises (helps diagnose silent crashes)
+- VC++ Redistributable auto-installed by the setup wizard if missing
 
 Pending / optional:
 
 - Large-file queued path (Activity History) — implemented but seldom exercised
   since files download instantly
-- Windows build verification with all latest changes
+- Windows build with all latest changes (rebuild required to deploy to clients)
