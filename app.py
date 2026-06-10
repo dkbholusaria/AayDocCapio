@@ -47,12 +47,28 @@ def _bundled_dir() -> str:
     return os.path.dirname(os.path.abspath(__file__))
 
 
-sys.path.append(_bundled_dir())
-from vault import VaultManager
-from automation.browser import browser_manager
-from automation.auth import login_itd, logout_itd
-from automation.downloader_26as import download_26as
-from automation.downloader_ais_tis import run_request_ais, run_download_ais_tis
+sys.path.insert(0, _bundled_dir())
+
+try:
+    from vault import VaultManager
+    from automation.browser import browser_manager
+    from automation.auth import login_itd, logout_itd
+    from automation.downloader_26as import download_26as
+    from automation.downloader_ais_tis import run_request_ais, run_download_ais_tis
+except Exception as _import_err:
+    import traceback
+    _msg = (
+        f"Failed to load required modules.\n\n"
+        f"{traceback.format_exc()}\n\n"
+        f"bundled_dir: {_bundled_dir()}\n"
+        f"sys.path: {sys.path[:5]}"
+    )
+    try:
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(0, _msg, "AayDocCapio — Startup Error", 0x10)
+    except Exception:
+        pass
+    sys.exit(1)
 
 
 class _HoverDelegate(QStyledItemDelegate):
