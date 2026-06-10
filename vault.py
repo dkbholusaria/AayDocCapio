@@ -60,7 +60,6 @@ def _validate_fields(name: str, pan: str, dob: str, password: str):
             "  · Character 5    : any letter (A–Z)\n"
             "  · Characters 6–9 : 4 digits\n"
             "  · Character 10   : any letter (A–Z)\n\n"
-            "Note: PAN does not change when a person's name changes.\n"
             "Example: AAAPT0001A")
 
     if not dob:
