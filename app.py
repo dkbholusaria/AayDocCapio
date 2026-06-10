@@ -1611,18 +1611,7 @@ class AayDocCapioApp(QMainWindow):
                 cb.setChecked(not cb.isChecked())
 
     def _on_cell_entered(self, row, col):
-        prev = self._hovered_acts_row
-        self._hovered_acts_row = row
-        # Repaint previous row's ⋯ cell back to normal
-        if prev != -1 and prev != row:
-            item = self.client_table.item(prev, self._TC_ACTS)
-            if item:
-                item.setForeground(QColor("#94A3B8"))
-                item.setBackground(QColor("transparent"))
-        # Highlight current row's ⋯ cell
-        item = self.client_table.item(row, self._TC_ACTS)
-        if item:
-            item.setForeground(QColor("#1D4ED8"))
+        pass
 
     def _on_header_clicked(self, logical_index):
         if logical_index not in (self._TC_NAME, self._TC_PAN):
@@ -1951,10 +1940,14 @@ class AayDocCapioApp(QMainWindow):
             self.client_table.setCellWidget(i, self._TC_PATH, path_lbl)
 
             # Col 6: Actions
-            dots_item = QTableWidgetItem("⋯")
+            dots_item = QTableWidgetItem("• • •")
             dots_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             dots_item.setToolTip("Click for actions")
-            dots_item.setForeground(QColor("#94A3B8"))
+            dots_item.setForeground(QColor("#64748B"))
+            f = dots_item.font()
+            f.setPointSize(9)
+            f.setBold(True)
+            dots_item.setFont(f)
             dots_item.setData(Qt.ItemDataRole.UserRole + 1, a)
             self.client_table.setItem(i, self._TC_ACTS, dots_item)
 
