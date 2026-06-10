@@ -956,6 +956,7 @@ class AayDocCapioApp(QMainWindow):
         self._last_errors = {}            # pan → error message string
         self._batch_loop = None           # asyncio event loop for the running batch
         self._batch_task = None           # asyncio Task for the running batch
+        self._batch_aborted = False       # True if user clicked Stop
 
         self._log_signal.connect(self._append_log)
         self._batch_done_signal.connect(self._on_batch_done)
@@ -2232,6 +2233,7 @@ class AayDocCapioApp(QMainWindow):
             return
 
         self.is_running = True
+        self._batch_aborted = False
         self._lock_ui(True)
         self.log_box.clear()
 
@@ -2282,6 +2284,7 @@ class AayDocCapioApp(QMainWindow):
             "Abort the active batch?") == QMessageBox.StandardButton.Yes:
             self.log("[System] Abort requested...")
             self.is_running = False
+            self._batch_aborted = True
             # Cancel the asyncio task immediately — raises CancelledError into
             # whatever await is currently blocking (goto, wait_for_selector, sleep…)
             if self._batch_task and self._batch_loop:
@@ -2331,6 +2334,10 @@ class AayDocCapioApp(QMainWindow):
         self.log("[System] Engine Idle.")
 
         mode = self._last_mode
+
+        if self._batch_aborted:
+            self._ais_results = {}
+            return
 
         if mode == "request_ais":
             results = self._ais_results
