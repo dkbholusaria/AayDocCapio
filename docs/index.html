@@ -74,16 +74,27 @@
 
     /* ── Hero ────────────────────────────────────────────────── */
     .hero {
-      background: var(--white);
+      background: linear-gradient(180deg, #F0F3FA 0%, #FFFFFF 100%);
       border-bottom: 3px solid var(--gold);
-      padding: 64px 24px 56px;
+      padding: 56px 24px 48px;
       text-align: center;
     }
 
-    .hero-logo {
-      max-width: 560px;
+    .hero-logo-wrap {
+      max-width: 680px;
       width: 90%;
-      margin: 0 auto 36px;
+      margin: 0 auto 32px;
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 32px rgba(13,31,92,0.10);
+      padding: 20px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .hero-logo {
+      width: 100%;
       display: block;
     }
 
@@ -401,7 +412,9 @@
 
 <!-- ── Hero ─────────────────────────────────────────────────────── -->
 <div class="hero">
-  <img src="AayDoc_FullLogo.png" alt="AayDocCapio — Tax Documents. Delivered to You." class="hero-logo" />
+  <div class="hero-logo-wrap">
+    <img src="AayDoc_FullLogo.png" alt="AayDocCapio — Tax Documents. Delivered to You." class="hero-logo" />
+  </div>
 
   <p class="hero-desc">
     Automates the secure bulk retrieval of <strong>Form 26AS, AIS and TIS</strong>
