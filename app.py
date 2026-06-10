@@ -2146,6 +2146,35 @@ class AayDocCapioApp(QMainWindow):
             pass
 
 
+def _fatal(msg: str):
+    """Show a visible error dialog even before QApplication exists, then exit."""
+    try:
+        # Try Qt dialog first (works if Qt DLLs loaded successfully)
+        _a = QApplication.instance() or QApplication(sys.argv)
+        from PyQt6.QtWidgets import QMessageBox
+        box = QMessageBox()
+        box.setWindowTitle("AayDocCapio — Startup Error")
+        box.setIcon(QMessageBox.Icon.Critical)
+        box.setText("AayDocCapio could not start.")
+        box.setDetailedText(msg)
+        box.exec()
+    except Exception:
+        # Qt itself failed — fall back to Windows MessageBox via ctypes
+        try:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                f"AayDocCapio could not start.\n\n{msg}\n\n"
+                "If this persists, install the Microsoft Visual C++ Redistributable:\n"
+                "https://aka.ms/vs/17/release/vc_redist.x64.exe",
+                "AayDocCapio — Startup Error",
+                0x10  # MB_ICONERROR
+            )
+        except Exception:
+            pass
+    sys.exit(1)
+
+
 if __name__ == "__main__":
     # Called by Inno Setup [Run] step to pre-install Chromium silently
     if "--install-browsers" in sys.argv:
@@ -2160,21 +2189,26 @@ if __name__ == "__main__":
             loop.close()
         sys.exit(0)
 
-    app = QApplication(sys.argv)
-    app.setApplicationName("AayDocCapio")
-    app.setDesktopFileName("aay-doc-capio")
-    app.setStyle("Fusion")
-    from PyQt6.QtGui import QFontDatabase
-    _fonts_dir = os.path.join(_bundled_dir(), "resources", "fonts")
-    for _ttf in os.listdir(_fonts_dir):
-        if _ttf.endswith(".ttf"):
-            QFontDatabase.addApplicationFont(os.path.join(_fonts_dir, _ttf))
-    app.setStyleSheet(APP_STYLE)
-    window = AayDocCapioApp()
-    _app_icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
-    if os.path.exists(_app_icon_path):
-        _icon = QIcon(_app_icon_path)
-        app.setWindowIcon(_icon)
-        window.setWindowIcon(_icon)
-    window.show()
-    sys.exit(app.exec())
+    try:
+        app = QApplication(sys.argv)
+        app.setApplicationName("AayDocCapio")
+        app.setDesktopFileName("aay-doc-capio")
+        app.setStyle("Fusion")
+        from PyQt6.QtGui import QFontDatabase
+        _fonts_dir = os.path.join(_bundled_dir(), "resources", "fonts")
+        if os.path.isdir(_fonts_dir):
+            for _ttf in os.listdir(_fonts_dir):
+                if _ttf.endswith(".ttf"):
+                    QFontDatabase.addApplicationFont(os.path.join(_fonts_dir, _ttf))
+        app.setStyleSheet(APP_STYLE)
+        window = AayDocCapioApp()
+        _app_icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
+        if os.path.exists(_app_icon_path):
+            _icon = QIcon(_app_icon_path)
+            app.setWindowIcon(_icon)
+            window.setWindowIcon(_icon)
+        window.show()
+        sys.exit(app.exec())
+    except Exception as _startup_err:
+        import traceback
+        _fatal(traceback.format_exc())

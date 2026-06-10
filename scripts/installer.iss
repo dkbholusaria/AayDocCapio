@@ -110,23 +110,63 @@ begin
 end;
 
 { ------------------------------------------------------------------ }
-{ Run after all files are copied — install Chromium                  }
+{ Check if VC++ 2015-2022 x64 Redistributable is already installed  }
+{ ------------------------------------------------------------------ }
+function VCRedistInstalled: Boolean;
+var
+  Installed: Cardinal;
+begin
+  Result := RegQueryDWordValue(
+    HKLM,
+    'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64',
+    'Installed', Installed) and (Installed = 1);
+end;
+
+{ ------------------------------------------------------------------ }
+{ Run after all files are copied                                      }
 { ------------------------------------------------------------------ }
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ExePath    : String;
+  TempDir    : String;
+  VCRedist   : String;
   ResultCode : Integer;
 begin
   if CurStep = ssPostInstall then
   begin
     ExePath := ExpandConstant('{app}\{#MyAppExeName}');
+    TempDir := ExpandConstant('{tmp}');
+    VCRedist := TempDir + '\vc_redist.x64.exe';
 
-    { Step 1 }
-    SetStep('Creating application shortcuts...');
-    SetSub('Start Menu and Desktop shortcuts');
-    Sleep(600);
+    { Step 1 — VC++ Redistributable }
+    if not VCRedistInstalled then
+    begin
+      SetStep('Installing Microsoft Visual C++ Redistributable...');
+      SetSub('Required for the app to run. Downloading ~25 MB...');
+      if not Exec('powershell.exe',
+        '-NoProfile -Command "Invoke-WebRequest -Uri https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile ' + VCRedist + '"',
+        '', SW_HIDE, ewWaitUntilTerminated, ResultCode) or (ResultCode <> 0) then
+      begin
+        SetStep('Warning: VC++ download failed — app may not launch on some systems.');
+        SetSub('Install manually from: https://aka.ms/vs/17/release/vc_redist.x64.exe');
+        Sleep(3000);
+      end
+      else
+      begin
+        Exec(VCRedist, '/install /quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+        SetStep('Visual C++ Redistributable installed.');
+        SetSub('');
+        Sleep(600);
+      end;
+    end
+    else
+    begin
+      SetStep('Visual C++ Redistributable already installed.');
+      SetSub('');
+      Sleep(400);
+    end;
 
-    { Step 2 }
+    { Step 2 — Chromium }
     SetStep('Downloading Chromium browser...');
     SetSub('This is a one-time download of ~150 MB. Please stay connected.');
 
