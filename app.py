@@ -530,7 +530,7 @@ def _status_style(text: str):
 class BatchProgressDialog(QDialog):
     """
     Live progress popup shown during any batch run.
-    Columns: Name | PAN | Status | Save Path | ...
+    Columns: Name | PAN | Status | Save Path (clickable link)
     Status and path updates arrive from the worker thread via Qt signals.
     """
     # (pan, status_text) and (pan, folder_path)
@@ -542,7 +542,6 @@ class BatchProgressDialog(QDialog):
     _COL_PAN    = 1
     _COL_STATUS = 2
     _COL_PATH   = 3
-    _COL_FOLDER = 4
 
     def __init__(self, targets: list, mode: str, ay: str = "",
                  stop_callback=None, output_dir: str = "", parent=None):
@@ -586,19 +585,17 @@ class BatchProgressDialog(QDialog):
         layout.addWidget(title)
 
         # ── Table ────────────────────────────────────────────────────────────
-        self._table = QTableWidget(len(targets), 5)
-        self._table.setHorizontalHeaderLabels(["Name", "PAN", "Status", "Save Path", "Open"])
+        self._table = QTableWidget(len(targets), 4)
+        self._table.setHorizontalHeaderLabels(["Name", "PAN", "Status", "Save Path"])
 
         hdr = self._table.horizontalHeader()
         hdr.setSectionResizeMode(self._COL_NAME,   QHeaderView.ResizeMode.Interactive)
         hdr.setSectionResizeMode(self._COL_PAN,    QHeaderView.ResizeMode.Interactive)
         hdr.setSectionResizeMode(self._COL_STATUS, QHeaderView.ResizeMode.Interactive)
         hdr.setSectionResizeMode(self._COL_PATH,   QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(self._COL_FOLDER, QHeaderView.ResizeMode.Fixed)
         self._table.setColumnWidth(self._COL_NAME,   180)
         self._table.setColumnWidth(self._COL_PAN,    120)
         self._table.setColumnWidth(self._COL_STATUS, 260)
-        self._table.setColumnWidth(self._COL_FOLDER, 58)
 
         hdr.setStyleSheet(
             "QHeaderView::section{"
@@ -642,29 +639,16 @@ class BatchProgressDialog(QDialog):
 
             self._set_status_item(row, "⬜ Waiting")
 
-            path_item = QTableWidgetItem("—")
-            path_item.setForeground(QColor("#94A3B8"))
-            path_item.setFont(QFont(_UI_FONT, 9))
-            self._table.setItem(row, self._COL_PATH, path_item)
-
-            # "..." open-folder button (disabled until path is set)
-            folder_btn = QPushButton("...")
-            folder_btn.setFixedSize(50, 28)
-            folder_btn.setEnabled(False)
-            folder_btn.setToolTip("Open client folder")
-            folder_btn.setStyleSheet(
-                "QPushButton{border:1px solid #CBD5E1;background:#F8FAFC;"
-                "border-radius:4px;font-size:12px;font-weight:600;color:#475569;}"
-                "QPushButton:enabled:hover{background:#E2E8F0;border-color:#94A3B8;}"
-                "QPushButton:disabled{color:#CBD5E1;border-color:#E2E8F0;}")
-            folder_btn.clicked.connect(lambda _checked, p=pan: self._open_client_folder(p))
-            cell_w = QWidget()
-            cell_w.setStyleSheet("background:transparent;")
-            cell_l = QHBoxLayout(cell_w)
-            cell_l.setContentsMargins(4, 0, 4, 0)
-            cell_l.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            cell_l.addWidget(folder_btn)
-            self._table.setCellWidget(row, self._COL_FOLDER, cell_w)
+            # Save Path — shown as a clickable link once the path is known
+            path_lbl = QLabel("—")
+            path_lbl.setStyleSheet(
+                "color:#94A3B8;font-size:11px;padding:0 8px;background:transparent;")
+            path_lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+            path_lbl.setWordWrap(False)
+            path_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+            path_lbl.setOpenExternalLinks(False)
+            path_lbl.linkActivated.connect(lambda url: _open_path(url))
+            self._table.setCellWidget(row, self._COL_PATH, path_lbl)
 
         layout.addWidget(self._table, stretch=1)
 
@@ -790,22 +774,15 @@ class BatchProgressDialog(QDialog):
         if pan in self._rows_data:
             self._rows_data[pan]["path"] = folder
 
-        # Update path cell
-        path_item = QTableWidgetItem(folder)
-        path_item.setForeground(QColor("#475569"))
-        path_item.setFont(QFont(_UI_FONT, 9))
-        path_item.setToolTip(folder)
-        self._table.setItem(row, self._COL_PATH, path_item)
-
-        # Enable the per-row folder button
-        cell_w = self._table.cellWidget(row, self._COL_FOLDER)
-        if cell_w:
-            btn = cell_w.findChild(QPushButton)
-            if btn:
-                btn.setEnabled(os.path.exists(folder))
-
-    def _open_client_folder(self, pan: str):
-        _open_path(self._pan_to_path.get(pan, ""))
+        # Update path cell widget (QLabel link)
+        lbl = self._table.cellWidget(row, self._COL_PATH)
+        if isinstance(lbl, QLabel):
+            lbl.setText(
+                f'<a href="{folder}" style="color:#2563EB;text-decoration:none;">'
+                f'{folder}</a>')
+            lbl.setToolTip(folder)
+            lbl.setStyleSheet(
+                "font-size:11px;padding:0 8px;background:transparent;")
 
     def _on_stop_clicked(self):
         if self._stop_callback:
