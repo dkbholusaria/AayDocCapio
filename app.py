@@ -1207,6 +1207,8 @@ class AayDocCapioApp(QMainWindow):
         vl.addSpacing(6)
         vl.addLayout(_link_row("icon_linkedin.png", "linkedin.com/in/bhholusaria",      "https://www.linkedin.com/in/bhholusaria/"))
         vl.addSpacing(6)
+        vl.addLayout(_link_row("icon_vcard.png",    "www.ailearrning.guru",             "https://www.ailearrning.guru"))
+        vl.addSpacing(6)
         vl.addLayout(_link_row("icon_vcard.png",    "Virtual Card",                     "https://www.qrcodechimp.com/page/deepakb?chk1668183417"))
         vl.addSpacing(16)
 
