@@ -1569,13 +1569,38 @@ class AayDocCapioApp(QMainWindow):
         self.header_cb.move(cb_x, cb_y)
 
     def _on_cell_clicked(self, row, col):
-        if col in (self._TC_CHK, self._TC_PATH, self._TC_ACTS):
-            return
-        # Guard: check if combo popup is open
         if hasattr(self, "ay_combo") and self.ay_combo._popup_was_open:
             return
-        # Toggle checkbox in column 0
-        cb_container = self.client_table.cellWidget(row, 0)
+
+        if col == self._TC_ACTS:
+            item = self.client_table.item(row, self._TC_ACTS)
+            if not item:
+                return
+            a = item.data(Qt.ItemDataRole.UserRole + 1)
+            if not a:
+                return
+            a_id = a.get("id")
+            _menu_ss = (
+                "QMenu { background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:4px 0; }"
+                "QMenu::item { padding:8px 20px; font-size:12px; color:#334155; }"
+                "QMenu::item:selected { background:#F1F5F9; color:#0F172A; }"
+                "QMenu::separator { height:1px; background:#E2E8F0; margin:3px 0; }"
+            )
+            menu = QMenu(self)
+            menu.setStyleSheet(_menu_ss)
+            menu.addAction("✏  Edit Client",   lambda av=a:   self._open_edit_client(av))
+            menu.addSeparator()
+            menu.addAction("🗑  Delete Client", lambda id_=a_id: self.delete_assessee(id_))
+            # Show menu at the cell's bottom-left corner
+            rect = self.client_table.visualItemRect(item)
+            pos  = self.client_table.viewport().mapToGlobal(rect.bottomLeft())
+            menu.exec(pos)
+            return
+
+        if col in (self._TC_CHK, self._TC_PATH):
+            return
+        # Toggle checkbox for any other column click
+        cb_container = self.client_table.cellWidget(row, self._TC_CHK)
         if cb_container:
             cb = cb_container.findChild(QCheckBox)
             if cb:
@@ -1793,9 +1818,7 @@ class AayDocCapioApp(QMainWindow):
             if cb:
                 cb.setStyleSheet("background:transparent;")
 
-        acts_container = self.client_table.cellWidget(row_idx, self._TC_ACTS)
-        if acts_container:
-            acts_container.setStyleSheet("background:transparent; border:none;")
+        # _TC_ACTS is a plain QTableWidgetItem — styled via item background/foreground above
 
     def _apply_filter(self, text=""):
         if not hasattr(self, "client_table"):
@@ -1910,40 +1933,11 @@ class AayDocCapioApp(QMainWindow):
             self.client_table.setCellWidget(i, self._TC_PATH, path_lbl)
 
             # Col 6: Actions
-            more_btn = QToolButton()
-            more_btn.setText("⋯")
-            more_btn.setFixedSize(32, 26)
-            more_btn.setToolTip("Actions")
-            more_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-            more_btn.setStyleSheet(
-                "QToolButton { background:#F8FAFC; border:1px solid #E2E8F0; border-radius:5px;"
-                "  font-size:14px; color:#64748B; padding:0px; }"
-                "QToolButton:hover { background:#E2E8F0; border-color:#CBD5E1; color:#334155; }"
-                "QToolButton::menu-indicator { image:none; width:0px; }"
-            )
-            row_menu = QMenu(more_btn)
-            row_menu.setStyleSheet(
-                "QMenu { background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:4px 0; }"
-                "QMenu::item { padding:7px 20px; font-size:12px; color:#334155; }"
-                "QMenu::item:selected { background:#F1F5F9; color:#0F172A; }"
-                "QMenu::separator { height:1px; background:#E2E8F0; margin:3px 0; }"
-            )
-            act_edit = QAction("✏  Edit Client", more_btn)
-            act_edit.triggered.connect(lambda _, av=a: self._open_edit_client(av))
-            act_del  = QAction("🗑  Delete Client", more_btn)
-            act_del.triggered.connect(lambda _, id_=a_id: self.delete_assessee(id_))
-            row_menu.addAction(act_edit)
-            row_menu.addSeparator()
-            row_menu.addAction(act_del)
-            more_btn.setMenu(row_menu)
-
-            acts_container = QWidget()
-            acts_container.setStyleSheet("background:transparent; border:none;")
-            acts_layout = QHBoxLayout(acts_container)
-            acts_layout.setContentsMargins(8, 3, 8, 3)
-            acts_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            acts_layout.addWidget(more_btn)
-            self.client_table.setCellWidget(i, self._TC_ACTS, acts_container)
+            dots_item = QTableWidgetItem("⋯")
+            dots_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            dots_item.setToolTip("Click for actions")
+            dots_item.setData(Qt.ItemDataRole.UserRole + 1, a)   # store assessee dict
+            self.client_table.setItem(i, self._TC_ACTS, dots_item)
 
             self._apply_row_style(i, is_selected, i)
 
