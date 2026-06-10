@@ -1,6 +1,9 @@
 # Vault — contains encrypted credentials, never commit
 tax_vault.json
 
+# Internal planning — not for public repo
+Documentation/ISSUES_BACKLOG.md
+
 # Downloaded client documents — never commit
 outputs/
 
