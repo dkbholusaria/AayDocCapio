@@ -141,15 +141,16 @@ class _ComboDelegate(QStyledItemDelegate):
         painter.save()
         is_selected = bool(option.state & QStyle.StateFlag.State_Selected)
         is_hover    = bool(option.state & QStyle.StateFlag.State_MouseOver)
+        t = _t()
         if is_selected:
-            painter.fillRect(option.rect, QColor("#DBEAFE"))
-            painter.setPen(QColor("#1E40AF"))
+            painter.fillRect(option.rect, QColor(t.accent))
+            painter.setPen(QColor(t.accent_text))
         elif is_hover:
-            painter.fillRect(option.rect, QColor("#EFF6FF"))
-            painter.setPen(QColor("#1E40AF"))
+            painter.fillRect(option.rect, QColor(t.accent_light))
+            painter.setPen(QColor(t.accent))
         else:
-            painter.fillRect(option.rect, QColor("#FFFFFF"))
-            painter.setPen(QColor("#1a1a1a"))
+            painter.fillRect(option.rect, QColor(t.bg_input))
+            painter.setPen(QColor(t.text_primary))
         painter.drawText(option.rect.adjusted(12, 0, -8, 0),
                          Qt.AlignmentFlag.AlignVCenter, text)
         painter.restore()
@@ -166,9 +167,10 @@ class _ComboListView(QListView):
         self._combo = combo
         self.setMouseTracking(True)
         self.setItemDelegate(_ComboDelegate(self))
+        t = _t()
         self.setStyleSheet(
-            "QListView { border:1px solid #CBD5E1; background:#FFFFFF; outline:none; }"
-            "QListView::item { padding:0px; }"
+            f"QListView {{ border:1px solid {t.border}; background:{t.bg_input}; outline:none; color:{t.text_primary}; }}"
+            f"QListView::item {{ padding:0px; color:{t.text_primary}; }}"
         )
 
     def mouseReleaseEvent(self, event):
@@ -221,6 +223,14 @@ def get_timestamp():
 # ── Stylesheet ────────────────────────────────────────────────────────────────
 # Font names for QFont() Python calls — full stacks live in themes.py
 _UI_FONT   = "Segoe UI"      if sys.platform == "win32" else "Avenir Next"
+
+# Active theme reference — updated by AayDocCapioApp._apply_theme()
+# Used by module-level helpers (_btn, dialogs) so they stay theme-aware.
+_active_theme: "ThemeColors" = get_theme("light")
+
+def _t() -> "ThemeColors":
+    """Return the currently active theme colours."""
+    return _active_theme
 
 
 def _shadow(blur=18, offset_y=3, alpha=22):
@@ -509,7 +519,8 @@ class BatchProgressDialog(QDialog):
             Qt.WindowType.WindowTitleHint |
             Qt.WindowType.WindowCloseButtonHint |
             Qt.WindowType.WindowMaximizeButtonHint)
-        self.setStyleSheet("QDialog{background:#F0F4F8;}")
+        _bt = _t()
+        self.setStyleSheet(f"QDialog{{background:{_bt.bg_window};}}")
 
         self._pan_to_row = {}
 
@@ -518,9 +529,9 @@ class BatchProgressDialog(QDialog):
         layout.setSpacing(8)
 
         # ── Title bar ────────────────────────────────────────────────────────
-        ay_tag = (f" &nbsp;·&nbsp; <span style='color:#2563EB'>{ay}</span>") if ay else ""
+        ay_tag = (f" &nbsp;·&nbsp; <span style='color:{_bt.accent}'>{ay}</span>") if ay else ""
         title = QLabel(f"<b>{mode_label}</b> — {len(targets)} client(s){ay_tag}")
-        title.setStyleSheet("font-size:14px; color:#0F172A; background:transparent;")
+        title.setStyleSheet(f"font-size:14px; color:{_bt.text_primary}; background:transparent;")
         layout.addWidget(title)
 
         # ── Table ────────────────────────────────────────────────────────────
@@ -537,14 +548,14 @@ class BatchProgressDialog(QDialog):
         self._table.setColumnWidth(self._COL_STATUS, 260)
 
         hdr.setStyleSheet(
-            "QHeaderView::section{"
-            "background-color:#FFFFFF;"
-            "border:none;"
-            "border-right:1px solid #CBD5E1;"
-            "border-bottom:1px solid #CBD5E1;"
-            "font-weight:bold;color:#64748B;"
-            "font-size:11px;height:34px;"
-            "padding:0 8px;}")
+            f"QHeaderView::section{{"
+            f"background-color:{_bt.bg_header};"
+            f"border:none;"
+            f"border-right:1px solid {_bt.border};"
+            f"border-bottom:1px solid {_bt.border};"
+            f"font-weight:bold;color:{_bt.text_muted};"
+            f"font-size:11px;height:34px;"
+            f"padding:0 8px;}}")
         self._table.verticalHeader().setVisible(False)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
@@ -552,11 +563,11 @@ class BatchProgressDialog(QDialog):
         self._table.setAlternatingRowColors(False)
         self._table.setWordWrap(False)
         self._table.setStyleSheet(
-            "QTableWidget{border:1.5px solid #CBD5E1;border-radius:8px;"
-            "background:#FFFFFF;outline:0;gridline-color:#E2E8F0;}"
-            "QTableWidget::item{border-bottom:1px solid #E2E8F0;padding:0 8px;}"
-            "QPushButton{border:none;background:transparent;font-size:14px;}"
-            "QPushButton:hover{background:#F1F5F9;border-radius:4px;}")
+            f"QTableWidget{{border:1.5px solid {_bt.border};border-radius:8px;"
+            f"background:{_bt.bg_table};outline:0;gridline-color:{_bt.grid};}}"
+            f"QTableWidget::item{{border-bottom:1px solid {_bt.grid};padding:0 8px;}}"
+            f"QPushButton{{border:none;background:transparent;font-size:14px;}}"
+            f"QPushButton:hover{{background:{_bt.bg_table_alt};border-radius:4px;}}")
         self._table.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
@@ -582,7 +593,7 @@ class BatchProgressDialog(QDialog):
             # Save Path — shown as a clickable link once the path is known
             path_lbl = QLabel("—")
             path_lbl.setStyleSheet(
-                "color:#94A3B8;font-size:11px;padding:0 8px;background:transparent;")
+                f"color:{_bt.text_muted};font-size:11px;padding:0 8px;background:transparent;")
             path_lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
             path_lbl.setWordWrap(False)
             path_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
@@ -600,10 +611,10 @@ class BatchProgressDialog(QDialog):
         self._progress_bar.setTextVisible(True)
         self._progress_bar.setFormat(f"0 / {len(targets)} done")
         self._progress_bar.setStyleSheet(
-            "QProgressBar{border:1px solid #CBD5E1;border-radius:9px;"
-            "background:#94A3B8;text-align:center;font-size:11px;"
-            "font-weight:600;color:#FFFFFF;}"
-            "QProgressBar::chunk{background:#16A34A;border-radius:9px;}")
+            f"QProgressBar{{border:1px solid {_bt.border};border-radius:9px;"
+            f"background:{_bt.scrollbar_handle};text-align:center;font-size:11px;"
+            f"font-weight:600;color:{_bt.accent_text};}}"
+            f"QProgressBar::chunk{{background:#16A34A;border-radius:9px;}}")
         layout.addWidget(self._progress_bar)
 
         # ── Footer: saving-to + buttons ───────────────────────────────────────
@@ -618,7 +629,7 @@ class BatchProgressDialog(QDialog):
         footer.addWidget(loc_cap)
 
         self._loc_val = QLabel(output_dir or "—")
-        self._loc_val.setStyleSheet("color:#475569;font-size:11px;background:transparent;")
+        self._loc_val.setStyleSheet(f"color:{_bt.text_muted};font-size:11px;background:transparent;")
         self._loc_val.setWordWrap(False)
         self._loc_val.setMinimumWidth(0)
         self._loc_val.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
@@ -629,10 +640,10 @@ class BatchProgressDialog(QDialog):
         self._open_folder_btn = QPushButton("📂  Open Folder")
         self._open_folder_btn.setFixedHeight(32)
         self._open_folder_btn.setStyleSheet(
-            "QPushButton{background:#F1F5F9;color:#334155;border:1px solid #CBD5E1;"
-            "border-radius:6px;font-size:12px;padding:0 12px;}"
-            "QPushButton:hover{background:#E2E8F0;}"
-            "QPushButton:disabled{color:#94A3B8;border-color:#E2E8F0;}")
+            f"QPushButton{{background:{_bt.bg_table_alt};color:{_bt.text_primary};border:1px solid {_bt.border};"
+            f"border-radius:6px;font-size:12px;padding:0 12px;}}"
+            f"QPushButton:hover{{background:{_bt.bg_input};}}"
+            f"QPushButton:disabled{{color:{_bt.text_muted};border-color:{_bt.border};}}")
         self._open_folder_btn.clicked.connect(lambda: _open_path(self._output_dir))
         footer.addWidget(self._open_folder_btn)
 
@@ -641,10 +652,10 @@ class BatchProgressDialog(QDialog):
         self._report_btn.setFixedHeight(32)
         self._report_btn.setEnabled(False)
         self._report_btn.setStyleSheet(
-            "QPushButton{background:#F1F5F9;color:#334155;border:1px solid #CBD5E1;"
-            "border-radius:6px;font-size:12px;padding:0 12px;}"
-            "QPushButton:enabled:hover{background:#E2E8F0;}"
-            "QPushButton:disabled{color:#94A3B8;border-color:#E2E8F0;}")
+            f"QPushButton{{background:{_bt.bg_table_alt};color:{_bt.text_primary};border:1px solid {_bt.border};"
+            f"border-radius:6px;font-size:12px;padding:0 12px;}}"
+            f"QPushButton:enabled:hover{{background:{_bt.bg_input};}}"
+            f"QPushButton:disabled{{color:{_bt.text_muted};border-color:{_bt.border};}}")
         self._report_btn.clicked.connect(self._export_report)
         footer.addWidget(self._report_btn)
 
@@ -677,10 +688,10 @@ class BatchProgressDialog(QDialog):
         self._close_btn.setFixedSize(80, 32)
         self._close_btn.setEnabled(False)
         self._close_btn.setStyleSheet(
-            "QPushButton{background:#E2E8F0;color:#475569;border:none;"
-            "border-radius:6px;font-size:12px;}"
-            "QPushButton:enabled{background:#2563EB;color:#FFFFFF;}"
-            "QPushButton:enabled:hover{background:#1D4ED8;}")
+            f"QPushButton{{background:{_bt.border};color:{_bt.text_muted};border:none;"
+            f"border-radius:6px;font-size:12px;}}"
+            f"QPushButton:enabled{{background:{_bt.accent};color:{_bt.accent_text};}}"
+            f"QPushButton:enabled:hover{{background:{_bt.accent_hover};}}")
         self._close_btn.clicked.connect(self.accept)
         footer.addWidget(self._close_btn)
 
@@ -1013,9 +1024,11 @@ class AayDocCapioApp(QMainWindow):
 
     def _apply_theme(self, theme: str):
         """Switch theme by name and persist the choice."""
+        global _active_theme
         self._current_theme = theme
         self.vault.update_setting("theme", theme)
         t = get_theme(theme)
+        _active_theme = t
         app = QApplication.instance()
         if app:
             app.setStyleSheet(build_stylesheet(t))
@@ -1067,10 +1080,11 @@ class AayDocCapioApp(QMainWindow):
         dlg = QDialog(self)
         dlg.setWindowTitle("About AayDocCapio")
         dlg.setFixedSize(500, 520)
+        _ab = _t()
         dlg.setStyleSheet(
-            "QDialog { background:#FFFFFF; }"
-            "QLabel { border:none; background:transparent; }"
-            "QLabel[link=true] { color:#1A8FE3; }"
+            f"QDialog {{ background:{_ab.bg_window}; }}"
+            f"QLabel {{ border:none; background:transparent; color:{_ab.text_primary}; }}"
+            f"QLabel[link=true] {{ color:{_ab.accent}; }}"
         )
 
         vl = QVBoxLayout(dlg)
@@ -1096,28 +1110,28 @@ class AayDocCapioApp(QMainWindow):
         vl.addSpacing(14)
 
         desc = QLabel("Automates the secure bulk retrieval of Form 26AS, AIS and TIS directly from the Income Tax e-Filing Portal.")
-        desc.setStyleSheet("color:#334155; font-size:13px;")
+        desc.setStyleSheet(f"color:{_ab.text_primary}; font-size:13px;")
         desc.setWordWrap(True)
         vl.addWidget(desc)
         vl.addSpacing(12)
 
         # Name explanation
         name_box = QFrame()
-        name_box.setStyleSheet("QFrame { background:#F0F7FF; border-radius:6px; border:1px solid #DBEAFE; }")
+        name_box.setStyleSheet(f"QFrame {{ background:{_ab.accent_light}; border-radius:6px; border:1px solid {_ab.border}; }}")
         nb_l = QVBoxLayout(name_box)
         nb_l.setContentsMargins(14, 10, 14, 10)
         nb_l.setSpacing(6)
         name_head = QLabel("Why AayDoc Capio?")
-        name_head.setStyleSheet("color:#1A8FE3; font-size:11px; font-weight:700; letter-spacing:0.5px; background:transparent; border:none;")
+        name_head.setStyleSheet(f"color:{_ab.accent}; font-size:11px; font-weight:700; letter-spacing:0.5px; background:transparent; border:none;")
         name_exp = QLabel(
-            '<b style="color:#0D1F4E;">Aay</b> (Income) · '
-            '<b style="color:#0D1F4E;">Doc</b> (Documents) · '
-            '<b style="color:#1A8FE3;">Capio</b> <span style="color:#64748B;">(Latin: To Obtain)</span>'
+            f'<b style="color:{_ab.text_primary};">Aay</b> (Income) · '
+            f'<b style="color:{_ab.text_primary};">Doc</b> (Documents) · '
+            f'<b style="color:{_ab.accent};">Capio</b> <span style="color:{_ab.text_muted};">(Latin: To Obtain)</span>'
         )
         name_exp.setStyleSheet("font-size:13px; background:transparent; border:none;")
         name_sub = QLabel("AayDoc Capio is designed to securely retrieve and deliver income tax documents, "
                           "eliminating repetitive manual downloads and improving efficiency for tax professionals.")
-        name_sub.setStyleSheet("color:#64748B; font-size:12px; background:transparent; border:none;")
+        name_sub.setStyleSheet(f"color:{_ab.text_muted}; font-size:12px; background:transparent; border:none;")
         name_sub.setWordWrap(True)
         nb_l.addWidget(name_head)
         nb_l.addWidget(name_exp)
@@ -1127,13 +1141,13 @@ class AayDocCapioApp(QMainWindow):
 
         # ── Divider ───────────────────────────────────────────────────────────
         div1 = QFrame(); div1.setFrameShape(QFrame.Shape.HLine)
-        div1.setStyleSheet("background:#E2E8F0; border:none; max-height:1px;")
+        div1.setStyleSheet(f"background:{_ab.border}; border:none; max-height:1px;")
         vl.addWidget(div1)
         vl.addSpacing(16)
 
         # ── Developer info ────────────────────────────────────────────────────
         dev_title = QLabel("Contact Us")
-        dev_title.setStyleSheet("color:#94A3B8; font-size:10px; font-weight:700; letter-spacing:1px;")
+        dev_title.setStyleSheet(f"color:{_ab.text_muted}; font-size:10px; font-weight:700; letter-spacing:1px;")
         vl.addWidget(dev_title)
         vl.addSpacing(8)
 
@@ -1148,12 +1162,12 @@ class AayDocCapioApp(QMainWindow):
             icon_l.setStyleSheet("background:transparent; border:none;")
             row.addWidget(icon_l)
             if url:
-                lbl = QLabel(f'<a href="{url}" style="color:#1A8FE3; text-decoration:none;">{display_text}</a>')
+                lbl = QLabel(f'<a href="{url}" style="color:{_ab.accent}; text-decoration:none;">{display_text}</a>')
                 lbl.setOpenExternalLinks(True)
                 lbl.setStyleSheet("background:transparent; border:none; font-size:13px;")
             else:
                 lbl = QLabel(display_text)
-                lbl.setStyleSheet("color:#334155; font-size:13px; font-weight:600; background:transparent; border:none;")
+                lbl.setStyleSheet(f"color:{_ab.text_primary}; font-size:13px; font-weight:600; background:transparent; border:none;")
             row.addWidget(lbl)
             row.addStretch()
             return row
@@ -1171,12 +1185,12 @@ class AayDocCapioApp(QMainWindow):
 
         # ── Divider ───────────────────────────────────────────────────────────
         div2 = QFrame(); div2.setFrameShape(QFrame.Shape.HLine)
-        div2.setStyleSheet("background:#E2E8F0; border:none; max-height:1px;")
+        div2.setStyleSheet(f"background:{_ab.border}; border:none; max-height:1px;")
         vl.addWidget(div2)
         vl.addSpacing(12)
 
         copy = QLabel("© 2026 Deepak Bhholusaria. All rights reserved.")
-        copy.setStyleSheet("color:#94A3B8; font-size:11px;")
+        copy.setStyleSheet(f"color:{_ab.text_muted}; font-size:11px;")
         vl.addWidget(copy)
         vl.addStretch()
 
@@ -1184,8 +1198,8 @@ class AayDocCapioApp(QMainWindow):
         close_btn = QPushButton("Close")
         close_btn.setFixedWidth(100)
         close_btn.setStyleSheet(
-            "QPushButton { background:#1A8FE3; color:#FFFFFF; border:none; border-radius:6px; padding:8px 16px; font-size:13px; }"
-            "QPushButton:hover { background:#1570C4; }")
+            f"QPushButton {{ background:{_ab.accent}; color:{_ab.accent_text}; border:none; border-radius:6px; padding:8px 16px; font-size:13px; }}"
+            f"QPushButton:hover {{ background:{_ab.accent_hover}; }}")
         close_btn.clicked.connect(dlg.accept)
         btn_row = QHBoxLayout(); btn_row.addStretch(); btn_row.addWidget(close_btn)
         vl.addLayout(btn_row)
@@ -1195,7 +1209,7 @@ class AayDocCapioApp(QMainWindow):
     def _mk_header(self):
         hdr = QFrame()
         hdr.setFixedHeight(80)
-        hdr.setStyleSheet("QFrame#header { background: #FFFFFF; border: none; } QLabel { border: none; text-decoration: none; }")
+        hdr.setStyleSheet(f"QFrame#header {{ background: {_t().bg_window}; border: none; }} QLabel {{ border: none; text-decoration: none; }}")
         hdr.setObjectName("header")
         hl = QHBoxLayout(hdr)
         hl.setContentsMargins(32, 0, 32, 0)
@@ -1245,7 +1259,7 @@ class AayDocCapioApp(QMainWindow):
         tl.addWidget(sep)
 
         tagline = QLabel("Tax Documents. Delivered to You.")
-        tagline.setStyleSheet("color:#64748B; font-family:'Arial'; font-size:13px; font-weight:400; background:transparent; border:none;")
+        tagline.setStyleSheet(f"color:{_t().text_muted}; font-family:'Arial'; font-size:13px; font-weight:400; background:transparent; border:none;")
         tagline.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         tl.addWidget(tagline)
         tl.addStretch()
@@ -1297,7 +1311,7 @@ class AayDocCapioApp(QMainWindow):
 
     def _mk_main_panel(self):
         panel = QWidget()
-        panel.setStyleSheet("background:#FFFFFF;")
+        panel.setStyleSheet(f"background:{_t().bg_window};")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(14, 10, 14, 8)
         layout.setSpacing(6)
@@ -1333,7 +1347,7 @@ class AayDocCapioApp(QMainWindow):
     def _mk_settings_bar(self):
         bar = QFrame()
         bar.setFixedHeight(68)
-        bar.setStyleSheet("QFrame{background:#FFFFFF;border-radius:10px;}")
+        bar.setStyleSheet(f"QFrame{{background:{_t().bg_panel};border-radius:10px;}}")
         hl = QHBoxLayout(bar)
         hl.setContentsMargins(20, 0, 20, 0)
         hl.setSpacing(0)
@@ -1348,7 +1362,7 @@ class AayDocCapioApp(QMainWindow):
         def _divider():
             d = QFrame(); d.setFrameShape(QFrame.Shape.VLine)
             d.setFixedSize(1, 32)
-            d.setStyleSheet("background:#E2E8F0;border:none;")
+            d.setStyleSheet(f"background:{_t().border};border:none;")
             return d
 
         # ── Assessment Year ───────────────────────────────────────────────────
@@ -1367,8 +1381,8 @@ class AayDocCapioApp(QMainWindow):
         manage_btn.setFixedSize(24, 24)
         manage_btn.setToolTip("Manage Years")
         manage_btn.setStyleSheet(
-            "QPushButton{background:transparent;border:none;font-size:14px;color:#94A3B8;}"
-            "QPushButton:hover{color:#2563EB;}")
+            f"QPushButton{{background:transparent;border:none;font-size:14px;color:{_t().text_muted};}}"
+            f"QPushButton:hover{{color:{_t().accent};}}")
         manage_btn.clicked.connect(self.open_manage_years)
 
         ay_col = QWidget(); ay_col.setStyleSheet("background:transparent;")
@@ -1393,7 +1407,7 @@ class AayDocCapioApp(QMainWindow):
             default_dir = _default_download_dir()
             self.vault.update_setting("download_root_dir", default_dir)
         self.dir_lbl = QLabel(default_dir)
-        self.dir_lbl.setStyleSheet("color:#334155;font-size:12px;background:transparent;")
+        self.dir_lbl.setStyleSheet(f"color:{_t().text_primary};font-size:12px;background:transparent;")
         self.dir_lbl.setWordWrap(False)
         self.dir_lbl.setMaximumWidth(320)
         self.dir_lbl.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
@@ -1430,10 +1444,11 @@ class AayDocCapioApp(QMainWindow):
             "Last Download Status", "Last Saved Location", ""
         ])
 
+        _tbl = _t()
         self.client_table.horizontalHeader().setStyleSheet(
-            "QHeaderView::section { background-color: #FFFFFF; border: none; "
-            "border-right: 1px solid #CBD5E1; border-bottom: 1px solid #CBD5E1; "
-            "font-weight: bold; color: #64748B; font-size: 11px; height: 34px; }"
+            f"QHeaderView::section {{ background-color: {_tbl.bg_header}; border: none; "
+            f"border-right: 1px solid {_tbl.border}; border-bottom: 1px solid {_tbl.border}; "
+            f"font-weight: bold; color: {_tbl.text_muted}; font-size: 11px; height: 34px; }}"
         )
         self.client_table.verticalHeader().setVisible(False)
         self.client_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -1444,13 +1459,13 @@ class AayDocCapioApp(QMainWindow):
         chk_path = self.checkmark_path.replace("\\", "/")
         checkbox_style = (
             "QCheckBox { background: transparent; }"
-            "QCheckBox::indicator { width: 15px; height: 15px; border: 1.5px solid #475569; border-radius: 3px; background: #FFFFFF; }"
-            "QCheckBox::indicator:hover { border-color: #0284C7; }"
-            f"QCheckBox::indicator:checked {{ background-color: #0284C7; border-color: #0284C7; image: url('{chk_path}'); }}"
+            f"QCheckBox::indicator {{ width: 15px; height: 15px; border: 1.5px solid {_tbl.border}; border-radius: 3px; background: {_tbl.bg_checkbox}; }}"
+            f"QCheckBox::indicator:hover {{ border-color: {_tbl.border_focus}; }}"
+            f"QCheckBox::indicator:checked {{ background-color: {_tbl.accent}; border-color: {_tbl.accent}; image: url('{chk_path}'); }}"
         )
         self.client_table.setStyleSheet(
-            "QTableWidget { border: 1.5px solid #CBD5E1; border-radius: 8px; background: #FFFFFF; outline: 0; gridline-color: #E2E8F0; }"
-            "QTableWidget::item { border-bottom: 1px solid #E2E8F0; padding: 5px; }"
+            f"QTableWidget {{ border: 1.5px solid {_tbl.border}; border-radius: 8px; background: {_tbl.bg_table}; outline: 0; gridline-color: {_tbl.grid}; }}"
+            f"QTableWidget::item {{ border-bottom: 1px solid {_tbl.grid}; padding: 5px; }}"
             + checkbox_style
         )
 
@@ -1524,14 +1539,14 @@ class AayDocCapioApp(QMainWindow):
             if not a:
                 return
             a_id = a.get("id")
-            _menu_ss = (
-                "QMenu { background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:4px 0; }"
-                "QMenu::item { padding:8px 20px; font-size:12px; color:#334155; }"
-                "QMenu::item:selected { background:#F1F5F9; color:#0F172A; }"
-                "QMenu::separator { height:1px; background:#E2E8F0; margin:3px 0; }"
-            )
+            _mt = _t()
             menu = QMenu(self)
-            menu.setStyleSheet(_menu_ss)
+            menu.setStyleSheet(
+                f"QMenu {{ background:{_mt.bg_menu}; border:1px solid {_mt.border}; border-radius:6px; padding:4px 0; }}"
+                f"QMenu::item {{ padding:8px 20px; font-size:12px; color:{_mt.text_primary}; }}"
+                f"QMenu::item:selected {{ background:{_mt.accent}; color:{_mt.accent_text}; }}"
+                f"QMenu::separator {{ height:1px; background:{_mt.border}; margin:3px 0; }}"
+            )
             menu.addAction("✏  Edit Client",   lambda av=a:   self._open_edit_client(av))
             menu.addSeparator()
             menu.addAction("🗑  Delete Client", lambda id_=a_id: self.delete_assessee(id_))
@@ -1589,7 +1604,7 @@ class AayDocCapioApp(QMainWindow):
     def _mk_control_bar(self):
         bar = QFrame()
         bar.setFixedHeight(54)
-        bar.setStyleSheet("QFrame{background:#FFFFFF;border-radius:10px;}")
+        bar.setStyleSheet(f"QFrame{{background:{_t().bg_panel};border-radius:10px;}}")
         hl = QHBoxLayout(bar)
         hl.setContentsMargins(22, 0, 16, 0)
 
@@ -1600,11 +1615,12 @@ class AayDocCapioApp(QMainWindow):
         self.chk_headless.setToolTip(
             "When ON, the automation Chrome window is hidden (headless).\n"
             "Keep OFF to watch progress or handle any CAPTCHA.")
+        _ck = _t()
         self.chk_headless.setStyleSheet(
-            "QCheckBox{font-size:12px;color:#475569;background:transparent;spacing:6px;}"
-            "QCheckBox::indicator{width:15px;height:15px;border:1.5px solid #94A3B8;"
-            "border-radius:3px;background:#FFFFFF;}"
-            "QCheckBox::indicator:checked{background:#2563EB;border-color:#2563EB;}")
+            f"QCheckBox{{font-size:12px;color:{_ck.text_muted};background:transparent;spacing:6px;}}"
+            f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {_ck.border};"
+            f"border-radius:3px;background:{_ck.bg_checkbox};}}"
+            f"QCheckBox::indicator:checked{{background:{_ck.accent};border-color:{_ck.accent};}}")
         hl.addWidget(self.chk_headless)
 
         hl.addStretch()
@@ -1636,12 +1652,12 @@ class AayDocCapioApp(QMainWindow):
         )
 
         run_menu = QMenu(self.btn_run)
+        _rm = _t()
         run_menu.setStyleSheet(
-            "QMenu{ background:#FFFFFF; border:1px solid #E2E8F0;"
-            "       border-radius:8px; padding:4px 0; }"
-            "QMenu::item{ padding:8px 18px; font-size:13px; color:#1E293B; }"
-            "QMenu::item:selected{ background:#F1F5F9; }"
-            "QMenu::separator{ height:1px; background:#E2E8F0; margin:4px 0; }"
+            f"QMenu{{ background:{_rm.bg_menu}; border:1px solid {_rm.border}; border-radius:8px; padding:4px 0; }}"
+            f"QMenu::item{{ padding:8px 18px; font-size:13px; color:{_rm.text_primary}; }}"
+            f"QMenu::item:selected{{ background:{_rm.accent}; color:{_rm.accent_text}; }}"
+            f"QMenu::separator{{ height:1px; background:{_rm.border}; margin:4px 0; }}"
         )
 
         act_26as = QAction("▶  Download 26AS", self)
@@ -1722,9 +1738,9 @@ class AayDocCapioApp(QMainWindow):
         copy_btn = QPushButton("Copy")
         copy_btn.setFixedHeight(22)
         copy_btn.setStyleSheet(
-            "QPushButton{background:transparent;color:#475569;border:1px solid #334155;"
-            "border-radius:4px;padding:0 10px;font-size:10px;}"
-            "QPushButton:hover{color:#94A3B8;border-color:#475569;}")
+            f"QPushButton{{background:transparent;color:{_t().text_muted};border:1px solid {_t().border};"
+            f"border-radius:4px;padding:0 10px;font-size:10px;}}"
+            f"QPushButton:hover{{color:{_t().text_primary};border-color:{_t().text_muted};}}")
         copy_btn.clicked.connect(self.copy_logs_to_clipboard)
         hhl.addWidget(copy_btn)
         fl.addWidget(log_hdr)
@@ -1972,19 +1988,20 @@ class AayDocCapioApp(QMainWindow):
         dlg = QDialog(self)
         dlg.setWindowTitle("Edit Client" if editing else "Add New Client")
         dlg.setFixedWidth(400)
+        t = _t()
         dlg.setStyleSheet(
-            "QDialog{background:#FFFFFF;}"
-            "QLabel{background:transparent;border:none;color:#334155;font-size:12px;}"
-            "QLineEdit{border:1px solid #CBD5E1;border-radius:6px;padding:6px 10px;"
-            "font-size:12px;background:#F8FAFC;}"
-            "QLineEdit:focus{border-color:#2563EB;background:#FFFFFF;}"
+            f"QDialog{{background:{t.bg_window};}}"
+            f"QLabel{{background:transparent;border:none;color:{t.text_primary};font-size:12px;}}"
+            f"QLineEdit{{border:1px solid {t.border};border-radius:6px;padding:6px 10px;"
+            f"font-size:12px;background:{t.bg_input};color:{t.text_primary};}}"
+            f"QLineEdit:focus{{border-color:{t.border_focus};background:{t.bg_input_focus};}}"
         )
         vl = QVBoxLayout(dlg)
         vl.setContentsMargins(28, 24, 28, 24)
         vl.setSpacing(0)
 
         title_lbl = QLabel("Edit Client" if editing else "Add New Client")
-        title_lbl.setStyleSheet("font-size:16px;font-weight:700;color:#0F172A;")
+        title_lbl.setStyleSheet(f"font-size:16px;font-weight:700;color:{t.text_primary};")
         vl.addWidget(title_lbl)
         vl.addSpacing(18)
 
@@ -1996,7 +2013,7 @@ class AayDocCapioApp(QMainWindow):
             ("pwd",  "Portal Password", "Enter password",          True),
         ]:
             lbl_w = QLabel(label)
-            lbl_w.setStyleSheet("font-size:11px;font-weight:600;color:#475569;margin-bottom:3px;")
+            lbl_w.setStyleSheet(f"font-size:11px;font-weight:600;color:{t.text_muted};margin-bottom:3px;")
             vl.addWidget(lbl_w)
             e = QLineEdit()
             e.setPlaceholderText(ph)
@@ -2017,7 +2034,7 @@ class AayDocCapioApp(QMainWindow):
 
         # Show password toggle
         show_cb = QCheckBox("Show password")
-        show_cb.setStyleSheet("color:#64748B;font-size:11px;background:transparent;")
+        show_cb.setStyleSheet(f"color:{t.text_muted};font-size:11px;background:transparent;")
         show_cb.toggled.connect(
             lambda v: fields["pwd"].setEchoMode(
                 QLineEdit.EchoMode.Normal if v else QLineEdit.EchoMode.Password))
