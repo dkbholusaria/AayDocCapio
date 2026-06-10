@@ -147,6 +147,20 @@ bar at the bottom of the Batch Progress dialog.
 
 ---
 
+### F-07 — Convert 26AS TXT to Excel `P2`
+
+**Reported:** 2026-06-10  
+**Request:** Form 26AS is downloaded as a `.txt` file (fixed-width / pipe-delimited format
+from TRACES). Users want an Excel file they can open and filter directly.  
+**Implementation direction:** After download, parse the TXT using Python's `csv` or
+pandas, map the known 26AS sections (Part A, Part B, etc.) to named sheets in an
+`.xlsx` file using `openpyxl`. Save alongside the existing TXT as
+`<PAN>-26AS-<AY>.xlsx`.  
+**Notes:** The TXT format occasionally changes when TRACES updates — parser should
+fail gracefully and leave the TXT intact if parsing fails.
+
+---
+
 ## Notes
 
 - **B-02 (PDF unlock)** is the highest-priority bug — files appear to download
