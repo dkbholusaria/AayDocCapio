@@ -2,10 +2,10 @@
 project_name = "AayDocCapio"
 bundle = "com.aaydoccapio"
 version = "1.1.0"
-url = "https://github.com/your-org/aaydoccapio"
+url = "https://github.com/dkbholusaria/AayDocCapio"
 license = "Proprietary"
-author = "Your Name"
-author_email = "you@example.com"
+author = "Deepak Bholusaria"
+author_email = "deepak@bholusaria.com"
 
 [tool.briefcase.app.aaydoccapio]
 formal_name = "AayDocCapio"
