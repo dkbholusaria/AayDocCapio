@@ -1258,7 +1258,7 @@ class AayDocCapioApp(QMainWindow):
 
         # Name explanation
         name_box = QFrame()
-        name_box.setStyleSheet(f"QFrame {{ background:{_ab.accent_light}; border-radius:6px; border:1px solid {_ab.border}; }}")
+        name_box.setStyleSheet(f"QFrame {{ background:{_ab.bg_panel}; border-radius:6px; border:1px solid {_ab.accent}; }}")
         nb_l = QVBoxLayout(name_box)
         nb_l.setContentsMargins(14, 10, 14, 10)
         nb_l.setSpacing(6)
@@ -1272,7 +1272,7 @@ class AayDocCapioApp(QMainWindow):
         name_exp.setStyleSheet("font-size:13px; background:transparent; border:none;")
         name_sub = QLabel("AayDoc Capio is designed to securely retrieve and deliver income tax documents, "
                           "eliminating repetitive manual downloads and improving efficiency for tax professionals.")
-        name_sub.setStyleSheet(f"color:{_ab.text_muted}; font-size:12px; background:transparent; border:none;")
+        name_sub.setStyleSheet(f"color:{_ab.text_primary}; font-size:12px; background:transparent; border:none;")
         name_sub.setWordWrap(True)
         nb_l.addWidget(name_head)
         nb_l.addWidget(name_exp)
