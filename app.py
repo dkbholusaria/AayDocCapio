@@ -1541,11 +1541,16 @@ class AayDocCapioApp(QMainWindow):
         hl.addSpacing(28); hl.addWidget(_divider()); hl.addSpacing(28)
 
         # ── Output Directory ──────────────────────────────────────────────────
-        # Validate the saved path — it may be a Linux path stored from WSL dev
-        # that is invalid on Windows (e.g. /home/deepak/Downloads). If it doesn't
-        # exist on this platform, reset to the platform-correct default and persist.
+        # Prefer Windows path whenever USERPROFILE is set (native Windows or WSL).
+        # A saved /home/... path from a WSL dev session must not be shown when
+        # the Windows Downloads folder is reachable.
         _saved_dir = self.vault.get_setting("download_root_dir", "")
-        if _saved_dir and os.path.isdir(_saved_dir):
+        _win_path = _default_download_dir() if os.environ.get("USERPROFILE") else None
+        if _win_path and _win_path != _saved_dir:
+            # USERPROFILE is available — always use the Windows-derived path
+            default_dir = _win_path
+            self.vault.update_setting("download_root_dir", default_dir)
+        elif _saved_dir and os.path.isdir(_saved_dir):
             default_dir = _saved_dir
         else:
             default_dir = _default_download_dir()
