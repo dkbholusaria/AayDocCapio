@@ -442,7 +442,7 @@
   <div style="margin-top:20px; background:#C0392B; border:2px solid #E74C3C; border-radius:8px; padding:14px 24px; font-size:0.92rem; color:#FFFFFF; text-align:center; max-width:560px; margin-left:auto; margin-right:auto; font-weight:600; line-height:1.5;">
     ⚠️ Windows Defender or your browser may flag the installer as a threat.<br>
     <span style="font-weight:400; font-size:0.85rem;">This is a false positive — the app is open source and safe.</span><br>
-    <a href="#faq" style="color:#FFD5D0; text-decoration:underline; font-size:0.88rem;">How to allow it and install →</a>
+    <a href="#" onclick="document.getElementById('av-modal').style.display='flex'; return false;" style="color:#FFD5D0; text-decoration:underline; font-size:0.88rem;">How to allow it and install →</a>
   </div>
 </div>
 
@@ -688,6 +688,61 @@
     MIT License
   </p>
 </footer>
+
+<!-- ── Antivirus Help Modal ────────────────────────────────────────── -->
+<div id="av-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center; padding:20px;">
+  <div style="background:#FFFFFF; border-radius:12px; max-width:520px; width:100%; padding:32px; position:relative; box-shadow:0 20px 60px rgba(0,0,0,0.3); max-height:90vh; overflow-y:auto;">
+    <button onclick="document.getElementById('av-modal').style.display='none'" style="position:absolute; top:14px; right:16px; background:none; border:none; font-size:1.4rem; cursor:pointer; color:#94A3B8; line-height:1;">✕</button>
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:18px;">
+      <span style="font-size:1.6rem;">🛡️</span>
+      <h3 style="color:#0D1F5C; font-size:1.1rem; margin:0;">How to Allow AayDocCapio</h3>
+    </div>
+    <p style="color:#5A6A8A; font-size:0.88rem; margin-bottom:20px; line-height:1.6;">
+      AayDocCapio is compiled from open-source Python code. Antivirus tools sometimes flag compiled Python apps as suspicious — this is a <strong>false positive</strong>. Follow the steps for your situation:
+    </p>
+
+    <div style="border:1px solid #E2E8F0; border-radius:8px; padding:14px 16px; margin-bottom:12px;">
+      <p style="font-weight:700; color:#0D1F5C; font-size:0.9rem; margin-bottom:8px;">🦁 Brave / Chrome blocks the download</p>
+      <ol style="color:#5A6A8A; font-size:0.87rem; line-height:1.8; padding-left:18px; margin:0;">
+        <li>Click the <strong>↓ download icon</strong> in the toolbar</li>
+        <li>Click <strong>…</strong> next to <code>AayDocCapio_Setup_v1.0.0.exe</code></li>
+        <li>Click <strong>Keep → Show more → Keep anyway</strong></li>
+      </ol>
+    </div>
+
+    <div style="border:1px solid #E2E8F0; border-radius:8px; padding:14px 16px; margin-bottom:12px;">
+      <p style="font-weight:700; color:#0D1F5C; font-size:0.9rem; margin-bottom:8px;">🛡 Windows Defender shows "Threats found"</p>
+      <ol style="color:#5A6A8A; font-size:0.87rem; line-height:1.8; padding-left:18px; margin:0;">
+        <li>Open <strong>Windows Security</strong> from the Start menu</li>
+        <li>Go to <strong>Virus &amp; threat protection → Protection history</strong></li>
+        <li>Find the <code>AayDocCapio_Setup_v1.0.0.exe</code> entry</li>
+        <li>Click <strong>Actions → Allow on device</strong></li>
+      </ol>
+    </div>
+
+    <div style="border:1px solid #E2E8F0; border-radius:8px; padding:14px 16px; margin-bottom:20px;">
+      <p style="font-weight:700; color:#0D1F5C; font-size:0.9rem; margin-bottom:8px;">🪟 Windows SmartScreen blocks the installer</p>
+      <ol style="color:#5A6A8A; font-size:0.87rem; line-height:1.8; padding-left:18px; margin:0;">
+        <li>Right-click <code>AayDocCapio_Setup_v1.0.0.exe</code> → <strong>Properties</strong></li>
+        <li>Tick <strong>Unblock</strong> at the bottom → <strong>Apply → OK</strong></li>
+        <li>Double-click to run — if SmartScreen still appears, click <strong>More info → Run anyway</strong></li>
+      </ol>
+    </div>
+
+    <button onclick="document.getElementById('av-modal').style.display='none'" style="width:100%; background:#0D1F5C; color:#FFFFFF; border:none; border-radius:8px; padding:11px; font-size:0.95rem; font-weight:600; cursor:pointer;">Got it — close</button>
+  </div>
+</div>
+
+<script>
+  // Close modal on backdrop click
+  document.getElementById('av-modal').addEventListener('click', function(e) {
+    if (e.target === this) this.style.display = 'none';
+  });
+  // Close on Escape key
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') document.getElementById('av-modal').style.display = 'none';
+  });
+</script>
 
 </body>
 </html>
