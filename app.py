@@ -1379,6 +1379,7 @@ class AayDocCapioApp(QMainWindow):
         self.search_box = QLineEdit()
         self.search_box.setPlaceholderText("🔍  Search by name or PAN...")
         self.search_box.setFixedHeight(28)
+        self.search_box.setClearButtonEnabled(True)
         self.search_box.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
         self.search_box.textChanged.connect(self._apply_filter)
         layout.addWidget(self.search_box)
