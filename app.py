@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QMessageBox, QTextEdit, QDialog, QRadioButton, QSplitter, QSizePolicy,
     QGraphicsDropShadowEffect, QListView, QStyledItemDelegate, QTableWidget,
     QTableWidgetItem, QHeaderView, QAbstractItemView, QToolButton, QMenu,
-    QProgressBar,
+    QProgressBar, QCalendarWidget,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QMetaObject, Q_ARG, QModelIndex
 from PyQt6.QtGui import QFont, QTextCursor, QColor, QRegularExpressionValidator, QPalette, QAction, QIcon, QPixmap
@@ -2169,31 +2169,168 @@ class AayDocCapioApp(QMainWindow):
         vl.addSpacing(18)
 
         fields = {}
-        for attr, label, ph, is_pwd in [
-            ("name", "Full Name",       "e.g. Deepak Bholusaria", False),
-            ("pan",  "PAN Number",      "e.g. AEKPB0205L",        False),
-            ("dob",  "Date of Birth",   "DD-MM-YYYY",             False),
-            ("pwd",  "Portal Password", "Enter password",          True),
-        ]:
-            lbl_w = QLabel(label)
-            lbl_w.setStyleSheet(f"font-size:11px;font-weight:600;color:{t.text_muted};margin-bottom:3px;")
-            vl.addWidget(lbl_w)
-            e = QLineEdit()
-            e.setPlaceholderText(ph)
-            e.setFixedHeight(34)
-            if is_pwd:
-                e.setEchoMode(QLineEdit.EchoMode.Password)
-            e.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
-            vl.addWidget(e)
-            vl.addSpacing(10)
-            fields[attr] = e
 
-        # PAN: uppercase + alphanumeric
+        def _field_label(text):
+            l = QLabel(text)
+            l.setStyleSheet(f"font-size:11px;font-weight:600;color:{t.text_muted};margin-bottom:3px;")
+            return l
+
+        # ── Name ──────────────────────────────────────────────────────────────
+        vl.addWidget(_field_label("Full Name"))
+        fields["name"] = QLineEdit()
+        fields["name"].setPlaceholderText("e.g. Deepak Bholusaria")
+        fields["name"].setFixedHeight(34)
+        fields["name"].setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
+        vl.addWidget(fields["name"])
+        vl.addSpacing(10)
+
+        # ── PAN ───────────────────────────────────────────────────────────────
+        vl.addWidget(_field_label("PAN Number"))
+        fields["pan"] = QLineEdit()
+        fields["pan"].setPlaceholderText("e.g. AEKPB0205L")
+        fields["pan"].setFixedHeight(34)
         fields["pan"].setMaxLength(10)
         fields["pan"].setValidator(
             QRegularExpressionValidator(QRegularExpression("[A-Za-z0-9]{0,10}")))
+        fields["pan"].setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
         fields["pan"].textChanged.connect(
-            lambda t, e=fields["pan"]: e.setText(t.upper()) if t != t.upper() else None)
+            lambda txt, e=fields["pan"]: e.setText(txt.upper()) if txt != txt.upper() else None)
+        vl.addWidget(fields["pan"])
+        vl.addSpacing(10)
+
+        # ── Date of Birth — text input + calendar picker + live hint ─────────
+        vl.addWidget(_field_label("Date of Birth"))
+        dob_row = QHBoxLayout()
+        dob_row.setSpacing(6)
+        dob_row.setContentsMargins(0, 0, 0, 0)
+
+        dob_edit = QLineEdit()
+        dob_edit.setPlaceholderText("DD-MM-YYYY  or type digits freely")
+        dob_edit.setFixedHeight(34)
+        dob_edit.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
+        fields["dob"] = dob_edit
+
+        cal_btn = QPushButton("📅")
+        cal_btn.setFixedSize(34, 34)
+        cal_btn.setToolTip("Pick date from calendar")
+        cal_btn.setStyleSheet(
+            f"QPushButton{{background:{t.bg_input};border:1px solid {t.border};"
+            f"border-radius:6px;font-size:15px;}}"
+            f"QPushButton:hover{{border-color:{t.border_focus};}}")
+
+        dob_row.addWidget(dob_edit, 1)
+        dob_row.addWidget(cal_btn)
+        vl.addLayout(dob_row)
+
+        # Hint label: shows normalised date or error inline
+        dob_hint = QLabel("")
+        dob_hint.setStyleSheet("font-size:10px;background:transparent;border:none;")
+        dob_hint.setFixedHeight(16)
+        vl.addWidget(dob_hint)
+        vl.addSpacing(6)
+
+        def _normalise_and_hint(text):
+            """Auto-normalise the DOB field and show a live hint."""
+            from vault import _normalise_dob, _DOB_RE
+            if not text.strip():
+                dob_hint.setText("")
+                dob_edit.setStyleSheet(
+                    f"QLineEdit{{border:1px solid {t.border};border-radius:6px;"
+                    f"padding:6px 10px;font-size:12px;background:{t.bg_input};color:{t.text_primary};}}"
+                    f"QLineEdit:focus{{border-color:{t.border_focus};}}")
+                return
+            normed = _normalise_dob(text.strip())
+            if _DOB_RE.match(normed):
+                dob_hint.setText(f"✓  {normed}")
+                dob_hint.setStyleSheet("font-size:10px;color:#16A34A;background:transparent;border:none;")
+                dob_edit.setStyleSheet(
+                    f"QLineEdit{{border:1.5px solid #16A34A;border-radius:6px;"
+                    f"padding:6px 10px;font-size:12px;background:{t.bg_input};color:{t.text_primary};}}"
+                    f"QLineEdit:focus{{border-color:#16A34A;}}")
+            else:
+                dob_hint.setText("✗  Use DD-MM-YYYY  e.g. 06-07-1974")
+                dob_hint.setStyleSheet("font-size:10px;color:#EF4444;background:transparent;border:none;")
+                dob_edit.setStyleSheet(
+                    f"QLineEdit{{border:1.5px solid #EF4444;border-radius:6px;"
+                    f"padding:6px 10px;font-size:12px;background:{t.bg_input};color:{t.text_primary};}}"
+                    f"QLineEdit:focus{{border-color:#EF4444;}}")
+
+        def _on_dob_commit():
+            """On focus-out/Enter, normalise and write back the canonical form."""
+            from vault import _normalise_dob, _DOB_RE
+            raw = dob_edit.text().strip()
+            if not raw:
+                return
+            normed = _normalise_dob(raw)
+            if _DOB_RE.match(normed):
+                dob_edit.setText(normed)
+
+        dob_edit.textChanged.connect(_normalise_and_hint)
+        dob_edit.editingFinished.connect(_on_dob_commit)
+
+        # Calendar popup
+        def _show_calendar():
+            popup = QDialog(dlg)
+            popup.setWindowTitle("Pick Date of Birth")
+            popup.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
+            popup.setStyleSheet(
+                f"QDialog{{background:{t.bg_panel};border:1px solid {t.border};border-radius:8px;}}"
+                f"QCalendarWidget{{background:{t.bg_panel};color:{t.text_primary};}}"
+                f"QCalendarWidget QWidget{{background:{t.bg_panel};color:{t.text_primary};}}"
+                f"QCalendarWidget QAbstractItemView{{background:{t.bg_input};color:{t.text_primary};"
+                f"selection-background-color:{t.accent};selection-color:{t.accent_text};}}"
+                f"QCalendarWidget QToolButton{{color:{t.text_primary};background:{t.bg_input};"
+                f"border:none;border-radius:4px;padding:4px 8px;}}"
+                f"QCalendarWidget QToolButton:hover{{background:{t.accent};"
+                f"color:{t.accent_text};}}"
+                f"QCalendarWidget QSpinBox{{color:{t.text_primary};background:{t.bg_input};"
+                f"border:1px solid {t.border};border-radius:4px;}}"
+                f"QCalendarWidget #qt_calendar_navigationbar{{background:{t.bg_header};"
+                f"padding:4px;}}"
+            )
+            pl = QVBoxLayout(popup)
+            pl.setContentsMargins(8, 8, 8, 8)
+            cal = QCalendarWidget(popup)
+            cal.setGridVisible(False)
+            cal.setVerticalHeaderFormat(QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader)
+            # Pre-select current value if valid
+            from vault import _normalise_dob, _DOB_RE
+            import datetime as _dt
+            raw = dob_edit.text().strip()
+            normed = _normalise_dob(raw) if raw else ""
+            if _DOB_RE.match(normed):
+                try:
+                    d, m, y = normed.split("-")
+                    cal.setSelectedDate(
+                        __import__("PyQt6.QtCore", fromlist=["QDate"]).QDate(int(y), int(m), int(d)))
+                except Exception:
+                    pass
+            # Limit max date to today
+            from PyQt6.QtCore import QDate
+            cal.setMaximumDate(QDate.currentDate())
+            pl.addWidget(cal)
+
+            def _picked(date):
+                dob_edit.setText(f"{date.day():02d}-{date.month():02d}-{date.year()}")
+                popup.accept()
+
+            cal.clicked.connect(_picked)
+            # Position below the cal_btn
+            pos = cal_btn.mapToGlobal(cal_btn.rect().bottomLeft())
+            popup.move(pos)
+            popup.exec()
+
+        cal_btn.clicked.connect(_show_calendar)
+
+        # ── Portal Password ───────────────────────────────────────────────────
+        vl.addWidget(_field_label("Portal Password"))
+        fields["pwd"] = QLineEdit()
+        fields["pwd"].setPlaceholderText("Enter password")
+        fields["pwd"].setFixedHeight(34)
+        fields["pwd"].setEchoMode(QLineEdit.EchoMode.Password)
+        fields["pwd"].setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
+        vl.addWidget(fields["pwd"])
+        vl.addSpacing(10)
 
         # Show password toggle
         show_cb = QCheckBox("Show password")
