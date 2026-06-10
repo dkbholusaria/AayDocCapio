@@ -598,7 +598,7 @@ class BatchProgressDialog(QDialog):
         self._table.setColumnWidth(self._COL_NAME,   180)
         self._table.setColumnWidth(self._COL_PAN,    120)
         self._table.setColumnWidth(self._COL_STATUS, 260)
-        self._table.setColumnWidth(self._COL_FOLDER, 40)
+        self._table.setColumnWidth(self._COL_FOLDER, 50)
 
         hdr.setStyleSheet(
             "QHeaderView::section{"
@@ -649,7 +649,7 @@ class BatchProgressDialog(QDialog):
 
             # "..." open-folder button (disabled until path is set)
             folder_btn = QPushButton("...")
-            folder_btn.setFixedSize(34, 28)
+            folder_btn.setFixedSize(42, 28)
             folder_btn.setEnabled(False)
             folder_btn.setToolTip("Open client folder")
             folder_btn.setStyleSheet(
@@ -659,7 +659,7 @@ class BatchProgressDialog(QDialog):
                 "QPushButton:disabled{color:#CBD5E1;border-color:#E2E8F0;}")
             folder_btn.clicked.connect(lambda _checked, p=pan: self._open_client_folder(p))
             cell_w = QWidget(); cell_l = QHBoxLayout(cell_w)
-            cell_l.setContentsMargins(3, 0, 3, 0)
+            cell_l.setContentsMargins(2, 0, 2, 0)
             cell_l.setAlignment(Qt.AlignmentFlag.AlignCenter)
             cell_l.addWidget(folder_btn)
             self._table.setCellWidget(row, self._COL_FOLDER, cell_w)
