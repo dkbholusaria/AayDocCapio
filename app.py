@@ -1078,7 +1078,9 @@ class AayDocCapioApp(QMainWindow):
                     f"color:{t.text_muted}; font-family:'Arial'; font-size:11px;"
                     f" background:transparent; border:none;")
 
-        # ── Settings bar + control bar backgrounds ────────────────────────────
+        # ── Main panel + settings/control bar backgrounds ─────────────────────
+        if hasattr(self, "_main_panel"):
+            self._main_panel.setStyleSheet(f"background:{t.bg_window};")
         for bar in (getattr(self, "_settings_bar", None), getattr(self, "_control_bar", None)):
             if bar:
                 bar.setStyleSheet(f"QFrame{{background:{t.bg_panel};border-radius:10px;}}")
@@ -1099,10 +1101,18 @@ class AayDocCapioApp(QMainWindow):
                 f"QLineEdit::placeholder{{color:{t.text_muted};}}"
             )
 
-        # ── dir_lbl (output directory path) ──────────────────────────────────
+        # ── dir_lbl + browse button ───────────────────────────────────────────
         if hasattr(self, "dir_lbl"):
             self.dir_lbl.setStyleSheet(
                 f"color:{t.text_primary};font-size:12px;background:transparent;")
+        if hasattr(self, "_browse_btn"):
+            self._browse_btn.setStyleSheet(
+                f"QPushButton{{background:transparent;color:{t.text_primary};"
+                f"border:1px solid {t.border};border-radius:6px;"
+                f"padding:4px 12px;font-weight:bold;font-size:12px;}}"
+                f"QPushButton:hover{{background:{t.bg_table_alt};}}"
+                f"QPushButton:disabled{{color:{t.text_muted};border-color:{t.border};}}"
+            )
 
         # ── chk_headless ──────────────────────────────────────────────────────
         if hasattr(self, "chk_headless"):
@@ -1131,7 +1141,8 @@ class AayDocCapioApp(QMainWindow):
         # ── CLIENTS caption + selected count label ────────────────────────────
         if hasattr(self, "_lbl_clients_cap"):
             self._lbl_clients_cap.setStyleSheet(
-                f"color:{t.text_muted};font-size:10px;font-weight:bold;background:transparent;")
+                f"color:{t.text_muted};font-size:10px;font-weight:700;"
+                f"letter-spacing:0.8px;background:transparent;")
         if hasattr(self, "lbl_selected"):
             cur = self.lbl_selected.text()
             self.lbl_selected.setStyleSheet(
@@ -1417,6 +1428,7 @@ class AayDocCapioApp(QMainWindow):
 
     def _mk_main_panel(self):
         panel = QWidget()
+        self._main_panel = panel
         panel.setStyleSheet(f"background:{_t().bg_window};")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(14, 10, 14, 8)
@@ -1428,7 +1440,7 @@ class AayDocCapioApp(QMainWindow):
 
         # Grid label row
         grid_hdr_row = QHBoxLayout()
-        self._lbl_clients_cap = _lbl("CLIENTS", 10, bold=True)
+        self._lbl_clients_cap = _lbl("CLIENTS", 10, bold=True, color=_t().text_muted)
         grid_hdr_row.addWidget(self._lbl_clients_cap)
         grid_hdr_row.addStretch()
         self.lbl_selected = _lbl("0 selected", 11, bold=True, color=_t().accent)
@@ -1520,6 +1532,7 @@ class AayDocCapioApp(QMainWindow):
         self.dir_lbl.setMaximumWidth(320)
         self.dir_lbl.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         browse_btn = _btn("📂  Browse", "outline", height=26)
+        self._browse_btn = browse_btn
         browse_btn.clicked.connect(self.browse_output_dir)
 
         dir_row = QHBoxLayout(); dir_row.setContentsMargins(0,0,0,0); dir_row.setSpacing(8)
@@ -1949,7 +1962,8 @@ class AayDocCapioApp(QMainWindow):
             _ct = _t()
             _chk_path = self.checkmark_path.replace("\\", "/")
             cb_container = QWidget()
-            cb_container.setStyleSheet(f"background:{_ct.bg_table};")
+            cb_container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            cb_container.setStyleSheet(f"QWidget{{background:{_ct.bg_table};}}")
             cb_layout = QHBoxLayout(cb_container)
             cb_layout.setContentsMargins(0, 0, 0, 0)
             cb_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
