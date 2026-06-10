@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AayDocCapio — Tax Documents. Delivered to You.</title>
+  <meta name="description" content="Automates secure bulk retrieval of Form 26AS, AIS and TIS from the Income Tax e-Filing Portal for multiple clients in one click." />
+  <style>
+    :root {
+      --navy:  #0A1628;
+      --blue:  #2563EB;
+      --cyan:  #0EA5E9;
+      --text:  #0F172A;
+      --muted: #64748B;
+      --bg:    #F8FAFC;
+      --card:  #FFFFFF;
+      --line:  #E2E8F0;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      font-size: 0.95rem;
+    }
+
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code {
+      background: #EFF6FF;
+      color: #1E40AF;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.88rem;
+    }
+
+    /* ── Header ──────────────────────────────────────────────── */
+    header {
+      background: linear-gradient(135deg, var(--navy), #1E3A8A, #2563EB);
+      color: #fff;
+      text-align: center;
+      padding: 64px 24px 56px;
+    }
+
+    .hdr-logo {
+      width: 72px;
+      height: 72px;
+      border-radius: 16px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+    }
+
+    header h1 {
+      font-size: 2.4rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 6px;
+    }
+
+    header h1 span { color: var(--cyan); }
+
+    .tagline {
+      font-size: 1.1rem;
+      opacity: 0.85;
+      margin-bottom: 32px;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 14px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      border-radius: 10px;
+      font-size: 1.05rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+      text-decoration: none;
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.2); text-decoration: none; }
+
+    .btn-primary { background: #fff; color: #1E40AF; }
+    .btn-secondary { background: transparent; color: #fff; border: 1.5px solid rgba(255,255,255,0.4); }
+
+    .btn-sub {
+      font-size: 0.8rem;
+      opacity: 0.7;
+      font-weight: 400;
+      display: block;
+      margin-top: 2px;
+    }
+
+    .all-releases {
+      font-size: 0.85rem;
+      color: rgba(255,255,255,0.65);
+      margin-top: 16px;
+    }
+    .all-releases a { color: rgba(255,255,255,0.85); text-decoration: underline; }
+
+    /* ── Layout ──────────────────────────────────────────────── */
+    .wrap {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    section { padding: 48px 0; }
+    section + section { border-top: 1px solid var(--line); }
+
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 24px;
+      color: var(--text);
+    }
+
+    /* ── Feature cards ───────────────────────────────────────── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 24px;
+    }
+
+    .card h3 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .card p { color: var(--muted); font-size: 0.95rem; }
+
+    /* ── Steps ───────────────────────────────────────────────── */
+    .steps { counter-reset: step; }
+
+    .step {
+      position: relative;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 20px 24px 20px 64px;
+      margin-bottom: 14px;
+      counter-increment: step;
+    }
+
+    .step::before {
+      content: counter(step);
+      position: absolute;
+      left: 18px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 30px;
+      height: 30px;
+      background: var(--blue);
+      color: #fff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+
+    .step h3 { font-size: 1rem; font-weight: 700; margin-bottom: 4px; }
+    .step p  { color: var(--muted); font-size: 0.95rem; }
+
+    /* ── Screenshots ─────────────────────────────────────────── */
+    .shot-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+      gap: 20px;
+    }
+
+    .shot-item { }
+    .shot-item p {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-top: 6px;
+      text-align: center;
+    }
+
+    .shot {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      display: block;
+    }
+
+    /* ── Notes ───────────────────────────────────────────────── */
+    .note {
+      background: #FEF9C3;
+      border: 1px solid #FDE047;
+      border-radius: 10px;
+      padding: 14px 18px;
+      font-size: 0.92rem;
+      margin-top: 16px;
+    }
+
+    .ok {
+      background: #DCFCE7;
+      border: 1px solid #86EFAC;
+      border-radius: 10px;
+      padding: 14px 18px;
+      font-size: 0.92rem;
+      margin-top: 16px;
+    }
+
+    /* ── FAQ ─────────────────────────────────────────────────── */
+    details.faq {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-bottom: 10px;
+    }
+
+    details.faq summary {
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.97rem;
+      list-style: none;
+    }
+    details.faq summary::-webkit-details-marker { display: none; }
+    details.faq summary::before { content: "▶ "; font-size: 0.7rem; color: var(--blue); }
+    details.faq[open] summary::before { content: "▼ "; }
+
+    details.faq p {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    /* ── About ───────────────────────────────────────────────── */
+    .about-box {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 28px 32px;
+      display: flex;
+      gap: 24px;
+      align-items: flex-start;
+    }
+
+    .about-box img { width: 56px; height: 56px; border-radius: 10px; flex-shrink: 0; }
+
+    .about-box h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
+    .about-box p  { color: var(--muted); font-size: 0.95rem; margin-bottom: 6px; }
+    .about-box a  { color: var(--blue); font-size: 0.9rem; }
+
+    /* ── Footer ──────────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--line);
+      padding: 28px 24px 40px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    footer a { color: var(--blue); }
+
+    /* ── Responsive ──────────────────────────────────────────── */
+    @media (max-width: 560px) {
+      header h1 { font-size: 1.7rem; }
+      .about-box { flex-direction: column; }
+      .shot-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────── -->
+<header>
+  <img src="app_icon.png" alt="AayDocCapio icon" class="hdr-logo" />
+  <h1>AayDoc <span>Capio</span><sup style="font-size:1rem;vertical-align:super;">™</sup></h1>
+  <p class="tagline">Tax Documents. Delivered to You.</p>
+
+  <div class="btn-row">
+    <a class="btn btn-primary"
+       href="https://github.com/dkbholusaria/AayDocCapio/releases/download/v1.0.0/AayDocCapio_Setup_v1.0.0.exe">
+      ⬇ Download for Windows
+      <span class="btn-sub">v1.0.0 · Wizard Installer · 56 MB</span>
+    </a>
+    <a class="btn btn-secondary"
+       href="https://github.com/dkbholusaria/AayDocCapio/releases/download/v1.0.0/AayDocCapio.msi">
+      ⬇ Download MSI
+      <span class="btn-sub">Enterprise / Silent Install · 67 MB</span>
+    </a>
+  </div>
+
+  <p class="all-releases">
+    Windows 10/11 (64-bit) &nbsp;·&nbsp;
+    <a href="https://github.com/dkbholusaria/AayDocCapio/releases">All releases</a>
+  </p>
+</header>
+
+<!-- ── What it does ────────────────────────────────────────────── -->
+<section>
+  <div class="wrap">
+    <h2>What it does</h2>
+    <div class="cards">
+      <div class="card">
+        <h3>🔐 Encrypted Credential Vault</h3>
+        <p>PAN, DOB, and portal passwords stored locally using PBKDF2HMAC + Fernet AES-128. Nothing leaves your machine.</p>
+      </div>
+      <div class="card">
+        <h3>📑 Bulk Download</h3>
+        <p>Download Form 26AS (PDF + TXT), AIS (PDF), and TIS (PDF) for multiple clients in one click.</p>
+      </div>
+      <div class="card">
+        <h3>🔓 Auto PDF Unlocking</h3>
+        <p>Downloaded PDFs are automatically unlocked using PAN and DOB — open immediately without passwords.</p>
+      </div>
+      <div class="card">
+        <h3>📊 Live Batch Progress</h3>
+        <p>Per-client real-time status popup with step-by-step logs. Stop mid-batch at any time.</p>
+      </div>
+      <div class="card">
+        <h3>📥 Excel / CSV Import</h3>
+        <p>Bulk-import assessees from Excel or CSV. Generate a pre-formatted import template in one click.</p>
+      </div>
+      <div class="card">
+        <h3>🌐 Headless by Default</h3>
+        <p>Browser runs invisibly in the background for speed. Toggle "Show Browser" for step-by-step debugging.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Screenshots ─────────────────────────────────────────────── -->
+<section>
+  <div class="wrap">
+    <h2>Screenshots</h2>
+    <div class="shot-grid">
+      <div class="shot-item">
+        <img src="screenshots/ADC_26ASBatch.png" alt="26AS Batch Download" class="shot" />
+        <p>Batch Progress — 26AS Download</p>
+      </div>
+      <div class="shot-item">
+        <img src="screenshots/ADC_AISRequestPlaced.png" alt="AIS Request" class="shot" />
+        <p>Batch Progress — AIS Generation Request</p>
+      </div>
+      <div class="shot-item">
+        <img src="screenshots/ADC_AISDownload.png" alt="AIS Download" class="shot" />
+        <p>Batch Progress — AIS Download</p>
+      </div>
+      <div class="shot-item">
+        <img src="screenshots/ADC_AISRequestResult.png" alt="AIS Request Result" class="shot" />
+        <p>AIS Request Result</p>
+      </div>
+      <div class="shot-item">
+        <img src="screenshots/ADC_ImportDialog.png" alt="Import Dialog" class="shot" />
+        <p>Bulk Import — File Picker</p>
+      </div>
+      <div class="shot-item">
+        <img src="screenshots/ADC_Aboutus.png" alt="About Dialog" class="shot" />
+        <p>About AayDocCapio</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── How to get started ───────────────────────────────────────── -->
+<section>
+  <div class="wrap">
+    <h2>How to get started</h2>
+    <div class="steps">
+      <div class="step">
+        <h3>Download & Install</h3>
+        <p>Run <code>AayDocCapio_Setup_v1.0.0.exe</code>. The wizard installs the app and downloads the Chromium browser engine automatically (one-time, ~150 MB).</p>
+      </div>
+      <div class="step">
+        <h3>Add your clients</h3>
+        <p>Use the <strong>Single Profile</strong> tab to add clients manually, or use <strong>Bulk Operations → Import CSV / Excel</strong> to load multiple assessees at once.</p>
+      </div>
+      <div class="step">
+        <h3>Select Assessment Year & Output Folder</h3>
+        <p>Pick the Assessment Year from the dropdown and set your preferred output directory.</p>
+      </div>
+      <div class="step">
+        <h3>Select clients and click Run</h3>
+        <p>Tick the clients you want, click <strong>▶ Run</strong>, and choose <em>Download 26AS</em> or <em>Download / Request AIS &amp; TIS</em>. A live progress popup tracks every client.</p>
+      </div>
+      <div class="step">
+        <h3>Collect your files</h3>
+        <p>Downloaded PDFs are saved to <code>&lt;Output Directory&gt;/&lt;PAN&gt;-&lt;Name&gt;/AY_&lt;year&gt;/</code> and auto-unlocked — ready to use immediately.</p>
+      </div>
+    </div>
+
+    <div class="note">
+      ⚠️ <strong>AIS/TIS require Google Chrome.</strong> Form 26AS works without it. Make sure Chrome is installed before downloading AIS or TIS.
+    </div>
+    <div class="ok">
+      ✅ <strong>Large AIS files?</strong> If the ITD server queues your AIS, AayDocCapio notifies you. Wait ~5 minutes, then use <em>Download Previously Requested AIS</em> to fetch it automatically.
+    </div>
+  </div>
+</section>
+
+<!-- ── FAQ ─────────────────────────────────────────────────────── -->
+<section>
+  <div class="wrap">
+    <h2>Common questions</h2>
+
+    <details class="faq">
+      <summary>Is my data safe? Where are credentials stored?</summary>
+      <p>All credentials (PAN, DOB, portal password) are stored in an encrypted local file <code>tax_vault.json</code> on your machine using PBKDF2HMAC + Fernet AES-128 encryption. Nothing is sent to any server — the app only communicates directly with the official ITD e-Filing portal.</p>
+    </details>
+
+    <details class="faq">
+      <summary>Why does AIS/TIS require Google Chrome?</summary>
+      <p>The Insight/AIS portal's download buttons only fire correctly in real Google Chrome. Playwright's bundled Chromium does not trigger the download event on that portal. Form 26AS works fine with either.</p>
+    </details>
+
+    <details class="faq">
+      <summary>What does "AIS request queued" mean?</summary>
+      <p>When an AIS file is large, the ITD server queues its generation. AayDocCapio will show a notification with a reference number. Wait ~5 minutes, select those clients again, and click <em>Download Previously Requested AIS</em>.</p>
+    </details>
+
+    <details class="faq">
+      <summary>Can one client's failure stop the whole batch?</summary>
+      <p>No. Each client is isolated — if one fails (e.g. wrong password, portal timeout), the reason is shown in the progress popup and the batch continues for the remaining clients.</p>
+    </details>
+
+    <details class="faq">
+      <summary>Can I use this without installing it?</summary>
+      <p>Yes. The portable folder <code>dist\AayDocCapio\</code> from the build can be zipped and run directly without installation. For most users the installer is easier.</p>
+    </details>
+  </div>
+</section>
+
+<!-- ── About ────────────────────────────────────────────────────── -->
+<section>
+  <div class="wrap">
+    <h2>About</h2>
+    <div class="about-box">
+      <img src="app_icon.png" alt="AayDocCapio" />
+      <div>
+        <h3>CA. Deepak Bhholusaria</h3>
+        <p>AayDocCapio was built to eliminate the repetitive manual effort of downloading income tax documents for multiple clients. <em>Aay</em> (Income) · <em>Doc</em> (Documents) · <em>Capio</em> (Latin: To Obtain).</p>
+        <p>Built with PyQt6 · Playwright · Python &nbsp;|&nbsp; Free &amp; Open Source</p>
+        <a href="mailto:deepak@ailearrning.guru">deepak@ailearrning.guru</a> &nbsp;·&nbsp;
+        <a href="https://www.linkedin.com/in/bhholusaria/" target="_blank">LinkedIn</a> &nbsp;·&nbsp;
+        <a href="https://github.com/dkbholusaria/AayDocCapio" target="_blank">GitHub</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ───────────────────────────────────────────────────── -->
+<footer>
+  <p>© 2026 Deepak Bhholusaria &nbsp;·&nbsp;
+     <a href="https://github.com/dkbholusaria/AayDocCapio">GitHub</a> &nbsp;·&nbsp;
+     <a href="https://github.com/dkbholusaria/AayDocCapio/releases">Releases</a> &nbsp;·&nbsp;
+     MIT License
+  </p>
+</footer>
+
+</body>
+</html>
