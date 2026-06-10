@@ -74,8 +74,8 @@ async def _do_login(page, user_id, uid_masked, password, log_callback):
     log_callback("[Auth] Loading ITD Portal...")
     await page.goto(
         "https://eportal.incometax.gov.in/iec/foservices/#/login",
-        wait_until="domcontentloaded", timeout=60000)
-    await page.wait_for_load_state("networkidle", timeout=30000)
+        wait_until="domcontentloaded", timeout=90000)
+    await page.wait_for_load_state("networkidle", timeout=60000)
     await asyncio.sleep(2)
 
     # ── Step 1: Fill PAN ─────────────────────────────────────────────────────
@@ -87,14 +87,14 @@ async def _do_login(page, user_id, uid_masked, password, log_callback):
 
     # ── Step 2: Click Continue after PAN ─────────────────────────────────────
     log_callback("[Auth] Clicking Continue after PAN...")
-    await _click_btn(page, log_callback, timeout=10000)
+    await _click_btn(page, log_callback, timeout=20000)
 
     # ── Step 3: Wait for SAM checkbox, tick it, click Continue ───────────────
     log_callback("[Auth] Waiting for SAM page (Step 2)...")
     await update_browser_status(page, "Auth: Waiting for Step 2...")
 
     sam_found = False
-    for _ in range(100):    # 100 × 300ms = 30s
+    for _ in range(200):    # 200 × 300ms = 60s
         await asyncio.sleep(0.3)
         try:
             sam_found = await page.locator("id=passwordCheckBox-input").first.is_visible()
@@ -118,14 +118,14 @@ async def _do_login(page, user_id, uid_masked, password, log_callback):
 
     # ── Step 4: Select Password login method ─────────────────────────────────
     log_callback("[Auth] Clicking Continue on SAM page...")
-    await _click_btn(page, log_callback, timeout=5000)
+    await _click_btn(page, log_callback, timeout=15000)
 
     # The portal shows radio buttons: Password / OTP — select Password
     log_callback("[Auth] Selecting Password login method...")
     try:
         await page.wait_for_selector(
             "xpath=//label[normalize-space(text())='Password']",
-            state="visible", timeout=5000)
+            state="visible", timeout=15000)
         await page.locator("xpath=//label[normalize-space(text())='Password']").first.click()
         log_callback("[Auth] Password radio selected.")
     except Exception as e:
@@ -136,7 +136,7 @@ async def _do_login(page, user_id, uid_masked, password, log_callback):
     await update_browser_status(page, "Auth: Entering password...")
 
     try:
-        await page.wait_for_selector("id=loginPasswordField", state="visible", timeout=5000)
+        await page.wait_for_selector("id=loginPasswordField", state="visible", timeout=15000)
     except Exception:
         await _dump_inputs(page, log_callback)
         raise RuntimeError("Password field did not appear after selecting login method.")
