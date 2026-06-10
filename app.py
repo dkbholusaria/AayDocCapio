@@ -133,17 +133,41 @@ except Exception as _import_err:
     sys.exit(1)
 
 
+class _ComboDelegate(QStyledItemDelegate):
+    def paint(self, painter, option, index):
+        from PyQt6.QtWidgets import QStyle
+        text = index.data() or ""
+        painter.save()
+        is_selected = bool(option.state & QStyle.StateFlag.State_Selected)
+        is_hover    = bool(option.state & QStyle.StateFlag.State_MouseOver)
+        if is_selected:
+            painter.fillRect(option.rect, QColor("#DBEAFE"))
+            painter.setPen(QColor("#1E40AF"))
+        elif is_hover:
+            painter.fillRect(option.rect, QColor("#EFF6FF"))
+            painter.setPen(QColor("#1E40AF"))
+        else:
+            painter.fillRect(option.rect, QColor("#FFFFFF"))
+            painter.setPen(QColor("#1a1a1a"))
+        painter.drawText(option.rect.adjusted(12, 0, -8, 0),
+                         Qt.AlignmentFlag.AlignVCenter, text)
+        painter.restore()
+
+    def sizeHint(self, option, index):
+        sh = super().sizeHint(option, index)
+        return sh.__class__(sh.width(), max(sh.height(), 28))
+
+
 class _ComboListView(QListView):
     """QListView that closes its parent ComboBox popup on mouse release."""
     def __init__(self, combo: 'StyledComboBox'):
         super().__init__()
         self._combo = combo
         self.setMouseTracking(True)
+        self.setItemDelegate(_ComboDelegate(self))
         self.setStyleSheet(
-            "QListView { border:1px solid #CBD5E1; background:#FFFFFF; outline:none; color:#1a1a1a; }"
-            "QListView::item { padding:6px 12px; min-height:26px; color:#1a1a1a; }"
-            "QListView::item:hover { background:#EFF6FF; color:#1E40AF; }"
-            "QListView::item:selected { background:#DBEAFE; color:#1E40AF; }"
+            "QListView { border:1px solid #CBD5E1; background:#FFFFFF; outline:none; }"
+            "QListView::item { padding:0px; }"
         )
 
     def mouseReleaseEvent(self, event):
