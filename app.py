@@ -2062,7 +2062,8 @@ class AayDocCapioApp(QMainWindow):
             try:
                 # ── Login ────────────────────────────────────────────────────
                 set_status(pan, "⏳ Logging in to ITD...")
-                page = await login_itd(pan, target.get("password"), self.log, context)
+                page = await login_itd(pan, target.get("password"), self.log, context,
+                                       is_running=lambda: self.is_running)
                 set_status(pan, "⏳ Logged in to ITD")
 
                 # ── 26AS ─────────────────────────────────────────────────────

@@ -50,7 +50,8 @@ async def _click_btn(page: Page, log, timeout=5000) -> bool:
 
 # ── Main login function ───────────────────────────────────────────────────────
 
-async def login_itd(user_id: str, password: str, log_callback, context: BrowserContext) -> Page:
+async def login_itd(user_id: str, password: str, log_callback, context: BrowserContext,
+                    is_running=None) -> Page:
     uid_masked = (user_id[:3] + "XXXXXXX") if user_id and len(user_id) >= 3 else "UNKNOWN"
 
     log_callback("[Auth] Opening new page for ITD login...")
@@ -59,7 +60,7 @@ async def login_itd(user_id: str, password: str, log_callback, context: BrowserC
     page.on("dialog", lambda d: asyncio.create_task(d.dismiss()))
 
     try:
-        return await _do_login(page, user_id, uid_masked, password, log_callback)
+        return await _do_login(page, user_id, uid_masked, password, log_callback, is_running)
     except Exception:
         # Close the orphaned login page so failed clients don't leak tabs.
         try:
@@ -69,7 +70,7 @@ async def login_itd(user_id: str, password: str, log_callback, context: BrowserC
         raise
 
 
-async def _do_login(page, user_id, uid_masked, password, log_callback):
+async def _do_login(page, user_id, uid_masked, password, log_callback, is_running=None):
 
     log_callback("[Auth] Loading ITD Portal...")
     await page.goto(
@@ -120,16 +121,35 @@ async def _do_login(page, user_id, uid_masked, password, log_callback):
     log_callback("[Auth] Clicking Continue on SAM page...")
     await _click_btn(page, log_callback, timeout=15000)
 
-    # The portal shows radio buttons: Password / OTP — select Password
-    log_callback("[Auth] Selecting Password login method...")
-    try:
-        await page.wait_for_selector(
-            "xpath=//label[normalize-space(text())='Password']",
-            state="visible", timeout=15000)
-        await page.locator("xpath=//label[normalize-space(text())='Password']").first.click()
-        log_callback("[Auth] Password radio selected.")
-    except Exception as e:
-        log_callback(f"[Auth] Password radio not found (may already be selected): {e}")
+    # After SAM Continue the portal may show a method-selection page
+    # (#/login/otpOptions) with Password and OTP radios, OR may skip straight
+    # to the password field. Wait briefly to see which page we land on.
+    log_callback("[Auth] Waiting for method selection or password field...")
+    await update_browser_status(page, "Auth: Selecting login method...")
+
+    _method_selected = False
+    for _sel in (
+        # Angular Material radio label — portal renders "Password" as label text
+        "xpath=//label[contains(normalize-space(.), 'Password') and not(contains(normalize-space(.), 'OTP'))]",
+        # Fallback: first mat-radio input (Password is always radio 0)
+        "input[type='radio']#mat-radio-0-input",
+        "input[type='radio']:first-of-type",
+    ):
+        try:
+            await page.wait_for_selector(_sel, state="visible", timeout=4000)
+            await page.locator(_sel).first.click(force=True)
+            log_callback(f"[Auth] Password method selected via: {_sel}")
+            _method_selected = True
+            break
+        except Exception:
+            pass
+
+    if _method_selected:
+        # Method selection page needs its own Continue click
+        log_callback("[Auth] Clicking Continue after selecting Password method...")
+        await _click_btn(page, log_callback, timeout=10000)
+    else:
+        log_callback("[Auth] Method selection page not seen — assuming password field follows directly.")
 
     # ── Step 5: Wait for password field, fill it ──────────────────────────────
     log_callback("[Auth] Waiting for password field...")
@@ -143,6 +163,12 @@ async def _do_login(page, user_id, uid_masked, password, log_callback):
 
     log_callback("[Auth] Entering password...")
     await page.fill("id=loginPasswordField", password)
+
+    # Guard: if portal already navigated to OTP page before password submit
+    if "otpOptions" in page.url or "otpoptions" in page.url.lower():
+        raise RuntimeError(
+            "AUTHENTICATION FAILED: This account has 2FA (OTP) enabled on the ITD portal. "
+            "Automated login is not possible. The client must disable 2FA or log in manually.")
 
     # ── Step 6: Submit with up to 4 attempts ─────────────────────────────────
     log_callback("[Auth] Submitting credentials...")
@@ -167,6 +193,12 @@ async def _do_login(page, user_id, uid_masked, password, log_callback):
 
             if "dashboard" in page.url.lower():
                 return True
+
+            # 2FA OTP page — portal is requiring OTP after password (2FA enabled on account)
+            if "otpOptions" in page.url or "otpoptions" in page.url.lower():
+                raise RuntimeError(
+                    "AUTHENTICATION FAILED: This account has 2FA (OTP) enabled on the ITD portal. "
+                    "Automated login is not possible. The client must disable 2FA or log in manually.")
 
             # loginMaxAttemptsPopup — too many attempts; click "Login Here"
             try:
@@ -217,6 +249,8 @@ async def _do_login(page, user_id, uid_masked, password, log_callback):
 
     login_success = False
     for attempt in range(1, 5):
+        if is_running is not None and not is_running():
+            raise RuntimeError("Aborted by user.")
         try:
             login_success = await _submit_once(attempt)
         except RuntimeError:
