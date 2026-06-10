@@ -684,6 +684,8 @@ class AayDocCapioApp(QMainWindow):
         self._last_mode = None            # mode of last completed batch
         self._ais_results = {}            # pan → "instant" | "queued" | "failed" | "skipped"
         self._last_errors = {}            # pan → error message string
+        self._batch_loop = None           # asyncio event loop for the running batch
+        self._batch_task = None           # asyncio Task for the running batch
 
         self._log_signal.connect(self._append_log)
         self._batch_done_signal.connect(self._on_batch_done)
@@ -1989,16 +1991,26 @@ class AayDocCapioApp(QMainWindow):
             "Abort the active batch?") == QMessageBox.StandardButton.Yes:
             self.log("[System] Abort requested...")
             self.is_running = False
+            # Cancel the asyncio task immediately — raises CancelledError into
+            # whatever await is currently blocking (goto, wait_for_selector, sleep…)
+            if self._batch_task and self._batch_loop:
+                self._batch_loop.call_soon_threadsafe(self._batch_task.cancel)
 
     def _run_wrapper(self, targets, ay, fy, root_dir, mode):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        self._batch_loop = loop
         try:
-            loop.run_until_complete(
+            self._batch_task = loop.create_task(
                 self._execute_batch(targets, ay, fy, root_dir, mode))
+            loop.run_until_complete(self._batch_task)
+        except asyncio.CancelledError:
+            self.log("[System] Batch cancelled.")
         except Exception as e:
             self.log(f"[System Error] Batch crashed: {e}")
         finally:
+            self._batch_task = None
+            self._batch_loop = None
             loop.close()
             self.is_running = False
             self._last_mode = mode
@@ -2093,110 +2105,112 @@ class AayDocCapioApp(QMainWindow):
         except Exception as e:
             self.log(f"[System Error] Browser init failed: {e}"); return
 
-        for i, target in enumerate(targets):
-            if not self.is_running:
-                self.log("[System] Aborted."); break
+        try:
+            for i, target in enumerate(targets):
+                if not self.is_running:
+                    self.log("[System] Aborted."); break
 
-            pan  = target.get("pan", "")
-            name = target.get("name", "")
-            dob  = target.get("dob", "")
-            self.log("──────────────────────────────────────────────────")
-            self.log(f"[{i+1}/{len(targets)}] {name}")
+                pan  = target.get("pan", "")
+                name = target.get("name", "")
+                dob  = target.get("dob", "")
+                self.log("──────────────────────────────────────────────────")
+                self.log(f"[{i+1}/{len(targets)}] {name}")
 
-            name_safe = "".join(c if c.isalnum() or c in " _-" else "" for c in name)
-            out = os.path.join(root_dir, f"{pan}-{name_safe}", f"AY_{ay.replace('-','_')}")
+                name_safe = "".join(c if c.isalnum() or c in " _-" else "" for c in name)
+                out = os.path.join(root_dir, f"{pan}-{name_safe}", f"AY_{ay.replace('-','_')}")
 
-            page = None
-            try:
-                # ── Login ────────────────────────────────────────────────────
-                set_status(pan, "⏳ Logging in to ITD...")
-                page = await login_itd(pan, target.get("password"), self.log, context,
-                                       is_running=lambda: self.is_running)
-                set_status(pan, "⏳ Logged in to ITD")
+                page = None
+                try:
+                    # ── Login ────────────────────────────────────────────────────
+                    set_status(pan, "⏳ Logging in to ITD...")
+                    page = await login_itd(pan, target.get("password"), self.log, context,
+                                           is_running=lambda: self.is_running)
+                    set_status(pan, "⏳ Logged in to ITD")
 
-                # ── 26AS ─────────────────────────────────────────────────────
-                if mode == "26as" and self.is_running:
-                    set_status(pan, "⏳ Downloading 26AS...")
-                    await download_26as(page, ay, out, self.log, pan=pan, dob=dob)
-                    set_status(pan, "✅ 26AS Downloaded")
+                    # ── 26AS ─────────────────────────────────────────────────────
+                    if mode == "26as" and self.is_running:
+                        set_status(pan, "⏳ Downloading 26AS...")
+                        await download_26as(page, ay, out, self.log, pan=pan, dob=dob)
+                        set_status(pan, "✅ 26AS Downloaded")
 
-                # ── Request AIS ───────────────────────────────────────────────
-                elif mode == "request_ais" and self.is_running:
-                    await self._ensure_dashboard(page)
-                    set_status(pan, "⏳ Opening AIS portal...")
-                    result = await run_request_ais(
-                        page, fy, out, self.log, pan=pan, dob=dob,
-                        status_callback=lambda t, _p=pan: set_status(_p, t))
-                    ais_status = result.get("status")
+                    # ── Request AIS ───────────────────────────────────────────────
+                    elif mode == "request_ais" and self.is_running:
+                        await self._ensure_dashboard(page)
+                        set_status(pan, "⏳ Opening AIS portal...")
+                        result = await run_request_ais(
+                            page, fy, out, self.log, pan=pan, dob=dob,
+                            status_callback=lambda t, _p=pan: set_status(_p, t))
+                        ais_status = result.get("status")
 
-                    if ais_status in ("instant", "downloaded"):
-                        self._ais_results[pan] = "instant"
-                        set_status(pan, "✅ AIS Downloaded instantly")
-                    elif ais_status == "requested":
-                        self._ais_results[pan] = "queued"
-                        ref = result.get("ref_id", "")
-                        ref_txt = f" (Ref: {ref})" if ref else ""
-                        set_status(pan,
-                            f"🕐 AIS request placed{ref_txt} — use Download AIS/TIS after ~5 min")
-                        self.log(f"[AIS] Generation queued — Ref ID: {ref or 'N/A'}")
-                    elif ais_status == "skipped":
-                        self._ais_results[pan] = "skipped"
-                        set_status(pan, "⬜ Skipped — AIS not available for this FY")
-                    else:
-                        self._ais_results[pan] = "failed"
-                        set_status(pan, "❌ AIS request failed — check logs")
-                        self.log("[Warning] AIS request did not complete — check portal.")
+                        if ais_status in ("instant", "downloaded"):
+                            self._ais_results[pan] = "instant"
+                            set_status(pan, "✅ AIS Downloaded instantly")
+                        elif ais_status == "requested":
+                            self._ais_results[pan] = "queued"
+                            ref = result.get("ref_id", "")
+                            ref_txt = f" (Ref: {ref})" if ref else ""
+                            set_status(pan,
+                                f"🕐 AIS request placed{ref_txt} — use Download AIS/TIS after ~5 min")
+                            self.log(f"[AIS] Generation queued — Ref ID: {ref or 'N/A'}")
+                        elif ais_status == "skipped":
+                            self._ais_results[pan] = "skipped"
+                            set_status(pan, "⬜ Skipped — AIS not available for this FY")
+                        else:
+                            self._ais_results[pan] = "failed"
+                            set_status(pan, "❌ AIS request failed — check logs")
+                            self.log("[Warning] AIS request did not complete — check portal.")
 
-                # ── Download AIS/TIS ──────────────────────────────────────────
-                elif mode == "ais_tis" and self.is_running:
-                    # "Download Previously Requested AIS" — fetch ONLY the AIS PDF
-                    # from Activity History. TIS is not re-downloaded here (it was
-                    # already grabbed during the Request step).
-                    await self._ensure_dashboard(page)
-                    set_status(pan, "⏳ Downloading AIS from Activity History...")
+                    # ── Download AIS/TIS ──────────────────────────────────────────
+                    elif mode == "ais_tis" and self.is_running:
+                        # "Download Previously Requested AIS" — fetch ONLY the AIS PDF
+                        # from Activity History. TIS is not re-downloaded here (it was
+                        # already grabbed during the Request step).
+                        await self._ensure_dashboard(page)
+                        set_status(pan, "⏳ Downloading AIS from Activity History...")
 
-                    status = await run_download_ais_tis(
-                        page, fy, out, self.log, pan=pan, dob=dob,
-                        dl_ais=True, dl_tis=False,
-                        should_continue=lambda: self.is_running,
-                        status_callback=lambda t, _p=pan: set_status(_p, t))
+                        status = await run_download_ais_tis(
+                            page, fy, out, self.log, pan=pan, dob=dob,
+                            dl_ais=True, dl_tis=False,
+                            should_continue=lambda: self.is_running,
+                            status_callback=lambda t, _p=pan: set_status(_p, t))
 
-                    if status == "downloaded":
-                        set_status(pan, "✅ AIS Downloaded")
-                    elif status == "not_found":
-                        set_status(pan,
-                            "⬜ No queued AIS for this FY — run Download / Request TIS & AIS first")
-                    elif status == "timeout":
-                        set_status(pan,
-                            "🕐 AIS still generating — try again in a few minutes")
-                    elif status == "aborted":
-                        set_status(pan, "⏹ Stopped")
-                    else:
-                        set_status(pan, "❌ AIS download incomplete — check logs")
+                        if status == "downloaded":
+                            set_status(pan, "✅ AIS Downloaded")
+                        elif status == "not_found":
+                            set_status(pan,
+                                "⬜ No queued AIS for this FY — run Download / Request TIS & AIS first")
+                        elif status == "timeout":
+                            set_status(pan,
+                                "🕐 AIS still generating — try again in a few minutes")
+                        elif status == "aborted":
+                            set_status(pan, "⏹ Stopped")
+                        else:
+                            set_status(pan, "❌ AIS download incomplete — check logs")
 
-                if self.is_running:
-                    await logout_itd(page, self.log)
-                    page = None
+                    if self.is_running:
+                        await logout_itd(page, self.log)
+                        page = None
 
-                pan_masked = pan[:3] + "XXXXXXX" if pan and len(pan) >= 3 else "UNKNOWN"
-                self.log(f"[Victory] {pan_masked} done.")
+                    pan_masked = pan[:3] + "XXXXXXX" if pan and len(pan) >= 3 else "UNKNOWN"
+                    self.log(f"[Victory] {pan_masked} done.")
 
-            except Exception as e:
-                pan_masked = pan[:3] + "XXXXXXX" if pan and len(pan) >= 3 else "UNKNOWN"
-                self.log(f"[Error] {pan_masked}: {e}")
-                # Record the failure so the summary dialog/counts reflect it.
-                self._ais_results[pan] = "failed"
-                self._last_errors[pan] = str(e)
-                err_short = str(e)
-                if len(err_short) > 60:
-                    err_short = err_short[:57] + "..."
-                set_status(pan, f"❌ Failed — {err_short}")
-                if page:
-                    try: await logout_itd(page, self.log)
-                    except Exception: pass
-            await asyncio.sleep(3)
+                except Exception as e:
+                    pan_masked = pan[:3] + "XXXXXXX" if pan and len(pan) >= 3 else "UNKNOWN"
+                    self.log(f"[Error] {pan_masked}: {e}")
+                    # Record the failure so the summary dialog/counts reflect it.
+                    self._ais_results[pan] = "failed"
+                    self._last_errors[pan] = str(e)
+                    err_short = str(e)
+                    if len(err_short) > 60:
+                        err_short = err_short[:57] + "..."
+                    set_status(pan, f"❌ Failed — {err_short}")
+                    if page:
+                        try: await logout_itd(page, self.log)
+                        except Exception: pass
+                await asyncio.sleep(3)
 
-        await browser_manager.close()
+        finally:
+            await browser_manager.close()
         self.log("[System] Batch finished.")
 
     async def _ensure_dashboard(self, page):
