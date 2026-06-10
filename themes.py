@@ -132,8 +132,8 @@ THEMES: dict[str, ThemeColors] = {
         bg_checkbox     = "#0F2040",
 
         text_primary    = "#E2E8F0",
-        text_muted      = "#475569",
-        text_disabled   = "#334155",
+        text_muted      = "#94A3B8",
+        text_disabled   = "#475569",
         text_log        = "#7DD3FC",
 
         border          = "#1E3A5F",

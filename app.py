@@ -1239,10 +1239,12 @@ class AayDocCapioApp(QMainWindow):
                                                           Qt.TransformationMode.SmoothTransformation))
         logo_row.addWidget(icon_lbl)
         name_col = QVBoxLayout(); name_col.setSpacing(2)
-        name_lbl = QLabel('<span style="color:#0D1F4E;font-family:\'Avenir Next\';font-size:22px;font-weight:700;">AayDoc </span>'
-                          '<span style="color:#1A8FE3;font-family:\'Avenir Next\';font-size:22px;font-weight:700;">Capio™</span>')
+        name_lbl = QLabel(
+            f'<span style="color:{_ab.text_primary};font-family:\'Avenir Next\';font-size:22px;font-weight:700;">AayDoc </span>'
+            f'<span style="color:{_ab.accent};font-family:\'Avenir Next\';font-size:22px;font-weight:700;">Capio™</span>'
+        )
         ver_lbl = QLabel("Version 1.0.0")
-        ver_lbl.setStyleSheet("color:#94A3B8; font-size:12px;")
+        ver_lbl.setStyleSheet(f"color:{_ab.text_muted}; font-size:12px;")
         name_col.addWidget(name_lbl); name_col.addWidget(ver_lbl)
         logo_row.addLayout(name_col); logo_row.addStretch()
         vl.addLayout(logo_row)
