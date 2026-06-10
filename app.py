@@ -679,6 +679,7 @@ class BatchProgressDialog(QDialog):
 
             pan_item = QTableWidgetItem(pan)
             pan_item.setForeground(QColor("#475569"))
+            pan_item.setFont(QFont(_MONO_FONT, 10))
             pan_item.setTextAlignment(
                 Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
             self._table.setItem(row, self._COL_PAN, pan_item)
