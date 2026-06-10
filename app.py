@@ -580,9 +580,10 @@ class BatchProgressDialog(QDialog):
     Columns: Name | PAN | Status | Save Path (clickable link)
     Status and path updates arrive from the worker thread via Qt signals.
     """
-    # (pan, status_text) and (pan, folder_path)
+    # (pan, status_text), (pan, folder_path), and () for resume
     _update_signal    = pyqtSignal(str, str)
     _path_signal      = pyqtSignal(str, str)
+    _resume_signal    = pyqtSignal(list)   # emitted with remaining targets
 
     # column indices
     _COL_NAME   = 0
@@ -591,10 +592,12 @@ class BatchProgressDialog(QDialog):
     _COL_PATH   = 3
 
     def __init__(self, targets: list, mode: str, ay: str = "",
-                 stop_callback=None, output_dir: str = "", parent=None):
+                 stop_callback=None, resume_callback=None,
+                 output_dir: str = "", parent=None):
         super().__init__(parent)
-        self._stop_callback = stop_callback
-        self._output_dir    = output_dir
+        self._stop_callback   = stop_callback
+        self._resume_callback = resume_callback
+        self._output_dir      = output_dir
         self._mode          = mode
         self._ay            = ay
         self._targets       = targets          # kept for Excel report
@@ -758,14 +761,27 @@ class BatchProgressDialog(QDialog):
 
         # Stop
         self._stop_btn = QPushButton("⏹  Stop")
-        self._stop_btn.setFixedSize(90, 32)
+        self._stop_btn.setFixedHeight(32)
+        self._stop_btn.setMinimumWidth(90)
         self._stop_btn.setStyleSheet(
             "QPushButton{background:#EF4444;color:#FFFFFF;border:none;"
-            "border-radius:6px;font-size:12px;font-weight:600;}"
+            "border-radius:6px;font-size:12px;font-weight:600;padding:0 12px;}"
             "QPushButton:hover{background:#DC2626;}"
             "QPushButton:disabled{background:#E2E8F0;color:#94A3B8;}")
         self._stop_btn.clicked.connect(self._on_stop_clicked)
         footer.addWidget(self._stop_btn)
+
+        # Resume (hidden until aborted)
+        self._resume_btn = QPushButton("▶  Resume")
+        self._resume_btn.setFixedHeight(32)
+        self._resume_btn.setMinimumWidth(100)
+        self._resume_btn.setVisible(False)
+        self._resume_btn.setStyleSheet(
+            "QPushButton{background:#16A34A;color:#FFFFFF;border:none;"
+            "border-radius:6px;font-size:12px;font-weight:600;padding:0 12px;}"
+            "QPushButton:hover{background:#15803D;}")
+        self._resume_btn.clicked.connect(self._on_resume_clicked)
+        footer.addWidget(self._resume_btn)
 
         # Close
         self._close_btn = QPushButton("Close")
@@ -946,9 +962,9 @@ class BatchProgressDialog(QDialog):
 
     def batch_finished(self, aborted: bool = False):
         """Called when batch ends to enable Close/Report and hide Stop.
-        If aborted, sweeps any non-terminal rows to ⏹ Stopped."""
+        If aborted, sweeps any non-terminal rows to ⏹ Stopped and shows Resume."""
+        terminal = ("✅", "❌", "🕐", "⏹", "⬜ Skipped")
         if aborted:
-            terminal = ("✅", "❌", "🕐", "⏹", "⬜ Skipped")
             for pan, row in self._pan_to_row.items():
                 item = self._table.item(row, self._COL_STATUS)
                 current = item.text() if item else ""
@@ -957,12 +973,39 @@ class BatchProgressDialog(QDialog):
                     if pan in self._rows_data:
                         self._rows_data[pan]["status"] = "⏹ Stopped"
         self._stop_btn.setVisible(False)
+        self._resume_btn.setVisible(aborted)
         self._close_btn.setEnabled(True)
         self._report_btn.setEnabled(True)
         n = self._done_count
         self._progress_bar.setValue(n)
         label = "Stopped" if aborted else "All done"
         self._progress_bar.setFormat(f"{label} — {n} / {self._total} processed")
+
+    def batch_resumed(self):
+        """Called when the user clicks Resume — resets UI back to running state."""
+        self._resume_btn.setVisible(False)
+        self._stop_btn.setText("⏹  Stop")
+        self._stop_btn.setEnabled(True)
+        self._stop_btn.setVisible(True)
+        self._close_btn.setEnabled(False)
+        self._report_btn.setEnabled(False)
+        self._progress_bar.setFormat(f"{self._done_count} / {self._total} done")
+
+    def _on_resume_clicked(self):
+        # Collect targets that are ⏹ Stopped (retry those only)
+        remaining = []
+        for t in self._targets:
+            pan = t.get("pan", "")
+            status = (self._rows_data.get(pan) or {}).get("status", "")
+            if status.startswith("⏹"):
+                remaining.append(t)
+                # Reset row to Waiting
+                row = self._pan_to_row.get(pan)
+                if row is not None:
+                    self._set_status_item(row, "⬜ Waiting")
+                    self._rows_data[pan]["status"] = "⬜ Waiting"
+        if remaining and self._resume_callback:
+            self._resume_callback(remaining)
 
 
 # ── Main Window ───────────────────────────────────────────────────────────────
@@ -1003,6 +1046,7 @@ class AayDocCapioApp(QMainWindow):
         self._batch_loop = None           # asyncio event loop for the running batch
         self._batch_task = None           # asyncio Task for the running batch
         self._batch_aborted = False       # True if user clicked Stop
+        self._last_batch_params = None    # (ay, fy, root_dir, mode) for resume
 
         self._log_signal.connect(self._append_log)
         self._batch_done_signal.connect(self._on_batch_done)
@@ -2284,6 +2328,8 @@ class AayDocCapioApp(QMainWindow):
         self.log_box.clear()
 
         targets = [a for a in self.assessee_list if a.get("id") in self.selected_ids]
+        output_dir = self.dir_lbl.text()
+        self._last_batch_params = (ay, fy, output_dir, mode)
 
         self.btn_run.setText("⏳ Running...")
 
@@ -2301,7 +2347,6 @@ class AayDocCapioApp(QMainWindow):
             year_tag = f"FY {fy}" if fy else ay
 
         # Show progress dialog (on main thread via signal)
-        output_dir = self.dir_lbl.text()
         self._show_progress_signal.emit(targets, mode, year_tag, output_dir)
 
         threading.Thread(
@@ -2313,6 +2358,7 @@ class AayDocCapioApp(QMainWindow):
         """Called on main thread to create and show the progress dialog."""
         self._progress_dialog = BatchProgressDialog(
             targets, mode, ay=ay, stop_callback=self.stop_automation,
+            resume_callback=self.resume_batch,
             output_dir=output_dir, parent=self)
         # Window-modal: blocks the parent window (so it can't be clicked behind
         # the dialog) but still allows the worker thread's Qt-signal updates.
@@ -2335,6 +2381,23 @@ class AayDocCapioApp(QMainWindow):
             # whatever await is currently blocking (goto, wait_for_selector, sleep…)
             if self._batch_task and self._batch_loop:
                 self._batch_loop.call_soon_threadsafe(self._batch_task.cancel)
+
+    def resume_batch(self, remaining_targets: list):
+        """Called from the dialog Resume button — restart batch with unfinished clients."""
+        if not self._last_batch_params or not remaining_targets:
+            return
+        ay, fy, root_dir, mode = self._last_batch_params
+        self.is_running = True
+        self._batch_aborted = False
+        self._lock_ui(True)
+        self.btn_run.setText("⏳ Running...")
+        self.log(f"[System] Resuming — {len(remaining_targets)} client(s) remaining...")
+        if self._progress_dialog:
+            self._progress_dialog.batch_resumed()
+        threading.Thread(
+            target=self._run_wrapper,
+            args=(remaining_targets, ay, fy, root_dir, mode),
+            daemon=True).start()
 
     def _run_wrapper(self, targets, ay, fy, root_dir, mode):
         loop = asyncio.new_event_loop()
