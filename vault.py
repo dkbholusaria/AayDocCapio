@@ -55,7 +55,7 @@ def _validate_fields(name: str, pan: str, dob: str, password: str):
         raise ValueError(
             "Invalid PAN format.\n\n"
             "Format: AAA · T · N · 0001 · Z\n"
-            "  · Characters 1–3 : any letters\n"
+            "  · Characters 1–3 : any letters (A–Z)\n"
             "  · Character 4    : P/C/H/F/A/T/B/L/J/G (taxpayer type)\n"
             "  · Character 5    : any letter (A–Z)\n"
             "  · Characters 6–9 : 4 digits\n"
