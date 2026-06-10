@@ -3,7 +3,7 @@ app_qt.py — PyQt6 port of AayDocCapio
 Install: pip install PyQt6
 Run:     python3 app_qt.py
 """
-import sys, os, json, asyncio, threading, datetime, time
+import sys, os, json, asyncio, threading, datetime, time, subprocess
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton,
     QLineEdit, QCheckBox, QComboBox, QFileDialog, QScrollArea,
@@ -68,6 +68,25 @@ def _default_download_dir() -> str:
     # Linux (no USERPROFILE) — use ~/Downloads only if it already exists
     downloads = os.path.join(home, "Downloads")
     return downloads if os.path.isdir(downloads) else home
+
+
+def _open_path(path: str):
+    """Open a file or folder in the OS file manager / default app."""
+    if not path or not os.path.exists(path):
+        return
+    if sys.platform == "win32":
+        os.startfile(path)
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", path])
+    else:
+        # WSL: prefer explorer.exe so the folder opens in Windows Explorer
+        wsl_exe = "/mnt/c/Windows/explorer.exe"
+        if os.path.exists(wsl_exe):
+            wsl_path = subprocess.run(
+                ["wslpath", "-w", path], capture_output=True, text=True).stdout.strip()
+            subprocess.Popen([wsl_exe, wsl_path or path])
+        else:
+            subprocess.Popen(["xdg-open", path])
 
 
 def _bundled_dir() -> str:
@@ -505,15 +524,28 @@ def _status_style(text: str):
 class BatchProgressDialog(QDialog):
     """
     Live progress popup shown during any batch run.
-    One row per assessee: Name | Status
-    Status updates arrive from the worker thread via Qt signal.
+    Columns: Name | Save Path | 📂 | Status
+    Status and path updates arrive from the worker thread via Qt signals.
     """
-    _update_signal = pyqtSignal(str, str)   # (pan, status_text)
+    # (pan, status_text) and (pan, folder_path)
+    _update_signal    = pyqtSignal(str, str)
+    _path_signal      = pyqtSignal(str, str)
+
+    # column indices
+    _COL_NAME   = 0
+    _COL_PATH   = 1
+    _COL_FOLDER = 2
+    _COL_STATUS = 3
 
     def __init__(self, targets: list, mode: str, ay: str = "",
                  stop_callback=None, output_dir: str = "", parent=None):
         super().__init__(parent)
         self._stop_callback = stop_callback
+        self._output_dir    = output_dir
+        self._mode          = mode
+        self._ay            = ay
+        self._targets       = targets          # kept for Excel report
+        self._pan_to_path   = {}               # pan → folder path (filled at runtime)
 
         # Human-readable label per mode
         mode_label = {
@@ -521,54 +553,65 @@ class BatchProgressDialog(QDialog):
             "request_ais": "Requesting AIS Generation",
             "ais_tis":     "Downloading AIS / TIS",
         }.get(mode, "Batch Run")
+        self._mode_label = mode_label
 
         self.setWindowTitle(f"{mode_label} — Batch Progress")
-        self.setMinimumSize(700, 460)
-        self.resize(780, min(140 + len(targets) * 40, 680))
+        self.setMinimumSize(900, 500)
+        self.resize(1060, min(160 + len(targets) * 42, 720))
         self.setSizeGripEnabled(True)
-        # Dialog (not Window) so it stays attached to the parent and renders an
-        # active title bar when modal.
         self.setWindowFlags(
             Qt.WindowType.Dialog |
             Qt.WindowType.WindowTitleHint |
             Qt.WindowType.WindowCloseButtonHint |
             Qt.WindowType.WindowMaximizeButtonHint)
-        self.setStyleSheet("QDialog{background:#F8FAFC;}")
+        self.setStyleSheet("QDialog{background:#FFFFFF;}")
 
-        self._pan_to_row = {}   # pan → table row index
+        self._pan_to_row = {}
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 12)
-        layout.setSpacing(10)
+        layout.setContentsMargins(16, 14, 16, 12)
+        layout.setSpacing(8)
 
-        # Title — `ay` is a pre-formatted tag like "AY 2025-26", "TY 2025-26", or "FY 2024-25"
+        # ── Title bar ────────────────────────────────────────────────────────
         ay_tag = (f" &nbsp;·&nbsp; <span style='color:#2563EB'>{ay}</span>") if ay else ""
         title = QLabel(f"<b>{mode_label}</b> — {len(targets)} client(s){ay_tag}")
         title.setStyleSheet("font-size:14px; color:#0F172A; background:transparent;")
         layout.addWidget(title)
 
-        # Table — stretch to fill available space
-        self._table = QTableWidget(len(targets), 2)
-        self._table.setHorizontalHeaderLabels(["Name", "Status"])
-        self._table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.Interactive)
-        self._table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.ResizeMode.Stretch)
-        self._table.setColumnWidth(0, 220)
-        self._table.horizontalHeader().setStyleSheet(
-            "QHeaderView::section{background:#E2E8F0;color:#475569;"
-            "font-size:11px;font-weight:600;padding:6px 10px;border:none;}")
+        # ── Table ────────────────────────────────────────────────────────────
+        self._table = QTableWidget(len(targets), 4)
+        self._table.setHorizontalHeaderLabels(["Name", "Save Path", "", "Status"])
+
+        hdr = self._table.horizontalHeader()
+        hdr.setSectionResizeMode(self._COL_NAME,   QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(self._COL_PATH,   QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(self._COL_FOLDER, QHeaderView.ResizeMode.Fixed)
+        hdr.setSectionResizeMode(self._COL_STATUS, QHeaderView.ResizeMode.Interactive)
+        self._table.setColumnWidth(self._COL_NAME,   200)
+        self._table.setColumnWidth(self._COL_FOLDER, 36)
+        self._table.setColumnWidth(self._COL_STATUS, 280)
+
+        hdr.setStyleSheet(
+            "QHeaderView::section{"
+            "background-color:#FFFFFF;"
+            "border:none;"
+            "border-right:1px solid #CBD5E1;"
+            "border-bottom:1px solid #CBD5E1;"
+            "font-weight:bold;color:#64748B;"
+            "font-size:11px;height:34px;"
+            "padding:0 8px;}")
         self._table.verticalHeader().setVisible(False)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self._table.setShowGrid(True)
-        self._table.setAlternatingRowColors(True)
-        self._table.setWordWrap(True)
+        self._table.setAlternatingRowColors(False)
+        self._table.setWordWrap(False)
         self._table.setStyleSheet(
-            "QTableWidget{border:1.5px solid #E2E8F0;border-radius:8px;"
-            "background:#FFFFFF;outline:0;gridline-color:#E2E8F0;"
-            "alternate-background-color:#FAFCFF;}"
-            "QTableWidget::item{padding:8px 10px;border-bottom:1px solid #F1F5F9;}")
+            "QTableWidget{border:1.5px solid #CBD5E1;border-radius:8px;"
+            "background:#FFFFFF;outline:0;gridline-color:#E2E8F0;}"
+            "QTableWidget::item{border-bottom:1px solid #E2E8F0;padding:0 8px;}"
+            "QPushButton{border:none;background:transparent;font-size:14px;}"
+            "QPushButton:hover{background:#F1F5F9;border-radius:4px;}")
         self._table.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
@@ -580,41 +623,85 @@ class BatchProgressDialog(QDialog):
 
             name_item = QTableWidgetItem(name)
             name_item.setForeground(QColor("#1E293B"))
-            self._table.setItem(row, 0, name_item)
+            self._table.setItem(row, self._COL_NAME, name_item)
+
+            path_item = QTableWidgetItem("—")
+            path_item.setForeground(QColor("#94A3B8"))
+            path_item.setFont(QFont(_UI_FONT, 9))
+            self._table.setItem(row, self._COL_PATH, path_item)
+
+            # 📂 open-folder button (disabled until path is set)
+            folder_btn = QPushButton("📂")
+            folder_btn.setFixedSize(30, 30)
+            folder_btn.setEnabled(False)
+            folder_btn.setToolTip("Open client folder")
+            folder_btn.setStyleSheet(
+                "QPushButton{border:none;background:transparent;font-size:14px;}"
+                "QPushButton:enabled:hover{background:#F1F5F9;border-radius:4px;}"
+                "QPushButton:disabled{color:#CBD5E1;}")
+            folder_btn.clicked.connect(lambda _checked, p=pan: self._open_client_folder(p))
+            cell_w = QWidget(); cell_l = QHBoxLayout(cell_w)
+            cell_l.setContentsMargins(3, 0, 3, 0)
+            cell_l.addWidget(folder_btn)
+            self._table.setCellWidget(row, self._COL_FOLDER, cell_w)
 
             self._set_status_item(row, "⬜ Waiting")
 
         layout.addWidget(self._table, stretch=1)
 
-        # Download location bar
+        # ── Saving-to strip ───────────────────────────────────────────────────
         if output_dir:
             loc_row = QHBoxLayout()
-            loc_row.setContentsMargins(0, 2, 0, 0)
+            loc_row.setContentsMargins(2, 2, 2, 0)
             loc_row.setSpacing(6)
-            loc_icon = QLabel("📁")
-            loc_icon.setStyleSheet("font-size:13px; background:transparent;")
-            loc_lbl_cap = QLabel("Saving to:")
-            loc_lbl_cap.setStyleSheet(
-                "color:#64748B; font-size:11px; font-weight:600; background:transparent;")
-            loc_path = QLabel(output_dir)
-            loc_path.setStyleSheet(
-                "color:#334155; font-size:11px; background:transparent;")
-            loc_path.setWordWrap(False)
-            loc_path.setTextInteractionFlags(
+            loc_cap = QLabel("📁  Saving to:")
+            loc_cap.setStyleSheet(
+                "color:#64748B;font-size:11px;font-weight:600;background:transparent;")
+            loc_val = QLabel(output_dir)
+            loc_val.setStyleSheet(
+                "color:#334155;font-size:11px;background:transparent;")
+            loc_val.setWordWrap(False)
+            loc_val.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse)
-            loc_row.addWidget(loc_icon)
-            loc_row.addWidget(loc_lbl_cap)
-            loc_row.addWidget(loc_path, stretch=1)
+            loc_row.addWidget(loc_cap)
+            loc_row.addWidget(loc_val, stretch=1)
             layout.addLayout(loc_row)
 
-        # Footer: progress counter + stop + close buttons
+        # ── Footer ────────────────────────────────────────────────────────────
         footer = QHBoxLayout()
+        footer.setSpacing(8)
+
         self._progress_lbl = QLabel(f"0 / {len(targets)} done")
         self._progress_lbl.setStyleSheet(
-            "color:#64748B; font-size:11px; background:transparent;")
+            "color:#64748B;font-size:11px;background:transparent;")
         footer.addWidget(self._progress_lbl)
         footer.addStretch()
 
+        # Open Download Folder
+        self._open_folder_btn = QPushButton("📂  Open Download Folder")
+        self._open_folder_btn.setFixedHeight(32)
+        self._open_folder_btn.setStyleSheet(
+            "QPushButton{background:#F1F5F9;color:#334155;border:1px solid #CBD5E1;"
+            "border-radius:6px;font-size:12px;padding:0 12px;}"
+            "QPushButton:hover{background:#E2E8F0;}"
+            "QPushButton:disabled{color:#94A3B8;border-color:#E2E8F0;}")
+        self._open_folder_btn.clicked.connect(
+            lambda: _open_path(self._output_dir))
+        footer.addWidget(self._open_folder_btn)
+
+        # Download Report
+        self._report_btn = QPushButton("⬇  Download Report")
+        self._report_btn.setFixedHeight(32)
+        self._report_btn.setEnabled(False)
+        self._report_btn.setStyleSheet(
+            "QPushButton{background:#F1F5F9;color:#334155;border:1px solid #CBD5E1;"
+            "border-radius:6px;font-size:12px;padding:0 12px;}"
+            "QPushButton:enabled:hover{background:#E2E8F0;}"
+            "QPushButton:disabled{color:#94A3B8;border-color:#E2E8F0;}")
+        self._report_btn.clicked.connect(self._export_report)
+        footer.addWidget(self._report_btn)
+
+        # Stop
         self._stop_btn = QPushButton("⏹  Stop")
         self._stop_btn.setFixedSize(90, 32)
         self._stop_btn.setStyleSheet(
@@ -624,11 +711,11 @@ class BatchProgressDialog(QDialog):
             "QPushButton:disabled{background:#E2E8F0;color:#94A3B8;}")
         self._stop_btn.clicked.connect(self._on_stop_clicked)
         footer.addWidget(self._stop_btn)
-        footer.addSpacing(8)
 
+        # Close
         self._close_btn = QPushButton("Close")
         self._close_btn.setFixedSize(80, 32)
-        self._close_btn.setEnabled(False)  # disabled until batch finishes
+        self._close_btn.setEnabled(False)
         self._close_btn.setStyleSheet(
             "QPushButton{background:#E2E8F0;color:#475569;border:none;"
             "border-radius:6px;font-size:12px;}"
@@ -636,13 +723,21 @@ class BatchProgressDialog(QDialog):
             "QPushButton:enabled:hover{background:#1D4ED8;}")
         self._close_btn.clicked.connect(self.accept)
         footer.addWidget(self._close_btn)
+
         layout.addLayout(footer)
 
         self._done_count = 0
-        self._total = len(targets)
+        self._total      = len(targets)
+        self._rows_data  = {}   # pan → {"name", "path", "status"} for report
 
-        # Wire signal — always called on the Qt main thread
+        for t in targets:
+            self._rows_data[t.get("pan", "")] = {
+                "name": t.get("name", ""), "path": "", "status": "Waiting"}
+
         self._update_signal.connect(self._on_update)
+        self._path_signal.connect(self._on_path_update)
+
+    # ── internal helpers ──────────────────────────────────────────────────────
 
     def _set_status_item(self, row: int, text: str):
         _, bg, fg = _status_style(text)
@@ -650,22 +745,48 @@ class BatchProgressDialog(QDialog):
         item.setForeground(QColor(fg))
         item.setBackground(QColor(bg))
         item.setFont(QFont(_UI_FONT, 10))
-        self._table.setItem(row, 1, item)
+        self._table.setItem(row, self._COL_STATUS, item)
 
     def _on_update(self, pan: str, status: str):
         row = self._pan_to_row.get(pan)
         if row is None:
             return
         self._set_status_item(row, status)
-        # Count terminal states
-        terminal = ("✅", "❌", "🕐")
+        if pan in self._rows_data:
+            self._rows_data[pan]["status"] = status
+        terminal = ("✅", "❌", "🕐", "⬜", "⏹")
         if any(status.startswith(p) for p in terminal):
             self._done_count += 1
             self._progress_lbl.setText(f"{self._done_count} / {self._total} done")
         if self._done_count >= self._total:
             self._close_btn.setEnabled(True)
-            self._progress_lbl.setText(
-                f"All {self._total} done — review results above")
+            self._report_btn.setEnabled(True)
+            self._progress_lbl.setText(f"All {self._total} done — review results above")
+
+    def _on_path_update(self, pan: str, folder: str):
+        row = self._pan_to_row.get(pan)
+        if row is None:
+            return
+        self._pan_to_path[pan] = folder
+        if pan in self._rows_data:
+            self._rows_data[pan]["path"] = folder
+
+        # Update path cell
+        path_item = QTableWidgetItem(folder)
+        path_item.setForeground(QColor("#475569"))
+        path_item.setFont(QFont(_UI_FONT, 9))
+        path_item.setToolTip(folder)
+        self._table.setItem(row, self._COL_PATH, path_item)
+
+        # Enable the per-row folder button
+        cell_w = self._table.cellWidget(row, self._COL_FOLDER)
+        if cell_w:
+            btn = cell_w.findChild(QPushButton)
+            if btn:
+                btn.setEnabled(os.path.exists(folder))
+
+    def _open_client_folder(self, pan: str):
+        _open_path(self._pan_to_path.get(pan, ""))
 
     def _on_stop_clicked(self):
         if self._stop_callback:
@@ -673,14 +794,112 @@ class BatchProgressDialog(QDialog):
         self._stop_btn.setEnabled(False)
         self._stop_btn.setText("⏹  Stopping...")
 
+    # ── Excel report ──────────────────────────────────────────────────────────
+
+    def _export_report(self):
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        default_name = f"BatchReport_{self._ay.replace(' ','_')}_{timestamp}.xlsx"
+        default_path = os.path.join(self._output_dir or os.path.expanduser("~"), default_name)
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Download Report", default_path,
+            "Excel Files (*.xlsx)")
+        if not path:
+            return
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Download Report"
+
+        # Header styling
+        hdr_fill  = PatternFill("solid", fgColor="0F172A")
+        hdr_font  = Font(bold=True, color="FFFFFF", size=11)
+        link_font = Font(color="2563EB", underline="single", size=10)
+        body_font = Font(size=10)
+        center    = Alignment(horizontal="center", vertical="center")
+        left      = Alignment(horizontal="left",   vertical="center", wrap_text=False)
+        thin      = Side(style="thin", color="CBD5E1")
+        border    = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+        headers = ["#", "Client Name", "Save Folder", "Status", "Timestamp"]
+        col_widths = [5, 30, 60, 40, 22]
+
+        for col_idx, (h, w) in enumerate(zip(headers, col_widths), start=1):
+            cell = ws.cell(row=1, column=col_idx, value=h)
+            cell.font      = hdr_font
+            cell.fill      = hdr_fill
+            cell.alignment = center
+            cell.border    = border
+            ws.column_dimensions[get_column_letter(col_idx)].width = w
+
+        ws.row_dimensions[1].height = 22
+
+        run_ts = datetime.datetime.now().strftime("%d-%b-%Y %H:%M")
+
+        for seq, t in enumerate(self._targets, start=1):
+            pan  = t.get("pan", "")
+            data = self._rows_data.get(pan, {})
+            row_num = seq + 1
+
+            folder = data.get("path", "")
+            status = data.get("status", "—")
+            name   = data.get("name", t.get("name", ""))
+
+            ws.cell(row=row_num, column=1, value=seq).alignment = center
+
+            ws.cell(row=row_num, column=2, value=name).alignment = left
+
+            # Folder as clickable hyperlink if it exists
+            if folder and os.path.exists(folder):
+                cell = ws.cell(row=row_num, column=3, value=folder)
+                cell.hyperlink = folder
+                cell.font      = link_font
+                cell.alignment = left
+            else:
+                ws.cell(row=row_num, column=3, value=folder or "—").alignment = left
+
+            # Strip emoji from status for cleaner Excel display
+            import re as _re
+            status_clean = _re.sub(r'[^\x00-\x7F✅❌🕐⬜⏹⏳]+', '', status).strip()
+            ws.cell(row=row_num, column=4, value=status_clean).alignment = left
+
+            ws.cell(row=row_num, column=5, value=run_ts).alignment = center
+
+            for col_idx in range(1, 6):
+                cell = ws.cell(row=row_num, column=col_idx)
+                cell.border = border
+                if not cell.font or cell.font == Font():
+                    cell.font = body_font
+            ws.row_dimensions[row_num].height = 18
+
+        # Freeze header row
+        ws.freeze_panes = "A2"
+
+        try:
+            wb.save(path)
+            _open_path(path)
+        except Exception as e:
+            QMessageBox.warning(self, "Export Failed", str(e))
+
+    # ── public API (called from worker thread / main thread) ──────────────────
+
     def set_status(self, pan: str, status: str):
-        """Thread-safe: called from worker thread."""
+        """Thread-safe status update."""
         self._update_signal.emit(pan, status)
 
+    def set_client_path(self, pan: str, folder: str):
+        """Thread-safe path update — call once the client folder is known."""
+        self._path_signal.emit(pan, folder)
+
     def batch_finished(self):
-        """Called when batch ends (even if aborted) to enable Close and hide Stop."""
+        """Called when batch ends to enable Close/Report and hide Stop."""
         self._stop_btn.setVisible(False)
         self._close_btn.setEnabled(True)
+        self._report_btn.setEnabled(True)
 
 
 # ── Main Window ───────────────────────────────────────────────────────────────
@@ -2166,6 +2385,10 @@ class AayDocCapioApp(QMainWindow):
 
                 name_safe = "".join(c if c.isalnum() or c in " _-" else "" for c in name)
                 out = os.path.join(root_dir, f"{pan}-{name_safe}", f"AY_{ay.replace('-','_')}")
+
+                # Tell the progress dialog the client's save folder immediately
+                if self._progress_dialog:
+                    self._progress_dialog.set_client_path(pan, out)
 
                 page = None
                 try:
