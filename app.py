@@ -2229,26 +2229,49 @@ class AayDocCapioApp(QMainWindow):
         vl.addWidget(dob_hint)
         vl.addSpacing(6)
 
+        def _smart_normalise(text: str) -> str:
+            """Pre-process raw text before vault normalisation.
+            Handles pure digit strings: 8 digits → DD-MM-YYYY, 6 digits → DD-MM-YY.
+            """
+            import re as _re
+            from vault import _normalise_dob
+            s = text.strip()
+            # Pure digits only — insert dashes
+            if _re.fullmatch(r"\d{8}", s):          # 12121975 → 12-12-1975
+                s = f"{s[:2]}-{s[2:4]}-{s[4:]}"
+            elif _re.fullmatch(r"\d{6}", s):         # 121275  → 12-12-75
+                s = f"{s[:2]}-{s[2:4]}-{s[4:]}"
+            return _normalise_dob(s)
+
         def _normalise_and_hint(text):
-            """Auto-normalise the DOB field and show a live hint."""
-            from vault import _normalise_dob, _DOB_RE
-            if not text.strip():
+            """Show a live ✓/✗ hint as the user types."""
+            from vault import _DOB_RE
+            raw = text.strip()
+            if not raw:
                 dob_hint.setText("")
                 dob_edit.setStyleSheet(
                     f"QLineEdit{{border:1px solid {t.border};border-radius:6px;"
                     f"padding:6px 10px;font-size:12px;background:{t.bg_input};color:{t.text_primary};}}"
                     f"QLineEdit:focus{{border-color:{t.border_focus};}}")
                 return
-            normed = _normalise_dob(text.strip())
+            # Only validate when enough chars typed (avoid red flash on first keystrokes)
+            if len(raw) < 6:
+                dob_hint.setText("")
+                dob_edit.setStyleSheet(
+                    f"QLineEdit{{border:1px solid {t.border};border-radius:6px;"
+                    f"padding:6px 10px;font-size:12px;background:{t.bg_input};color:{t.text_primary};}}"
+                    f"QLineEdit:focus{{border-color:{t.border_focus};}}")
+                return
+            normed = _smart_normalise(raw)
             if _DOB_RE.match(normed):
-                dob_hint.setText(f"✓  {normed}")
+                dob_hint.setText(f"✓  Will save as: {normed}")
                 dob_hint.setStyleSheet("font-size:10px;color:#16A34A;background:transparent;border:none;")
                 dob_edit.setStyleSheet(
                     f"QLineEdit{{border:1.5px solid #16A34A;border-radius:6px;"
                     f"padding:6px 10px;font-size:12px;background:{t.bg_input};color:{t.text_primary};}}"
                     f"QLineEdit:focus{{border-color:#16A34A;}}")
             else:
-                dob_hint.setText("✗  Use DD-MM-YYYY  e.g. 06-07-1974")
+                dob_hint.setText("✗  Use DDMMYYYY or DD-MM-YYYY  e.g. 06071974")
                 dob_hint.setStyleSheet("font-size:10px;color:#EF4444;background:transparent;border:none;")
                 dob_edit.setStyleSheet(
                     f"QLineEdit{{border:1.5px solid #EF4444;border-radius:6px;"
@@ -2256,14 +2279,18 @@ class AayDocCapioApp(QMainWindow):
                     f"QLineEdit:focus{{border-color:#EF4444;}}")
 
         def _on_dob_commit():
-            """On focus-out/Enter, normalise and write back the canonical form."""
-            from vault import _normalise_dob, _DOB_RE
+            """On Tab/Enter/focus-out, rewrite the field to canonical DD-MM-YYYY."""
+            from vault import _DOB_RE
             raw = dob_edit.text().strip()
             if not raw:
                 return
-            normed = _normalise_dob(raw)
+            normed = _smart_normalise(raw)
             if _DOB_RE.match(normed):
+                # Block signal to avoid recursive hint update while rewriting
+                dob_edit.blockSignals(True)
                 dob_edit.setText(normed)
+                dob_edit.blockSignals(False)
+                _normalise_and_hint(normed)
 
         dob_edit.textChanged.connect(_normalise_and_hint)
         dob_edit.editingFinished.connect(_on_dob_commit)
