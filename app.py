@@ -2909,7 +2909,10 @@ class AayDocCapioApp(QMainWindow):
             self._ais_requested_time = None
 
         elif mode == "26as" and not self._batch_aborted:
-            self._auto_convert_26as()
+            def _set_status(pan, text):
+                if self._progress_dialog:
+                    self._progress_dialog.set_status(pan, text)
+            self._auto_convert_26as(_set_status)
 
     def _convert_26as_manual(self):
         from as26_converter import convert_26as_txt
@@ -2944,20 +2947,26 @@ class AayDocCapioApp(QMainWindow):
             msg += f"\n\n{fail} file(s) failed — check the log for details."
         QMessageBox.information(self, "Convert Complete", msg)
 
-    def _auto_convert_26as(self):
+    def _auto_convert_26as(self, set_status=None):
         from as26_converter import convert_26as_txt
-        txts = getattr(self, "_batch_26as_txts", [])
-        if not txts:
+        items = getattr(self, "_batch_26as_txts", [])
+        if not items:
             return
         converted = 0
-        for txt in txts:
+        for pan, txt in items:
             if not os.path.exists(txt):
                 continue
+            if set_status:
+                set_status(pan, "⏳ Converting to Excel...")
             try:
                 convert_26as_txt(txt, log_callback=self.log)
                 converted += 1
+                if set_status:
+                    set_status(pan, "✅ 26AS + Excel + HTML")
             except Exception as e:
                 self.log(f"[Warning] Auto-convert failed for {os.path.basename(txt)}: {e}")
+                if set_status:
+                    set_status(pan, "⚠ Excel convert failed")
         if converted:
             self.log(f"[Victory] Auto-converted {converted} 26AS TXT file(s) to Excel + HTML.")
 
@@ -3022,7 +3031,7 @@ class AayDocCapioApp(QMainWindow):
                         if ok:
                             set_status(pan, "✅ 26AS Downloaded")
                             if txt_path:
-                                self._batch_26as_txts.append(txt_path)
+                                self._batch_26as_txts.append((pan, txt_path))
                         else:
                             set_status(pan, f"❌ 26AS Failed — {err_msg}")
 
