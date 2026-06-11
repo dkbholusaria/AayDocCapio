@@ -7,6 +7,9 @@ Documentation/ISSUES_BACKLOG.md
 # Downloaded client documents — never commit
 outputs/
 
+# Test data, mockups, sample files — never commit
+testdata/
+
 # Logs
 app.log
 *.log
