@@ -53,6 +53,9 @@ Source: "assessment_years.json"; DestDir: "{#MyAppDataDir}"; \
     Flags: onlyifdoesntexist uninsneveruninstall; \
     BeforeInstall: SetStep('Setting up configuration files...')
 
+; tax_vault.json is created by the app at runtime in the same AppData folder.
+; It is never shipped as an installer file, so uninstall/migration must not delete it.
+
 [Icons]
 Name: "{group}\{#MyAppName}";           Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
