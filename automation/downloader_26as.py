@@ -242,15 +242,25 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
                 log_callback(f"[Victory] Form 26AS TXT downloaded: {os.path.basename(output_txt)}")
             _saved_txt = output_txt
         except Exception as txt_err:
+            # Rename the leftover .download temp file to .zip so the user can
+            # open it manually with the correct password.
+            zip_hint = ""
+            try:
+                zip_path = output_txt.rsplit(".", 1)[0] + ".zip"
+                if os.path.exists(tmp_path):
+                    os.replace(tmp_path, zip_path)
+                    zip_hint = f" Encrypted ZIP saved as: {os.path.basename(zip_path)}"
+            except Exception:
+                pass
             _txt_warning = str(txt_err)
-            if "bad password" in _txt_warning.lower() or "Bad password" in _txt_warning:
+            if "bad password" in _txt_warning.lower():
                 pwd_display = dob.replace("-", "") if dob else "(no DOB)"
                 log_callback(
                     f"[Warning] TXT ZIP unlock failed — wrong password (tried: {pwd_display}). "
-                    f"Verify DOB in vault matches PAN card (format: DDMMYYYY)."
+                    f"Verify DOB in vault matches PAN card (format: DDMMYYYY).{zip_hint}"
                 )
             else:
-                log_callback(f"[Warning] TXT download failed: {_txt_warning}")
+                log_callback(f"[Warning] TXT download failed: {_txt_warning}{zip_hint}")
 
         await update_browser_status(traces_page, "TRACES: 26AS Download Complete!")
         await asyncio.sleep(1)
