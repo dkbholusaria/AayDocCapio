@@ -169,6 +169,24 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
         except Exception:
             await asyncio.sleep(5)  # fallback if loading div not detected
 
+        # ── Large-file on-demand check ────────────────────────────────────────
+        # TRACES shows div#message when the 26AS is too large to serve inline.
+        # In that case pdfBtn/btnSubmit are absent — detect early and fail cleanly.
+        for frame in traces_page.frames:
+            try:
+                msg_el = frame.locator("div#message")
+                if await msg_el.count() > 0:
+                    msg_text = (await msg_el.first.inner_text()).strip()
+                    if msg_text:
+                        log_callback(f"[Warning] TRACES on-demand message: {msg_text[:120]}")
+                        await traces_page.close()
+                        return False, (
+                            "26AS too large for inline download — login to tdscpc.gov.in "
+                            "to place a download request, then download the TXT manually."
+                        ), ""
+            except Exception:
+                continue
+
         ay_str = assessment_year.replace("-", "_")
         prefix = f"{pan}-" if pan else ""
         os.makedirs(download_dir, exist_ok=True)
