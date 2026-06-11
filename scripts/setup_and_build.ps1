@@ -72,6 +72,35 @@ Write-Host "  Python    : $PYTHON"
 Set-Location $WIN_DEST
 Write-Host "  Working dir set to: $(Get-Location)"
 
+# ── Step 1b: Build file preflight ─────────────────────────────────
+Write-Host ""
+Write-Host "--------------------------------------------------------"
+Write-Host "[Step 1b] Build file preflight"
+Write-Host "--------------------------------------------------------"
+
+$installerIss = Join-Path $WIN_DEST "scripts\installer.iss"
+if (-not (Test-Path $installerIss)) {
+    Write-Host "[Error] Missing installer script: $installerIss"
+    exit 1
+}
+
+$installerText = Get-Content $installerIss -Raw
+if ($installerText -match '(?m)^\s*AllowDowngrade\s*=') {
+    Write-Host "  Removing unsupported Inno Setup directive: AllowDowngrade"
+    $installerText = $installerText -replace '(?m)^\s*AllowDowngrade\s*=.*\r?\n?', ''
+    Set-Content -Path $installerIss -Value $installerText -NoNewline
+} else {
+    Write-Host "  Inno Setup script OK."
+}
+
+$zoneIdentifierFiles = Get-ChildItem $WIN_DEST -Recurse -Force -Filter "*:Zone.Identifier" -ErrorAction SilentlyContinue
+if ($zoneIdentifierFiles) {
+    Write-Host "  Removing Windows Zone.Identifier metadata files..."
+    $zoneIdentifierFiles | Remove-Item -Force
+} else {
+    Write-Host "  No Zone.Identifier metadata files found."
+}
+
 # ── Step 2: Create venv ───────────────────────────────────────────
 Write-Host ""
 Write-Host "--------------------------------------------------------"
