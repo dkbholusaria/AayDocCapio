@@ -1,21 +1,19 @@
 # AayDocCapio
 
-**v1.2.0** — A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click.
+**v1.4.0** — A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click.
 
 Built with **PyQt6** + **Playwright**. Runs on Windows, macOS, and Linux/WSL.
 
 ---
 
-## What's New in 1.2.0
+## What's New in 1.4.0
 
-- **Light / Dark Navy theme** — Settings → Appearance; persisted across sessions
-- **Redesigned UI** — full-width client table, menu bar (Client Master / Settings), settings bar
-- **Last Download Status & Last Saved Location** columns in the client table
-- **Add/Edit client as popup dialog** — no more side panel
-- **••• row action menu** — Edit and Delete per client row
-- **Download history per Assessment Year** — status and path stored in vault per client/year
-- **User-friendly error messages** — plain English for portal/network errors
-- **Per-row timestamps** in the Excel download report
+- **Status filter dropdown** — filter client grid by All / Downloaded / Partially Completed / Failed / Queued / Not run yet
+- **26AS TXT → Excel + HTML converter** — auto-runs after each 26AS batch; also available via Tools menu
+- **Form 26AS Excel workbook** — Assessee Details sheet, one sheet per Part (I-IX), Summary sheet with hyperlinks
+- **Locked-file fallback** — writes a timestamped alternate file if Excel is open during conversion
+- **Large 26AS detection** — TRACES on-demand messages now show a clear actionable error
+- **ITD login fix for real Chrome** — avoids waiting forever on background Chrome network activity
 
 See the full [CHANGELOG](CHANGELOG.md) for details.
 
