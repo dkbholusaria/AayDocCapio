@@ -1,6 +1,6 @@
 # Test Plan
 
-**Version:** 1.2.0  
+**Version:** 1.4.0  
 **Last updated:** 2026-06-11
 
 This document describes the manual test cases for AayDocCapio. There is currently no automated test suite; all verification is manual. Test cases are grouped by module.
