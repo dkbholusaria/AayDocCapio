@@ -36,6 +36,8 @@
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
     <WixVariable Id="WixUILicenseRtf" Value="$(sys.SOURCEFILEDIR)license.rtf" />
+    <WixVariable Id="WixUIDialogBmp" Value="$(sys.SOURCEFILEDIR)..\resources\installer_wix_dialog.bmp" />
+    <WixVariable Id="WixUIBannerBmp" Value="$(sys.SOURCEFILEDIR)..\resources\installer_wix_banner.bmp" />
 
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
 
