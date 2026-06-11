@@ -155,6 +155,57 @@
     }
     .hero-meta a { color: var(--gold); }
 
+    .release-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--navy);
+      color: #fff;
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      margin-bottom: 18px;
+    }
+
+    .download-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 14px;
+      max-width: 820px;
+      margin: 0 auto 14px;
+    }
+
+    .download-card {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-top: 3px solid var(--gold);
+      border-radius: 10px;
+      padding: 18px 18px 16px;
+      text-align: left;
+      box-shadow: 0 4px 18px rgba(13,31,92,0.08);
+    }
+
+    .download-card h3 {
+      color: var(--navy);
+      font-size: 1rem;
+      margin-bottom: 6px;
+    }
+
+    .download-card p {
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.45;
+      margin-bottom: 14px;
+    }
+
+    .download-card .btn {
+      width: 100%;
+      padding: 11px 16px;
+      font-size: 0.92rem;
+      text-align: center;
+    }
+
     /* ── Divider strip ───────────────────────────────────────── */
     .strip {
       background: var(--navy);
@@ -215,6 +266,33 @@
     .card-icon { font-size: 1.6rem; margin-bottom: 12px; display: block; }
     .card h3 { font-size: 1rem; font-weight: 700; color: var(--navy); margin-bottom: 8px; }
     .card p  { color: var(--muted); font-size: 0.93rem; line-height: 1.6; }
+
+    .change-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 14px;
+    }
+
+    .change-item {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--gold);
+      border-radius: 8px;
+      padding: 16px 18px;
+    }
+
+    .change-item strong {
+      display: block;
+      color: var(--navy);
+      margin-bottom: 5px;
+      font-size: 0.95rem;
+    }
+
+    .change-item span {
+      color: var(--muted);
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
 
     /* ── Steps ───────────────────────────────────────────────── */
     .steps { counter-reset: step; display: flex; flex-direction: column; gap: 14px; }
@@ -402,6 +480,8 @@
 <nav>
   <span class="nav-brand">AayDoc <span>Capio</span>™</span>
   <div class="nav-links">
+    <a href="#download">Download</a>
+    <a href="#whats-new">What's new</a>
     <a href="#features">Features</a>
     <a href="#how">How it works</a>
     <a href="#screenshots">Screenshots</a>
@@ -421,21 +501,40 @@
     directly from the Income Tax e-Filing Portal — for multiple clients, in one click.
   </p>
 
-  <div class="btn-row">
-    <a class="btn btn-primary"
-       href="https://github.com/dkbholusaria/AayDocCapio/releases/download/v1.0.0/AayDocCapio_Setup_v1.0.0.exe">
-      ⬇ Download for Windows
-      <span class="btn-sub">v1.0.0 &nbsp;·&nbsp; Wizard Installer &nbsp;·&nbsp; 56 MB</span>
-    </a>
-    <a class="btn btn-secondary"
-       href="https://github.com/dkbholusaria/AayDocCapio/releases/download/v1.0.0/AayDocCapio.msi">
-      ⬇ Download MSI
-      <span class="btn-sub">Enterprise / Silent Install &nbsp;·&nbsp; 67 MB</span>
-    </a>
+  <div class="release-badge">Latest Release · v1.4.0</div>
+
+  <div class="download-grid" id="download">
+    <div class="download-card">
+      <h3>Windows Setup</h3>
+      <p>Recommended for most existing Windows users. Use this if you previously installed AayDocCapio with the .exe setup.</p>
+      <a class="btn btn-primary"
+         href="https://github.com/dkbholusaria/AayDocCapio/releases/download/v1.4.0/AayDocCapio_Setup_v1.4.0.exe">
+        Download .exe
+        <span class="btn-sub">v1.4.0 · Wizard Installer</span>
+      </a>
+    </div>
+    <div class="download-card">
+      <h3>Windows MSI</h3>
+      <p>For new enterprise or IT-managed installs. If switching from .exe, uninstall the .exe version first.</p>
+      <a class="btn btn-secondary"
+         href="https://github.com/dkbholusaria/AayDocCapio/releases/download/v1.4.0/AayDocCapio_MSI_v1.4.0.msi">
+        Download .msi
+        <span class="btn-sub">v1.4.0 · Silent / managed install</span>
+      </a>
+    </div>
+    <div class="download-card">
+      <h3>macOS App</h3>
+      <p>Apple Silicon app bundle packaged as a zip. Open the app once via right-click → Open if Gatekeeper warns.</p>
+      <a class="btn btn-secondary"
+         href="https://github.com/dkbholusaria/AayDocCapio/releases/download/v1.4.0/AayDocCapio-macos-arm64-v1.4.0.zip">
+        Download macOS zip
+        <span class="btn-sub">v1.4.0 · .app bundle</span>
+      </a>
+    </div>
   </div>
 
   <p class="hero-meta">
-    Windows 10 / 11 &nbsp;(64-bit) &nbsp;·&nbsp; Requires Google Chrome for AIS/TIS &nbsp;·&nbsp;
+    Windows 10 / 11 64-bit · macOS Apple Silicon · Requires Google Chrome for AIS/TIS &nbsp;·&nbsp;
     <a href="https://github.com/dkbholusaria/AayDocCapio/releases">All releases →</a>
   </p>
 
@@ -445,6 +544,43 @@
     <a href="#" onclick="document.getElementById('av-modal').style.display='flex'; return false;" style="color:#FFD5D0; text-decoration:underline; font-size:0.88rem;">How to allow it and install →</a>
   </div>
 </div>
+
+<!-- ── What's New ───────────────────────────────────────────────── -->
+<section class="alt" id="whats-new">
+  <div class="wrap">
+    <div class="section-label">What's new</div>
+    <h2>AayDocCapio v1.4.0</h2>
+    <div class="change-list">
+      <div class="change-item">
+        <strong>26AS TXT to Excel + HTML</strong>
+        <span>Auto-converts downloaded 26AS TXT files into structured Excel workbooks and HTML output.</span>
+      </div>
+      <div class="change-item">
+        <strong>Status filtering</strong>
+        <span>Filter clients by downloaded, failed, partially completed, queued, or not run yet.</span>
+      </div>
+      <div class="change-item">
+        <strong>Improved batch progress</strong>
+        <span>Per-client conversion states, clearer warnings, and saved-location links for faster review.</span>
+      </div>
+      <div class="change-item">
+        <strong>Installer options</strong>
+        <span>Windows .exe, Windows MSI, and macOS .app zip are now published from the v1.4.0 release.</span>
+      </div>
+      <div class="change-item">
+        <strong>Safer installer migration</strong>
+        <span>Installers preserve app data and guard against mixing .exe and MSI installs accidentally.</span>
+      </div>
+      <div class="change-item">
+        <strong>Large-file and unlock fixes</strong>
+        <span>Better handling for TRACES on-demand 26AS cases, ZIP/PDF unlock failures, and locked Excel files.</span>
+      </div>
+    </div>
+    <div class="alert alert-info">
+      Existing Windows users should upgrade with <strong>AayDocCapio_Setup_v1.4.0.exe</strong>. Use MSI for new managed deployments.
+    </div>
+  </div>
+</section>
 
 <!-- ── Strip ─────────────────────────────────────────────────────── -->
 <div class="strip">
@@ -512,7 +648,7 @@
     <div class="steps">
       <div class="step">
         <h3>Install the app</h3>
-        <p>Run <code>AayDocCapio_Setup_v1.0.0.exe</code>. The wizard installs the app and downloads the Chromium browser engine automatically — a one-time ~150 MB download.</p>
+        <p>Run <code>AayDocCapio_Setup_v1.4.0.exe</code> for a standard Windows install, or use the MSI for new managed deployments. The app downloads the Chromium browser engine automatically when needed.</p>
       </div>
       <div class="step">
         <h3>Add your clients</h3>
@@ -706,7 +842,7 @@
       <p style="font-weight:700; color:#0D1F5C; font-size:0.9rem; margin-bottom:8px;">🦁 Brave / Chrome blocks the download</p>
       <ol style="color:#5A6A8A; font-size:0.87rem; line-height:1.8; padding-left:18px; margin:0;">
         <li>Click the <strong>↓ download icon</strong> in the toolbar</li>
-        <li>Click <strong>…</strong> next to <code>AayDocCapio_Setup_v1.0.0.exe</code></li>
+        <li>Click <strong>…</strong> next to <code>AayDocCapio_Setup_v1.4.0.exe</code></li>
         <li>Click <strong>Keep → Show more → Keep anyway</strong></li>
       </ol>
     </div>
@@ -716,7 +852,7 @@
       <ol style="color:#5A6A8A; font-size:0.87rem; line-height:1.8; padding-left:18px; margin:0;">
         <li>Open <strong>Windows Security</strong> from the Start menu</li>
         <li>Go to <strong>Virus &amp; threat protection → Protection history</strong></li>
-        <li>Find the <code>AayDocCapio_Setup_v1.0.0.exe</code> entry</li>
+        <li>Find the <code>AayDocCapio_Setup_v1.4.0.exe</code> entry</li>
         <li>Click <strong>Actions → Allow on device</strong></li>
       </ol>
     </div>
@@ -724,7 +860,7 @@
     <div style="border:1px solid #E2E8F0; border-radius:8px; padding:14px 16px; margin-bottom:20px;">
       <p style="font-weight:700; color:#0D1F5C; font-size:0.9rem; margin-bottom:8px;">🪟 Windows SmartScreen blocks the installer</p>
       <ol style="color:#5A6A8A; font-size:0.87rem; line-height:1.8; padding-left:18px; margin:0;">
-        <li>Right-click <code>AayDocCapio_Setup_v1.0.0.exe</code> → <strong>Properties</strong></li>
+        <li>Right-click <code>AayDocCapio_Setup_v1.4.0.exe</code> → <strong>Properties</strong></li>
         <li>Tick <strong>Unblock</strong> at the bottom → <strong>Apply → OK</strong></li>
         <li>Double-click to run — if SmartScreen still appears, click <strong>More info → Run anyway</strong></li>
       </ol>
