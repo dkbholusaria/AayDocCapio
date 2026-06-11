@@ -564,6 +564,18 @@
         <span>Per-client conversion states, clearer warnings, and saved-location links for faster review.</span>
       </div>
       <div class="change-item">
+        <strong>Download history by AY/FY</strong>
+        <span>Last status and saved folder are remembered per client and assessment year.</span>
+      </div>
+      <div class="change-item">
+        <strong>Assessment year management</strong>
+        <span>Add, remove, reorder, and toggle AY/TY/FY entries from Settings.</span>
+      </div>
+      <div class="change-item">
+        <strong>Light and Dark Navy themes</strong>
+        <span>Switch appearance from Settings; the preference is saved across sessions.</span>
+      </div>
+      <div class="change-item">
         <strong>Installer options</strong>
         <span>Windows .exe, Windows MSI, and macOS .app zip are now published from the v1.4.0 release.</span>
       </div>
@@ -609,22 +621,22 @@
       <div class="card">
         <span class="card-icon">🔐</span>
         <h3>Encrypted Credential Vault</h3>
-        <p>PAN, DOB, and portal passwords stored locally with PBKDF2HMAC + Fernet AES-128. Nothing leaves your machine.</p>
+        <p>PAN, DOB, and portal passwords are stored locally in <code>tax_vault.json</code> with PBKDF2HMAC + Fernet AES-128. No cloud sync or telemetry.</p>
       </div>
       <div class="card">
         <span class="card-icon">📑</span>
-        <h3>One-Click Bulk Download</h3>
-        <p>Download Form 26AS (PDF + TXT), AIS (PDF), and TIS (PDF) for all selected clients in a single run.</p>
+        <h3>26AS, AIS and TIS</h3>
+        <p>Download Form 26AS PDF + TXT, AIS PDF, and TIS PDF for all selected clients in a single sequential batch.</p>
       </div>
       <div class="card">
-        <span class="card-icon">🔓</span>
-        <h3>Auto PDF Unlocking</h3>
-        <p>Downloaded PDFs are automatically unlocked using PAN and DOB — open immediately, no passwords needed.</p>
+        <span class="card-icon">📘</span>
+        <h3>26AS Excel Workbook</h3>
+        <p>Convert 26AS TXT into Excel + HTML with Assessee Details, Part I-IX sheets, summary links, and large-file streaming.</p>
       </div>
       <div class="card">
         <span class="card-icon">📊</span>
         <h3>Live Batch Progress</h3>
-        <p>Per-client real-time status with step-by-step logs. Isolates failures — one client never aborts the rest.</p>
+        <p>Per-client real-time status, conversion state, saved-folder links, Stop control, and step-by-step logs.</p>
       </div>
       <div class="card">
         <span class="card-icon">📥</span>
@@ -632,9 +644,24 @@
         <p>Bulk-load assessees from Excel or CSV. Generate a pre-formatted import template in one click.</p>
       </div>
       <div class="card">
-        <span class="card-icon">🌐</span>
-        <h3>Silent Background Mode</h3>
-        <p>Runs fully headless — no browser windows flashing. Toggle "Show Browser" only when debugging is needed.</p>
+        <span class="card-icon">🗂️</span>
+        <h3>Status and History</h3>
+        <p>Filter by status and review the last result and saved location per client, per AY/FY.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">📅</span>
+        <h3>AY / TY / FY Management</h3>
+        <p>Manage assessment, tax, and financial year entries from Settings and keep output folders consistently labelled.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">🔓</span>
+        <h3>Auto Unlocking</h3>
+        <p>PDFs and 26AS TXT ZIPs are unlocked using PAN and DOB-derived passwords, with clear warnings if DOB is wrong.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">🌗</span>
+        <h3>Themes and Headless Mode</h3>
+        <p>Light and Dark Navy themes, plus hidden browser automation by default with visible debug mode when needed.</p>
       </div>
     </div>
   </div>
@@ -652,11 +679,11 @@
       </div>
       <div class="step">
         <h3>Add your clients</h3>
-        <p>Use the <strong>Single Profile</strong> tab to add clients manually, or go to <strong>Bulk Operations → Import CSV / Excel</strong> to load multiple assessees at once.</p>
+        <p>Add clients manually from <strong>Client Master</strong>, or import Excel / CSV records with Name, PAN, DOB, and Password columns.</p>
       </div>
       <div class="step">
-        <h3>Select Assessment Year &amp; Output Folder</h3>
-        <p>Pick the Assessment Year from the dropdown and choose where downloaded files should be saved.</p>
+        <h3>Select AY/FY and Output Folder</h3>
+        <p>Pick the AY/TY/FY entry from the dropdown, manage years from Settings, and choose where downloaded files should be saved.</p>
       </div>
       <div class="step">
         <h3>Select clients and click Run</h3>
@@ -664,7 +691,7 @@
       </div>
       <div class="step">
         <h3>Collect your files</h3>
-        <p>Files are saved to <code>&lt;Output Dir&gt;/&lt;PAN&gt;-&lt;Name&gt;/AY_&lt;year&gt;/</code> and auto-unlocked — ready to use immediately.</p>
+        <p>Files are saved to <code>&lt;Output Dir&gt;/&lt;PAN&gt;-&lt;Name&gt;/AY_&lt;year&gt;/</code>. 26AS can include PDF, TXT, Excel, and HTML outputs.</p>
       </div>
     </div>
 
@@ -673,6 +700,9 @@
     </div>
     <div class="alert alert-ok">
       ✅ <strong>Large AIS files?</strong> If the ITD server queues your AIS, AayDocCapio notifies you. Wait ~5 minutes, then use <em>Download Previously Requested AIS</em> to fetch it automatically.
+    </div>
+    <div class="alert alert-info">
+      📄 <strong>Batch report included.</strong> Each run can produce an Excel report with status, folder hyperlink, and per-row timestamp.
     </div>
   </div>
 </section>
@@ -735,6 +765,7 @@
       <tbody>
         <tr><td>Credential storage</td><td>AES-128 (Fernet) encrypted local file — <code>tax_vault.json</code></td></tr>
         <tr><td>Key derivation</td><td>PBKDF2HMAC / SHA-256, 100,000 iterations</td></tr>
+        <tr><td>Installer upgrades</td><td><code>tax_vault.json</code> and <code>assessment_years.json</code> are preserved during uninstall or migration</td></tr>
         <tr><td>PAN in logs</td><td>PAN is never included in error or log output</td></tr>
         <tr><td>Vault in git</td><td><code>tax_vault.json</code> is in <code>.gitignore</code> — never committed</td></tr>
         <tr><td>Network</td><td>Credentials only submitted to the official ITD portal — no third-party services</td></tr>
@@ -771,7 +802,22 @@
 
     <details class="faq">
       <summary>Where are the downloaded files saved?</summary>
-      <p>Files are saved to the output directory you choose, in the structure: <code>&lt;Output Dir&gt;/&lt;PAN&gt;-&lt;Client Name&gt;/AY_&lt;year&gt;/</code>. PDFs are automatically unlocked and ready to open.</p>
+      <p>Files are saved to the output directory you choose, in the structure: <code>&lt;Output Dir&gt;/&lt;PAN&gt;-&lt;Client Name&gt;/AY_&lt;year&gt;/</code>. PDFs are automatically unlocked and ready to open. 26AS outputs can include PDF, TXT, Excel workbook, and HTML.</p>
+    </details>
+
+    <details class="faq">
+      <summary>Which Windows installer should I use?</summary>
+      <p>Use the <code>.exe</code> setup for normal users and for upgrades from older <code>.exe</code> installs. Use the <code>.msi</code> for new IT-managed deployments, silent installs, or Group Policy deployment. Avoid installing both types on the same machine.</p>
+    </details>
+
+    <details class="faq">
+      <summary>Will uninstalling remove my client vault?</summary>
+      <p>No. The installers are configured to preserve app data. Your <code>tax_vault.json</code> and <code>assessment_years.json</code> remain on the machine during uninstall or installer migration.</p>
+    </details>
+
+    <details class="faq">
+      <summary>Can I switch from MSI to EXE or EXE to MSI?</summary>
+      <p>The app guards against accidentally mixing installer types. The <code>.exe</code> installer can prompt to remove an existing guarded MSI install before continuing. If moving from an older <code>.exe</code> install to MSI, uninstall the <code>.exe</code> version first, then install the MSI.</p>
     </details>
 
     <details class="faq">
