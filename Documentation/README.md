@@ -2,7 +2,23 @@
 
 A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click.
 
-Built with **PyQt6** + **Playwright**. Runs on Windows and Linux/WSL.
+Built with **PyQt6** + **Playwright**. Runs on Windows, macOS, and Linux/WSL.
+
+---
+
+## Documentation Index
+
+| Document | Purpose |
+|---|---|
+| [PRD](PRD.md) | Product requirements — features, goals, user personas, security constraints |
+| [ADRs](ADRs.md) | Architecture decisions — why PyQt6, Playwright, real Chrome, Nuitka, etc. |
+| [Data Dictionary](data_dictionary.md) | Vault schema, `assessment_years.json`, file naming, log files |
+| [Test Plan](test_plan.md) | Manual test cases (TC-01 to TC-18) covering vault, downloads, UI, errors |
+| [FAQ](FAQ.md) | Common questions — install issues, 2FA, large files, antivirus, platform quirks |
+| [Windows Build Guide](windows_build.md) | Nuitka build, Inno Setup, WiX MSI |
+| [macOS Support](macos_support.md) | macOS setup, platform differences, app bundle build |
+| [Development Log](DEVELOPMENT_LOG.md) | Design history, debugging saga, portal flow reference |
+| [Contributing](CONTRIBUTING.md) | Development setup, security rules, how to report issues |
 
 ---
 
@@ -88,12 +104,18 @@ AayDocCapio/
 │   ├── AayDocCapio.spec          # PyInstaller/Nuitka spec configuration
 │   └── setup.sh                  # Linux/WSL dev setup script
 ├── Documentation/
-│   ├── README.md                 # This file
+│   ├── README.md                 # This file — documentation index
+│   ├── PRD.md                    # Product Requirements Document — features, goals, security reqs
+│   ├── ADRs.md                   # Architecture Decision Records — key technical choices and rationale
+│   ├── data_dictionary.md        # Data dictionary — vault schema, assessment_years.json, file naming
+│   ├── test_plan.md              # Test plan and manual test cases (TC-01 to TC-18)
+│   ├── FAQ.md                    # Frequently asked questions — install, errors, platform issues
 │   ├── windows_build.md          # Windows build guide (Nuitka, Inno Setup, WiX)
+│   ├── macos_support.md          # macOS setup and platform-specific notes
 │   ├── DEVELOPMENT_LOG.md        # Design decisions, architecture, and debugging history
 │   ├── CONTRIBUTING.md           # Contribution guidelines
-│   ├── implementation_plan.md    # Active engineering plans
-│   └── walkthrough.md            # Feature walkthroughs
+│   ├── implementation_plan.md    # Original engineering plan (historical)
+│   └── walkthrough.md            # Feature walkthrough (historical — pre-PyQt6 prototype)
 └── outputs/                      # Downloaded files (created at runtime)
     └── <PAN>-<Name>/
         └── AY_<year>/
