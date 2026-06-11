@@ -61,6 +61,7 @@
       <ComponentGroupRef Id="AppFiles" />
       <ComponentGroupRef Id="AppDataFiles" />
       <ComponentRef Id="ApplicationShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
     </Feature>
 
   </Package>
@@ -68,7 +69,12 @@
   <!-- ── App files (entire dist\AayDocCapio\ folder) ─────────── -->
   <Fragment>
     <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
-      <Files Include="..\dist\AayDocCapio\**" />
+      <Files Include="..\dist\AayDocCapio\**">
+        <Exclude Files="..\dist\AayDocCapio\AayDocCapio.exe" />
+      </Files>
+      <Component Id="MainExecutable" Guid="60C6D0C6-C056-4FB5-9834-42E2F5B2B09C">
+        <File Id="MainExe" Source="..\dist\AayDocCapio\AayDocCapio.exe" KeyPath="yes" />
+      </Component>
     </ComponentGroup>
   </Fragment>
 
@@ -94,7 +100,7 @@
         <Shortcut
           Id="ApplicationStartMenuShortcut"
           Name="AayDocCapio"
-          Target="[INSTALLFOLDER]AayDocCapio.exe"
+          Target="[#MainExe]"
           WorkingDirectory="INSTALLFOLDER" />
         <Shortcut
           Id="UninstallShortcut"
@@ -123,6 +129,26 @@
           Value="[ProductCode]" />
       </Component>
     </DirectoryRef>
+  </Fragment>
+
+  <!-- ── Desktop shortcut ───────────────────────────────────────── -->
+  <Fragment>
+    <StandardDirectory Id="DesktopFolder">
+      <Component Id="DesktopShortcut" Guid="A646D0C8-9C34-4D91-9776-5BE152E4BE78">
+        <Shortcut
+          Id="ApplicationDesktopShortcut"
+          Name="AayDocCapio"
+          Target="[#MainExe]"
+          WorkingDirectory="INSTALLFOLDER" />
+        <RegistryValue
+          Root="HKCU"
+          Key="Software\AayDocCapio"
+          Name="desktopShortcut"
+          Type="integer"
+          Value="1"
+          KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
   </Fragment>
 
 </Wix>
