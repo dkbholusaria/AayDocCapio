@@ -71,10 +71,16 @@
   </Fragment>
 
   <!-- ── Seed assessment_years.json to AppData ────────────────── -->
+  <!-- tax_vault.json is created by the app at runtime in this folder.
+       It is intentionally not installed by MSI, so uninstall/migration leaves it untouched. -->
   <Fragment>
     <ComponentGroup Id="AppDataFiles" Directory="APPDATAFOLDER">
-      <Component Id="AssessmentYears" Guid="C5D4E3F2-1A2B-3C4D-5E6F-7A8B9C0D1E2F">
-        <File Source="$(sys.SOURCEFILEDIR)..\assessment_years.json" />
+      <Component
+        Id="AssessmentYears"
+        Guid="C5D4E3F2-1A2B-3C4D-5E6F-7A8B9C0D1E2F"
+        NeverOverwrite="yes"
+        Permanent="yes">
+        <File Source="$(sys.SOURCEFILEDIR)..\assessment_years.json" KeyPath="yes" />
       </Component>
     </ComponentGroup>
   </Fragment>
