@@ -43,7 +43,7 @@ jobs:
           import app
           import as26_converter
           from automation import browser, downloader, downloader_26as, downloader_ais_tis
-          from vault import Vault
+          from vault import VaultManager
           print('All imports OK')
           "
 
