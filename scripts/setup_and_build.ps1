@@ -245,13 +245,13 @@ if (-not $wix) {
     & wix extension add WixToolset.UI.wixext --global 2>$null
 
     Write-Host "  Building MSI..."
-    & wix build scripts\installer.wxs -out installer_output\AayDocCapio.msi -ext WixToolset.UI.wixext -arch x64
+    & wix build scripts\installer.wxs -out installer_output\AayDocCapio_Setup_v1.4.0.msi -ext WixToolset.UI.wixext -arch x64
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[Error] WiX MSI build failed."
         exit 1
     }
-    $msiSize = [math]::Round((Get-Item "installer_output\AayDocCapio.msi").Length / 1MB, 1)
-    Write-Host "[OK] MSI created: installer_output\AayDocCapio.msi (${msiSize} MB)"
+    $msiSize = [math]::Round((Get-Item "installer_output\AayDocCapio_Setup_v1.4.0.msi").Length / 1MB, 1)
+    Write-Host "[OK] MSI created: installer_output\AayDocCapio_Setup_v1.4.0.msi (${msiSize} MB)"
 }
 
 # ── Summary ───────────────────────────────────────────────────────
@@ -262,5 +262,5 @@ Write-Host "========================================================"
 Write-Host "  Build dir  : $WIN_DEST"
 Write-Host "  App folder : dist\AayDocCapio\"
 Write-Host "  Installer  : installer_output\AayDocCapio_Setup_v1.4.0.exe"
-Write-Host "  MSI        : installer_output\AayDocCapio.msi"
+Write-Host "  MSI        : installer_output\AayDocCapio_Setup_v1.4.0.msi"
 Write-Host "========================================================"

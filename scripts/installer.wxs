@@ -11,6 +11,7 @@
 
     <MajorUpgrade DowngradeErrorMessage="A newer version of AayDocCapio is already installed." />
 
+    <!-- ── Detect existing .exe (Inno) install ───────────────────── -->
     <Property Id="INNOINSTALL">
       <RegistrySearch
         Id="SearchInnoInstallerMarker"
@@ -20,18 +21,11 @@
         Type="raw" />
     </Property>
 
-    <Property Id="LEGACYINNOUNINSTALL">
-      <RegistrySearch
-        Id="SearchLegacyInnoUninstall"
-        Root="HKLM"
-        Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\{A3F2C1D4-8B7E-4F9A-BC12-3E5D6F7A8C90}_is1"
-        Name="DisplayName"
-        Type="raw" />
-    </Property>
-
+    <!-- Block MSI install when .exe version is detected.
+         User must uninstall the .exe version first from Windows Settings. -->
     <Launch
-      Condition="Installed OR (INNOINSTALL &lt;&gt; &quot;Inno&quot; AND NOT LEGACYINNOUNINSTALL)"
-      Message="AayDocCapio is already installed using the .exe setup. Please upgrade using the .exe setup, or uninstall the .exe version before installing the MSI package." />
+      Condition="Installed OR INNOINSTALL &lt;&gt; &quot;Inno&quot;"
+      Message="AayDocCapio is already installed using the .exe setup.&#13;&#10;&#13;&#10;Please uninstall the .exe version from Windows Settings (Apps &amp; Features) first, then run the MSI installer again." />
 
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
@@ -69,11 +63,11 @@
   <!-- ── App files (entire dist\AayDocCapio\ folder) ─────────── -->
   <Fragment>
     <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
-      <Files Include="..\dist\AayDocCapio\**">
-        <Exclude Files="..\dist\AayDocCapio\AayDocCapio.exe" />
+      <Files Include="$(sys.SOURCEFILEDIR)..\dist\AayDocCapio\**">
+        <Exclude Files="$(sys.SOURCEFILEDIR)..\dist\AayDocCapio\AayDocCapio.exe" />
       </Files>
       <Component Id="MainExecutable" Guid="60C6D0C6-C056-4FB5-9834-42E2F5B2B09C">
-        <File Id="MainExe" Source="..\dist\AayDocCapio\AayDocCapio.exe" KeyPath="yes" />
+        <File Id="MainExe" Source="$(sys.SOURCEFILEDIR)..\dist\AayDocCapio\AayDocCapio.exe" KeyPath="yes" />
       </Component>
     </ComponentGroup>
   </Fragment>
