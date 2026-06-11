@@ -53,6 +53,7 @@ jobs:
           python -m nuitka `
             --standalone `
             --windows-console-mode=disable `
+            --windows-icon-from-ico=resources\app_icon.ico `
             --output-dir=dist `
             --output-filename=AayDocCapio.exe `
             --include-data-dir=resources=resources `
@@ -92,7 +93,7 @@ jobs:
           $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
           wix eula accept wix7
           wix build scripts\installer.wxs `
-            -out installer_output\AayDocCapio_MSI_v1.4.0.msi `
+            -out installer_output\AayDocCapio_Setup_v1.4.0.msi `
             -ext WixToolset.UI.wixext `
             -arch x64
         shell: pwsh
@@ -104,7 +105,7 @@ jobs:
           name: AayDocCapio-windows-installers-v1.4.0
           path: |
             installer_output\AayDocCapio_Setup_v1.4.0.exe
-            installer_output\AayDocCapio_MSI_v1.4.0.msi
+            installer_output\AayDocCapio_Setup_v1.4.0.msi
           retention-days: 30
 
       # ── 11. Attach to GitHub Release ───────────────────────────────────────
@@ -114,5 +115,5 @@ jobs:
         with:
           files: |
             installer_output\AayDocCapio_Setup_v1.4.0.exe
-            installer_output\AayDocCapio_MSI_v1.4.0.msi
+            installer_output\AayDocCapio_Setup_v1.4.0.msi
           generate_release_notes: true
