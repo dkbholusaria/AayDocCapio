@@ -76,8 +76,10 @@ async def _do_login(page, user_id, uid_masked, password, log_callback, is_runnin
     await page.goto(
         "https://eportal.incometax.gov.in/iec/foservices/#/login",
         wait_until="domcontentloaded", timeout=90000)
-    await page.wait_for_load_state("networkidle", timeout=60000)
-    await asyncio.sleep(2)
+    # Real Chrome keeps background connections alive so networkidle never fires.
+    # domcontentloaded (already done above by goto) is sufficient; just wait for
+    # the Angular app to mount the login form.
+    await asyncio.sleep(3)
 
     # ── Step 1: Fill PAN ─────────────────────────────────────────────────────
     log_callback(f"[Auth] Entering User ID: {uid_masked}")
