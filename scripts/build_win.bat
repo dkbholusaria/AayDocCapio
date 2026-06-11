@@ -81,6 +81,6 @@ echo.
 echo ========================================================
 echo   Build complete!
 echo   App folder : dist\AayDocCapio\
-echo   Installer  : installer_output\AayDocCapio_Setup_v1.0.0.exe
+echo   Installer  : installer_output\AayDocCapio_Setup_v1.4.0.exe
 echo ========================================================
 pause
