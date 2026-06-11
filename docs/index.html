@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800;900&display=swap" rel="stylesheet" />
   <title>AayDocCapio — Tax Documents. Delivered to You.</title>
   <meta name="description" content="Automates secure bulk retrieval of Form 26AS, AIS and TIS from the Income Tax e-Filing Portal for multiple clients in one click." />
   <style>
@@ -41,7 +41,8 @@
       --radius-lg:   14px;
       --radius-xl:   20px;
 
-      --font-body: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", sans-serif;
+      --font-body:    'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-display: 'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif;
 
       --hero-bg-start: #0A1628;
       --hero-bg-mid:   #0D2244;
@@ -93,6 +94,7 @@
     }
 
     .nav-brand {
+      font-family: var(--font-display);
       color: var(--heading);
       font-size: 1.05rem;
       font-weight: 800;
@@ -386,15 +388,15 @@
     .trust-note {
       max-width: 600px;
       margin: 28px auto 0;
-      background: rgba(40,8,8,0.60);
+      background: rgba(255,255,255,0.04);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(239,68,68,0.30);
-      border-left: 3px solid #EF4444;
+      border: 1.5px solid rgba(255,59,59,0.55);
+      border-left: 3px solid #FF3B3B;
       border-radius: var(--radius-md);
-      box-shadow: 0 4px 24px rgba(0,0,0,0.30);
+      box-shadow: 0 4px 24px rgba(255,59,59,0.12), 0 0 0 1px rgba(255,59,59,0.08);
       padding: 16px 20px;
-      color: rgba(252,165,165,0.95);
+      color: #FF6B6B;
       font-size: 0.9rem;
       font-weight: 600;
       line-height: 1.55;
@@ -409,10 +411,10 @@
     }
 
     .trust-note a {
-      color: #FCA5A5;
+      color: #FF6B6B;
       font-weight: 700;
       text-decoration: none;
-      border-bottom: 1px solid rgba(252,165,165,0.40);
+      border-bottom: 1px solid rgba(255,107,107,0.45);
     }
     .trust-note a:hover { color: #fff; border-color: #fff; text-decoration: none; }
 
@@ -442,6 +444,7 @@
     section.alt + section, section + section.alt { border-top: none; }
 
     .section-label {
+      font-family: var(--font-display);
       font-size: 0.72rem;
       font-weight: 700;
       letter-spacing: 2px;
@@ -451,6 +454,7 @@
     }
 
     h2 {
+      font-family: var(--font-display);
       font-size: 2rem;
       font-weight: 800;
       color: var(--heading);
@@ -458,6 +462,8 @@
       line-height: 1.2;
       letter-spacing: -0.02em;
     }
+
+    h3 { font-family: var(--font-display); }
 
     /* ── Feature cards ───────────────────────────────────────── */
     .cards {
