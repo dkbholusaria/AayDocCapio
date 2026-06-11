@@ -1256,13 +1256,10 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
         "· Only Final (F) status bookings are eligible for tax credit. "
         "Rows with other statuses (U/M/O/Z/P) are highlighted red.\n"
         "· Parts VII, VIII and IX are informational only — not included in Summary.\n"
-        "· Figures in brackets represent reversal entries (Remarks G/B).\n\n"
-        "© 2026 AayDoc Capio™. All rights reserved. Developed by CA. Deepak Bhholusaria.\n"
-        "LinkedIn: https://www.linkedin.com/in/bhholusaria/\n"
-        "Email: deepak@ailearrning.guru"
+        "· Figures in brackets represent reversal entries (Remarks G/B)."
     )
     ws_ass.merge_range(r, 0, r, 1, notes, F_NOTES)
-    ws_ass.set_row(r, 90)
+    ws_ass.set_row(r, 60)
 
     # ── Generic deductor+detail part writer ───────────────────────────────
     def write_deductor_part(roman, cols, num_col_indices,
