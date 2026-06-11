@@ -366,24 +366,30 @@
     .trust-note {
       max-width: 600px;
       margin: 28px auto 0;
-      background: #FEF2F2;
-      border: 1px solid #FECACA;
+      background: #DC2626;
+      border: none;
       border-radius: var(--radius-md);
-      box-shadow: 0 2px 8px rgba(239,68,68,0.10);
-      padding: 18px 20px 16px;
+      box-shadow: 0 4px 20px rgba(220,38,38,0.35);
+      padding: 20px 24px 18px;
       text-align: center;
+      transition: box-shadow var(--dur-fast) var(--ease-fluent), transform var(--dur-fast) var(--ease-fluent);
+    }
+
+    .trust-note:hover {
+      box-shadow: 0 8px 28px rgba(220,38,38,0.48);
+      transform: translateY(-2px);
     }
 
     .trust-note::before {
       content: "⚠️";
       display: block;
-      font-size: 1.4rem;
-      margin-bottom: 6px;
+      font-size: 1.3rem;
+      margin-bottom: 8px;
     }
 
     .trust-note > :not(span):not(a) {
-      color: #991B1B;
-      font-size: 0.92rem;
+      color: #FFFFFF;
+      font-size: 0.93rem;
       font-weight: 700;
       line-height: 1.5;
       display: block;
@@ -392,24 +398,23 @@
 
     .trust-note span {
       display: block;
-      color: #7F1D1D;
+      color: rgba(255,255,255,0.82);
       font-size: 0.85rem;
       font-weight: 400;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
       line-height: 1.55;
-      opacity: 0.85;
     }
 
     .trust-note a {
       display: inline-block;
-      color: #DC2626;
+      color: #FFFFFF;
       font-weight: 700;
       font-size: 0.9rem;
       text-decoration: none;
-      border-bottom: 1px solid rgba(220,38,38,0.40);
+      border-bottom: 1px solid rgba(255,255,255,0.50);
       padding-bottom: 1px;
     }
-    .trust-note a:hover { color: #991B1B; border-color: #991B1B; text-decoration: none; }
+    .trust-note a:hover { border-color: #fff; text-decoration: none; }
 
     /* ── Divider strip ───────────────────────────────────────── */
     .strip {
