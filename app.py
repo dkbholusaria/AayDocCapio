@@ -1502,7 +1502,7 @@ class AayDocCapioApp(QMainWindow):
         self.status_filter.addItems([
             "All statuses",
             "✅  Downloaded",
-            "⚠  Partial (PDF only)",
+            "⚠  Partially Completed",
             "❌  Failed",
             "🕐  Queued / Pending",
             "—  Not run yet",
@@ -1976,7 +1976,7 @@ class AayDocCapioApp(QMainWindow):
         _sf_map = {
             0: None,              # All statuses
             1: ("✅",),           # Downloaded
-            2: ("⚠",),           # Partial (PDF only)
+            2: ("⚠",),           # Partially Completed
             3: ("❌",),           # Failed
             4: ("🕐", "⏹"),      # Queued / Pending
             5: ("—",),            # Not run yet
@@ -3071,7 +3071,7 @@ class AayDocCapioApp(QMainWindow):
                         if ok:
                             if err_msg:
                                 # PDF saved but TXT failed (bad password / extraction error)
-                                set_status(pan, f"⚠ PDF only — {err_msg}")
+                                set_status(pan, f"⚠ Partially Completed — {err_msg}")
                             else:
                                 set_status(pan, "✅ 26AS Downloaded")
                             if txt_path:
