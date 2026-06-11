@@ -1117,7 +1117,7 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
     F_BRAND_L   = _fmt(bold=True, size=10, color=WHITE, bg=NAVY, align="left")
     F_BRAND_R   = _fmt(size=8, color=GREY, bg=NAVY, align="right")
     F_TITLE     = _fmt(bold=True, size=13, color=WHITE, bg=NAVY, align="center")
-    F_SUBTITLE  = _fmt(size=8, color=GREY, bg=NAVY, align="center")
+    F_SUBTITLE  = _fmt(size=8, color=GREY, bg=NAVY, align="center", wrap=True)
     F_SUBTOT_LABEL = _fmt(bold=True, color=GREEN_TXT, bg=SUBTTL, align="right",
                           top_color=GREEN)
     F_GRAND_LABEL  = _fmt(bold=True, color=WHITE, bg=NAVY, align="right")
@@ -1215,7 +1215,7 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
     ws_ass.merge_range(1, 0, 1, 1,
                        "AayDoc Capio™  ·  © 2026  ·  Developed by CA. Deepak Bhholusaria  ·  linkedin.com/in/bhholusaria  ·  deepak@ailearrning.guru",
                        F_SUBTITLE)
-    ws_ass.set_row(1, 14)
+    ws_ass.set_row(1, 22)
 
     fields_map = [
         ("ASSESSEE INFORMATION", None),
