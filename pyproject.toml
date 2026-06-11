@@ -21,6 +21,7 @@ requires = [
     "PyQt6",
     "pandas",
     "openpyxl",
+    "xlsxwriter",
     "playwright",
     "cryptography",
 ]
@@ -33,6 +34,7 @@ requires = [
     "PyQt6",
     "pandas",
     "openpyxl",
+    "xlsxwriter",
     "playwright",
     "cryptography",
 ]
