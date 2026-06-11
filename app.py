@@ -3065,7 +3065,11 @@ class AayDocCapioApp(QMainWindow):
                         set_status(pan, "⏳ Downloading 26AS...")
                         ok, err_msg, txt_path = await download_26as(page, ay, out, self.log, pan=pan, dob=dob)
                         if ok:
-                            set_status(pan, "✅ 26AS Downloaded")
+                            if err_msg:
+                                # PDF saved but TXT failed (bad password / extraction error)
+                                set_status(pan, f"⚠ PDF only — {err_msg}")
+                            else:
+                                set_status(pan, "✅ 26AS Downloaded")
                             if txt_path:
                                 self._batch_26as_txts.append((pan, txt_path))
                         else:
