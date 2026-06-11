@@ -1213,7 +1213,7 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
                        f"Form 26AS  —  {assessee_name}  —  AY {ay}", F_TITLE)
     ws_ass.set_row(0, 28)
     ws_ass.merge_range(1, 0, 1, 1,
-                       "AayDoc Capio™  ·  © 2026  ·  Developed by CA. Deepak Bhholusaria",
+                       "AayDoc Capio™  ·  © 2026  ·  Developed by CA. Deepak Bhholusaria  ·  linkedin.com/in/bhholusaria  ·  deepak@ailearrning.guru",
                        F_SUBTITLE)
     ws_ass.set_row(1, 14)
 
