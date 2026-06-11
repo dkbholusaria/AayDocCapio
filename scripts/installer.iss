@@ -64,6 +64,9 @@ Filename: "{app}\{#MyAppExeName}"; \
     Description: "Launch {#MyAppName}"; \
     Flags: nowait postinstall skipifsilent
 
+[Registry]
+Root: HKLM; Subkey: "Software\{#MyAppName}"; ValueType: string; ValueName: "InstallerType"; ValueData: "Inno"; Flags: uninsdeletevalue
+
 [Code]
 var
   StatusLabel : TLabel;
@@ -116,6 +119,40 @@ begin
   SubLabel.Height         := 18;
   SubLabel.Font.Color     := $00666666;
   SubLabel.Caption        := '';
+end;
+
+{ ------------------------------------------------------------------ }
+{ Prevent mixing the .exe installer with the MSI installer           }
+{ ------------------------------------------------------------------ }
+function MsiInstallDetected: Boolean;
+var
+  InstallerType: String;
+begin
+  Result :=
+    RegQueryStringValue(HKLM64, 'Software\{#MyAppName}', 'InstallerType', InstallerType) and
+    (CompareText(InstallerType, 'MSI') = 0);
+
+  if not Result then
+  begin
+    Result :=
+      RegQueryStringValue(HKLM, 'Software\{#MyAppName}', 'InstallerType', InstallerType) and
+      (CompareText(InstallerType, 'MSI') = 0);
+  end;
+end;
+
+function InitializeSetup: Boolean;
+begin
+  Result := True;
+
+  if MsiInstallDetected then
+  begin
+    MsgBox(
+      '{#MyAppName} is already installed using the MSI package.' + #13#10#13#10 +
+      'Please upgrade using the MSI package, or uninstall the MSI version before installing with the .exe setup.',
+      mbError,
+      MB_OK);
+    Result := False;
+  end;
 end;
 
 { ------------------------------------------------------------------ }

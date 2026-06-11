@@ -11,6 +11,28 @@
 
     <MajorUpgrade DowngradeErrorMessage="A newer version of AayDocCapio is already installed." />
 
+    <Property Id="INNOINSTALL">
+      <RegistrySearch
+        Id="SearchInnoInstallerMarker"
+        Root="HKLM"
+        Key="Software\AayDocCapio"
+        Name="InstallerType"
+        Type="raw" />
+    </Property>
+
+    <Property Id="LEGACYINNOUNINSTALL">
+      <RegistrySearch
+        Id="SearchLegacyInnoUninstall"
+        Root="HKLM"
+        Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\{A3F2C1D4-8B7E-4F9A-BC12-3E5D6F7A8C90}_is1"
+        Name="DisplayName"
+        Type="raw" />
+    </Property>
+
+    <Launch
+      Condition="Installed OR (INNOINSTALL &lt;&gt; &quot;Inno&quot; AND NOT LEGACYINNOUNINSTALL)"
+      Message="AayDocCapio is already installed using the .exe setup. Please upgrade using the .exe setup, or uninstall the .exe version before installing the MSI package." />
+
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
     <WixVariable Id="WixUILicenseRtf" Value="$(sys.SOURCEFILEDIR)license.rtf" />
@@ -79,6 +101,12 @@
           Type="integer"
           Value="1"
           KeyPath="yes" />
+        <RegistryValue
+          Root="HKLM"
+          Key="Software\AayDocCapio"
+          Name="InstallerType"
+          Type="string"
+          Value="MSI" />
       </Component>
     </DirectoryRef>
   </Fragment>
