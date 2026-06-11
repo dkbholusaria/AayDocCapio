@@ -11,9 +11,15 @@ All notable changes to AayDocCapio are documented here.
 - **26AS TXT → Excel + HTML converter** — auto-runs after each 26AS batch; also available via Tools menu. Handles 200K+ row files via xlsxwriter streaming writer
 - **Form 26AS Excel workbook** — Assessee Details sheet, one sheet per Part (I–IX), Summary sheet with hyperlinks to each deductor row
 - **Locked-file fallback** — if Excel is open when converter tries to save, file is written to a timestamped alternate name and a warning shown in the completion dialog
+- **26AS TXT download** — after PDF, switches TRACES to Text format and downloads the ZIP-protected TXT file
+- **Tools menu** — manual "Convert 26AS TXT to Excel…" file picker
+- **Batch progress dialog** — per-client status, Save Path column, Open Folder / Download Report buttons
+- **Assessment Year management** — add/remove/reorder AYs via ⚙ Manage Years dialog
+- **AIS status bar** — shows queued count and wait-time reminder after AIS request batch
 
 ### Improvements
 - **Auto-convert scoped to batch** — converter now only processes TXT files downloaded in the current batch, not all TXT files in the output folder
+- **Auto-convert after batch** — `_auto_convert_26as()` triggered on batch completion
 - **Per-client conversion status** in batch progress dialog (⏳ Converting → ✅ 26AS + Excel + HTML)
 - **Truncated status tooltip** — hovering over a clipped Last Download Status cell shows the full text
 - **Large 26AS detection** — TRACES "on-demand" message (`div#message`) is detected and surfaces a clear actionable error instead of crashing on missing pdfBtn
@@ -28,30 +34,14 @@ All notable changes to AayDocCapio are documented here.
 - **Address fields shifted** (State = PIN, PIN = blank) — header parser was stripping empty fields, shifting subsequent positional values; fixed by preserving empty fields in the zip
 - **Notes cell black background** — 8-digit openpyxl-era hex (`#fffff9f0`) is invalid in xlsxwriter; fixed to 6-digit `#fffde7`
 - **Subtitle row text clipped** — added `wrap=True` to subtitle format, increased row height to 22 pt
-
-### Internal
-- Migrated 26AS Excel writer from openpyxl to xlsxwriter (streaming, constant memory, ~10× faster)
-- `downloader_26as.py` returns `(ok, err_msg, txt_path)` tuple so callers know exactly which TXT was saved
-- `_safe_move()` — atomic write via temp file, fallback to timestamped filename on `PermissionError`
-
----
-
-## [1.2.0] — 2026-06-10
-
-### New Features
-- **26AS TXT download** — after PDF, switches TRACES to Text format and downloads the ZIP-protected TXT file
-- **Auto-convert after batch** — `_auto_convert_26as()` triggered on batch completion
-- **Tools menu** — manual "Convert 26AS TXT to Excel…" file picker
-- **Batch progress dialog** — per-client status, Save Path column, Open Folder / Download Report buttons
-- **Assessment Year management** — add/remove/reorder AYs via ⚙ Manage Years dialog
-- **AIS status bar** — shows queued count and wait-time reminder after AIS request batch
-
-### Bug Fixes
 - **Assessment Year dropdown closes immediately** — 300 ms debounce in `StyledComboBox` (B-01, fixed)
 - **AIS/TIS downloads silently failing** — `expect_download` was called on `BrowserContext` instead of `Page`; fixed all 7 call sites
 - **Hamburger nav collapse** — `_open_hamburger()` scrolls to top and clicks `#hamburgerOpen` before navigating
 
 ### Internal
+- Migrated 26AS Excel writer from openpyxl to xlsxwriter (streaming, constant memory, ~10× faster)
+- `downloader_26as.py` returns `(ok, err_msg, txt_path)` tuple so callers know exactly which TXT was saved
+- `_safe_move()` — atomic write via temp file, fallback to timestamped filename on `PermissionError`
 - Real Google Chrome (`channel="chrome"`) required for AIS/TIS; bundled Chromium fallback with warning
 - Fixed `viewport={"width":1600,"height":900}`, removed `--start-maximized` conflict
 

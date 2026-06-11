@@ -179,4 +179,4 @@ This was fixed in v1.1.0. A 300ms debounce now prevents the dropdown from closin
 
 ### Q: The output directory shows a Linux path on Windows after running in WSL.
 
-Fixed in v1.2.0. The app now always resolves the output directory to the Windows-native Downloads path when `USERPROFILE` is set. If you stored a WSL path in the vault previously, reset the output directory in Settings.
+Fixed in v1.4.0. The app now always resolves the output directory to the Windows-native Downloads path when `USERPROFILE` is set. If you stored a WSL path in the vault previously, reset the output directory in Settings.
