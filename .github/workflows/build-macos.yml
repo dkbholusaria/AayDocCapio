@@ -1,0 +1,115 @@
+name: Build macOS App
+
+# Triggers:
+#   1. Push a tag like v1.4.0  →  builds + attaches .zip to a GitHub Release
+#   2. Actions tab → Run workflow  →  manual test build (no release created)
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    name: Build macOS App Bundle
+    runs-on: macos-latest        # Apple Silicon (arm64) runner
+
+    steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────────
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      # ── 2. Python ──────────────────────────────────────────────────────────
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ── 3. Install runtime + build deps ────────────────────────────────────
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install nuitka ordered-set zstandard
+
+      # ── 4. Install Playwright Chromium ─────────────────────────────────────
+      - name: Install Playwright browsers
+        run: playwright install chromium
+
+      # ── 5. Smoke test — make sure the app imports cleanly ──────────────────
+      - name: Smoke test
+        run: |
+          python -c "
+          import app
+          import as26_converter
+          from automation import browser, downloader, downloader_26as, downloader_ais_tis
+          from vault import Vault
+          print('All imports OK')
+          "
+
+      # ── 6. Nuitka compile → .app bundle ────────────────────────────────────
+      - name: Build with Nuitka
+        run: |
+          python -m nuitka \
+            --standalone \
+            --macos-create-app-bundle \
+            --macos-app-name="AayDocCapio" \
+            --macos-app-version="1.4.0" \
+            --enable-plugin=pyqt6 \
+            --include-data-dir=resources=resources \
+            --include-data-file=assessment_years.json=assessment_years.json \
+            --include-package=automation \
+            --include-module=vault \
+            --include-module=as26_converter \
+            --include-module=themes \
+            --output-dir=dist \
+            --assume-yes-for-downloads \
+            app.py
+
+      # ── 7. Rename output folder to AayDocCapio.app ─────────────────────────
+      - name: Rename app bundle
+        run: |
+          ls dist/
+          # Nuitka names it app.app — rename to AayDocCapio.app
+          if [ -d "dist/app.app" ]; then
+            mv dist/app.app dist/AayDocCapio.app
+          fi
+
+      # ── 8. Copy Playwright browsers into the bundle ─────────────────────────
+      # Playwright looks for browsers relative to the executable. Bundle them
+      # so the app works without a separate `playwright install` on the user's Mac.
+      - name: Bundle Playwright browsers
+        run: |
+          BROWSERS_SRC="$HOME/Library/Caches/ms-playwright"
+          BUNDLE_RESOURCES="dist/AayDocCapio.app/Contents/Resources"
+          if [ -d "$BROWSERS_SRC" ]; then
+            mkdir -p "$BUNDLE_RESOURCES/ms-playwright"
+            # Copy only chromium (skip firefox/webkit to keep size down)
+            find "$BROWSERS_SRC" -maxdepth 1 -name "chromium*" -exec cp -r {} "$BUNDLE_RESOURCES/ms-playwright/" \;
+            echo "Chromium bundled."
+          else
+            echo "WARNING: Playwright browser cache not found at $BROWSERS_SRC — skipping bundle step."
+          fi
+
+      # ── 9. Zip the .app for distribution ───────────────────────────────────
+      - name: Zip app bundle
+        run: |
+          cd dist
+          zip -r --symlinks AayDocCapio-macos-arm64-v1.4.0.zip AayDocCapio.app
+          echo "Archive size: $(du -sh AayDocCapio-macos-arm64-v1.4.0.zip | cut -f1)"
+
+      # ── 10. Upload artifact (always available for download) ─────────────────
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AayDocCapio-macos-arm64-v1.4.0
+          path: dist/AayDocCapio-macos-arm64-v1.4.0.zip
+          retention-days: 30
+
+      # ── 11. Attach to GitHub Release (only when triggered by a version tag) ─
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/AayDocCapio-macos-arm64-v1.4.0.zip
+          generate_release_notes: false
