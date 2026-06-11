@@ -2946,22 +2946,18 @@ class AayDocCapioApp(QMainWindow):
 
     def _auto_convert_26as(self):
         from as26_converter import convert_26as_txt
-        root = self.vault.get_setting("download_root_dir", "")
-        if not root:
+        txts = getattr(self, "_batch_26as_txts", [])
+        if not txts:
             return
         converted = 0
-        for dirpath, _, files in os.walk(root):
-            for fn in files:
-                if fn.lower().endswith(".txt") and "26as" in fn.lower():
-                    txt = os.path.join(dirpath, fn)
-                    xlsx = txt.rsplit(".", 1)[0] + ".xlsx"
-                    if os.path.exists(xlsx):
-                        continue
-                    try:
-                        convert_26as_txt(txt, log_callback=self.log)
-                        converted += 1
-                    except Exception as e:
-                        self.log(f"[Warning] Auto-convert failed for {fn}: {e}")
+        for txt in txts:
+            if not os.path.exists(txt):
+                continue
+            try:
+                convert_26as_txt(txt, log_callback=self.log)
+                converted += 1
+            except Exception as e:
+                self.log(f"[Warning] Auto-convert failed for {os.path.basename(txt)}: {e}")
         if converted:
             self.log(f"[Victory] Auto-converted {converted} 26AS TXT file(s) to Excel + HTML.")
 
@@ -2969,6 +2965,7 @@ class AayDocCapioApp(QMainWindow):
         self.log(f"[System] Batch: {len(targets)} client(s) | AY: {ay} | Mode: {mode}")
         self._ais_results = {}
         self._last_errors = {}
+        self._batch_26as_txts = []
 
         _client_out = {}   # pan → out path, populated below
 
@@ -3021,9 +3018,11 @@ class AayDocCapioApp(QMainWindow):
                     # ── 26AS ─────────────────────────────────────────────────────
                     if mode == "26as" and self.is_running:
                         set_status(pan, "⏳ Downloading 26AS...")
-                        ok, err_msg = await download_26as(page, ay, out, self.log, pan=pan, dob=dob)
+                        ok, err_msg, txt_path = await download_26as(page, ay, out, self.log, pan=pan, dob=dob)
                         if ok:
                             set_status(pan, "✅ 26AS Downloaded")
+                            if txt_path:
+                                self._batch_26as_txts.append(txt_path)
                         else:
                             set_status(pan, f"❌ 26AS Failed — {err_msg}")
 

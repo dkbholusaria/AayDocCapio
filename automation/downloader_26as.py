@@ -42,7 +42,7 @@ async def _open_hamburger(page: Page, log_callback):
             continue
 
 
-async def download_26as(page: Page, assessment_year: str, download_dir: str, log_callback, pan: str = "", dob: str = "") -> tuple[bool, str]:
+async def download_26as(page: Page, assessment_year: str, download_dir: str, log_callback, pan: str = "", dob: str = "") -> tuple[bool, str, str]:
     try:
         await _open_hamburger(page, log_callback)
         
@@ -55,7 +55,7 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
             
         log_callback("[26AS] Hovering over e-File menu...")
         efile = page.locator("//*[normalize-space(.)='e-File']").first
-        await efile.wait_for(state="visible", timeout=30000)
+        await efile.wait_for(state="visible", timeout=60000)
         await efile.hover()
         await asyncio.sleep(1.0)
         log_callback("[26AS] Hovering over Income Tax Returns...")
@@ -191,6 +191,7 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
         # Switch View As to "Text" and re-submit — TRACES streams the .txt directly
         log_callback("[26AS] Switching to Text format for TXT download...")
         await update_browser_status(traces_page, "TRACES: Downloading TXT file...")
+        _saved_txt = ""
         try:
             txt_fmt_frame = await _find_frame(traces_page, "select#viewType", timeout=10000)
             if txt_fmt_frame:
@@ -219,13 +220,27 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
             else:
                 os.replace(tmp_path, output_txt)
                 log_callback(f"[Victory] Form 26AS TXT downloaded: {os.path.basename(output_txt)}")
+            _saved_txt = output_txt
         except Exception as txt_err:
             log_callback(f"[Warning] TXT download skipped: {txt_err}")
 
         await update_browser_status(traces_page, "TRACES: 26AS Download Complete!")
         await asyncio.sleep(1)
         await traces_page.close()
-        return True, ""
+        return True, "", _saved_txt
     except Exception as e:
-        log_callback(f"[Error] Failed to download Form 26AS: {e}")
-        return False, str(e)
+        err = str(e)
+        log_callback(f"[Error] Failed to download Form 26AS: {err}")
+        # Produce a short, human-readable reason for the status column
+        if "Timeout" in err or "timeout" in err:
+            if "e-File" in err or "normalize-space" in err:
+                reason = "Timed out — ITD dashboard still loading (try again)"
+            else:
+                reason = "Timed out waiting for portal response (try again)"
+        elif "net::" in err.lower():
+            reason = "Network error — check internet connection"
+        elif "Target page" in err or "browser has been closed" in err:
+            reason = "Browser closed unexpectedly"
+        else:
+            reason = err[:80] if len(err) <= 80 else err[:77] + "..."
+        return False, reason, ""
