@@ -64,7 +64,7 @@ What it does:
 3. Installs runtime + build dependencies
 4. Runs a smoke test (import check)
 5. Compiles with Nuitka → `dist\AayDocCapio\`
-6. Builds Inno Setup installer → `installer_output\AayDocCapio_Setup_v1.0.0.exe`
+6. Builds Inno Setup installer → `installer_output\AayDocCapio_Setup_v1.4.0.exe`
 7. Builds WiX MSI → `installer_output\AayDocCapio.msi`
 
 Steps 6 and 7 are skipped gracefully if Inno Setup / WiX are not installed.
@@ -110,7 +110,7 @@ cd C:\AayDocCapio-build
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" scripts\installer.iss
 ```
 
-Output: `installer_output\AayDocCapio_Setup_v1.0.0.exe`
+Output: `installer_output\AayDocCapio_Setup_v1.4.0.exe`
 
 What the installer does for the end user:
 
@@ -163,7 +163,7 @@ Produces the Inno Setup `.exe` installer only. Useful for quick local builds wit
 | --- | --- |
 | `dist\AayDocCapio\AayDocCapio.exe` | Compiled standalone executable |
 | `dist\AayDocCapio\*` | Full app folder (portable, no install needed) |
-| `installer_output\AayDocCapio_Setup_v1.0.0.exe` | Inno Setup installer for end users |
+| `installer_output\AayDocCapio_Setup_v1.4.0.exe` | Inno Setup installer for end users |
 | `installer_output\AayDocCapio.msi` | WiX MSI for enterprise / silent deployment |
 
 ---

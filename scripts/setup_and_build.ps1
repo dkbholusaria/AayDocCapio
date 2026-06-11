@@ -188,8 +188,8 @@ if (-not $iscc) {
         Write-Host "[Error] Inno Setup build failed."
         exit 1
     }
-    $setupSize = [math]::Round((Get-Item "installer_output\AayDocCapio_Setup_v1.0.0.exe").Length / 1MB, 1)
-    Write-Host "[OK] Installer created: installer_output\AayDocCapio_Setup_v1.0.0.exe (${setupSize} MB)"
+    $setupSize = [math]::Round((Get-Item "installer_output\AayDocCapio_Setup_v1.4.0.exe").Length / 1MB, 1)
+    Write-Host "[OK] Installer created: installer_output\AayDocCapio_Setup_v1.4.0.exe (${setupSize} MB)"
 }
 
 # ── Step 7: WiX MSI ──────────────────────────────────────────────
@@ -232,6 +232,6 @@ Write-Host "  Build complete! $(Get-Date -Format 'HH:mm:ss')"
 Write-Host "========================================================"
 Write-Host "  Build dir  : $WIN_DEST"
 Write-Host "  App folder : dist\AayDocCapio\"
-Write-Host "  Installer  : installer_output\AayDocCapio_Setup_v1.0.0.exe"
+Write-Host "  Installer  : installer_output\AayDocCapio_Setup_v1.4.0.exe"
 Write-Host "  MSI        : installer_output\AayDocCapio.msi"
 Write-Host "========================================================"
