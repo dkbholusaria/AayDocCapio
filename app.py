@@ -2082,6 +2082,7 @@ class AayDocCapioApp(QMainWindow):
             status_text = hist.get("status", "—")
             status_item = QTableWidgetItem(status_text)
             status_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            status_item.setToolTip(status_text)
             if status_text.startswith("✅"):
                 status_item.setForeground(QColor("#15803D"))
             elif status_text.startswith("❌"):
