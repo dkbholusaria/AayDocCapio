@@ -49,7 +49,9 @@ def _parse(txt_path: str) -> dict:
 
     # ── File header (lines 0-2) ────────────────────────────────────────────
     header_keys   = [c.strip() for c in lines[2].split("^") if c.strip()]
-    header_values = [c.strip() for c in lines[3].split("^") if c.strip()] if len(lines) > 3 else []
+    header_values = [c.strip() for c in lines[3].split("^")] if len(lines) > 3 else []
+    # Drop leading empty from values (line starts with content, no leading ^)
+    # but preserve internal empties so positional zip aligns correctly
     header = dict(zip(header_keys, header_values))
 
     # ── Split into Part blocks ─────────────────────────────────────────────
