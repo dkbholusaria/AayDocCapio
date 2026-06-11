@@ -1016,196 +1016,204 @@ const TAB_IDS = {tab_ids_js};
 
 # ── Excel writer ──────────────────────────────────────────────────────────────
 
-def _safe_save(wb, xlsx_path: str) -> str:
-    """Save workbook to xlsx_path. If the file is locked (open in Excel),
-    fall back to a timestamped filename so the user still gets their file.
-    Returns the actual path written.
-    """
-    import tempfile, shutil
-    # Write to a temp file first — this always succeeds regardless of lock
-    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".xlsx",
-                                        dir=os.path.dirname(xlsx_path) or ".")
-    os.close(tmp_fd)
-    try:
-        wb.save(tmp_path)
-    except Exception:
-        os.unlink(tmp_path)
-        raise
-
-    # Try to move temp → target
+def _safe_move(tmp_path: str, xlsx_path: str) -> str:
+    """Move tmp_path → xlsx_path. On PermissionError (file open in Excel)
+    rename to a timestamped alternative. Returns the final path."""
+    import shutil
     try:
         shutil.move(tmp_path, xlsx_path)
         return xlsx_path
     except PermissionError:
-        # Target locked — save alongside with timestamp suffix
         base, ext = os.path.splitext(xlsx_path)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        alt_path = f"{base}_{ts}{ext}"
-        shutil.move(tmp_path, alt_path)
-        return alt_path
+        alt = f"{base}_{ts}{ext}"
+        shutil.move(tmp_path, alt)
+        return alt
 
 
 def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = "") -> str:
-    """Returns the actual path the file was saved to (may differ if original was locked)."""
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-    from openpyxl.utils import get_column_letter
-
-    wb = Workbook()
-    wb.remove(wb.active)
+    """Returns the actual path the file was saved to (may differ if original was locked).
+    Uses xlsxwriter for streaming writes — handles 200K+ row files efficiently.
+    """
+    import tempfile
+    import xlsxwriter
 
     header = parsed["header"]
     parts  = parsed["parts"]
 
-    # ── Colour / style constants ───────────────────────────────────────────
-    C_NAVY   = "FF0A1628"
-    C_GREEN  = "FF1a5c32"
-    C_SUBTTL = "FFd0e8c8"
-    C_RED_BG = "FFFFF0F0"
-    C_RED_FG = "FF880000"
-    C_LABEL  = "FFF0F4F0"
-
-    _thin = Side(style="thin", color="FFD0D0D0")
-    _thick_top = Side(style="medium", color="FF1a5c32")
-
-    def _border():
-        return Border(left=_thin, right=_thin, top=_thin, bottom=_thin)
-
-    def _border_subtotal():
-        return Border(left=_thin, right=_thin, top=_thick_top, bottom=_thin)
-
-    def _f(bold=False, size=10, color="FF000000", italic=False):
-        return Font(name="Calibri", bold=bold, size=size, color=color, italic=italic)
-
-    def _fill(color):
-        return PatternFill("solid", fgColor=color)
-
-    def _al(h="left", v="center", wrap=False):
-        return Alignment(horizontal=h, vertical=v, wrap_text=wrap)
-
-    def _style_hdr(ws, row, ncols):
-        for c in range(1, ncols + 1):
-            cell = ws.cell(row=row, column=c)
-            cell.font  = _f(bold=True, color="FFFFFFFF")
-            cell.fill  = _fill(C_GREEN)
-            cell.alignment = _al("center")
-            cell.border = _border()
-
-    def _style_subtotal(ws, row, ncols):
-        for c in range(1, ncols + 1):
-            cell = ws.cell(row=row, column=c)
-            cell.font  = _f(bold=True, color="FF1a3a22")
-            cell.fill  = _fill(C_SUBTTL)
-            cell.border = _border_subtotal()
-
-    def _style_grandtotal(ws, row, ncols):
-        for c in range(1, ncols + 1):
-            cell = ws.cell(row=row, column=c)
-            cell.font  = _f(bold=True, color="FFFFFFFF")
-            cell.fill  = _fill(C_NAVY)
-            cell.border = _border()
-
-    def _style_nonfinal(ws, row, ncols):
-        for c in range(1, ncols + 1):
-            cell = ws.cell(row=row, column=c)
-            cell.fill  = _fill(C_RED_BG)
-            cell.font  = _f(color=C_RED_FG)
-
-    def _write_str(ws, row, col, val, bold=False, color="FF000000", fill=None, align=None):
-        cell = ws.cell(row=row, column=col, value=str(val) if val is not None else "")
-        cell.font   = _f(bold=bold, color=color)
-        cell.fill   = fill or PatternFill()
-        cell.alignment = align or _al()
-        cell.border = _border()
-
-    def _write_num(ws, row, col, val):
-        v = _fmt_num(str(val)) if not isinstance(val, (int, float)) else val
-        cell = ws.cell(row=row, column=col, value=v if v is not None else 0)
-        cell.number_format = '#,##0.00'
-        cell.alignment = _al("right")
-        cell.font  = _f()
-        cell.border = _border()
-
-    def _write_formula(ws, row, col, formula, number_format='#,##0.00'):
-        cell = ws.cell(row=row, column=col, value=formula)
-        cell.number_format = number_format
-        cell.alignment = _al("right")
-        cell.font  = _f(bold=True, color="FF1a3a22")
-        cell.border = _border_subtotal()
-
-    def _autofit(ws):
-        col_widths = {}
-        for row in ws.iter_rows():
-            for cell in row:
-                if cell.value is not None:
-                    txt = str(cell.value)
-                    # strip Excel formula for width calc
-                    if txt.startswith("="):
-                        txt = txt.split('"')[1] if '"' in txt else txt
-                    col_widths[cell.column] = min(
-                        max(col_widths.get(cell.column, 8), len(txt) + 2), 52)
-        for col, w in col_widths.items():
-            ws.column_dimensions[get_column_letter(col)].width = w
-
-    def _brand_row(ws, ncols, ay, assessee=""):
-        """Row 1: left cell = '26AS — Assessee — AY', right cell = AayDoc branding.
-        Both on navy background."""
-        last_col = get_column_letter(ncols)
-
-        # Left: title spanning first 4 cols (or all if ncols <= 4)
-        split_col = min(4, ncols - 1) if ncols > 1 else 1
-        split_letter = get_column_letter(split_col)
-        if split_col > 1:
-            ws.merge_cells(f"A1:{split_letter}1")
-        left = ws["A1"]
-        left.value = f"Form 26AS  —  {assessee}  —  AY {ay}"
-        left.font  = _f(bold=True, size=10, color="FFFFFFFF")
-        left.fill  = _fill(C_NAVY)
-        left.alignment = _al("left")
-
-        # Right: branding spanning remaining cols
-        right_start = get_column_letter(split_col + 1)
-        if split_col + 1 <= ncols:
-            if split_col + 1 < ncols:
-                ws.merge_cells(f"{right_start}1:{last_col}1")
-            right = ws[f"{right_start}1"]
-            right.value = f"AayDoc Capio™  ·  {report_ts}  ·  © 2026  ·  CA. Deepak Bhholusaria"
-            right.font  = _f(bold=False, size=8, color="FF94A3B8")
-            right.fill  = _fill(C_NAVY)
-            right.alignment = _al("right")
-
-        ws.row_dimensions[1].height = 16
-
-    def _group_rows(ws, start, end):
-        """Add outline grouping so detail rows can be collapsed under subtotal."""
-        for r in range(start, end + 1):
-            ws.row_dimensions[r].outline_level = 1
-            ws.row_dimensions[r].hidden = False
-        ws.sheet_properties.outlinePr.summaryBelow = True
-
-    # ── Assessee Details ───────────────────────────────────────────────────
     ay            = header.get("Assessment Year", "")
     assessee_name = header.get("Name of Assessee", "")
-    ws_ass = wb.create_sheet("Assessee Details")
-    ws_ass.sheet_properties.tabColor = "1a5c32"
+    assessee_pan  = header.get("Permanent Account Number (PAN)", "")
 
-    # Title row
-    ws_ass.merge_cells("A1:B1")
-    ws_ass["A1"] = f"Form 26AS  —  {assessee_name}  —  AY {ay}"
-    ws_ass["A1"].font  = _f(bold=True, size=13, color="FFFFFFFF")
-    ws_ass["A1"].fill  = _fill(C_NAVY)
-    ws_ass["A1"].alignment = _al("center")
-    ws_ass["A1"].border = _border()
-    ws_ass.row_dimensions[1].height = 24
+    # xlsxwriter writes directly to a file path — use a temp file then move
+    tmp_fd, tmp_path = tempfile.mkstemp(
+        suffix=".xlsx", dir=os.path.dirname(xlsx_path) or ".")
+    os.close(tmp_fd)
 
-    # Branding sub-line
-    ws_ass.merge_cells("A2:B2")
-    ws_ass["A2"] = "AayDoc Capio™  ·  © 2026  ·  Developed by CA. Deepak Bhholusaria"
-    ws_ass["A2"].font  = _f(bold=False, size=8, color="FF94A3B8")
-    ws_ass["A2"].fill  = _fill(C_NAVY)
-    ws_ass["A2"].alignment = _al("center")
-    ws_ass["A2"].border = _border()
-    ws_ass.row_dimensions[2].height = 14
+    wb = xlsxwriter.Workbook(tmp_path, {
+        "strings_to_numbers": False,
+        "strings_to_formulas": True,
+        "constant_memory": False,   # keep in RAM for random-access sheet writes
+        "default_date_format": "dd-mmm-yyyy",
+    })
+
+    # ── Colour constants (xlsxwriter uses HTML hex without FF prefix) ──────
+    NAVY   = "#0A1628"
+    GREEN  = "#1a5c32"
+    SUBTTL = "#d0e8c8"
+    RED_BG = "#fff0f0"
+    RED_FG = "#880000"
+    LABEL  = "#f0f4f0"
+    WHITE  = "#ffffff"
+    GREY   = "#94A3B8"
+    LINK_C = "#1155CC"
+    GREEN_NUM = "#7fff8a"
+    GREEN_TXT = "#1a3a22"
+
+    # ── Format factory — create once, reuse everywhere ─────────────────────
+    def _fmt(bold=False, size=10, color="#000000", italic=False,
+             bg=None, align="left", valign="vcenter", wrap=False,
+             num_fmt=None, border=1, border_color="#D0D0D0",
+             top_color=None, underline=False):
+        d = {
+            "font_name": "Calibri", "font_size": size,
+            "bold": bold, "italic": italic,
+            "font_color": color,
+            "align": align, "valign": valign,
+            "text_wrap": wrap,
+            "left": border,   "right": border,
+            "top": border,    "bottom": border,
+            "left_color": border_color, "right_color": border_color,
+            "top_color":  top_color or border_color,
+            "bottom_color": border_color,
+        }
+        if bg:    d["bg_color"] = bg
+        if num_fmt: d["num_format"] = num_fmt
+        if underline: d["underline"] = 1
+        return wb.add_format(d)
+
+    # Pre-build all formats used in data rows (minimise add_format calls)
+    F_DEFAULT   = _fmt()
+    F_BOLD      = _fmt(bold=True)
+    F_HDR       = _fmt(bold=True, color=WHITE, bg=GREEN, align="center")
+    F_SUBTOTAL  = _fmt(bold=True, color=GREEN_TXT, bg=SUBTTL, align="right",
+                       top_color=GREEN, border=1)
+    F_GRANDTOT  = _fmt(bold=True, color=WHITE, bg=NAVY, align="right")
+    F_GRANDNUM  = _fmt(bold=True, color=GREEN_NUM, bg=NAVY, align="right",
+                       num_fmt="#,##0.00")
+    F_NONFIN    = _fmt(color=RED_FG, bg=RED_BG)
+    F_NONFIN_NUM= _fmt(color=RED_FG, bg=RED_BG, align="right", num_fmt="#,##0.00")
+    F_NUM       = _fmt(align="right", num_fmt="#,##0.00")
+    F_NUM_BOLD  = _fmt(bold=True, color=GREEN_TXT, bg=SUBTTL, align="right",
+                       num_fmt="#,##0.00", top_color=GREEN)
+    F_LABEL     = _fmt(bold=True, bg=LABEL)
+    F_SECTION   = _fmt(bold=True, color=WHITE, bg=GREEN)
+    F_NOTES     = _fmt(size=10, bg="#fffff9f0", valign="top", wrap=True)
+    F_LINK      = _fmt(color=LINK_C, underline=True)
+    F_NAVY_BOLD = _fmt(bold=True, color=WHITE, bg=NAVY)
+    F_NAVY_CTR  = _fmt(bold=True, color=WHITE, bg=NAVY, align="center")
+    F_BRAND_L   = _fmt(bold=True, size=10, color=WHITE, bg=NAVY, align="left")
+    F_BRAND_R   = _fmt(size=8, color=GREY, bg=NAVY, align="right")
+    F_TITLE     = _fmt(bold=True, size=13, color=WHITE, bg=NAVY, align="center")
+    F_SUBTITLE  = _fmt(size=8, color=GREY, bg=NAVY, align="center")
+    F_SUBTOT_LABEL = _fmt(bold=True, color=GREEN_TXT, bg=SUBTTL, align="right",
+                          top_color=GREEN)
+    F_GRAND_LABEL  = _fmt(bold=True, color=WHITE, bg=NAVY, align="right")
+
+    # ── Helpers ────────────────────────────────────────────────────────────
+    def _brand_row(ws, ncols, assessee=""):
+        """Row 0 (xlsxwriter 0-indexed): left title | right branding, navy bg."""
+        split = min(3, ncols - 1) if ncols > 1 else 0  # 0-indexed col
+        ws.merge_range(0, 0, 0, split,
+                       f"Form 26AS  —  {assessee}  —  AY {ay}", F_BRAND_L)
+        if split + 1 < ncols:
+            ws.merge_range(0, split + 1, 0, ncols - 1,
+                           f"AayDoc Capio™  ·  {report_ts}  ·  © 2026  ·  CA. Deepak Bhholusaria",
+                           F_BRAND_R)
+        elif split + 1 == ncols - 1:
+            ws.write(0, ncols - 1,
+                     f"AayDoc Capio™  ·  {report_ts}  ·  © 2026  ·  CA. Deepak Bhholusaria",
+                     F_BRAND_R)
+        ws.set_row(0, 16)
+
+    def _hdr_row(ws, cols, row=1):
+        for c, h in enumerate(cols):
+            ws.write(row, c, h, F_HDR)
+        ws.set_row(row, 15)
+
+    def _autofit(ws, col_data):
+        """col_data: list of max-char-widths per column (0-indexed)."""
+        for ci, w in enumerate(col_data):
+            ws.set_column(ci, ci, min(max(w + 2, 8), 52))
+
+    def _col_tracker(ncols):
+        """Returns a list to track max content width per column."""
+        return [8] * ncols
+
+    def _track(widths, col, val):
+        if val:
+            widths[col] = max(widths[col], len(str(val)))
+
+    def _ws(name, tab="#1a5c32"):
+        w = wb.add_worksheet(name)
+        w.set_tab_color(tab)
+        return w
+
+    def _subtotal_row(ws, row, ncols, label, num_cols, detail_start, detail_end, nf=False):
+        """Write subtotal with SUM formulas. num_cols = list of 0-indexed col indices."""
+        merge_to = min(ncols - len(num_cols) - 1, ncols - 1)
+        if merge_to > 0:
+            ws.merge_range(row, 0, row, merge_to, label, F_SUBTOT_LABEL)
+        else:
+            ws.write(row, 0, label, F_SUBTOT_LABEL)
+        for ci in range(ncols):
+            if ci in num_cols:
+                if detail_start <= detail_end:
+                    ws.write_formula(row, ci,
+                        f"=SUM({_cl(ci)}{detail_start+1}:{_cl(ci)}{detail_end+1})",
+                        F_NUM_BOLD)
+                else:
+                    ws.write(row, ci, 0, F_NUM_BOLD)
+            elif ci > merge_to:
+                ws.write(row, ci, "", F_SUBTOTAL)
+        ws.set_row(row, 14)
+
+    def _grandtotal_row(ws, row, ncols, label, num_cols, sub_rows):
+        """Grand total row summing subtotal rows. sub_rows = list of 0-indexed row nums."""
+        merge_to = min(ncols - len(num_cols) - 1, ncols - 1)
+        if merge_to > 0:
+            ws.merge_range(row, 0, row, merge_to, label, F_GRAND_LABEL)
+        else:
+            ws.write(row, 0, label, F_GRAND_LABEL)
+        for ci in range(ncols):
+            if ci in num_cols:
+                if sub_rows:
+                    refs = "+".join(f"{_cl(ci)}{sr+1}" for sr in sub_rows)
+                    ws.write_formula(row, ci, f"={refs}", F_GRANDNUM)
+                else:
+                    ws.write(row, ci, 0, F_GRANDNUM)
+            elif ci > merge_to:
+                ws.write(row, ci, "", F_GRANDTOT)
+        ws.set_row(row, 14)
+
+    def _cl(col_idx):
+        """0-indexed column index → Excel letter (A, B, ... Z, AA ...)."""
+        result = ""
+        n = col_idx + 1
+        while n:
+            n, r = divmod(n - 1, 26)
+            result = chr(65 + r) + result
+        return result
+
+    # ── Assessee Details sheet ─────────────────────────────────────────────
+    ws_ass = _ws("Assessee Details")
+    ws_ass.merge_range(0, 0, 0, 1,
+                       f"Form 26AS  —  {assessee_name}  —  AY {ay}", F_TITLE)
+    ws_ass.set_row(0, 28)
+    ws_ass.merge_range(1, 0, 1, 1,
+                       "AayDoc Capio™  ·  © 2026  ·  Developed by CA. Deepak Bhholusaria",
+                       F_SUBTITLE)
+    ws_ass.set_row(1, 14)
 
     fields_map = [
         ("ASSESSEE INFORMATION", None),
@@ -1225,39 +1233,22 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
         ("State",           "Statecode"),
         ("PIN Code",        "Pin Code"),
     ]
-    r = 3
+    r = 2  # 0-indexed
     for label, key in fields_map:
         if key is None:
-            ws_ass.merge_cells(f"A{r}:B{r}")
-            ws_ass[f"A{r}"] = label
-            ws_ass[f"A{r}"].font   = _f(bold=True, color="FFFFFFFF")
-            ws_ass[f"A{r}"].fill   = _fill(C_GREEN)
-            ws_ass[f"A{r}"].alignment = _al()
-            ws_ass[f"A{r}"].border = _border()
+            ws_ass.merge_range(r, 0, r, 1, label, F_SECTION)
         else:
-            ws_ass[f"A{r}"] = label
-            ws_ass[f"A{r}"].font   = _f(bold=True)
-            ws_ass[f"A{r}"].fill   = _fill(C_LABEL)
-            ws_ass[f"A{r}"].alignment = _al()
-            ws_ass[f"A{r}"].border = _border()
-            ws_ass[f"B{r}"] = report_ts if key == "__report_ts__" else header.get(key, "")
-            ws_ass[f"B{r}"].font   = _f()
-            ws_ass[f"B{r}"].alignment = _al()
-            ws_ass[f"B{r}"].border = _border()
+            ws_ass.write(r, 0, label, F_LABEL)
+            val = report_ts if key == "__report_ts__" else header.get(key, "")
+            ws_ass.write(r, 1, val, F_DEFAULT)
         r += 1
 
-    ws_ass.column_dimensions["A"].width = 35
-    ws_ass.column_dimensions["B"].width = 48
+    ws_ass.set_column(0, 0, 35)
+    ws_ass.set_column(1, 1, 48)
 
-    # ── Notes section ──────────────────────────────────────────────────────
-    ws_ass.merge_cells(f"A{r}:B{r}")
-    ws_ass[f"A{r}"] = "NOTES"
-    ws_ass[f"A{r}"].font   = _f(bold=True, color="FFFFFFFF")
-    ws_ass[f"A{r}"].fill   = _fill(C_GREEN)
-    ws_ass[f"A{r}"].alignment = _al()
-    ws_ass[f"A{r}"].border = _border()
+    # Notes
+    ws_ass.merge_range(r, 0, r, 1, "NOTES", F_SECTION)
     r += 1
-
     notes = (
         "· All amounts in INR\n"
         "· Only Final (F) status bookings are eligible for tax credit. "
@@ -1268,108 +1259,69 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
         "LinkedIn: https://www.linkedin.com/in/bhholusaria/\n"
         "Email: deepak@ailearrning.guru"
     )
-    ws_ass.merge_cells(f"A{r}:B{r}")
-    cell = ws_ass[f"A{r}"]
-    cell.value = notes
-    cell.font  = _f(size=10)
-    cell.fill  = _fill("FFFFF9F0")
-    cell.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
-    cell.border = _border()
-    ws_ass.row_dimensions[r].height = 72
+    ws_ass.merge_range(r, 0, r, 1, notes, F_NOTES)
+    ws_ass.set_row(r, 90)
 
-    # ── Generic deductor+detail part writer (Parts I, II, III, VI) ────────
-    def write_deductor_part(roman, cols, num_cols,
-                            get_name, get_tan,
-                            get_detail_vals,     # fn(ded, detail) -> list of (col_idx, val, is_num)
-                            get_sum_vals,        # fn(ded) -> list of (col_idx, sum_val)
-                            get_grand_vals,      # fn(rows) -> list of (col_idx, sum_val)
+    # ── Generic deductor+detail part writer ───────────────────────────────
+    def write_deductor_part(roman, cols, num_col_indices,
+                            get_name, get_tan, get_detail_vals,
                             detail_status_key="Status of Booking"):
-        meta  = PART_META.get(roman, {})
-        pdata = parts[roman]
-        ncols = len(cols)
-        ws    = wb.create_sheet(f"Part-{roman}")
-        ws.sheet_properties.tabColor = "1a5c32"
+        """
+        num_col_indices: list of 0-indexed column positions that hold numbers.
+        get_detail_vals: fn(ded, detail) -> list of (col_0idx, value, is_num)
+        """
+        pdata  = parts[roman]
+        ncols  = len(cols)
+        num_set = set(num_col_indices)
+        ws = _ws(f"Part-{roman}")
+        widths = _col_tracker(ncols)
 
-        _brand_row(ws, ncols, ay, assessee=assessee_name)
-        r = 2
-        for c, h in enumerate(cols, 1):
-            _write_str(ws, r, c, h)
-        _style_hdr(ws, r, ncols)
-        ws.freeze_panes = f"A{r+1}"
-        r += 1
+        _brand_row(ws, ncols, assessee=assessee_name)
+        _hdr_row(ws, cols, row=1)
+        for ci, h in enumerate(cols):
+            _track(widths, ci, h)
+        ws.freeze_panes(2, 0)
 
+        r = 2  # 0-indexed; data starts at row index 2 (Excel row 3)
         sr = 0
+        subtotal_rows = []
+
         for ded in pdata["rows"]:
             sr += 1
             name    = get_name(ded)
             tan     = get_tan(ded)
             details = ded.get("_details", [])
-            row_ids[roman][sr] = {"name": name, "tan": tan, "xl_row": r}
+            row_ids[roman][sr] = {"name": name, "tan": tan, "xl_row": r + 1}  # 1-indexed for formulas
             detail_start = r
+            has_nf = _non_final_class(details)
 
             for d in details:
                 status = d.get(detail_status_key, "").strip()
+                nf = status in NON_FINAL_STATUSES
                 vals = get_detail_vals(ded, d)
-                for col_idx, val, is_num in vals:
+                for ci, val, is_num in vals:
+                    _track(widths, ci, val)
                     if is_num:
-                        _write_num(ws, r, col_idx, val or 0)
+                        ws.write(r, ci, val or 0, F_NONFIN_NUM if nf else F_NUM)
                     else:
-                        _write_str(ws, r, col_idx, val or "")
-                if status in NON_FINAL_STATUSES:
-                    _style_nonfinal(ws, r, ncols)
+                        ws.write(r, ci, str(val) if val is not None else "",
+                                 F_NONFIN if nf else F_DEFAULT)
                 r += 1
 
-            # Subtotal row with SUM formulas
             detail_end = r - 1
-            nf_warn = " ⚠" if _non_final_class(details) else ""
-            merge_to = get_column_letter(min(ncols - len(num_cols), ncols))
-            ws.merge_cells(f"A{r}:{merge_to}{r}")
-            _write_str(ws, r, 1,
-                       f"Sr. {sr}  ·  Subtotal — {name}{nf_warn}",
-                       bold=True)
-            ws[f"A{r}"].alignment = _al("right")
-            for col_idx, _ in get_sum_vals(ded):
-                col_letter = get_column_letter(col_idx)
-                if detail_start <= detail_end:
-                    _write_formula(ws, r, col_idx,
-                                   f"=SUM({col_letter}{detail_start}:{col_letter}{detail_end})")
-                else:
-                    _write_num(ws, r, col_idx, 0)
-            _style_subtotal(ws, r, ncols)
-            _group_rows(ws, detail_start, detail_end)
+            nf_warn = " ⚠" if has_nf else ""
+            label = f"Sr. {sr}  ·  Subtotal — {name}{nf_warn}"
+            _track(widths, 0, label)
+            _subtotal_row(ws, r, ncols, label, num_col_indices, detail_start, detail_end)
+            subtotal_rows.append(r)
             r += 1
 
-        # Grand total row
-        subtotal_rows = [row_ids[roman][s]["xl_row"] + len(parts[roman]["rows"][s-1].get("_details",[]))
-                         for s in row_ids[roman]]
-        ws.merge_cells(f"A{r}:{merge_to}{r}")
-        _write_str(ws, r, 1, f"GRAND TOTAL — Part-{roman}", bold=True,
-                   color="FFFFFFFF", fill=_fill(C_NAVY))
-        ws[f"A{r}"].alignment = _al("right")
-        # Collect all subtotal row numbers for grand total SUM
-        sub_rows = []
-        sr2 = 0
-        for ded in pdata["rows"]:
-            sr2 += 1
-            info = row_ids[roman].get(sr2, {})
-            det_count = len(ded.get("_details", []))
-            sub_row = info.get("xl_row", 3) + det_count
-            sub_rows.append(sub_row)
-        for col_idx, _ in get_grand_vals(pdata["rows"]):
-            col_letter = get_column_letter(col_idx)
-            refs = "+".join(f"{col_letter}{sr}" for sr in sub_rows)
-            if refs:
-                cell = ws.cell(row=r, column=col_idx,
-                               value=f"={refs}")
-                cell.number_format = '#,##0.00'
-                cell.alignment = _al("right")
-                cell.font  = _f(bold=True, color="FF7fff8a")
-                cell.border = _border()
-        _style_grandtotal(ws, r, ncols)
+        # Grand total
+        _grandtotal_row(ws, r, ncols, f"GRAND TOTAL — Part-{roman}",
+                        num_col_indices, subtotal_rows)
+        _autofit(ws, widths)
 
-        _autofit(ws)
-
-    # ── Part-I / VI ────────────────────────────────────────────────────────
+    # ── Part-I and Part-VI ─────────────────────────────────────────────────
     for roman in ["I", "VI"]:
         if roman not in parts or parts[roman]["empty"]:
             continue
@@ -1387,32 +1339,26 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
             status = d.get("Status of Booking", "").strip()
             rmk    = d.get("Remarks", "")
             amt_k  = "Amount Paid / Debited(Rs.)" if _is_VI else "Amount Paid / Credited(Rs.)"
-            tds_k  = "Tax Collected(Rs.)" if _is_VI else "Tax Deducted(Rs.)"
-            dep_k  = "TCS Deposited(Rs.)" if _is_VI else "TDS Deposited(Rs.)"
+            tds_k  = "Tax Collected(Rs.)"          if _is_VI else "Tax Deducted(Rs.)"
+            dep_k  = "TCS Deposited(Rs.)"          if _is_VI else "TDS Deposited(Rs.)"
             name = ded.get("Name of Deductor") or ded.get("Name of Collector") or ""
             tan  = ded.get("TAN of Deductor")  or ded.get("TAN of Collector")  or ""
             return [
-                (1, name, False), (2, tan, False),
-                (3, d.get("Section",""), False),
-                (4, d.get("Transaction Date",""), False),
-                (5, STATUS_FULL.get(status, status), False),
-                (6, rmk if rmk and rmk != "-" else "", False),
-                (7, _fmt_num(d.get(amt_k,"")) , True),
-                (8, _fmt_num(d.get(tds_k,"")) , True),
-                (9, _fmt_num(d.get(dep_k,"")) , True),
+                (0, name, False), (1, tan, False),
+                (2, d.get("Section",""), False),
+                (3, d.get("Transaction Date",""), False),
+                (4, STATUS_FULL.get(status, status), False),
+                (5, rmk if rmk and rmk != "-" else "", False),
+                (6, _fmt_num(d.get(amt_k,""))  or 0, True),
+                (7, _fmt_num(d.get(tds_k,""))  or 0, True),
+                (8, _fmt_num(d.get(dep_k,""))  or 0, True),
             ]
 
-        def _sv(ded, _is_VI=is_VI):
-            return [(7, None), (8, None), (9, None)]
-
-        def _gv(rows, _is_VI=is_VI):
-            return [(7, None), (8, None), (9, None)]
-
         write_deductor_part(
-            roman, cols, [7, 8, 9],
+            roman, cols, [6, 7, 8],
             get_name=lambda d: d.get("Name of Deductor") or d.get("Name of Collector") or "",
             get_tan =lambda d: d.get("TAN of Deductor")  or d.get("TAN of Collector")  or "",
-            get_detail_vals=_dv, get_sum_vals=_sv, get_grand_vals=_gv,
+            get_detail_vals=_dv,
         )
 
     # ── Part-II ────────────────────────────────────────────────────────────
@@ -1421,25 +1367,22 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
                  "Date of Booking", "Remarks",
                  "Amount Paid/Credited (Rs.)", "Tax Deducted (Rs.)", "TDS Deposited (Rs.)"]
         def _dv2(ded, d):
-            status = d.get("Status of Booking", "").strip()
             rmk = d.get("Remarks", "")
             return [
-                (1, ded.get("Name of Deductor",""), False),
-                (2, ded.get("TAN of Deductor",""), False),
-                (3, d.get("Section",""), False),
-                (4, d.get("Transaction Date",""), False),
-                (5, d.get("Date of Booking",""), False),
-                (6, rmk if rmk and rmk != "-" else "", False),
-                (7, _fmt_num(d.get("Amount Paid / Credited(Rs.)","")) , True),
-                (8, _fmt_num(d.get("Tax Deducted(Rs.)","")) , True),
-                (9, _fmt_num(d.get("TDS Deposited(Rs.)","")) , True),
+                (0, ded.get("Name of Deductor",""), False),
+                (1, ded.get("TAN of Deductor",""), False),
+                (2, d.get("Section",""), False),
+                (3, d.get("Transaction Date",""), False),
+                (4, d.get("Date of Booking",""), False),
+                (5, rmk if rmk and rmk != "-" else "", False),
+                (6, _fmt_num(d.get("Amount Paid / Credited(Rs.)","")) or 0, True),
+                (7, _fmt_num(d.get("Tax Deducted(Rs.)",""))            or 0, True),
+                (8, _fmt_num(d.get("TDS Deposited(Rs.)",""))           or 0, True),
             ]
-        write_deductor_part("II", cols2, [7,8,9],
+        write_deductor_part("II", cols2, [6, 7, 8],
             get_name=lambda d: d.get("Name of Deductor",""),
             get_tan =lambda d: d.get("TAN of Deductor",""),
-            get_detail_vals=_dv2,
-            get_sum_vals=lambda d: [(7,None),(8,None),(9,None)],
-            get_grand_vals=lambda rows: [(7,None),(8,None),(9,None)])
+            get_detail_vals=_dv2)
 
     # ── Part-III ───────────────────────────────────────────────────────────
     if "III" in parts and not parts["III"]["empty"]:
@@ -1449,22 +1392,20 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
             status = d.get("Status of Booking","").strip()
             rmk = d.get("Remarks","")
             return [
-                (1, ded.get("Name of Deductor",""), False),
-                (2, ded.get("TAN of Deductor",""), False),
-                (3, d.get("Section",""), False),
-                (4, d.get("Transaction Date",""), False),
-                (5, STATUS_FULL.get(status, status), False),
-                (6, rmk if rmk and rmk != "-" else "", False),
-                (7, _fmt_num(d.get("Amount Paid / Credited(Rs.)","")) , True),
+                (0, ded.get("Name of Deductor",""), False),
+                (1, ded.get("TAN of Deductor",""), False),
+                (2, d.get("Section",""), False),
+                (3, d.get("Transaction Date",""), False),
+                (4, STATUS_FULL.get(status, status), False),
+                (5, rmk if rmk and rmk != "-" else "", False),
+                (6, _fmt_num(d.get("Amount Paid / Credited(Rs.)","")) or 0, True),
             ]
-        write_deductor_part("III", cols3, [7],
+        write_deductor_part("III", cols3, [6],
             get_name=lambda d: d.get("Name of Deductor",""),
             get_tan =lambda d: d.get("TAN of Deductor",""),
-            get_detail_vals=_dv3,
-            get_sum_vals=lambda d: [(7,None)],
-            get_grand_vals=lambda rows: [(7,None)])
+            get_detail_vals=_dv3)
 
-    # ── Part-IV / VIII ─────────────────────────────────────────────────────
+    # ── Part-IV and Part-VIII ──────────────────────────────────────────────
     for roman in ["IV", "VIII"]:
         if roman not in parts or parts[roman]["empty"]:
             continue
@@ -1475,24 +1416,24 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
                     "Demand Payment", "Total Transaction Amount (Rs.)",
                     "TDS Deposited (Rs.)", "Other Amount (Rs.)"]
             name_key, pan_key = "Name of Deductee", "PAN of Deductee"
+            num_cols = [9, 10, 11]
         else:
             cols = ["Name of Deductor (Buyer)", "PAN of Deductor", "Ack. No.", "TDS Cert. No.",
                     "Section", "Transaction Date", "Date of Deposit", "Booking Status",
                     "Demand Payment", "Total Transaction Amount (Rs.)", "TDS Deposited (Rs.)"]
             name_key, pan_key = "Name of Deductor", "PAN of Deductor"
+            num_cols = [9, 10]
 
-        ncols = len(cols)
-        pdata = parts[roman]
-        ws    = wb.create_sheet(f"Part-{roman}")
-        ws.sheet_properties.tabColor = "1a5c32"
-        _brand_row(ws, ncols, ay, assessee=assessee_name)
-        r = 2
-        for c, h in enumerate(cols, 1): _write_str(ws, r, c, h)
-        _style_hdr(ws, r, ncols)
-        ws.freeze_panes = f"A{r+1}"
-        r += 1
+        ncols  = len(cols)
+        pdata  = parts[roman]
+        ws     = _ws(f"Part-{roman}")
+        widths = _col_tracker(ncols)
 
-        sr = 0
+        _brand_row(ws, ncols, assessee=assessee_name)
+        _hdr_row(ws, cols, row=1)
+        ws.freeze_panes(2, 0)
+
+        r = 2; sr = 0; subtotal_rows = []
         for ded in pdata["rows"]:
             sr += 1
             name   = (ded.get(name_key) or ded.get("Name of Deductor") or "").strip()
@@ -1501,131 +1442,81 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
             txdate = ded.get("Transaction Date", "")
             txamt  = _fmt_num(ded.get("Total Transaction Amount(Rs.)","")) or 0
             details = ded.get("_details", [])
-            row_ids[roman][sr] = {"name": name, "tan": pan, "xl_row": r}
+            row_ids[roman][sr] = {"name": name, "tan": pan, "xl_row": r + 1}
             detail_start = r
 
             for d in details:
                 status = d.get("Status of Booking","").strip()
-                _write_str(ws, r, 1, name, bold=True)
-                _write_str(ws, r, 2, pan)
-                _write_str(ws, r, 3, ack)
-                _write_str(ws, r, 4, d.get("TDS Certificate Number",""))
-                _write_str(ws, r, 5, d.get("Section",""))
-                _write_str(ws, r, 6, txdate)
-                _write_str(ws, r, 7, d.get("Date of Deposit",""))
-                _write_str(ws, r, 8, STATUS_FULL.get(status, status))
-                _write_str(ws, r, 9, d.get("Demand Payment",""))
-                _write_num(ws, r, 10, txamt)
-                _write_num(ws, r, 11, _fmt_num(d.get("TDS Deposited(Rs.)","")) or 0)
+                nf = status in NON_FINAL_STATUSES
+                sf, nf_ = (F_NONFIN, F_NONFIN_NUM) if nf else (F_DEFAULT, F_NUM)
+                ws.write(r, 0, name, sf);   ws.write(r, 1, pan, sf)
+                ws.write(r, 2, ack, sf);    ws.write(r, 3, d.get("TDS Certificate Number",""), sf)
+                ws.write(r, 4, d.get("Section",""), sf)
+                ws.write(r, 5, txdate, sf); ws.write(r, 6, d.get("Date of Deposit",""), sf)
+                ws.write(r, 7, STATUS_FULL.get(status, status), sf)
+                ws.write(r, 8, d.get("Demand Payment",""), sf)
+                ws.write(r, 9, txamt, nf_)
+                ws.write(r, 10, _fmt_num(d.get("TDS Deposited(Rs.)","")) or 0, nf_)
                 if is_VIII:
-                    _write_num(ws, r, 12, _fmt_num(d.get("Total Amount Deposited other than TDS(Rs.)","")) or 0)
-                if status in NON_FINAL_STATUSES:
-                    _style_nonfinal(ws, r, ncols)
+                    ws.write(r, 11, _fmt_num(d.get("Total Amount Deposited other than TDS(Rs.)","")) or 0, nf_)
+                _track(widths, 0, name)
                 r += 1
 
             detail_end = r - 1
-            merge_end = get_column_letter(9)
-            ws.merge_cells(f"A{r}:{merge_end}{r}")
-            _write_str(ws, r, 1, f"Sr. {sr}  ·  Subtotal — {name}", bold=True)
-            ws[f"A{r}"].alignment = _al("right")
-            for ci in ([10, 11, 12] if is_VIII else [10, 11]):
-                cl = get_column_letter(ci)
-                if detail_start <= detail_end:
-                    _write_formula(ws, r, ci, f"=SUM({cl}{detail_start}:{cl}{detail_end})")
-                else:
-                    _write_num(ws, r, ci, 0)
-            _style_subtotal(ws, r, ncols)
-            _group_rows(ws, detail_start, detail_end)
-            r += 1
+            label = f"Sr. {sr}  ·  Subtotal — {name}"
+            _subtotal_row(ws, r, ncols, label, num_cols, detail_start, detail_end)
+            subtotal_rows.append(r); r += 1
 
-        # grand total
-        sub_rows2 = []
-        sr2 = 0
-        for ded in pdata["rows"]:
-            sr2 += 1
-            info = row_ids[roman].get(sr2, {})
-            sub_rows2.append(info.get("xl_row", 3) + len(ded.get("_details",[])))
-        ws.merge_cells(f"A{r}:I{r}")
-        _write_str(ws, r, 1, f"GRAND TOTAL — Part-{roman}", bold=True,
-                   color="FFFFFFFF", fill=_fill(C_NAVY))
-        ws[f"A{r}"].alignment = _al("right")
-        for ci in ([10, 11, 12] if is_VIII else [10, 11]):
-            cl = get_column_letter(ci)
-            refs = "+".join(f"{cl}{sr}" for sr in sub_rows2)
-            if refs:
-                cell = ws.cell(row=r, column=ci, value=f"={refs}")
-                cell.number_format = '#,##0.00'
-                cell.alignment = _al("right")
-                cell.font = _f(bold=True, color="FF7fff8a")
-                cell.border = _border()
-        _style_grandtotal(ws, r, ncols)
-        _autofit(ws)
+        _grandtotal_row(ws, r, ncols, f"GRAND TOTAL — Part-{roman}",
+                        num_cols, subtotal_rows)
+        for ci, h in enumerate(cols): _track(widths, ci, h)
+        _autofit(ws, widths)
 
     # ── Part-V ─────────────────────────────────────────────────────────────
     if "V" in parts and not parts["V"]["empty"]:
-        pdata = parts["V"]
-        cols5 = ["Name of Buyer", "PAN of Buyer", "Ack. No.", "Transaction Date",
-                 "Total Transaction Amount (Rs.)", "BSR Code", "Date of Deposit",
-                 "Challan Serial No.", "Total Tax Amount (Rs.)", "Booking Status", "Demand Payment"]
+        pdata  = parts["V"]
+        cols5  = ["Name of Buyer", "PAN of Buyer", "Ack. No.", "Transaction Date",
+                  "Total Transaction Amount (Rs.)", "BSR Code", "Date of Deposit",
+                  "Challan Serial No.", "Total Tax Amount (Rs.)", "Booking Status", "Demand Payment"]
         ncols5 = len(cols5)
-        ws5 = wb.create_sheet("Part-V")
-        ws5.sheet_properties.tabColor = "1a5c32"
-        _brand_row(ws5, ncols5, ay, assessee=assessee_name)
-        r = 2
-        for c, h in enumerate(cols5, 1): _write_str(ws5, r, c, h)
-        _style_hdr(ws5, r, ncols5)
-        ws5.freeze_panes = f"A{r+1}"
-        r += 1
+        ws5    = _ws("Part-V")
+        w5     = _col_tracker(ncols5)
 
-        sr = 0
+        _brand_row(ws5, ncols5, assessee=assessee_name)
+        _hdr_row(ws5, cols5, row=1)
+        ws5.freeze_panes(2, 0)
+
+        r = 2; sr = 0; sub5 = []
         for ded in pdata["rows"]:
             sr += 1
-            name   = ded.get("Name of Buyer","")
-            pan    = ded.get("PAN of Buyer","")
+            name   = ded.get("Name of Buyer","");  pan   = ded.get("PAN of Buyer","")
             ack    = ded.get("Acknowledgement Number","")
             txdate = ded.get("Transaction Date","")
             txamt  = _fmt_num(ded.get("Total Transaction Amount(Rs.)","")) or 0
             details = ded.get("_details",[])
-            row_ids["V"][sr] = {"name": name, "tan": pan, "xl_row": r}
+            row_ids["V"][sr] = {"name": name, "tan": pan, "xl_row": r + 1}
             detail_start = r
-
             for d in details:
                 status = d.get("Status of Booking","").strip()
-                _write_str(ws5, r, 1, name, bold=True)
-                _write_str(ws5, r, 2, pan)
-                _write_str(ws5, r, 3, ack)
-                _write_str(ws5, r, 4, txdate)
-                _write_num(ws5, r, 5, txamt)
-                _write_str(ws5, r, 6, d.get("BSR Code",""))
-                _write_str(ws5, r, 7, d.get("Date of Deposit",""))
-                _write_str(ws5, r, 8, d.get("Challan Serial Number","") or d.get("Challan Serial No.",""))
-                _write_num(ws5, r, 9, _fmt_num(d.get("Total Tax Amount(Rs.)","")) or 0)
-                _write_str(ws5, r, 10, STATUS_FULL.get(status, status))
-                _write_str(ws5, r, 11, d.get("Demand Payment",""))
-                if status in NON_FINAL_STATUSES:
-                    _style_nonfinal(ws5, r, ncols5)
-                r += 1
-
+                nf = status in NON_FINAL_STATUSES
+                sf, nf_ = (F_NONFIN, F_NONFIN_NUM) if nf else (F_DEFAULT, F_NUM)
+                ws5.write(r, 0, name, sf);  ws5.write(r, 1, pan, sf)
+                ws5.write(r, 2, ack, sf);   ws5.write(r, 3, txdate, sf)
+                ws5.write(r, 4, txamt, nf_)
+                ws5.write(r, 5, d.get("BSR Code",""), sf)
+                ws5.write(r, 6, d.get("Date of Deposit",""), sf)
+                ws5.write(r, 7, d.get("Challan Serial Number","") or d.get("Challan Serial No.",""), sf)
+                ws5.write(r, 8, _fmt_num(d.get("Total Tax Amount(Rs.)","")) or 0, nf_)
+                ws5.write(r, 9, STATUS_FULL.get(status, status), sf)
+                ws5.write(r, 10, d.get("Demand Payment",""), sf)
+                _track(w5, 0, name); r += 1
             detail_end = r - 1
-            ws5.merge_cells(f"A{r}:D{r}")
-            _write_str(ws5, r, 1, f"Sr. {sr}  ·  Subtotal — {name}", bold=True)
-            ws5[f"A{r}"].alignment = _al("right")
-            _write_formula(ws5, r, 5, f"=SUM(E{detail_start}:E{detail_end})")
-            _style_subtotal(ws5, r, ncols5)
-            _group_rows(ws5, detail_start, detail_end)
-            r += 1
-
-        sub_rows5 = [row_ids["V"][s]["xl_row"] + len(pdata["rows"][s-1].get("_details",[])) for s in row_ids["V"]]
-        ws5.merge_cells(f"A{r}:D{r}")
-        _write_str(ws5, r, 1, "GRAND TOTAL — Part-V", bold=True, color="FFFFFFFF", fill=_fill(C_NAVY))
-        ws5[f"A{r}"].alignment = _al("right")
-        refs5 = "+".join(f"E{sr}" for sr in sub_rows5)
-        if refs5:
-            cell = ws5.cell(row=r, column=5, value=f"={refs5}")
-            cell.number_format = '#,##0.00'; cell.alignment = _al("right")
-            cell.font = _f(bold=True, color="FF7fff8a"); cell.border = _border()
-        _style_grandtotal(ws5, r, ncols5)
-        _autofit(ws5)
+            _subtotal_row(ws5, r, ncols5, f"Sr. {sr}  ·  Subtotal — {name}",
+                          [4, 8], detail_start, detail_end)
+            sub5.append(r); r += 1
+        _grandtotal_row(ws5, r, ncols5, "GRAND TOTAL — Part-V", [4, 8], sub5)
+        for ci, h in enumerate(cols5): _track(w5, ci, h)
+        _autofit(ws5, w5)
 
     # ── Part-VII ───────────────────────────────────────────────────────────
     if "VII" in parts and not parts["VII"]["empty"]:
@@ -1633,25 +1524,27 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
         cols7  = ["Assessment Year", "Mode", "Refund Issued", "Nature of Refund",
                   "Amount of Refund (Rs.)", "Interest (Rs.)", "Date of Payment", "Remarks"]
         ncols7 = len(cols7)
-        ws7 = wb.create_sheet("Part-VII")
-        ws7.sheet_properties.tabColor = "1a5c32"
-        _brand_row(ws7, ncols7, ay, assessee=assessee_name)
+        ws7    = _ws("Part-VII")
+        w7     = _col_tracker(ncols7)
+
+        _brand_row(ws7, ncols7, assessee=assessee_name)
+        _hdr_row(ws7, cols7, row=1)
+        ws7.freeze_panes(2, 0)
+
         r = 2
-        for c, h in enumerate(cols7, 1): _write_str(ws7, r, c, h)
-        _style_hdr(ws7, r, ncols7)
-        ws7.freeze_panes = f"A{r+1}"
-        r += 1
         for ded in pdata7["rows"]:
-            _write_str(ws7, r, 1, ded.get("Assessment Year",""))
-            _write_str(ws7, r, 2, ded.get("Mode",""))
-            _write_str(ws7, r, 3, ded.get("Refund Issued",""))
-            _write_str(ws7, r, 4, ded.get("Nature of Refund",""))
-            _write_num(ws7, r, 5, _fmt_num(ded.get("Amount of Refund(Rs.)","")) or 0)
-            _write_num(ws7, r, 6, _fmt_num(ded.get("Interest(Rs.)","")) or 0)
-            _write_str(ws7, r, 7, ded.get("Date of Payment",""))
-            rmk = ded.get("Remarks",""); _write_str(ws7, r, 8, rmk if rmk != "-" else "")
+            rmk = ded.get("Remarks","")
+            ws7.write(r, 0, ded.get("Assessment Year",""), F_DEFAULT)
+            ws7.write(r, 1, ded.get("Mode",""), F_DEFAULT)
+            ws7.write(r, 2, ded.get("Refund Issued",""), F_DEFAULT)
+            ws7.write(r, 3, ded.get("Nature of Refund",""), F_DEFAULT)
+            ws7.write(r, 4, _fmt_num(ded.get("Amount of Refund(Rs.)","")) or 0, F_NUM)
+            ws7.write(r, 5, _fmt_num(ded.get("Interest(Rs.)","")) or 0, F_NUM)
+            ws7.write(r, 6, ded.get("Date of Payment",""), F_DEFAULT)
+            ws7.write(r, 7, rmk if rmk != "-" else "", F_DEFAULT)
+            for ci, h in enumerate(cols7): _track(w7, ci, h)
             r += 1
-        _autofit(ws7)
+        _autofit(ws7, w7)
 
     # ── Part-IX ────────────────────────────────────────────────────────────
     if "IX" in parts and not parts["IX"]["empty"]:
@@ -1661,73 +1554,75 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
                   "Challan Serial No.", "Total Tax Amount (Rs.)", "Booking Status",
                   "Demand Payment", "Other Amount Deposited (Rs.)"]
         ncols9 = len(cols9)
-        ws9 = wb.create_sheet("Part-IX")
-        ws9.sheet_properties.tabColor = "1a5c32"
-        _brand_row(ws9, ncols9, ay, assessee=assessee_name)
-        r = 2
-        for c, h in enumerate(cols9, 1): _write_str(ws9, r, c, h)
-        _style_hdr(ws9, r, ncols9)
-        ws9.freeze_panes = f"A{r+1}"
-        r += 1
-        sr = 0
+        ws9    = _ws("Part-IX")
+        w9     = _col_tracker(ncols9)
+
+        _brand_row(ws9, ncols9, assessee=assessee_name)
+        _hdr_row(ws9, cols9, row=1)
+        ws9.freeze_panes(2, 0)
+
+        r = 2; sr = 0
         for ded in pdata9["rows"]:
             sr += 1
-            name = ded.get("Name of Seller",""); pan = ded.get("PAN of Seller","")
-            ack = ded.get("Acknowledgement Number","")
+            name   = ded.get("Name of Seller","");  pan   = ded.get("PAN of Seller","")
+            ack    = ded.get("Acknowledgement Number","")
             txdate = ded.get("Transaction Date","")
             txamt  = _fmt_num(ded.get("Total Transaction Amount(Rs.)","")) or 0
-            row_ids["IX"][sr] = {"name": name, "tan": pan, "xl_row": r}
+            row_ids["IX"][sr] = {"name": name, "tan": pan, "xl_row": r + 1}
             for d in ded.get("_details",[]):
                 status = d.get("Status of Booking","").strip()
-                _write_str(ws9, r, 1, name, bold=True); _write_str(ws9, r, 2, pan)
-                _write_str(ws9, r, 3, ack); _write_str(ws9, r, 4, txdate)
-                _write_num(ws9, r, 5, txamt)
-                _write_str(ws9, r, 6, d.get("BSR Code","")); _write_str(ws9, r, 7, d.get("Date of Deposit",""))
-                _write_str(ws9, r, 8, d.get("Challan Serial Number","") or d.get("Challan Serial No.",""))
-                _write_num(ws9, r, 9, _fmt_num(d.get("Total Tax Amount(Rs.)","")) or 0)
-                _write_str(ws9, r, 10, STATUS_FULL.get(status, status))
-                _write_str(ws9, r, 11, d.get("Demand Payment",""))
-                _write_num(ws9, r, 12, _fmt_num(d.get("Total Amount Deposited other than TDS(Rs.)","")) or 0)
-                if status in NON_FINAL_STATUSES: _style_nonfinal(ws9, r, ncols9)
-                r += 1
-        _autofit(ws9)
+                nf = status in NON_FINAL_STATUSES
+                sf, nf_ = (F_NONFIN, F_NONFIN_NUM) if nf else (F_DEFAULT, F_NUM)
+                ws9.write(r, 0, name, sf);   ws9.write(r, 1, pan, sf)
+                ws9.write(r, 2, ack, sf);    ws9.write(r, 3, txdate, sf)
+                ws9.write(r, 4, txamt, nf_)
+                ws9.write(r, 5, d.get("BSR Code",""), sf)
+                ws9.write(r, 6, d.get("Date of Deposit",""), sf)
+                ws9.write(r, 7, d.get("Challan Serial Number","") or d.get("Challan Serial No.",""), sf)
+                ws9.write(r, 8, _fmt_num(d.get("Total Tax Amount(Rs.)","")) or 0, nf_)
+                ws9.write(r, 9, STATUS_FULL.get(status, status), sf)
+                ws9.write(r, 10, d.get("Demand Payment",""), sf)
+                ws9.write(r, 11, _fmt_num(d.get("Total Amount Deposited other than TDS(Rs.)","")) or 0, nf_)
+                _track(w9, 0, name); r += 1
+        for ci, h in enumerate(cols9): _track(w9, ci, h)
+        _autofit(ws9, w9)
 
     # ── Summary sheet ──────────────────────────────────────────────────────
-    sum_cols = ["Part", "Part Title", "Deductor / Payer / Collector Name", "TAN / PAN",
-                "Total Amount (Rs.)", "Tax Deducted/Collected (Rs.)", "Tax Deposited (Rs.)",
-                "Non-Final Rows"]
+    sum_cols  = ["Part", "Part Title", "Deductor / Payer / Collector Name", "TAN / PAN",
+                 "Total Amount (Rs.)", "Tax Deducted/Collected (Rs.)", "Tax Deposited (Rs.)",
+                 "Non-Final Rows"]
     ncols_sum = len(sum_cols)
-    ws_sum = wb.create_sheet("Summary")
-    ws_sum.sheet_properties.tabColor = "1a5c32"
-    _brand_row(ws_sum, ncols_sum, ay, assessee=assessee_name)
+    ws_sum    = _ws("Summary")
+    w_sum     = _col_tracker(ncols_sum)
+
+    _brand_row(ws_sum, ncols_sum, assessee=assessee_name)
+    _hdr_row(ws_sum, sum_cols, row=1)
+    ws_sum.freeze_panes(2, 0)
     r = 2
-    for c, h in enumerate(sum_cols, 1): _write_str(ws_sum, r, c, h)
-    _style_hdr(ws_sum, r, ncols_sum)
-    ws_sum.freeze_panes = f"A{r+1}"
-    r += 1
 
     credit_parts = [p for p in ["I","II","III","IV","V","VI"]
                     if p in parts and not parts[p]["empty"]]
     for roman in credit_parts:
-        pdata = parts[roman]
-        meta  = PART_META.get(roman, {})
+        pdata      = parts[roman]
+        meta       = PART_META.get(roman, {})
         part_label = f"Part-{roman}"
         sheet_name = f"Part-{roman}"
 
         for sr, info in row_ids.get(roman, {}).items():
             name   = info["name"]
             tan    = info["tan"]
-            xl_row = info.get("xl_row", 2)
+            xl_row = info.get("xl_row", 3)
 
             ded_rows = [d for d in pdata["rows"]
                         if (d.get("Name of Deductor") or d.get("Name of Collector") or
-                            d.get("Name of Buyer") or d.get("Name of Deductee") or "").strip() == name.strip()]
+                            d.get("Name of Buyer")    or d.get("Name of Deductee") or "").strip()
+                           == name.strip()]
             amt = tds = dep = 0.0
             nf_count = 0
             if ded_rows:
                 dr = ded_rows[0]
                 amt = _fmt_num(dr.get("Total Amount Paid / Credited(Rs.)") or
-                               dr.get("Total Amount Paid / Debited(Rs.)") or
+                               dr.get("Total Amount Paid / Debited(Rs.)")  or
                                dr.get("Total Transaction Amount(Rs.)") or "") or 0
                 tds = _fmt_num(dr.get("Total Tax Deducted(Rs.)") or
                                dr.get("Total Tax Collected(Rs.)") or
@@ -1738,55 +1633,52 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
                     if (d.get("Status of Booking") or "").strip() in NON_FINAL_STATUSES:
                         nf_count += 1
 
-            _write_str(ws_sum, r, 1, part_label, bold=True, color="FFFFFFFF", fill=_fill(C_NAVY))
-            ws_sum.cell(r, 1).alignment = _al("center")
-            _write_str(ws_sum, r, 2, meta.get("title",""))
-            # Hyperlink to exact deductor row in Part sheet
-            link = f'=HYPERLINK("#\'{sheet_name}\'!A{xl_row}","{name}")'
-            cell = ws_sum.cell(row=r, column=3, value=link)
-            cell.font = Font(name="Calibri", color="FF1155CC", underline="single", size=10)
-            cell.alignment = _al(); cell.border = _border()
-            _write_str(ws_sum, r, 4, tan)
-            _write_num(ws_sum, r, 5, amt)
+            nf = nf_count > 0
+            sf, nf_ = (F_NONFIN, F_NONFIN_NUM) if nf else (F_DEFAULT, F_NUM)
+
+            ws_sum.write(r, 0, part_label, F_NAVY_CTR)
+            ws_sum.write(r, 1, meta.get("title",""), sf)
+            ws_sum.write_url(r, 2,
+                             f"internal:'{sheet_name}'!A{xl_row}",
+                             F_LINK, name)
+            _track(w_sum, 2, name)
+            ws_sum.write(r, 3, tan, sf)
+            ws_sum.write(r, 4, amt, nf_)
             if roman == "III":
-                _write_str(ws_sum, r, 6, "—"); _write_str(ws_sum, r, 7, "—")
+                ws_sum.write(r, 5, "—", sf)
+                ws_sum.write(r, 6, "—", sf)
             else:
-                _write_num(ws_sum, r, 6, tds); _write_num(ws_sum, r, 7, dep)
-            _write_str(ws_sum, r, 8, str(nf_count) if nf_count else "0")
-            if nf_count: _style_nonfinal(ws_sum, r, ncols_sum)
+                ws_sum.write(r, 5, tds, nf_)
+                ws_sum.write(r, 6, dep, nf_)
+            ws_sum.write(r, 7, str(nf_count), sf)
             r += 1
 
-        # Part subtotal
-        ws_sum.merge_cells(f"A{r}:C{r}")
-        _write_str(ws_sum, r, 1,
-                   f"{part_label} Subtotal — {len(row_ids.get(roman, {}))} entries",
-                   bold=True)
-        ws_sum.cell(r, 1).alignment = _al("right")
-        _style_subtotal(ws_sum, r, ncols_sum)
+        # Part subtotal label row
+        label = f"{part_label} Subtotal — {len(row_ids.get(roman, {}))} entries"
+        ws_sum.merge_range(r, 0, r, 2, label, F_SUBTOT_LABEL)
+        for ci in range(3, ncols_sum):
+            ws_sum.write(r, ci, "", F_SUBTOTAL)
         r += 1
 
     # Grand total
-    ws_sum.merge_cells(f"A{r}:C{r}")
-    _write_str(ws_sum, r, 1, "GRAND TOTAL  (Parts I–VI, credit only)",
-               bold=True, color="FFFFFFFF", fill=_fill(C_NAVY))
-    ws_sum.cell(r, 1).alignment = _al("right")
-    _style_grandtotal(ws_sum, r, ncols_sum)
-    _autofit(ws_sum)
+    ws_sum.merge_range(r, 0, r, 2, "GRAND TOTAL  (Parts I–VI, credit only)", F_GRAND_LABEL)
+    for ci in range(3, ncols_sum):
+        ws_sum.write(r, ci, "", F_GRANDTOT)
+
+    for ci, h in enumerate(sum_cols): _track(w_sum, ci, h)
+    _autofit(ws_sum, w_sum)
 
     # ── File properties ────────────────────────────────────────────────────
-    assessee_name = parsed["header"].get("Name of Assessee", "")
-    assessee_pan  = parsed["header"].get("Permanent Account Number (PAN)", "")
-    ay_label      = parsed["header"].get("Assessment Year", "")
-    wb.properties.creator  = "AayDoc Capio"
-    wb.properties.lastModifiedBy = "AayDoc Capio"
-    wb.properties.title    = f"Form 26AS — {assessee_name} — AY {ay_label}"
-    wb.properties.subject  = f"Annual Tax Statement | PAN: {assessee_pan} | AY: {ay_label}"
-    wb.properties.keywords = f"26AS, TDS, TCS, {assessee_pan}, {ay_label}"
-    wb.properties.description = f"Generated by AayDoc Capio on {report_ts}"
+    wb.set_properties({
+        "title":    f"Form 26AS — {assessee_name} — AY {ay}",
+        "subject":  f"Annual Tax Statement | PAN: {assessee_pan} | AY: {ay}",
+        "author":   "AayDoc Capio",
+        "keywords": f"26AS, TDS, TCS, {assessee_pan}, {ay}",
+        "comments": f"Generated by AayDoc Capio on {report_ts}",
+    })
 
-    # ── Set Assessee Details as active sheet ───────────────────────────────
-    wb.active = wb["Assessee Details"]
-    return _safe_save(wb, xlsx_path)
+    wb.close()   # flushes and writes to tmp_path
+    return _safe_move(tmp_path, xlsx_path)
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

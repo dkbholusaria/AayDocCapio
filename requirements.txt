@@ -6,7 +6,8 @@ PyQt6>=6.11.0          # Desktop GUI framework
 playwright>=1.60.0     # Browser automation (Chromium / real Chrome)
 cryptography>=48.0.0   # AES-128 Fernet encryption for the vault
 pikepdf>=10.7.2        # PDF password removal (requires system qpdf library)
-openpyxl>=3.1.5        # Excel bulk-import / template generation
+openpyxl>=3.1.5        # Excel bulk-import / template generation (vault + app)
+xlsxwriter>=3.2.0      # 26AS converter — streaming Excel writer, handles 200K+ rows
 pillow>=12.2.0         # Image generation for custom checkbox styling
 
 # ── Build-only dependencies (Windows Nuitka standalone executable) ─────────────
