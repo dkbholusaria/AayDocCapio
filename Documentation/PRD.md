@@ -1,6 +1,6 @@
 # Product Requirements Document — AayDocCapio
 
-**Version:** 1.2.0  
+**Version:** 1.4.0  
 **Status:** Current  
 **Last updated:** 2026-06-11
 
