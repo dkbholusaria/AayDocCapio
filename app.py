@@ -1127,7 +1127,7 @@ class AayDocCapioApp(QMainWindow):
                 f"color:{t.text_muted};font-size:10px;font-weight:700;"
                 f"letter-spacing:0.8px;background:transparent;")
 
-        # ── Search box ────────────────────────────────────────────────────────
+        # ── Search box + status filter ────────────────────────────────────────
         if hasattr(self, "search_box"):
             self.search_box.setStyleSheet(
                 f"QLineEdit{{background:{t.bg_input};border:1.5px solid {t.border};"
@@ -1486,13 +1486,32 @@ class AayDocCapioApp(QMainWindow):
         layout.addLayout(grid_hdr_row)
 
         # Search / filter bar
+        filter_row = QHBoxLayout()
+        filter_row.setSpacing(8)
+        filter_row.setContentsMargins(0, 0, 0, 0)
+
         self.search_box = QLineEdit()
         self.search_box.setPlaceholderText("🔍  Search by name or PAN...")
         self.search_box.setFixedHeight(28)
         self.search_box.setClearButtonEnabled(True)
         self.search_box.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
         self.search_box.textChanged.connect(self._apply_filter)
-        layout.addWidget(self.search_box)
+        filter_row.addWidget(self.search_box, 1)
+
+        self.status_filter = StyledComboBox()
+        self.status_filter.addItems([
+            "All statuses",
+            "✅  Downloaded",
+            "❌  Failed",
+            "🕐  Queued / Pending",
+            "—  Not run yet",
+        ])
+        self.status_filter.setFixedHeight(28)
+        self.status_filter.setFixedWidth(185)
+        self.status_filter.currentIndexChanged.connect(lambda _: self._apply_filter(self.search_box.text()))
+        filter_row.addWidget(self.status_filter)
+
+        layout.addLayout(filter_row)
 
         layout.addWidget(self._mk_client_table(), 1)
 
@@ -1951,15 +1970,31 @@ class AayDocCapioApp(QMainWindow):
         if not hasattr(self, "client_table"):
             return
         q = text.strip().lower()
+        sf_idx = self.status_filter.currentIndex() if hasattr(self, "status_filter") else 0
+        # Map dropdown index → status prefix(es) to match
+        _sf_map = {
+            0: None,           # All statuses
+            1: ("✅",),        # Downloaded
+            2: ("❌",),        # Failed
+            3: ("🕐", "⏹"),   # Queued / Pending
+            4: ("—",),         # Not run yet
+        }
+        status_prefixes = _sf_map.get(sf_idx)
         for row_idx in range(self.client_table.rowCount()):
-            name_item = self.client_table.item(row_idx, self._TC_NAME)
-            pan_item = self.client_table.item(row_idx, self._TC_PAN)
+            name_item   = self.client_table.item(row_idx, self._TC_NAME)
+            pan_item    = self.client_table.item(row_idx, self._TC_PAN)
+            status_item = self.client_table.item(row_idx, self._TC_STATUS)
             if not name_item or not pan_item:
                 continue
-            visible = (not q
-                       or q in name_item.text().lower()
-                       or q in pan_item.text().lower())
-            self.client_table.setRowHidden(row_idx, not visible)
+            text_match = (not q
+                          or q in name_item.text().lower()
+                          or q in pan_item.text().lower())
+            if status_prefixes is None:
+                status_match = True
+            else:
+                st = (status_item.text() if status_item else "—")
+                status_match = any(st.startswith(p) for p in status_prefixes)
+            self.client_table.setRowHidden(row_idx, not (text_match and status_match))
 
     def refresh_grid(self):
         self._checkbox_map.clear()
