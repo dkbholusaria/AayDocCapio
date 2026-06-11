@@ -228,6 +228,8 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
             # Password is DOB in ddmmyyyy format (e.g. 01-01-1980 → 11101980)
             if zipfile.is_zipfile(tmp_path):
                 zip_pwd = dob.replace("-", "").encode() if dob else None
+                pwd_display = zip_pwd.decode() if zip_pwd else "(no DOB)"
+                log_callback(f"[26AS] Unlocking ZIP with password: {pwd_display}")
                 with zipfile.ZipFile(tmp_path, "r") as zf:
                     names = zf.namelist()
                     txt_name = next((n for n in names if n.lower().endswith(".txt")), names[0])
@@ -240,12 +242,22 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
                 log_callback(f"[Victory] Form 26AS TXT downloaded: {os.path.basename(output_txt)}")
             _saved_txt = output_txt
         except Exception as txt_err:
-            log_callback(f"[Warning] TXT download skipped: {txt_err}")
+            _txt_warning = str(txt_err)
+            if "bad password" in _txt_warning.lower() or "Bad password" in _txt_warning:
+                pwd_display = dob.replace("-", "") if dob else "(no DOB)"
+                log_callback(
+                    f"[Warning] TXT ZIP unlock failed — wrong password (tried: {pwd_display}). "
+                    f"Verify DOB in vault matches PAN card (format: DDMMYYYY)."
+                )
+            else:
+                log_callback(f"[Warning] TXT download failed: {_txt_warning}")
 
         await update_browser_status(traces_page, "TRACES: 26AS Download Complete!")
         await asyncio.sleep(1)
         await traces_page.close()
-        return True, "", _saved_txt
+        # _saved_txt is empty if TXT extraction failed
+        txt_warn = "" if _saved_txt else "PDF saved but TXT extraction failed — check DOB in vault"
+        return True, txt_warn, _saved_txt
     except Exception as e:
         err = str(e)
         log_callback(f"[Error] Failed to download Form 26AS: {err}")

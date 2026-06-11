@@ -6,6 +6,22 @@ from automation.downloader import update_browser_status, make_step_logger
 from automation.pdf_unlocker import unlock_pdf
 
 
+def _unlock_and_warn(file_path, pan, dob, log, label="PDF"):
+    """Unlock PDF and emit a clear [Warning] if no password matched."""
+    result = unlock_pdf(file_path, pan=pan, dob=dob, log=log)
+    if not result.get("unlocked"):
+        reason = result.get("reason", "unknown")
+        if reason == "no-password-matched":
+            log(
+                f"[Warning] {label} unlock failed — no password candidate matched "
+                f"{os.path.basename(file_path)}. "
+                f"Verify DOB in vault matches PAN card exactly (used: {dob or 'none'})."
+            )
+        elif reason == "no-dob":
+            log(f"[Warning] {label} unlock skipped — no DOB stored in vault for this client.")
+    return result
+
+
 async def _wait_for_download(page: Page, timeout: int = 120000):
     """
     Await a single download on `page` and return the Download object.
@@ -353,7 +369,7 @@ async def download_tis(portal: Page, fiscal_year: str, download_dir: str,
     if ok:
         if status_cb:
             status_cb("✅ TIS downloaded")
-        unlock_pdf(tis_file, pan=pan, dob=dob, log=log)
+        _unlock_and_warn(tis_file, pan=pan, dob=dob, log=log, label="TIS PDF")
     await _close_modal(portal, log)
     return ok
 
@@ -451,7 +467,7 @@ async def request_ais(portal: Page, fiscal_year: str, download_dir: str,
             await download.save_as(ais_file)
             step(f"Download saved: {os.path.basename(ais_file)}")
             log(f"[Victory] AIS PDF downloaded: {os.path.basename(ais_file)}")
-            unlock_pdf(ais_file, pan=pan, dob=dob, log=log)
+            _unlock_and_warn(ais_file, pan=pan, dob=dob, log=log, label="AIS PDF")
             await _close_modal(portal, log)
             return {"status": "downloaded", "file": ais_file}
 
@@ -679,7 +695,7 @@ async def download_ais_from_activity_history(portal: Page, fiscal_year: str,
                 await download.save_as(ais_file)
                 step(f"Saved: {os.path.basename(ais_file)}")
                 log(f"[Victory] AIS PDF saved: {os.path.basename(ais_file)}")
-                unlock_pdf(ais_file, pan=pan, dob=dob, log=log)
+                _unlock_and_warn(ais_file, pan=pan, dob=dob, log=log, label="AIS PDF")
                 return "downloaded"
 
             step(f"Row present, still generating (attempt {attempt+1})")
