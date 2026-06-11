@@ -84,14 +84,38 @@ jobs:
             echo "WARNING: Playwright browser cache not found at $BROWSERS_SRC — skipping bundle step."
           fi
 
-      # ── 9. Zip the .app for distribution ───────────────────────────────────
+      # ── 9. Launch test — verify app starts and doesn't crash immediately ──────
+      - name: Launch test
+        run: |
+          echo "Launching AayDocCapio.app..."
+          open dist/AayDocCapio.app
+          # Give the app up to 15 seconds to appear in the process list
+          for i in $(seq 1 15); do
+            if pgrep -x "AayDocCapio" > /dev/null 2>&1; then
+              echo "App is running (attempt $i)"
+              break
+            fi
+            echo "Waiting... ($i/15)"
+            sleep 1
+          done
+          if ! pgrep -x "AayDocCapio" > /dev/null 2>&1; then
+            echo "ERROR: AayDocCapio process not found after 15 seconds — app likely crashed on launch."
+            # Print crash logs if any
+            find ~/Library/Logs/DiagnosticReports -name "AayDocCapio*" -newer dist/AayDocCapio.app 2>/dev/null | head -3 | xargs -I{} cat {} 2>/dev/null || true
+            exit 1
+          fi
+          echo "Launch test passed. Stopping app."
+          pkill -x "AayDocCapio" || true
+          sleep 2
+
+      # ── 10. Zip the .app for distribution ──────────────────────────────────
       - name: Zip app bundle
         run: |
           cd dist
           zip -r --symlinks AayDocCapio-macos-arm64-v1.4.0.zip AayDocCapio.app
           echo "Archive size: $(du -sh AayDocCapio-macos-arm64-v1.4.0.zip | cut -f1)"
 
-      # ── 10. Upload artifact (always available for download) ─────────────────
+      # ── 11. Upload artifact (always available for download) ─────────────────
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -99,7 +123,7 @@ jobs:
           path: dist/AayDocCapio-macos-arm64-v1.4.0.zip
           retention-days: 30
 
-      # ── 11. Attach to GitHub Release (only when triggered by a version tag) ─
+      # ── 12. Attach to GitHub Release (only when triggered by a version tag) ─
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
