@@ -30,7 +30,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install nuitka ordered-set zstandard
+          pip install pyinstaller
 
       # ── 4. Install Playwright Chromium ─────────────────────────────────────
       - name: Install Playwright browsers
@@ -47,33 +47,26 @@ jobs:
           print('All imports OK')
           "
 
-      # ── 6. Nuitka compile → .app bundle ────────────────────────────────────
-      - name: Build with Nuitka
+      # ── 6. PyInstaller compile → .app bundle ───────────────────────────────
+      - name: Build with PyInstaller
         run: |
-          python -m nuitka \
-            --standalone \
-            --macos-create-app-bundle \
-            --macos-app-name="AayDocCapio" \
-            --macos-app-version="1.4.0" \
-            --enable-plugin=pyqt6 \
-            --include-data-dir=resources=resources \
-            --include-data-file=assessment_years.json=assessment_years.json \
-            --include-package=automation \
-            --include-module=vault \
-            --include-module=as26_converter \
-            --include-module=themes \
-            --output-dir=dist \
-            --assume-yes-for-downloads \
+          pyinstaller \
+            --windowed \
+            --noconfirm \
+            --name AayDocCapio \
+            --add-data "resources:resources" \
+            --add-data "assessment_years.json:." \
+            --collect-submodules automation \
+            --hidden-import vault \
+            --hidden-import as26_converter \
+            --hidden-import themes \
             app.py
 
-      # ── 7. Rename output folder to AayDocCapio.app ─────────────────────────
-      - name: Rename app bundle
+      # ── 7. Verify app bundle ───────────────────────────────────────────────
+      - name: Verify app bundle
         run: |
           ls dist/
-          # Nuitka names it app.app — rename to AayDocCapio.app
-          if [ -d "dist/app.app" ]; then
-            mv dist/app.app dist/AayDocCapio.app
-          fi
+          test -d dist/AayDocCapio.app
 
       # ── 8. Copy Playwright browsers into the bundle ─────────────────────────
       # Playwright looks for browsers relative to the executable. Bundle them

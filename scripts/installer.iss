@@ -34,8 +34,7 @@ DisableFinishedPage=no
 CloseApplications=yes
 CloseApplicationsFilter=*.exe
 RestartApplications=no
-; Allow same-version reinstall and downgrades (useful for IT support)
-AllowDowngrade=yes
+; Same-version reinstalls are allowed by default; downgrades are blocked by AppVersion.
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
