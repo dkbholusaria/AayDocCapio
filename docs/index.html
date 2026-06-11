@@ -127,21 +127,42 @@
     /* ── Hero ────────────────────────────────────────────────── */
     .hero {
       background:
-        radial-gradient(ellipse 80% 60% at 50% -10%, rgba(0,120,212,0.22), transparent 55%),
-        radial-gradient(ellipse 50% 40% at 80% 100%, rgba(184,137,36,0.10), transparent 40%),
-        linear-gradient(175deg, var(--hero-bg-start) 0%, var(--hero-bg-mid) 55%, var(--hero-bg-end) 100%);
-      padding: 72px 24px 64px;
+        radial-gradient(ellipse 55% 50% at 20% 30%, rgba(99,102,241,0.28) 0%, transparent 60%),
+        radial-gradient(ellipse 45% 40% at 80% 15%, rgba(14,165,233,0.22) 0%, transparent 55%),
+        radial-gradient(ellipse 60% 55% at 60% 90%, rgba(184,137,36,0.18) 0%, transparent 50%),
+        radial-gradient(ellipse 70% 60% at 10% 80%, rgba(15,52,96,0.50) 0%, transparent 55%),
+        linear-gradient(160deg, #060D1A 0%, #0A1628 40%, #081522 100%);
+      padding: 80px 24px 72px;
       text-align: center;
       position: relative;
       overflow: hidden;
     }
 
+    /* Subtle grid pattern for texture */
     .hero::before {
       content: "";
       position: absolute;
       inset: 0;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
-      opacity: 0.4;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.028) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.028) 1px, transparent 1px);
+      background-size: 60px 60px;
+      mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 30%, transparent 80%);
+      -webkit-mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 30%, transparent 80%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Luminous orb top-center */
+    .hero::after {
+      content: "";
+      position: absolute;
+      top: -120px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 700px;
+      height: 400px;
+      background: radial-gradient(ellipse, rgba(99,102,241,0.18) 0%, rgba(14,165,233,0.10) 40%, transparent 70%);
       pointer-events: none;
       z-index: 0;
     }
@@ -149,19 +170,17 @@
     .hero > * { position: relative; z-index: 1; }
 
     .hero-logo-wrap {
-      max-width: 560px;
-      width: 86%;
-      margin: 0 auto 32px;
-      background: rgba(255,255,255,0.10);
-      backdrop-filter: blur(20px) saturate(1.4);
-      -webkit-backdrop-filter: blur(20px) saturate(1.4);
-      border: 1px solid rgba(255,255,255,0.18);
+      max-width: 520px;
+      width: 84%;
+      margin: 0 auto 36px;
+      background: #FFFFFF;
+      border: 1px solid rgba(255,255,255,0.15);
       border-radius: var(--radius-xl);
       box-shadow:
-        0 0 0 1px rgba(255,255,255,0.06),
-        0 24px 64px rgba(0,0,0,0.30),
-        inset 0 1px 0 rgba(255,255,255,0.20);
-      padding: 20px 32px;
+        0 0 0 1px rgba(99,102,241,0.12),
+        0 20px 60px rgba(0,0,0,0.45),
+        0 4px 16px rgba(0,0,0,0.25);
+      padding: 22px 36px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -169,28 +188,28 @@
     }
 
     .hero-logo-wrap:hover {
-      transform: translateY(-3px);
+      transform: translateY(-4px);
       box-shadow:
-        0 0 0 1px rgba(255,255,255,0.10),
-        0 32px 80px rgba(0,0,0,0.36),
-        inset 0 1px 0 rgba(255,255,255,0.24);
+        0 0 0 1px rgba(99,102,241,0.22),
+        0 28px 72px rgba(0,0,0,0.52),
+        0 8px 24px rgba(0,0,0,0.30);
     }
 
     .hero-logo {
       width: 100%;
       display: block;
-      filter: brightness(1.08);
     }
 
     .hero-desc {
       font-size: 1.15rem;
-      color: rgba(255,255,255,0.72);
-      max-width: 640px;
-      margin: 0 auto 32px;
-      line-height: 1.75;
+      color: rgba(210,222,242,0.82);
+      max-width: 620px;
+      margin: 0 auto 36px;
+      line-height: 1.78;
+      font-weight: 400;
     }
 
-    .hero-desc strong { color: rgba(255,255,255,0.95); font-weight: 700; }
+    .hero-desc strong { color: #FFFFFF; font-weight: 700; }
 
     .btn-row {
       display: flex;
@@ -220,21 +239,25 @@
     .btn:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); text-decoration: none; }
 
     .btn-primary {
-      background: linear-gradient(180deg, #0078D4 0%, #005A9E 100%);
+      background: linear-gradient(145deg, #6366F1 0%, #4F46E5 100%);
       color: #fff;
-      border: 1px solid rgba(0,90,158,0.40);
-      box-shadow: 0 2px 8px rgba(0,90,158,0.35);
+      border: 1px solid rgba(99,102,241,0.50);
+      box-shadow: 0 4px 16px rgba(79,70,229,0.40), inset 0 1px 0 rgba(255,255,255,0.15);
     }
-    .btn-primary:hover { color: #fff; background: linear-gradient(180deg, #1486D8 0%, #0066B8 100%); }
+    .btn-primary:hover {
+      color: #fff;
+      background: linear-gradient(145deg, #818CF8 0%, #6366F1 100%);
+      box-shadow: 0 6px 24px rgba(99,102,241,0.50), inset 0 1px 0 rgba(255,255,255,0.20);
+    }
 
     .btn-secondary {
-      background: rgba(255,255,255,0.12);
-      color: rgba(255,255,255,0.90);
-      border: 1px solid rgba(255,255,255,0.22);
+      background: rgba(255,255,255,0.08);
+      color: rgba(210,222,242,0.90);
+      border: 1px solid rgba(255,255,255,0.18);
     }
     .btn-secondary:hover {
-      background: rgba(255,255,255,0.18);
-      border-color: rgba(255,255,255,0.38);
+      background: rgba(255,255,255,0.14);
+      border-color: rgba(255,255,255,0.30);
       color: #fff;
     }
 
@@ -257,17 +280,16 @@
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      background: rgba(0,120,212,0.20);
-      color: rgba(255,255,255,0.92);
-      border: 1px solid rgba(0,120,212,0.38);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
+      background: linear-gradient(135deg, rgba(99,102,241,0.30), rgba(14,165,233,0.22));
+      color: rgba(255,255,255,0.95);
+      border: 1px solid rgba(139,142,255,0.35);
       border-radius: 999px;
-      padding: 8px 18px;
+      padding: 7px 18px;
       font-size: 0.82rem;
-      font-weight: 700;
-      letter-spacing: 0.3px;
-      margin-bottom: 22px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      margin-bottom: 24px;
+      box-shadow: 0 2px 12px rgba(99,102,241,0.20);
     }
 
     .download-grid {
@@ -279,17 +301,17 @@
     }
 
     .download-card {
-      background: rgba(255,255,255,0.09);
-      backdrop-filter: blur(24px) saturate(1.5);
-      -webkit-backdrop-filter: blur(24px) saturate(1.5);
-      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(13,24,50,0.70);
+      backdrop-filter: blur(20px) saturate(1.4);
+      -webkit-backdrop-filter: blur(20px) saturate(1.4);
+      border: 1px solid rgba(255,255,255,0.10);
       border-radius: var(--radius-lg);
-      padding: 22px 20px 20px;
+      padding: 24px 22px 22px;
       text-align: left;
       box-shadow:
-        0 2px 8px rgba(0,0,0,0.20),
-        0 8px 32px rgba(0,0,0,0.18),
-        inset 0 1px 0 rgba(255,255,255,0.12);
+        0 4px 16px rgba(0,0,0,0.30),
+        0 12px 40px rgba(0,0,0,0.22),
+        inset 0 1px 0 rgba(255,255,255,0.08);
       position: relative;
       overflow: hidden;
       transition:
@@ -305,9 +327,10 @@
       left: 0;
       right: 0;
       top: 0;
-      height: 2.5px;
-      background: linear-gradient(90deg, var(--blue-vivid), var(--blue-2), var(--gold));
+      height: 3px;
+      background: linear-gradient(90deg, #6366F1, #38BDF8, var(--gold-lt));
       border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+      opacity: 0.9;
     }
 
     .download-card::after {
@@ -316,8 +339,8 @@
       inset: 0;
       border-radius: inherit;
       background: radial-gradient(
-        600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
-        rgba(0,120,212,0.14),
+        500px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+        rgba(99,102,241,0.12),
         transparent 40%
       );
       opacity: 0;
@@ -326,31 +349,31 @@
     }
 
     .download-card:hover {
-      transform: translateY(-4px) scale(1.01);
-      background: rgba(255,255,255,0.13);
-      border-color: rgba(0,120,212,0.48);
+      transform: translateY(-5px);
+      background: rgba(18,32,65,0.80);
+      border-color: rgba(99,102,241,0.40);
       box-shadow:
-        0 0 0 1px rgba(0,120,212,0.25),
-        0 8px 24px rgba(0,0,0,0.28),
-        0 16px 48px rgba(0,0,0,0.20),
-        inset 0 1px 0 rgba(255,255,255,0.18);
+        0 0 0 1px rgba(99,102,241,0.20),
+        0 12px 32px rgba(0,0,0,0.36),
+        0 20px 60px rgba(0,0,0,0.24),
+        inset 0 1px 0 rgba(255,255,255,0.12);
     }
 
     .download-card:hover::after { opacity: 1; }
 
     .download-card h3 {
-      color: rgba(255,255,255,0.95);
+      color: #FFFFFF;
       font-size: 1.02rem;
       font-weight: 700;
-      margin-bottom: 6px;
+      margin-bottom: 8px;
       letter-spacing: -0.01em;
     }
 
     .download-card p {
-      color: rgba(255,255,255,0.55);
+      color: rgba(180,200,230,0.72);
       font-size: 0.86rem;
-      line-height: 1.5;
-      margin-bottom: 16px;
+      line-height: 1.55;
+      margin-bottom: 18px;
     }
 
     .download-card .btn {
@@ -361,17 +384,17 @@
     }
 
     .trust-note {
-      max-width: 620px;
-      margin: 24px auto 0;
-      background: rgba(255,255,255,0.08);
+      max-width: 600px;
+      margin: 28px auto 0;
+      background: rgba(20,14,6,0.55);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(255,255,255,0.14);
+      border: 1px solid rgba(184,137,36,0.30);
       border-left: 3px solid var(--gold);
       border-radius: var(--radius-md);
-      box-shadow: 0 4px 20px rgba(0,0,0,0.20);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.30);
       padding: 16px 20px;
-      color: rgba(255,224,140,0.92);
+      color: rgba(245,201,107,0.95);
       font-size: 0.9rem;
       font-weight: 600;
       line-height: 1.55;
@@ -379,17 +402,17 @@
 
     .trust-note span {
       display: block;
-      color: rgba(255,255,255,0.52);
+      color: rgba(200,218,240,0.60);
       font-size: 0.84rem;
       font-weight: 400;
-      margin-top: 3px;
+      margin-top: 4px;
     }
 
     .trust-note a {
       color: var(--gold-lt);
       font-weight: 700;
       text-decoration: none;
-      border-bottom: 1px solid rgba(245,201,107,0.45);
+      border-bottom: 1px solid rgba(245,201,107,0.40);
     }
     .trust-note a:hover { color: #fff; border-color: #fff; text-decoration: none; }
 
