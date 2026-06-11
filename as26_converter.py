@@ -1110,7 +1110,7 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
                        num_fmt="#,##0.00", top_color=GREEN)
     F_LABEL     = _fmt(bold=True, bg=LABEL)
     F_SECTION   = _fmt(bold=True, color=WHITE, bg=GREEN)
-    F_NOTES     = _fmt(size=10, bg="#fffff9f0", valign="top", wrap=True)
+    F_NOTES     = _fmt(size=10, bg="#fffde7", valign="top", wrap=True)
     F_LINK      = _fmt(color=LINK_C, underline=True)
     F_NAVY_BOLD = _fmt(bold=True, color=WHITE, bg=NAVY)
     F_NAVY_CTR  = _fmt(bold=True, color=WHITE, bg=NAVY, align="center")
