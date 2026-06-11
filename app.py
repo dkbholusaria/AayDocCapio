@@ -740,6 +740,7 @@ class BatchProgressDialog(QDialog):
         item.setForeground(QColor(fg))
         item.setBackground(QColor(bg))
         item.setFont(QFont(_UI_FONT, 10))
+        item.setToolTip(text)
         self._table.setItem(row, self._COL_STATUS, item)
 
     def _on_update(self, pan: str, status: str):
@@ -979,6 +980,12 @@ class AayDocCapioApp(QMainWindow):
 
         try:
             log_path = os.path.join(_app_dir(), "app.log")
+            _MAX_LOG_BYTES = 1 * 1024 * 1024  # 1 MB
+            if os.path.exists(log_path) and os.path.getsize(log_path) > _MAX_LOG_BYTES:
+                with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+                    content = f.read()
+                with open(log_path, "w", encoding="utf-8") as f:
+                    f.write(content[len(content) // 2:])
             with open(log_path, "a", encoding="utf-8") as f:
                 f.write(f"\n=== Session Started {get_timestamp()} ===\n")
         except Exception:
@@ -1029,6 +1036,13 @@ class AayDocCapioApp(QMainWindow):
             act.triggered.connect(lambda _, k=theme_key: self._apply_theme(k))
             setattr(self, f"_theme_{theme_key}_act", act)
             appear_menu.addAction(act)
+
+        # Tools menu
+        tools_menu = menubar.addMenu("Tools")
+        act_convert = QAction("📊  Convert 26AS TXT → Excel + HTML…", self)
+        act_convert.triggered.connect(self._convert_26as_manual)
+        tools_menu.addAction(act_convert)
+        self._tools_menu = tools_menu
 
         # Help menu
         help_menu = menubar.addMenu("Help")
@@ -2549,7 +2563,7 @@ class AayDocCapioApp(QMainWindow):
         text = f"[{get_timestamp()}] {message}"
         self._log_signal.emit(text)
         try:
-            with open("app.log", "a", encoding="utf-8") as f:
+            with open(os.path.join(_app_dir(), "app.log"), "a", encoding="utf-8") as f:
                 f.write(text + "\n")
         except Exception:
             pass
@@ -2894,6 +2908,63 @@ class AayDocCapioApp(QMainWindow):
             self.ais_status_bar.setVisible(False)
             self._ais_requested_time = None
 
+        elif mode == "26as" and not self._batch_aborted:
+            self._auto_convert_26as()
+
+    def _convert_26as_manual(self):
+        from as26_converter import convert_26as_txt
+        from PyQt6.QtWidgets import QFileDialog, QMessageBox
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "Select 26AS TXT file(s)",
+            self.vault.get_setting("download_root_dir", ""),
+            "Text Files (*.txt);;All Files (*)")
+        if not paths:
+            return
+        ok, fail = 0, 0
+        locked_warnings = []  # collect "saved as alternate" warnings for the dialog
+
+        def _log_capturing(msg):
+            self.log(msg)
+            if msg.startswith("[Warning]") and "was open in Excel" in msg:
+                locked_warnings.append(msg[len("[Warning] "):])
+
+        for p in paths:
+            try:
+                xlsx, html = convert_26as_txt(p, log_callback=_log_capturing)
+                self.log(f"[Victory] Converted: {os.path.basename(xlsx)} + {os.path.basename(html)}")
+                ok += 1
+            except Exception as e:
+                self.log(f"[Error] Convert failed for {os.path.basename(p)}: {e}")
+                fail += 1
+        msg = f"Converted {ok} file(s) — Excel + HTML saved alongside each TXT."
+        if locked_warnings:
+            msg += "\n\nNote — the following file(s) were open in Excel and saved under an alternate name:\n"
+            msg += "\n".join(f"  • {w}" for w in locked_warnings)
+        if fail:
+            msg += f"\n\n{fail} file(s) failed — check the log for details."
+        QMessageBox.information(self, "Convert Complete", msg)
+
+    def _auto_convert_26as(self):
+        from as26_converter import convert_26as_txt
+        root = self.vault.get_setting("download_root_dir", "")
+        if not root:
+            return
+        converted = 0
+        for dirpath, _, files in os.walk(root):
+            for fn in files:
+                if fn.lower().endswith(".txt") and "26as" in fn.lower():
+                    txt = os.path.join(dirpath, fn)
+                    xlsx = txt.rsplit(".", 1)[0] + ".xlsx"
+                    if os.path.exists(xlsx):
+                        continue
+                    try:
+                        convert_26as_txt(txt, log_callback=self.log)
+                        converted += 1
+                    except Exception as e:
+                        self.log(f"[Warning] Auto-convert failed for {fn}: {e}")
+        if converted:
+            self.log(f"[Victory] Auto-converted {converted} 26AS TXT file(s) to Excel + HTML.")
+
     async def _execute_batch(self, targets, ay, fy, root_dir, mode, ay_label=""):
         self.log(f"[System] Batch: {len(targets)} client(s) | AY: {ay} | Mode: {mode}")
         self._ais_results = {}
@@ -2950,8 +3021,11 @@ class AayDocCapioApp(QMainWindow):
                     # ── 26AS ─────────────────────────────────────────────────────
                     if mode == "26as" and self.is_running:
                         set_status(pan, "⏳ Downloading 26AS...")
-                        await download_26as(page, ay, out, self.log, pan=pan, dob=dob)
-                        set_status(pan, "✅ 26AS Downloaded")
+                        ok, err_msg = await download_26as(page, ay, out, self.log, pan=pan, dob=dob)
+                        if ok:
+                            set_status(pan, "✅ 26AS Downloaded")
+                        else:
+                            set_status(pan, f"❌ 26AS Failed — {err_msg}")
 
                     # ── Request AIS ───────────────────────────────────────────────
                     elif mode == "request_ais" and self.is_running:
