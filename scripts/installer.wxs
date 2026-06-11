@@ -107,6 +107,12 @@
           Name="InstallerType"
           Type="string"
           Value="MSI" />
+        <RegistryValue
+          Root="HKLM"
+          Key="Software\AayDocCapio"
+          Name="ProductCode"
+          Type="string"
+          Value="[ProductCode]" />
       </Component>
     </DirectoryRef>
   </Fragment>

@@ -140,18 +140,96 @@ begin
   end;
 end;
 
+function FindMsiProductCodeInRoot(RootKey: Integer; var ProductCode: String): Boolean;
+var
+  Subkeys: TArrayOfString;
+  I: Integer;
+  DisplayName: String;
+  WindowsInstaller: Cardinal;
+begin
+  Result := False;
+
+  if RegQueryStringValue(RootKey, 'Software\{#MyAppName}', 'ProductCode', ProductCode) and
+     (ProductCode <> '') then
+  begin
+    Result := True;
+    Exit;
+  end;
+
+  if RegGetSubkeyNames(RootKey, 'Software\Microsoft\Windows\CurrentVersion\Uninstall', Subkeys) then
+  begin
+    for I := 0 to GetArrayLength(Subkeys) - 1 do
+    begin
+      if RegQueryStringValue(
+           RootKey,
+           'Software\Microsoft\Windows\CurrentVersion\Uninstall\' + Subkeys[I],
+           'DisplayName',
+           DisplayName) and
+         (Pos('{#MyAppName}', DisplayName) = 1) and
+         RegQueryDWordValue(
+           RootKey,
+           'Software\Microsoft\Windows\CurrentVersion\Uninstall\' + Subkeys[I],
+           'WindowsInstaller',
+           WindowsInstaller) and
+         (WindowsInstaller = 1) and
+         (Copy(Subkeys[I], 1, 1) = '{') then
+      begin
+        ProductCode := Subkeys[I];
+        Result := True;
+        Exit;
+      end;
+    end;
+  end;
+end;
+
+function FindMsiProductCode(var ProductCode: String): Boolean;
+begin
+  Result := FindMsiProductCodeInRoot(HKLM64, ProductCode);
+  if not Result then
+    Result := FindMsiProductCodeInRoot(HKLM, ProductCode);
+end;
+
 function InitializeSetup: Boolean;
+var
+  ProductCode: String;
+  ResultCode: Integer;
 begin
   Result := True;
 
   if MsiInstallDetected then
   begin
-    MsgBox(
+    if MsgBox(
       '{#MyAppName} is already installed using the MSI package.' + #13#10#13#10 +
-      'Please upgrade using the MSI package, or uninstall the MSI version before installing with the .exe setup.',
-      mbError,
-      MB_OK);
-    Result := False;
+      'The MSI version must be uninstalled before installing with the .exe setup.' + #13#10#13#10 +
+      'Do you want Setup to uninstall the MSI version now?',
+      mbConfirmation,
+      MB_YESNO) <> IDYES then
+    begin
+      Result := False;
+      Exit;
+    end;
+
+    if not FindMsiProductCode(ProductCode) then
+    begin
+      MsgBox(
+        'Setup could not find the MSI product code needed to uninstall the existing MSI version.' + #13#10#13#10 +
+        'Please uninstall {#MyAppName} from Windows Installed Apps, then run this setup again.',
+        mbError,
+        MB_OK);
+      Result := False;
+      Exit;
+    end;
+
+    if not Exec('msiexec.exe', '/x ' + ProductCode + ' /passive /norestart', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) or
+       ((ResultCode <> 0) and (ResultCode <> 3010)) then
+    begin
+      MsgBox(
+        'The MSI uninstall did not complete successfully. Exit code: ' + IntToStr(ResultCode) + #13#10#13#10 +
+        'Please uninstall {#MyAppName} from Windows Installed Apps, then run this setup again.',
+        mbError,
+        MB_OK);
+      Result := False;
+    end;
   end;
 end;
 
