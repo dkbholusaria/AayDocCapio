@@ -1502,6 +1502,7 @@ class AayDocCapioApp(QMainWindow):
         self.status_filter.addItems([
             "All statuses",
             "✅  Downloaded",
+            "⚠  Partial (PDF only)",
             "❌  Failed",
             "🕐  Queued / Pending",
             "—  Not run yet",
@@ -1973,11 +1974,12 @@ class AayDocCapioApp(QMainWindow):
         sf_idx = self.status_filter.currentIndex() if hasattr(self, "status_filter") else 0
         # Map dropdown index → status prefix(es) to match
         _sf_map = {
-            0: None,           # All statuses
-            1: ("✅",),        # Downloaded
-            2: ("❌",),        # Failed
-            3: ("🕐", "⏹"),   # Queued / Pending
-            4: ("—",),         # Not run yet
+            0: None,              # All statuses
+            1: ("✅",),           # Downloaded
+            2: ("⚠",),           # Partial (PDF only)
+            3: ("❌",),           # Failed
+            4: ("🕐", "⏹"),      # Queued / Pending
+            5: ("—",),            # Not run yet
         }
         status_prefixes = _sf_map.get(sf_idx)
         for row_idx in range(self.client_table.rowCount()):
@@ -2087,6 +2089,8 @@ class AayDocCapioApp(QMainWindow):
                 status_item.setForeground(QColor("#15803D"))
             elif status_text.startswith("❌"):
                 status_item.setForeground(QColor("#DC2626"))
+            elif status_text.startswith("⚠"):
+                status_item.setForeground(QColor("#D97706"))
             else:
                 status_item.setForeground(QColor("#64748B"))
             self.client_table.setItem(i, self._TC_STATUS, status_item)
