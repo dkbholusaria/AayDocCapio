@@ -108,6 +108,14 @@ async def _open_ais_portal(itd_page: Page, log, status_cb=None) -> Page:
     step("Starting Compliance Portal open", itd_page, status="Opening Compliance Portal…")
     await update_browser_status(itd_page, "AIS: Opening Compliance Portal...")
 
+    # Wait for any loading overlay to clear FIRST — overlay makes a#AIS invisible to Playwright.
+    try:
+        step("Waiting for loader overlay to clear…")
+        await itd_page.locator(".customLoaderBackdrop").wait_for(state="hidden", timeout=30000)
+        step("Loader overlay gone")
+    except Exception:
+        step("No loader overlay detected (or already gone)")
+
     step("Opening hamburger / nav menu")
     await _open_hamburger(itd_page, log)
 
@@ -119,14 +127,6 @@ async def _open_ais_portal(itd_page: Page, log, status_cb=None) -> Page:
     except Exception:
         step("a#AIS NOT visible after 30s — raising")
         raise Exception("AIS nav link not found on ITD dashboard.")
-
-    # Wait for any loading overlay to clear before clicking.
-    try:
-        step("Waiting for loader overlay to clear…")
-        await itd_page.locator(".customLoaderBackdrop").wait_for(state="hidden", timeout=30000)
-        step("Loader overlay gone")
-    except Exception:
-        step("No loader overlay detected (or already gone)")
 
     # Set up the new-tab listener BEFORE clicking.
     step("Arming new-tab listener")
