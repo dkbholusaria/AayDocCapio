@@ -3088,28 +3088,19 @@ class AayDocCapioApp(QMainWindow):
                             status_callback=lambda t, _p=pan: set_status(_p, t))
                         ais_status = result.get("status")
 
-                        if ais_status in ("instant", "downloaded"):
+                        # Track AIS queue state for the "Download AIS" button
+                        if ais_status == "downloaded":
                             self._ais_results[pan] = "instant"
-                            set_status(pan, "✅ AIS Downloaded instantly")
                         elif ais_status == "requested":
                             self._ais_results[pan] = "queued"
                             ref = result.get("ref_id", "")
-                            ref_txt = f" (Ref: {ref})" if ref else ""
-                            set_status(pan,
-                                f"🕐 AIS request placed{ref_txt} — use Download AIS/TIS after ~5 min")
-                            self.log(f"[AIS] Generation queued — Ref ID: {ref or 'N/A'}")
+                            if ref:
+                                self.log(f"[AIS] Generation queued — Ref ID: {ref}")
                         elif ais_status == "skipped":
                             self._ais_results[pan] = "skipped"
-                            set_status(pan, "⬜ Skipped — AIS not available for this FY")
                         else:
                             self._ais_results[pan] = "failed"
-                            reason = result.get("reason", "")
-                            if "too large" in reason.lower() or "utility" in reason.lower():
-                                set_status(pan, "⚠️ AIS data too large for PDF — download JSON and use AIS Utility app")
-                                self.log(f"[Warning] AIS PDF unavailable: {reason}")
-                            else:
-                                set_status(pan, "❌ AIS request failed — check logs")
-                                self.log(f"[Warning] AIS request did not complete — {reason or 'check portal.'}")
+                        # combined_status_label already set via status_callback at end of run_request_ais
 
                     # ── Download AIS/TIS ──────────────────────────────────────────
                     elif mode == "ais_tis" and self.is_running:
@@ -3119,24 +3110,12 @@ class AayDocCapioApp(QMainWindow):
                         await self._ensure_dashboard(page)
                         set_status(pan, "⏳ Downloading AIS from Activity History...")
 
-                        status = await run_download_ais_tis(
+                        dl_result = await run_download_ais_tis(
                             page, fy, out, self.log, pan=pan, dob=dob,
                             dl_ais=True, dl_tis=False,
                             should_continue=lambda: self.is_running,
                             status_callback=lambda t, _p=pan: set_status(_p, t))
-
-                        if status == "downloaded":
-                            set_status(pan, "✅ AIS Downloaded")
-                        elif status == "not_found":
-                            set_status(pan,
-                                "⬜ No queued AIS for this FY — run Download / Request TIS & AIS first")
-                        elif status == "timeout":
-                            set_status(pan,
-                                "🕐 AIS still generating — try again in a few minutes")
-                        elif status == "aborted":
-                            set_status(pan, "⏹ Stopped")
-                        else:
-                            set_status(pan, "❌ AIS download incomplete — check logs")
+                        # combined_status_label already set via status_callback at end of run_download_ais_tis
 
                     if self.is_running:
                         await logout_itd(page, self.log)
