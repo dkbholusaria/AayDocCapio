@@ -14,6 +14,10 @@ if %errorlevel% neq 0 (
     pause & exit /b 1
 )
 
+:: ── Read version from version.py (single source of truth) ─
+for /f "delims=" %%v in ('python -c "from version import __version__; print(__version__)"') do set APP_VERSION=%%v
+echo [Info] Building version %APP_VERSION%
+
 :: ── Install / verify dependencies ────────────────────────
 echo [Step 1/3] Installing dependencies...
 pip install -r requirements.txt --quiet
@@ -71,7 +75,7 @@ if %ISCC%=="" (
     pause & exit /b 0
 )
 
-%ISCC% scripts\installer.iss
+%ISCC% /DMyAppVersion="%APP_VERSION%" scripts\installer.iss
 if %errorlevel% neq 0 (
     echo [Error] Inno Setup build failed.
     pause & exit /b 1
@@ -81,6 +85,6 @@ echo.
 echo ========================================================
 echo   Build complete!
 echo   App folder : dist\AayDocCapio\
-echo   Installer  : installer_output\AayDocCapio_Setup_v1.4.0.exe
+echo   Installer  : installer_output\AayDocCapio_Setup_v%APP_VERSION%.exe
 echo ========================================================
 pause
