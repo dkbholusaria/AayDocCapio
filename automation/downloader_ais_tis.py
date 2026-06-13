@@ -6,10 +6,15 @@ from automation.downloader import update_browser_status, make_step_logger
 from automation.pdf_unlocker import unlock_pdf
 
 
-def _unlock_and_warn(file_path, pan, dob, log, label="PDF"):
+def _unlock_and_warn(file_path, pan, dob, log, label="PDF", status_cb=None):
     """Unlock PDF and emit a clear [Warning] if no password matched."""
+    if status_cb:
+        status_cb(f"🔓 Unlocking {label}…")
     result = unlock_pdf(file_path, pan=pan, dob=dob, log=log)
-    if not result.get("unlocked"):
+    if result.get("unlocked"):
+        if status_cb:
+            status_cb(f"✅ {label} downloaded & unlocked")
+    else:
         reason = result.get("reason", "unknown")
         if reason == "no-password-matched":
             log(
@@ -17,8 +22,12 @@ def _unlock_and_warn(file_path, pan, dob, log, label="PDF"):
                 f"{os.path.basename(file_path)}. "
                 f"Verify DOB in vault matches PAN card exactly (used: {dob or 'none'})."
             )
+            if status_cb:
+                status_cb(f"⚠️ {label} downloaded — PDF unlock failed (wrong password?)")
         elif reason == "no-dob":
             log(f"[Warning] {label} unlock skipped — no DOB stored in vault for this client.")
+            if status_cb:
+                status_cb(f"⚠️ {label} downloaded — no DOB in vault, PDF still locked")
     return result
 
 
@@ -375,14 +384,7 @@ async def download_tis(portal: Page, fiscal_year: str, download_dir: str,
         "Taxpayer Information Summary (TIS) - PDF",
         tis_file, log, "TIS", status_cb=status_cb)
     if ok:
-        if status_cb:
-            status_cb("🔓 Unlocking TIS PDF…")
-        result = _unlock_and_warn(tis_file, pan=pan, dob=dob, log=log, label="TIS PDF")
-        if status_cb:
-            if result.get("unlocked"):
-                status_cb("✅ TIS downloaded & unlocked")
-            else:
-                status_cb("⚠️ TIS downloaded — PDF unlock failed (wrong password?)")
+        _unlock_and_warn(tis_file, pan=pan, dob=dob, log=log, label="TIS PDF", status_cb=status_cb)
     await _close_modal(portal, log)
     return ok
 
@@ -480,7 +482,7 @@ async def request_ais(portal: Page, fiscal_year: str, download_dir: str,
             await download.save_as(ais_file)
             step(f"Download saved: {os.path.basename(ais_file)}")
             log(f"[Victory] AIS PDF downloaded: {os.path.basename(ais_file)}")
-            _unlock_and_warn(ais_file, pan=pan, dob=dob, log=log, label="AIS PDF")
+            _unlock_and_warn(ais_file, pan=pan, dob=dob, log=log, label="AIS PDF", status_cb=status_cb)
             await _close_modal(portal, log)
             return {"status": "downloaded", "file": ais_file}
 
@@ -708,7 +710,7 @@ async def download_ais_from_activity_history(portal: Page, fiscal_year: str,
                 await download.save_as(ais_file)
                 step(f"Saved: {os.path.basename(ais_file)}")
                 log(f"[Victory] AIS PDF saved: {os.path.basename(ais_file)}")
-                _unlock_and_warn(ais_file, pan=pan, dob=dob, log=log, label="AIS PDF")
+                _unlock_and_warn(ais_file, pan=pan, dob=dob, log=log, label="AIS PDF", status_cb=status_cb)
                 return "downloaded"
 
             step(f"Row present, still generating (attempt {attempt+1})")
