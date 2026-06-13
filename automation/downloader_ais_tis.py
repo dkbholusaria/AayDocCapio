@@ -117,8 +117,16 @@ async def _open_ais_portal(itd_page: Page, log, status_cb=None) -> Page:
         await ais_link.wait_for(state="visible", timeout=30000)
         step("a#AIS is visible")
     except Exception:
-        step("a#AIS NOT visible after 15s — dumping not available, raising")
+        step("a#AIS NOT visible after 30s — raising")
         raise Exception("AIS nav link not found on ITD dashboard.")
+
+    # Wait for any loading overlay to clear before clicking.
+    try:
+        step("Waiting for loader overlay to clear…")
+        await itd_page.locator(".customLoaderBackdrop").wait_for(state="hidden", timeout=30000)
+        step("Loader overlay gone")
+    except Exception:
+        step("No loader overlay detected (or already gone)")
 
     # Set up the new-tab listener BEFORE clicking.
     step("Arming new-tab listener")
