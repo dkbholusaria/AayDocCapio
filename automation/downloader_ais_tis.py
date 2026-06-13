@@ -496,9 +496,11 @@ async def request_ais(portal: Page, fiscal_year: str, download_dir: str,
                 txt = await modal.inner_text()
             except Exception:
                 txt = ""
-            # Portal-side error: data too large for PDF — must use AIS Utility
-            if _re.search(r"too large|ais utility|unable to generate", txt, _re.IGNORECASE):
-                step("Portal error: AIS data too large for PDF generation")
+            # Portal-side error: AIS data too large for PDF.
+            # NOTE: "ais utility" is intentionally NOT included here — the modal always
+            # contains "AIS Utility" as a normal download-option row, causing false positives.
+            if _re.search(r"too large|unable to generate as pdf", txt, _re.IGNORECASE):
+                step(f"Portal error: AIS data too large. Modal text: {txt[:300]!r}")
                 log(f"[Warning] AIS PDF unavailable — portal says data is too large. "
                     f"Client must use the AIS Utility to view their AIS.")
                 if not dl_task.done():
