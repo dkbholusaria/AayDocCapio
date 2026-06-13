@@ -5,9 +5,12 @@ Strip the owner/user password from a downloaded AIS or TIS PDF.
 
 IT Department PDF password conventions (as of mid-2026)
 --------------------------------------------------------
-  Form 26AS   : DOB in DDMMYYYY format         (e.g. 01011990)
-  AIS (PDF)   : PAN (uppercase) + DOB DDMMYYYY  (e.g. ABCDE1234F01011990)
-  TIS (PDF)   : same as AIS
+  Form 26AS   : DOB in DDMMYYYY format               (e.g. 01011990)
+  AIS (PDF)   : lowercase PAN + DOB DDMMYYYY          (e.g. abcde1234f01011990)
+  TIS (PDF)   : same as AIS (lowercase PAN + DDMMYYYY)
+
+We try multiple DOB formats (DDMMYYYY, DDMMYY, DD/MM/YYYY) × PAN variants
+(lowercase, none, uppercase) so the caller doesn't need to know the exact format.
 
 We try every plausible combination so the caller doesn't have to know
 which document uses which format.
@@ -30,18 +33,24 @@ logger = logging.getLogger(__name__)
 # Password candidate generation (mirrors unlocker.js from the Electron project)
 # ---------------------------------------------------------------------------
 
-def _dob_to_ddmmyyyy(dob: str) -> str:
+def _dob_variants(dob: str) -> list[str]:
     """
-    Convert a vault-stored DOB (DD-MM-YYYY) to the portal's DDMMYYYY format.
-    Returns an empty string if conversion fails.
+    Return all plausible DOB string formats from a vault-stored DD-MM-YYYY value.
     """
+    variants = []
     try:
         parts = dob.strip().split("-")
         if len(parts) == 3 and all(p.isdigit() for p in parts):
-            return parts[0] + parts[1] + parts[2]   # DD + MM + YYYY
+            dd, mm, yyyy = parts[0], parts[1], parts[2]
+            yy = yyyy[-2:]
+            variants = [
+                dd + mm + yyyy,        # DDMMYYYY  — most common
+                dd + mm + yy,          # DDMMYY    — 2-digit year variant
+                dd + "/" + mm + "/" + yyyy,  # DD/MM/YYYY — slash variant
+            ]
     except Exception:
         pass
-    return ""
+    return variants
 
 
 def password_candidates(pan: str, dob: str) -> list[str]:
@@ -52,8 +61,8 @@ def password_candidates(pan: str, dob: str) -> list[str]:
     :param dob: Date of birth in DD-MM-YYYY format (from the vault)
     :returns:   De-duplicated list of candidate passwords
     """
-    dob_fmt = _dob_to_ddmmyyyy(dob)
-    if not dob_fmt:
+    dob_fmts = _dob_variants(dob)
+    if not dob_fmts:
         return []
 
     PAN = (pan or "").strip().upper()
@@ -62,14 +71,17 @@ def password_candidates(pan: str, dob: str) -> list[str]:
     seen: set[str] = set()
     candidates: list[str] = []
 
-    for pwd in [
-        pan_ + dob_fmt,      # AIS / TIS — confirmed format: lowercase PAN + DDMMYYYY
-        dob_fmt,             # 26AS — DOB only
-        PAN + dob_fmt,       # fallback: uppercase PAN + DDMMYYYY
-    ]:
-        if pwd and pwd not in seen:
-            seen.add(pwd)
-            candidates.append(pwd)
+    # Primary DOB format (DDMMYYYY) tried first with all PAN variants,
+    # then additional DOB formats as fallbacks.
+    for dob_fmt in dob_fmts:
+        for pwd in [
+            pan_ + dob_fmt,   # lowercase PAN + DOB  (AIS/TIS confirmed format)
+            dob_fmt,          # DOB only             (26AS)
+            PAN + dob_fmt,    # uppercase PAN + DOB  (fallback)
+        ]:
+            if pwd and pwd not in seen:
+                seen.add(pwd)
+                candidates.append(pwd)
 
     return candidates
 
@@ -155,14 +167,16 @@ def unlock_pdf(
     # Try each candidate
     # ------------------------------------------------------------------
     tmp_path = file_path + ".unlocked.tmp"
+    _log(f"[PDF Unlock] Trying {len(candidates)} password candidates for {filename}…")
 
-    for pwd in candidates:
+    for i, pwd in enumerate(candidates, 1):
+        _log(f"[PDF Unlock] Candidate {i}/{len(candidates)}…")
         try:
             with pikepdf.open(file_path, password=pwd) as pdf:
                 pdf.save(tmp_path)
             # Success — replace original
             os.replace(tmp_path, file_path)
-            _log(f"[PDF Unlock] Unlocked {filename} ✓")
+            _log(f"[PDF Unlock] Unlocked {filename} with candidate {i} ✓")
             return {"unlocked": True, "password": pwd}
         except pikepdf.PasswordError:
             continue       # wrong password — try next
