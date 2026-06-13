@@ -28,6 +28,7 @@ def _doc_label(o: dict | None, name: str) -> str | None:
     if s == "already_present": return f"✅ {name} already present"
     if s == "requested":       return f"🕐 {name} queued"
     if s == "too_large":       return f"⚠️ {name} too large — use AIS Utility"
+    if s == "no_data":         return f"⬜ {name} — no data for this FY"
     if s == "not_found":       return f"⬜ {name} not in Activity History"
     if s == "timeout":         return f"🕐 {name} still generating — try again"
     if s == "aborted":         return f"⏹ {name} aborted"
@@ -415,16 +416,18 @@ async def download_tis(portal: Page, fiscal_year: str, download_dir: str,
             return _outcome("failed")
 
     await update_browser_status(portal, "AIS: Downloading TIS PDF...")
-    ok = await _download_modal_row(
+    dl = await _download_modal_row(
         portal,
         "Taxpayer Information Summary (TIS) - PDF",
         tis_file, log, "TIS", status_cb=status_cb)
-    if ok:
+    if dl.get("ok"):
         unlock = _unlock_and_warn(tis_file, pan=pan, dob=dob, log=log, label="TIS PDF", status_cb=status_cb)
         await _close_modal(portal, log)
         return _outcome("downloaded", unlocked=unlock.get("unlocked"), reason=unlock.get("reason"))
     await _close_modal(portal, log)
-    return _outcome("failed")
+    dl_status = dl.get("status", "failed")
+    return _outcome(dl_status if dl_status in ("no_data", "error") else "failed",
+                    reason=dl.get("reason"))
 
 
 # ── AIS Request ───────────────────────────────────────────────────────────────
@@ -496,6 +499,17 @@ async def request_ais(portal: Page, fiscal_year: str, download_dir: str,
                 txt = await modal.inner_text()
             except Exception:
                 txt = ""
+            # Portal-side error: no AIS data for this FY.
+            # Must be checked BEFORE the queued regex — "activity history" appears in
+            # the portal's "no data" error page and would cause a false-positive queue detection.
+            if _re.search(r"don't have any|do not have any", txt, _re.IGNORECASE):
+                step(f"Portal: no AIS data for FY {fiscal_year}. Text: {txt[:200]!r}")
+                log(f"[Warning] AIS: No AIS data available for FY {fiscal_year}.")
+                if not dl_task.done():
+                    dl_task.cancel()
+                await _close_modal(portal, log)
+                return _outcome("no_data", reason=f"No AIS data available for FY {fiscal_year}.")
+
             # Portal-side error: AIS data too large for PDF.
             # NOTE: "ais utility" is intentionally NOT included here — the modal always
             # contains "AIS Utility" as a normal download-option row, causing false positives.
@@ -554,12 +568,13 @@ async def request_ais(portal: Page, fiscal_year: str, download_dir: str,
 
 
 async def _download_modal_row(portal: Page, row_text: str, save_path: str,
-                              log, label: str, status_cb=None) -> bool:
+                              log, label: str, status_cb=None) -> dict:
     """
-    In the currently-open download modal, click the Download button on the row
-    whose dialog-sub-head matches `row_text`, and save the file to `save_path`.
-    Returns True on success.
+    Click the Download button for `row_text` in the open modal and save the file.
+    Returns {"ok": True} on success, or {"ok": False, "status": str, "reason": str}.
+    status values: "no_data" | "error" | "timeout" | "failed"
     """
+    import re as _re
     step = make_step_logger(log, f"{label}-DL", status_cb=status_cb)
     modal = _modal_locator(portal)
     try:
@@ -572,8 +587,7 @@ async def _download_modal_row(portal: Page, row_text: str, save_path: str,
         step("Clicking Download")
         async with portal.expect_download(timeout=60000) as dl_info:
             await dl_btn.click(timeout=20000)
-            # Brief pause to let any inline portal error render before
-            # we check for it (e.g. "data too large, use AIS Utility")
+            # Brief pause to let any inline portal error render
             await asyncio.sleep(1.5)
             # Check for portal-side error shown inside the modal row
             try:
@@ -590,15 +604,27 @@ async def _download_modal_row(portal: Page, row_text: str, save_path: str,
         await download.save_as(save_path)
         step(f"Saved: {os.path.basename(save_path)}")
         log(f"[Victory] {label} PDF downloaded: {os.path.basename(save_path)}")
-        return True
+        return {"ok": True}
     except RuntimeError as e:
-        # Portal-reported error (e.g. data too large) — log clearly and surface
         step(f"Portal error: {e}")
         log(f"[Warning] {label}: {e}")
-        return False
+        return {"ok": False, "status": "error", "reason": str(e)}
     except Exception as e:
+        # On timeout, check if the portal displayed a "no data" message instead
+        if "timeout" in str(e).lower() or "Timeout" in type(e).__name__:
+            try:
+                modal_txt = (await modal.inner_text()).strip()
+                if _re.search(r"don't have any|do not have any", modal_txt, _re.IGNORECASE):
+                    m = _re.search(r"((?:you )?(?:don't|do not) have any[^\n.!?]*[.!?]?)",
+                                   modal_txt, _re.IGNORECASE)
+                    reason = m.group(1).strip() if m else f"No {label} data for this FY"
+                    step(f"No data: {reason}")
+                    log(f"[Warning] {label}: {reason}")
+                    return {"ok": False, "status": "no_data", "reason": reason}
+            except Exception:
+                pass
         step(f"Download failed: {e}")
-        return False
+        return {"ok": False, "status": "failed", "reason": str(e)}
 
 
 # ── AIS Download from Activity History ───────────────────────────────────────
