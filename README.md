@@ -1,12 +1,12 @@
 # AayDocCapio
 
-**v1.4.0** — A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click.
+**v1.4.3** — A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click.
 
 Built with **PyQt6** + **Playwright**. Runs on Windows, macOS, and Linux/WSL.
 
 ---
 
-## What's New in 1.4.0
+## What's New in 1.4.x
 
 - **Status filter dropdown** — filter client grid by All / Downloaded / Partially Completed / Failed / Queued / Not run yet
 - **26AS TXT → Excel + HTML converter** — auto-runs after each 26AS batch; also available via Tools menu
@@ -14,6 +14,7 @@ Built with **PyQt6** + **Playwright**. Runs on Windows, macOS, and Linux/WSL.
 - **Locked-file fallback** — writes a timestamped alternate file if Excel is open during conversion
 - **Large 26AS detection** — TRACES on-demand messages now show a clear actionable error
 - **ITD login fix for real Chrome** — avoids waiting forever on background Chrome network activity
+- **Modular codebase** — app.py split into `config.py`, `utils.py`, `ui/`, `automation/errors.py`
 
 See the full [CHANGELOG](CHANGELOG.md) for details.
 
@@ -43,7 +44,7 @@ python app.py
 > via `channel="chrome"`). 26AS works without it.
 
 On macOS you can also run `bash scripts/setup.sh` once and then double-click
-`AayDocCapio.command` in Finder — see the [macOS guide](Documentation/macos_support.md).
+`scripts/AayDocCapio.command` in Finder — see the [macOS guide](Documentation/macos_support.md).
 
 ---
 
@@ -67,12 +68,29 @@ On macOS you can also run `bash scripts/setup.sh` once and then double-click
 ## Architecture
 
 ```
-app.py          — Main window, all UI logic
-themes.py       — ThemeColors dataclass, THEMES registry, build_stylesheet()
-vault.py        — Encrypted client vault, settings, download history
-automation/     — Playwright automation scripts (26AS, AIS, TIS)
-resources/      — Icons, checkmark image
-assessment_years.json  — AY/TY list (editable via Settings → Manage Years)
+app.py                   — Main window and all application logic
+config.py                — Path helpers (_app_dir, _bundled_dir, etc.)
+utils.py                 — Shared utilities (timestamps, etc.)
+themes.py                — ThemeColors dataclass, THEMES registry, build_stylesheet()
+vault.py                 — Encrypted client vault, settings, download history
+ui/
+  _theme.py              — Shared active-theme state (avoids circular imports)
+  helpers.py             — Widget factory helpers (_btn, _lbl, _shadow, _status_style)
+  widgets.py             — StyledComboBox and delegates
+  dialogs.py             — ManageYearsDialog, BatchProgressDialog
+automation/
+  browser.py             — Playwright browser launch / auth helpers
+  downloader.py          — Form 26AS download
+  downloader_26as.py     — 26AS TXT → Excel/HTML converter
+  downloader_ais_tis.py  — AIS/TIS download
+  as26_converter.py      — 26AS TXT parser
+  errors.py              — Human-readable error messages
+scripts/
+  release.sh             — GitHub release automation (--dry-run, --rerun)
+  bump.sh                — Version bump utility
+  AayDocCapio.command    — macOS double-click launcher
+resources/               — Icons, checkmark image
+assessment_years.json    — AY/TY list (editable via Settings → Manage Years)
 ```
 
 ---
