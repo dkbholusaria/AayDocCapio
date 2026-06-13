@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # release.sh — AayDocCapio release automation
 #
-# Run after bumping version.py:
+# Run after bumping version.py AND building the Windows installers locally:
 #   bash scripts/release.sh
 #
 # What it does:
 #   1. Reads the new version from version.py
-#   2. Updates docs/index.html (version strings + release badge date)
-#   3. Commits all pending changes (version.py + index.html + anything else staged)
-#   4. Creates and pushes an annotated git tag  →  triggers macOS & Windows CI
-#   5. Creates a GitHub Release (draft=false, latest=true)
-#   6. Manually triggers the macOS workflow via gh workflow run (belt-and-suspenders)
+#   2. Checks Windows installers exist in installer_output/
+#   3. Updates docs/index.html (version strings + release badge date)
+#   4. Commits all pending changes (version.py + index.html + anything else staged)
+#   5. Creates and pushes an annotated git tag  →  triggers macOS CI
+#   6. Creates a GitHub Release and uploads the Windows installers
+#   7. Manually triggers the macOS workflow via gh workflow run (belt-and-suspenders)
 #
 # Requirements:  git, gh (GitHub CLI, authenticated), python3, sed
 
@@ -37,9 +38,33 @@ if git tag | grep -qx "${TAG}"; then
     exit 1
 fi
 
-# ── 2. Update landing page ───────────────────────────────────────────────────
+# ── 2. Check Windows installers are built ────────────────────────────────────
+
+WIN_EXE="installer_output/AayDocCapio_Setup_v${NEW_VER}.exe"
+WIN_MSI="installer_output/AayDocCapio_Setup_v${NEW_VER}.msi"
+
+echo "▶  Checking Windows installers …"
+MISSING=0
+for f in "$WIN_EXE" "$WIN_MSI"; do
+    if [[ ! -f "$f" ]]; then
+        echo "   ✗  Missing: $f"
+        MISSING=1
+    else
+        SIZE=$(du -sh "$f" | cut -f1)
+        echo "   ✓  $f  (${SIZE})"
+    fi
+done
+if [[ $MISSING -eq 1 ]]; then
+    echo ""
+    echo "   Build the Windows installers first (run build_win.bat on Windows),"
+    echo "   then copy them to installer_output/ and re-run this script."
+    exit 1
+fi
+
+# ── 3. Update landing page ───────────────────────────────────────────────────
 
 echo "▶  Updating docs/index.html …"
+echo ""
 
 INDEX="docs/index.html"
 
@@ -111,7 +136,16 @@ gh release create "${TAG}" \
 
 echo "   GitHub Release ${TAG} created."
 
-# ── 6. Trigger macOS workflow explicitly (belt-and-suspenders) ───────────────
+# ── 6. Upload Windows installers ─────────────────────────────────────────────
+
+echo ""
+echo "▶  Uploading Windows installers …"
+
+gh release upload "${TAG}" "$WIN_EXE" "$WIN_MSI" --clobber
+
+echo "   Windows installers uploaded."
+
+# ── 7. Trigger macOS workflow explicitly (belt-and-suspenders) ───────────────
 # The tag push already triggers both workflows via the push.tags trigger.
 # This explicit dispatch is useful if you want to re-run just macOS without
 # a new tag (e.g. after a runner flake).  It's a no-op cost when CI is healthy.
@@ -130,8 +164,4 @@ echo "✓  Release ${TAG} complete!"
 echo ""
 echo "   GitHub Release  →  https://github.com/dkbholusaria/AayDocCapio/releases/tag/${TAG}"
 echo "   CI runs         →  https://github.com/dkbholusaria/AayDocCapio/actions"
-echo ""
-echo "   Next step (Windows):"
-echo "   Build the installers on Windows, then upload them:"
-echo "     powershell -ExecutionPolicy Bypass -File scripts\\upload_windows_installers.ps1"
 echo ""
