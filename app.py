@@ -1257,7 +1257,7 @@ class AayDocCapioApp(QMainWindow):
             f'<span style="color:{_ab.text_primary};font-family:\'Avenir Next\';font-size:22px;font-weight:700;">AayDoc </span>'
             f'<span style="color:{_ab.accent};font-family:\'Avenir Next\';font-size:22px;font-weight:700;">Capio™</span>'
         )
-        ver_lbl = QLabel("Version 1.0.0")
+        ver_lbl = QLabel(f"Version {APP_VERSION}")
         ver_lbl.setStyleSheet(f"color:{_ab.text_muted}; font-size:12px;")
         name_col.addWidget(name_lbl); name_col.addWidget(ver_lbl)
         logo_row.addLayout(name_col); logo_row.addStretch()
