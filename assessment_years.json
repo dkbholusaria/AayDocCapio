@@ -1,7 +1,7 @@
 [
   {
     "label": "TY 2026-27 (FY 2026-27)",
-    "enabled": false,
+    "enabled": true,
     "year": {
       "TY": "2026-27",
       "FY": "2026-27"
