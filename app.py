@@ -3022,7 +3022,7 @@ class AayDocCapioApp(QMainWindow):
             """Update progress dialog and persist terminal status to vault."""
             if self._progress_dialog:
                 self._progress_dialog.set_status(pan, text)
-            terminal = ("✅", "❌", "🕐", "⏹", "⬜")
+            terminal = ("✅", "❌", "🕐", "⏹", "⬜", "⚠")
             if ay_label and any(text.startswith(p) for p in terminal):
                 try:
                     self.vault.record_download(
