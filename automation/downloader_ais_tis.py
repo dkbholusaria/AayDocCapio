@@ -6,6 +6,42 @@ from automation.downloader import update_browser_status, make_step_logger
 from automation.pdf_unlocker import unlock_pdf
 
 
+# ── Outcome helpers ───────────────────────────────────────────────────────────
+
+def _outcome(status: str, unlocked=None, reason: str = None, **extra) -> dict:
+    """Create a standard document-outcome dict."""
+    d = {"status": status, "unlocked": unlocked, "reason": reason}
+    d.update(extra)
+    return d
+
+
+def _doc_label(o: dict | None, name: str) -> str | None:
+    """Turn a single document outcome into a short UI label."""
+    if not o:
+        return None
+    s = o.get("status", "")
+    u = o.get("unlocked")
+    if s == "downloaded":
+        if u is True:  return f"✅ {name} unlocked"
+        if u is False: return f"⚠️ {name} locked — wrong password"
+        return f"✅ {name} downloaded"
+    if s == "already_present": return f"✅ {name} already present"
+    if s == "requested":       return f"🕐 {name} queued"
+    if s == "too_large":       return f"⚠️ {name} too large — use AIS Utility"
+    if s == "not_found":       return f"⬜ {name} not in Activity History"
+    if s == "timeout":         return f"🕐 {name} still generating — try again"
+    if s == "aborted":         return f"⏹ {name} aborted"
+    if s == "skipped":         return f"⬜ {name} skipped"
+    if s == "failed":          return f"❌ {name} failed"
+    return None
+
+
+def combined_status_label(ais_o: dict | None, tis_o: dict | None) -> str:
+    """Build a combined AIS + TIS status label for the batch grid."""
+    parts = [l for l in (_doc_label(ais_o, "AIS"), _doc_label(tis_o, "TIS")) if l]
+    return " | ".join(parts) if parts else "—"
+
+
 def _unlock_and_warn(file_path, pan, dob, log, label="PDF", status_cb=None):
     """Unlock PDF and emit a clear [Warning] if no password matched."""
     if status_cb:
@@ -370,13 +406,13 @@ async def download_tis(portal: Page, fiscal_year: str, download_dir: str,
     if not has_tis_row:
         opened = await _open_tis_modal(portal, log, status_cb=status_cb)
         if not opened:
-            return False
+            return _outcome("failed")
         modal = _modal_locator(portal)
         try:
             await modal.wait_for(state="visible", timeout=10000)
         except Exception:
             log("[TIS] Modal did not appear.")
-            return False
+            return _outcome("failed")
 
     await update_browser_status(portal, "AIS: Downloading TIS PDF...")
     ok = await _download_modal_row(
@@ -384,9 +420,11 @@ async def download_tis(portal: Page, fiscal_year: str, download_dir: str,
         "Taxpayer Information Summary (TIS) - PDF",
         tis_file, log, "TIS", status_cb=status_cb)
     if ok:
-        _unlock_and_warn(tis_file, pan=pan, dob=dob, log=log, label="TIS PDF", status_cb=status_cb)
+        unlock = _unlock_and_warn(tis_file, pan=pan, dob=dob, log=log, label="TIS PDF", status_cb=status_cb)
+        await _close_modal(portal, log)
+        return _outcome("downloaded", unlocked=unlock.get("unlocked"), reason=unlock.get("reason"))
     await _close_modal(portal, log)
-    return ok
+    return _outcome("failed")
 
 
 # ── AIS Request ───────────────────────────────────────────────────────────────
@@ -466,9 +504,9 @@ async def request_ais(portal: Page, fiscal_year: str, download_dir: str,
                 if not dl_task.done():
                     dl_task.cancel()
                 await _close_modal(portal, log)
-                return {"status": "failed",
-                        "reason": "AIS data is too large to generate as PDF. "
-                                  "Client must download AIS JSON and use the AIS Utility app."}
+                return _outcome("too_large",
+                               reason="AIS data is too large to generate as PDF. "
+                                      "Client must download AIS JSON and use the AIS Utility app.")
             if _re.search(r"reference\s*id|activity history|submitted successfully|"
                           r"file is large", txt, _re.IGNORECASE):
                 queued_text = txt
@@ -482,9 +520,10 @@ async def request_ais(portal: Page, fiscal_year: str, download_dir: str,
             await download.save_as(ais_file)
             step(f"Download saved: {os.path.basename(ais_file)}")
             log(f"[Victory] AIS PDF downloaded: {os.path.basename(ais_file)}")
-            _unlock_and_warn(ais_file, pan=pan, dob=dob, log=log, label="AIS PDF", status_cb=status_cb)
+            unlock = _unlock_and_warn(ais_file, pan=pan, dob=dob, log=log, label="AIS PDF", status_cb=status_cb)
             await _close_modal(portal, log)
-            return {"status": "downloaded", "file": ais_file}
+            return _outcome("downloaded", unlocked=unlock.get("unlocked"),
+                            reason=unlock.get("reason"), file=ais_file)
 
         # Path 2: large file queued — capture Reference ID, stop waiting
         if not dl_task.done():
@@ -659,7 +698,7 @@ async def download_ais_from_activity_history(portal: Page, fiscal_year: str,
     for attempt in range(MAX_ATTEMPTS):
         if _aborted():
             step("Aborted by user — stopping Activity History wait")
-            return "aborted"
+            return _outcome("aborted")
 
         if attempt > 0:
             step(f"Waiting for generation — attempt {attempt}/{MAX_ATTEMPTS-1}, {POLL_INTERVAL}s",
@@ -669,7 +708,7 @@ async def download_ais_from_activity_history(portal: Page, fiscal_year: str,
             for _ in range(POLL_INTERVAL):
                 if _aborted():
                     step("Aborted by user during wait")
-                    return "aborted"
+                    return _outcome("aborted")
                 await asyncio.sleep(1)
             try:
                 await portal.reload(wait_until="domcontentloaded", timeout=40000)
@@ -689,7 +728,7 @@ async def download_ais_from_activity_history(portal: Page, fiscal_year: str,
                 if attempt == 0:
                     step("No AIS request found for this FY — nothing to download")
                     log(f"[AIS] No AIS request found in Activity History for {fy_desc}.")
-                    return "not_found"
+                    return _outcome("not_found")
                 continue
 
             await row.wait_for(state="visible", timeout=10000)
@@ -710,8 +749,8 @@ async def download_ais_from_activity_history(portal: Page, fiscal_year: str,
                 await download.save_as(ais_file)
                 step(f"Saved: {os.path.basename(ais_file)}")
                 log(f"[Victory] AIS PDF saved: {os.path.basename(ais_file)}")
-                _unlock_and_warn(ais_file, pan=pan, dob=dob, log=log, label="AIS PDF", status_cb=status_cb)
-                return "downloaded"
+                unlock = _unlock_and_warn(ais_file, pan=pan, dob=dob, log=log, label="AIS PDF", status_cb=status_cb)
+                return _outcome("downloaded", unlocked=unlock.get("unlocked"), reason=unlock.get("reason"))
 
             step(f"Row present, still generating (attempt {attempt+1})")
 
@@ -720,7 +759,7 @@ async def download_ais_from_activity_history(portal: Page, fiscal_year: str,
 
     step("AIS generation timed out after ~10 minutes")
     log("[Warning] AIS generation timed out — try again later.")
-    return "timeout"
+    return _outcome("timeout")
 
 
 # ── Top-level entry points (called from app.py) ───────────────────────────────
@@ -750,30 +789,26 @@ async def run_request_ais(itd_page: Page, fiscal_year: str, download_dir: str,
         await _select_fy(portal, fiscal_year, log, status_cb=status_callback)
 
         # AIS PDF (instant download or queued request)
-        result = await request_ais(portal, fiscal_year, download_dir, log,
-                                   pan=pan, dob=dob, status_cb=status_callback)
-
-        if result.get("status") in ("instant", "downloaded"):
-            _status("✅ AIS downloaded — fetching TIS...")
-        elif result.get("status") == "requested":
-            _status("🕐 AIS queued — fetching TIS...")
-        elif "too large" in result.get("reason", "").lower() or "utility" in result.get("reason", "").lower():
-            _status("⚠️ AIS too large for PDF — use AIS Utility JSON. Fetching TIS...")
-        else:
-            _status("⚠️ AIS issue — fetching TIS...")
-
-        # TIS PDF — always instant, lives in its own modal. Attempt it too so
-        # 'Download / Request TIS & AIS' fetches both in one pass.
-        try:
-            tis_ok = await download_tis(portal, fiscal_year, download_dir, log,
+        ais_outcome = await request_ais(portal, fiscal_year, download_dir, log,
                                         pan=pan, dob=dob, status_cb=status_callback)
-            result["tis"] = "downloaded" if tis_ok else "failed"
+
+        _status(_doc_label(ais_outcome, "AIS") + " — fetching TIS…")
+
+        # TIS PDF — always instant, lives in its own modal.
+        tis_outcome = _outcome("failed")
+        try:
+            tis_outcome = await download_tis(portal, fiscal_year, download_dir, log,
+                                             pan=pan, dob=dob, status_cb=status_callback)
         except Exception as te:
             log(f"[TIS] TIS download error: {te}")
-            result["tis"] = "failed"
+
+        # Final combined status
+        _status(combined_status_label(ais_outcome, tis_outcome))
 
         await portal.close()
-        return result
+        # Keep backward-compat keys app.py uses, and add tis_outcome
+        ais_outcome["tis"] = tis_outcome
+        return ais_outcome
     except Exception as e:
         log(f"[AIS] Request phase failed: {e}")
         reason_str = str(e).split('\n')[0].strip()
@@ -782,7 +817,7 @@ async def run_request_ais(itd_page: Page, fiscal_year: str, download_dir: str,
         if portal:
             try: await portal.close()
             except Exception: pass
-        return {"status": "failed", "reason": reason_str or "Unexpected error"}
+        return _outcome("failed", reason=reason_str or "Unexpected error")
 
 
 
@@ -798,20 +833,20 @@ async def run_download_ais_tis(itd_page: Page, fiscal_year: str, download_dir: s
     fy_start = int(fiscal_year.split("-")[0]) if "-" in fiscal_year else 0
     if fy_start < 2021:
         log(f"[AIS/TIS] Skipping — not available before FY 2021-22.")
-        return "skipped"
+        return {"ais": _outcome("skipped"), "tis": None}
 
     portal = None
-    ais_status = "downloaded"   # default when AIS not requested
-    tis_ok = True
+    ais_outcome = None
+    tis_outcome = None
     try:
         portal = await _open_ais_portal(itd_page, log, status_cb=status_callback)
         await _navigate_to_ais_tab(portal, log, status_cb=status_callback)
         await _select_fy(portal, fiscal_year, log, status_cb=status_callback)
 
         if dl_tis:
-            tis_ok = await download_tis(portal, fiscal_year, download_dir, log,
-                                        pan=pan, dob=dob, status_cb=status_callback)
-            if not tis_ok:
+            tis_outcome = await download_tis(portal, fiscal_year, download_dir, log,
+                                             pan=pan, dob=dob, status_cb=status_callback)
+            if tis_outcome.get("status") != "downloaded":
                 log("[Warning] TIS download failed.")
 
         if dl_ais:
@@ -822,22 +857,22 @@ async def run_download_ais_tis(itd_page: Page, fiscal_year: str, download_dir: s
             if os.path.exists(ais_file):
                 log(f"[AIS] AIS PDF already present: "
                     f"{os.path.basename(ais_file)} — skipping Activity History.")
-                ais_status = "downloaded"
+                ais_outcome = _outcome("already_present")
             else:
-                ais_status = await download_ais_from_activity_history(
+                ais_outcome = await download_ais_from_activity_history(
                     portal, fiscal_year, download_dir, log,
                     pan=pan, dob=dob, ref_id=ais_ref_id,
                     should_continue=should_continue, status_cb=status_callback)
 
+        # Emit final combined status
+        if status_callback:
+            status_callback(combined_status_label(ais_outcome, tis_outcome))
+
         await portal.close()
-        # Return a status string so the UI can show the right message.
-        if dl_ais and not dl_tis:
-            return ais_status                       # "downloaded" | "not_found" | "timeout" | "aborted"
-        ok = (tis_ok if dl_tis else True) and (ais_status == "downloaded" if dl_ais else True)
-        return "downloaded" if ok else "incomplete"
+        return {"ais": ais_outcome, "tis": tis_outcome}
     except Exception as e:
         log(f"[AIS/TIS] Download phase failed: {e}")
         if portal:
             try: await portal.close()
             except Exception: pass
-        return "incomplete"
+        return {"ais": ais_outcome or _outcome("failed"), "tis": tis_outcome}
