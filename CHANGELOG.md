@@ -4,6 +4,12 @@ All notable changes to AayDocCapio are documented here.
 
 ---
 
+## [1.4.3] — 2026-06-14
+
+### Improvements
+- **Windows installer** — Windows installer packages are now built and distributed as part of each release
+
+
 ## [1.4.0] — 2026-06-11
 
 ### New Features
