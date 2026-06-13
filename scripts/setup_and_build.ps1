@@ -72,6 +72,12 @@ Write-Host "  Python    : $PYTHON"
 Set-Location $WIN_DEST
 Write-Host "  Working dir set to: $(Get-Location)"
 
+# ── Read version from version.py (single source of truth) ─────────
+$versionMatch = Select-String -Path "version.py" -Pattern '__version__\s*=\s*"(.+?)"'
+$AppVersion = $versionMatch.Matches.Groups[1].Value
+if (-not $AppVersion) { $AppVersion = "dev" }
+Write-Host "  Version      : $AppVersion"
+
 # ── Step 1b: Build file preflight ─────────────────────────────────
 Write-Host ""
 Write-Host "--------------------------------------------------------"
@@ -212,13 +218,13 @@ if (-not $iscc) {
 } else {
     Write-Host "  Using: $iscc"
     Write-Host "  Building installer..."
-    & $iscc scripts\installer.iss
+    & $iscc /DMyAppVersion="$AppVersion" scripts\installer.iss
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[Error] Inno Setup build failed."
         exit 1
     }
-    $setupSize = [math]::Round((Get-Item "installer_output\AayDocCapio_Setup_v1.4.0.exe").Length / 1MB, 1)
-    Write-Host "[OK] Installer created: installer_output\AayDocCapio_Setup_v1.4.0.exe (${setupSize} MB)"
+    $setupSize = [math]::Round((Get-Item "installer_output\AayDocCapio_Setup_v${AppVersion}.exe").Length / 1MB, 1)
+    Write-Host "[OK] Installer created: installer_output\AayDocCapio_Setup_v${AppVersion}.exe (${setupSize} MB)"
 }
 
 # ── Step 7: WiX MSI ──────────────────────────────────────────────
@@ -245,13 +251,13 @@ if (-not $wix) {
     & wix extension add WixToolset.UI.wixext --global 2>$null
 
     Write-Host "  Building MSI..."
-    & wix build scripts\installer.wxs -out installer_output\AayDocCapio_Setup_v1.4.0.msi -ext WixToolset.UI.wixext -arch x64
+    & wix build scripts\installer.wxs -d Version="$AppVersion" -out installer_output\AayDocCapio_Setup_v${AppVersion}.msi -ext WixToolset.UI.wixext -arch x64
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[Error] WiX MSI build failed."
         exit 1
     }
-    $msiSize = [math]::Round((Get-Item "installer_output\AayDocCapio_Setup_v1.4.0.msi").Length / 1MB, 1)
-    Write-Host "[OK] MSI created: installer_output\AayDocCapio_Setup_v1.4.0.msi (${msiSize} MB)"
+    $msiSize = [math]::Round((Get-Item "installer_output\AayDocCapio_Setup_v${AppVersion}.msi").Length / 1MB, 1)
+    Write-Host "[OK] MSI created: installer_output\AayDocCapio_Setup_v${AppVersion}.msi (${msiSize} MB)"
 }
 
 # ── Summary ───────────────────────────────────────────────────────
@@ -261,6 +267,6 @@ Write-Host "  Build complete! $(Get-Date -Format 'HH:mm:ss')"
 Write-Host "========================================================"
 Write-Host "  Build dir  : $WIN_DEST"
 Write-Host "  App folder : dist\AayDocCapio\"
-Write-Host "  Installer  : installer_output\AayDocCapio_Setup_v1.4.0.exe"
-Write-Host "  MSI        : installer_output\AayDocCapio_Setup_v1.4.0.msi"
+Write-Host "  Installer  : installer_output\AayDocCapio_Setup_v${AppVersion}.exe"
+Write-Host "  MSI        : installer_output\AayDocCapio_Setup_v${AppVersion}.msi"
 Write-Host "========================================================"
