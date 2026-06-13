@@ -93,13 +93,13 @@ jobs:
         run: |
           dotnet tool install --global wix
           $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
+          wix eula accept wix7
           wix extension add WixToolset.UI.wixext --global
         shell: pwsh
 
       - name: Build WiX MSI installer
         run: |
           $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
-          wix eula accept wix7
           wix build scripts\installer.wxs `
             -d Version=${{ steps.ver.outputs.VERSION }} `
             -out installer_output\AayDocCapio_Setup_v${{ steps.ver.outputs.VERSION }}.msi `
