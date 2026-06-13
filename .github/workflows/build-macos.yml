@@ -1,7 +1,7 @@
 name: Build macOS App
 
 # Triggers:
-#   1. Push a tag like v1.4.0  →  builds + attaches .zip to a GitHub Release
+#   1. Push a tag like v1.4.1  →  builds + attaches .zip to a GitHub Release
 #   2. Actions tab → Run workflow  →  manual test build (no release created)
 on:
   push:
@@ -112,15 +112,15 @@ jobs:
       - name: Zip app bundle
         run: |
           cd dist
-          zip -r --symlinks AayDocCapio-macos-arm64-v1.4.0.zip AayDocCapio.app
-          echo "Archive size: $(du -sh AayDocCapio-macos-arm64-v1.4.0.zip | cut -f1)"
+          zip -r --symlinks AayDocCapio-macos-arm64-v1.4.1.zip AayDocCapio.app
+          echo "Archive size: $(du -sh AayDocCapio-macos-arm64-v1.4.1.zip | cut -f1)"
 
       # ── 11. Upload artifact (always available for download) ─────────────────
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AayDocCapio-macos-arm64-v1.4.0
-          path: dist/AayDocCapio-macos-arm64-v1.4.0.zip
+          name: AayDocCapio-macos-arm64-v1.4.1
+          path: dist/AayDocCapio-macos-arm64-v1.4.1.zip
           retention-days: 30
 
       # ── 12. Attach to GitHub Release (only when triggered by a version tag) ─
@@ -128,5 +128,5 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/AayDocCapio-macos-arm64-v1.4.0.zip
+          files: dist/AayDocCapio-macos-arm64-v1.4.1.zip
           generate_release_notes: false
