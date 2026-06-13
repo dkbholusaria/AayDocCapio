@@ -376,8 +376,13 @@ async def download_tis(portal: Page, fiscal_year: str, download_dir: str,
         tis_file, log, "TIS", status_cb=status_cb)
     if ok:
         if status_cb:
-            status_cb("✅ TIS downloaded")
-        _unlock_and_warn(tis_file, pan=pan, dob=dob, log=log, label="TIS PDF")
+            status_cb("🔓 Unlocking TIS PDF…")
+        result = _unlock_and_warn(tis_file, pan=pan, dob=dob, log=log, label="TIS PDF")
+        if status_cb:
+            if result.get("unlocked"):
+                status_cb("✅ TIS downloaded & unlocked")
+            else:
+                status_cb("⚠️ TIS downloaded — PDF unlock failed (wrong password?)")
     await _close_modal(portal, log)
     return ok
 
