@@ -951,6 +951,7 @@ class AayDocCapioApp(QMainWindow):
         self.editing_id = None
         self.is_running = False
         self._checkbox_map = {}
+        self._id_to_row: dict = {}
         
         # Generate checkmark image for custom check box styling
         self.checkmark_path = os.path.join(_app_dir(), "checkmark.png")
@@ -2000,6 +2001,7 @@ class AayDocCapioApp(QMainWindow):
 
     def refresh_grid(self):
         self._checkbox_map.clear()
+        self._id_to_row.clear()
         self.assessee_list = self.vault.get_all_assessees()
         
         if not hasattr(self, "client_table"):
@@ -2059,6 +2061,7 @@ class AayDocCapioApp(QMainWindow):
             cb.setChecked(is_selected)
             cb.toggled.connect(lambda checked, id_=a_id: self._on_check(id_, checked))
             self._checkbox_map[a_id] = cb
+            self._id_to_row[a_id] = i
             cb_layout.addWidget(cb)
             self.client_table.setCellWidget(i, self._TC_CHK, cb_container)
 
@@ -2163,6 +2166,9 @@ class AayDocCapioApp(QMainWindow):
 
     def toggle_select_all(self, checked):
         for a_id, cb in self._checkbox_map.items():
+            row_idx = self._id_to_row.get(a_id)
+            if row_idx is None or self.client_table.isRowHidden(row_idx):
+                continue
             cb.blockSignals(True)
             cb.setChecked(checked)
             cb.blockSignals(False)
@@ -2170,25 +2176,23 @@ class AayDocCapioApp(QMainWindow):
                 self.selected_ids.add(a_id)
             else:
                 self.selected_ids.discard(a_id)
-                
-        if hasattr(self, "client_table"):
-            for row_idx in range(self.client_table.rowCount()):
-                item = self.client_table.item(row_idx, self._TC_NAME)
-                if item:
-                    self._apply_row_style(row_idx, checked, row_idx)
-                    
+            self._apply_row_style(row_idx, checked, row_idx)
         self._update_count()
 
     def _update_count(self):
-        n = len(self.selected_ids)
+        visible_ids = {
+            a_id for a_id, row in self._id_to_row.items()
+            if not self.client_table.isRowHidden(row)
+        } if hasattr(self, "client_table") else set(self._checkbox_map)
+        n = len(self.selected_ids & visible_ids)
+        total = len(visible_ids)
         self.lbl_selected.setText(f"{n} selected" if n else "")
-        total = len(self._checkbox_map)
         if hasattr(self, "header_cb"):
             self.header_cb.blockSignals(True)
             self.header_cb.setChecked(total > 0 and n == total)
             self.header_cb.blockSignals(False)
         if hasattr(self, "btn_delete_sel"):
-            self.btn_delete_sel.setEnabled(n > 0)
+            self.btn_delete_sel.setEnabled(len(self.selected_ids) > 0)
 
     # ── Form Operations ───────────────────────────────────────────────────────
 
