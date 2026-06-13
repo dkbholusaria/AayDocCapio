@@ -3103,8 +3103,13 @@ class AayDocCapioApp(QMainWindow):
                             set_status(pan, "⬜ Skipped — AIS not available for this FY")
                         else:
                             self._ais_results[pan] = "failed"
-                            set_status(pan, "❌ AIS request failed — check logs")
-                            self.log("[Warning] AIS request did not complete — check portal.")
+                            reason = result.get("reason", "")
+                            if "too large" in reason.lower() or "utility" in reason.lower():
+                                set_status(pan, "⚠️ AIS data too large for PDF — download JSON and use AIS Utility app")
+                                self.log(f"[Warning] AIS PDF unavailable: {reason}")
+                            else:
+                                set_status(pan, "❌ AIS request failed — check logs")
+                                self.log(f"[Warning] AIS request did not complete — {reason or 'check portal.'}")
 
                     # ── Download AIS/TIS ──────────────────────────────────────────
                     elif mode == "ais_tis" and self.is_running:

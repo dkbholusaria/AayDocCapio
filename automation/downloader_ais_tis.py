@@ -757,6 +757,8 @@ async def run_request_ais(itd_page: Page, fiscal_year: str, download_dir: str,
             _status("✅ AIS downloaded — fetching TIS...")
         elif result.get("status") == "requested":
             _status("🕐 AIS queued — fetching TIS...")
+        elif "too large" in result.get("reason", "").lower() or "utility" in result.get("reason", "").lower():
+            _status("⚠️ AIS too large for PDF — use AIS Utility JSON. Fetching TIS...")
         else:
             _status("⚠️ AIS issue — fetching TIS...")
 
