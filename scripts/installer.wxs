@@ -3,8 +3,8 @@
      xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
 
   <Package
-    Name="AayDocCapio 1.4.0"
-    Version="1.4.0"
+    Name="AayDocCapio 1.4.1"
+    Version="1.4.1"
     Manufacturer="Deepak Bhholusaria"
     UpgradeCode="FDE0FF07-C5AF-4909-BCD4-150EB9E14AA2"
     Scope="perMachine">
