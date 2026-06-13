@@ -81,6 +81,26 @@ async def _do_login(page, user_id, uid_masked, password, log_callback, is_runnin
     # the Angular app to mount the login form.
     await asyncio.sleep(3)
 
+    # ── Maintenance check ────────────────────────────────────────────────────
+    # The portal serves a plain HTML maintenance page instead of the Angular
+    # app during downtime. Detect it early so we show a clear status.
+    try:
+        body_text = (await page.inner_text("body")).lower()
+        if "maintenance" in body_text or "website will be down" in body_text or "maintance" in body_text:
+            import re as _re
+            # Try to extract the window from the page text
+            raw = await page.inner_text("body")
+            m = _re.search(r"([\d]{1,2}\s+\w+\s+\d{4}[^.]*?to[^.]*?IST)", raw, _re.IGNORECASE)
+            window = f" ({m.group(1).strip()})" if m else ""
+            raise RuntimeError(
+                f"ITD portal is under scheduled maintenance{window}. "
+                f"Try again after the maintenance window."
+            )
+    except RuntimeError:
+        raise
+    except Exception:
+        pass  # page.inner_text failed (e.g. blank page) — proceed normally
+
     # ── Step 1: Fill PAN ─────────────────────────────────────────────────────
     log_callback(f"[Auth] Entering User ID: {uid_masked}")
     await update_browser_status(page, f"Auth: Entering User ID ({uid_masked})...")

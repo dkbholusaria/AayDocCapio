@@ -446,6 +446,10 @@ def _friendly_error(raw: str) -> str:
             if raw.lower().startswith(prefix):
                 return raw[len(prefix):].strip() or "Incorrect credentials"
         return raw
+    # Scheduled maintenance page
+    if "scheduled maintenance" in r or "under scheduled maintenance" in r:
+        # Pass through — already a human-readable sentence from auth.py
+        return raw
     # Network / portal unreachable
     if "err_empty_response" in r or "empty response" in r:
         return "ITD portal is not responding — portal may be down for maintenance. Open incometax.gov.in in a browser to check, then retry."
@@ -479,22 +483,25 @@ def _friendly_error(raw: str) -> str:
     return clean
 
 
-# Status → (icon prefix, background colour, text colour)
-_STATUS_STYLE = {
-    "waiting":  ("⬜", "#F8FAFC", "#64748B"),
-    "running":  ("⏳", "#FFF7ED", "#92400E"),
-    "success":  ("✅", "#F0FDF4", "#15803D"),
-    "queued":   ("🕐", "#FFFBEB", "#92400E"),
-    "failed":   ("❌", "#FEF2F2", "#B91C1C"),
+# Status → text colour (light theme). Dark theme uses brighter variants.
+_STATUS_FG = {
+    "waiting": ("#64748B", "#94A3B8"),   # (light_fg, dark_fg)
+    "running": ("#92400E", "#FCD34D"),
+    "success": ("#15803D", "#4ADE80"),
+    "queued":  ("#92400E", "#FCD34D"),
+    "failed":  ("#B91C1C", "#F87171"),
 }
 
 def _status_style(text: str):
+    """Return (key, light_fg, dark_fg) for the given status text."""
     t = text.lower()
-    if any(x in t for x in ("waiting",)):          return _STATUS_STYLE["waiting"]
-    if any(x in t for x in ("✅", "downloaded")):  return _STATUS_STYLE["success"]
-    if any(x in t for x in ("🕐", "queued", "pls use")):  return _STATUS_STYLE["queued"]
-    if any(x in t for x in ("❌", "failed", "error")): return _STATUS_STYLE["failed"]
-    return _STATUS_STYLE["running"]  # ⏳ anything in-progress
+    if "waiting" in t:                                  key = "waiting"
+    elif any(x in t for x in ("✅", "downloaded")):    key = "success"
+    elif any(x in t for x in ("🕐", "queued", "pls use")): key = "queued"
+    elif any(x in t for x in ("❌", "failed", "error")): key = "failed"
+    else:                                               key = "running"
+    light_fg, dark_fg = _STATUS_FG[key]
+    return key, light_fg, dark_fg
 
 
 class BatchProgressDialog(QDialog):
@@ -602,11 +609,11 @@ class BatchProgressDialog(QDialog):
             self._table.setRowHeight(row, 40)
 
             name_item = QTableWidgetItem(name)
-            name_item.setForeground(QColor("#1E293B"))
+            name_item.setForeground(QColor(_bt.text_primary))
             self._table.setItem(row, self._COL_NAME, name_item)
 
             pan_item = QTableWidgetItem(pan)
-            pan_item.setForeground(QColor("#475569"))
+            pan_item.setForeground(QColor(_bt.text_muted))
             pan_item.setFont(QFont(_MONO_FONT, 10))
             pan_item.setTextAlignment(
                 Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
@@ -735,10 +742,11 @@ class BatchProgressDialog(QDialog):
     # ── internal helpers ──────────────────────────────────────────────────────
 
     def _set_status_item(self, row: int, text: str):
-        _, bg, fg = _status_style(text)
+        _bt = _t()
+        _, light_fg, dark_fg = _status_style(text)
+        fg = dark_fg if getattr(_bt, "name", "").lower() != "light" else light_fg
         item = QTableWidgetItem(text)
         item.setForeground(QColor(fg))
-        item.setBackground(QColor(bg))
         item.setFont(QFont(_UI_FONT, 10))
         item.setToolTip(text)
         self._table.setItem(row, self._COL_STATUS, item)
@@ -1997,7 +2005,21 @@ class AayDocCapioApp(QMainWindow):
             else:
                 st = (status_item.text() if status_item else "—")
                 status_match = any(st.startswith(p) for p in status_prefixes)
-            self.client_table.setRowHidden(row_idx, not (text_match and status_match))
+            hidden = not (text_match and status_match)
+            self.client_table.setRowHidden(row_idx, hidden)
+            if not hidden:
+                a_id = name_item.data(Qt.ItemDataRole.UserRole)
+                if a_id:
+                    is_selected = a_id in self.selected_ids
+                    cb_container = self.client_table.cellWidget(row_idx, self._TC_CHK)
+                    if cb_container:
+                        cb = cb_container.findChild(QCheckBox)
+                        if cb and cb.isChecked() != is_selected:
+                            cb.blockSignals(True)
+                            cb.setChecked(is_selected)
+                            cb.blockSignals(False)
+                    self._apply_row_style(row_idx, is_selected, row_idx)
+        self._update_count()
 
     def refresh_grid(self):
         self._checkbox_map.clear()
