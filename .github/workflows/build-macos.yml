@@ -48,8 +48,7 @@ jobs:
         run: |
           python -c "
           import app
-          import as26_converter
-          from automation import browser, downloader, downloader_26as, downloader_ais_tis
+          from automation import browser, downloader, downloader_26as, downloader_ais_tis, as26_converter
           from vault import VaultManager
           print('All imports OK')
           "
@@ -65,7 +64,6 @@ jobs:
             --add-data "assessment_years.json:." \
             --collect-submodules automation \
             --hidden-import vault \
-            --hidden-import as26_converter \
             --hidden-import themes \
             app.py
 
