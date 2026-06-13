@@ -25,7 +25,14 @@ jobs:
         with:
           python-version: "3.12"
 
-      # ── 3. Install runtime + build deps ────────────────────────────────────
+      # ── 3. Get version from version.py ────────────────────────────────────
+      - name: Get version
+        id: ver
+        run: |
+          VERSION=$(python -c "from version import __version__; print(__version__)")
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      # ── 4. Install runtime + build deps ────────────────────────────────────
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -112,15 +119,15 @@ jobs:
       - name: Zip app bundle
         run: |
           cd dist
-          zip -r --symlinks AayDocCapio-macos-arm64-v1.4.1.zip AayDocCapio.app
-          echo "Archive size: $(du -sh AayDocCapio-macos-arm64-v1.4.1.zip | cut -f1)"
+          zip -r --symlinks AayDocCapio-macos-arm64-v${{ steps.ver.outputs.VERSION }}.zip AayDocCapio.app
+          echo "Archive size: $(du -sh AayDocCapio-macos-arm64-v${{ steps.ver.outputs.VERSION }}.zip | cut -f1)"
 
       # ── 11. Upload artifact (always available for download) ─────────────────
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AayDocCapio-macos-arm64-v1.4.1
-          path: dist/AayDocCapio-macos-arm64-v1.4.1.zip
+          name: AayDocCapio-macos-arm64-v${{ steps.ver.outputs.VERSION }}
+          path: dist/AayDocCapio-macos-arm64-v${{ steps.ver.outputs.VERSION }}.zip
           retention-days: 30
 
       # ── 12. Attach to GitHub Release (only when triggered by a version tag) ─
@@ -128,5 +135,5 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/AayDocCapio-macos-arm64-v1.4.1.zip
+          files: dist/AayDocCapio-macos-arm64-v${{ steps.ver.outputs.VERSION }}.zip
           generate_release_notes: false

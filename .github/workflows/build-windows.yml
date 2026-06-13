@@ -25,7 +25,15 @@ jobs:
         with:
           python-version: "3.12"
 
-      # ── 3. Install runtime + build deps ────────────────────────────────────
+      # ── 3. Get version from version.py ────────────────────────────────────
+      - name: Get version
+        id: ver
+        run: |
+          $v = python -c "from version import __version__; print(__version__)"
+          "VERSION=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        shell: pwsh
+
+      # ── 4. Install runtime + build deps ────────────────────────────────────
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -77,7 +85,7 @@ jobs:
 
       - name: Build Inno Setup installer
         run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" scripts\installer.iss
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion="${{ steps.ver.outputs.VERSION }}" scripts\installer.iss
         shell: pwsh
 
       # ── 9. WiX installer (.msi) ────────────────────────────────────────────
@@ -93,7 +101,8 @@ jobs:
           $env:PATH += ";$env:USERPROFILE\.dotnet\tools"
           wix eula accept wix7
           wix build scripts\installer.wxs `
-            -out installer_output\AayDocCapio_Setup_v1.4.1.msi `
+            -d Version=${{ steps.ver.outputs.VERSION }} `
+            -out installer_output\AayDocCapio_Setup_v${{ steps.ver.outputs.VERSION }}.msi `
             -ext WixToolset.UI.wixext `
             -arch x64
         shell: pwsh
@@ -102,10 +111,10 @@ jobs:
       - name: Upload Windows installers
         uses: actions/upload-artifact@v4
         with:
-          name: AayDocCapio-windows-installers-v1.4.1
+          name: AayDocCapio-windows-installers-v${{ steps.ver.outputs.VERSION }}
           path: |
-            installer_output\AayDocCapio_Setup_v1.4.1.exe
-            installer_output\AayDocCapio_Setup_v1.4.1.msi
+            installer_output\AayDocCapio_Setup_v${{ steps.ver.outputs.VERSION }}.exe
+            installer_output\AayDocCapio_Setup_v${{ steps.ver.outputs.VERSION }}.msi
           retention-days: 30
 
       # ── 11. Attach to GitHub Release ───────────────────────────────────────
@@ -114,6 +123,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            installer_output\AayDocCapio_Setup_v1.4.1.exe
-            installer_output\AayDocCapio_Setup_v1.4.1.msi
+            installer_output\AayDocCapio_Setup_v${{ steps.ver.outputs.VERSION }}.exe
+            installer_output\AayDocCapio_Setup_v${{ steps.ver.outputs.VERSION }}.msi
           generate_release_notes: true

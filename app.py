@@ -2,7 +2,7 @@
 AayDocCapio — ITD Bulk Document Downloader (Form 26AS, AIS, TIS)
 Run:  python3 app.py
 """
-APP_VERSION = "1.4.1"
+from version import __version__ as APP_VERSION
 
 import sys, os, json, asyncio, threading, datetime, time, subprocess
 from themes import THEMES, ThemeColors, build_stylesheet, get_theme, MONO_FONT_NAME as _MONO_FONT
