@@ -278,6 +278,13 @@ async def _do_login(page, user_id, uid_masked, password, log_callback, is_runnin
     except Exception:
         log_callback("[Warning] Dashboard sentinel timed out. Proceeding cautiously.")
 
+    # Ensure any loading overlay is gone before handing back the page.
+    try:
+        await page.locator(".customLoaderBackdrop").wait_for(state="hidden", timeout=30000)
+        log_callback("[Auth] Loader overlay cleared.")
+    except Exception:
+        log_callback("[Auth] Loader overlay already gone or not present.")
+
     log_callback(f"[Auth] Dashboard ready: {page.url}")
     return page
 
