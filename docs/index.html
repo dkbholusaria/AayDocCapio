@@ -78,16 +78,14 @@
 
     /* ── Nav bar ─────────────────────────────────────────────── */
     nav {
-      background: rgba(252,254,255,0.96);
-      backdrop-filter: blur(28px) saturate(1.8) brightness(1.04);
-      -webkit-backdrop-filter: blur(28px) saturate(1.8) brightness(1.04);
-      border-bottom: 1px solid rgba(10,22,40,0.08);
-      box-shadow: 0 1px 0 rgba(10,22,40,0.06), 0 4px 20px rgba(10,22,40,0.07);
+      background: linear-gradient(90deg, #0d47a1 0%, #1565c0 40%, #1976d2 100%);
+      border-bottom: 1px solid rgba(255,255,255,0.15);
+      box-shadow: 0 2px 16px rgba(13,71,161,0.5);
       padding: 0 40px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      height: 62px;
+      height: 56px;
       position: sticky;
       top: 0;
       z-index: 100;
@@ -95,36 +93,31 @@
 
     .nav-brand {
       font-family: var(--font-display);
-      color: var(--heading);
+      color: #fff;
       font-size: 1.05rem;
       font-weight: 800;
       letter-spacing: -0.01em;
     }
     .nav-brand span { color: var(--gold); }
 
-    .nav-links { display: flex; gap: 24px; }
+    .nav-links { display: flex; gap: 4px; align-items: center; }
     .nav-links a {
-      color: #4A5C76;
-      font-size: 0.875rem;
+      color: rgba(255,255,255,0.85);
+      font-size: 0.82rem;
       font-weight: 500;
-      transition: color var(--dur-fast) var(--ease-fluent);
-      position: relative;
-      padding-bottom: 2px;
+      transition: color 0.15s, background 0.15s;
+      padding: 0.35rem 0.65rem;
+      border-radius: 6px;
+      white-space: nowrap;
     }
-    .nav-links a::after {
-      content: "";
-      position: absolute;
-      bottom: -4px;
-      left: 0;
-      right: 0;
-      height: 2px;
-      background: var(--navy);
-      border-radius: 1px;
-      transform: scaleX(0);
-      transition: transform var(--dur-normal) var(--ease-fluent);
+    .nav-links a:hover { color: #fff; background: rgba(255,255,255,0.15); text-decoration: none; }
+    .nav-links a.nav-cta {
+      background: var(--gold);
+      color: var(--navy-dark);
+      font-weight: 800;
+      margin-left: 4px;
     }
-    .nav-links a:hover { color: var(--navy); text-decoration: none; }
-    .nav-links a:hover::after { transform: scaleX(1); }
+    .nav-links a.nav-cta:hover { background: #e09300; color: var(--navy-dark); }
 
     /* ── Hero ────────────────────────────────────────────────── */
     .hero {
@@ -834,13 +827,14 @@
 <nav>
   <a href="https://download.aaydoccapio.com/" class="nav-brand">AayDoc <span>Capio</span>™</a>
   <div class="nav-links">
-    <a href="#download">Download</a>
     <a href="#whats-new">What's new</a>
     <a href="#features">Features</a>
     <a href="#how">How it works</a>
     <a href="#screenshots">Screenshots</a>
     <a href="#faq">FAQ</a>
     <a href="https://github.com/dkbholusaria/AayDocCapio" target="_blank">GitHub</a>
+    <a href="#about-name">About</a>
+    <a href="#download" class="nav-cta">⬇ Download</a>
   </div>
 </nav>
 
