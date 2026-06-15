@@ -290,7 +290,7 @@ class BatchProgressDialog(QDialog):
             path_lbl.setWordWrap(False)
             path_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
             path_lbl.setOpenExternalLinks(False)
-            path_lbl.linkActivated.connect(lambda url: (_log_open(f"[OpenFolder] Row link clicked: {url!r}"), _open_path(url)))
+            path_lbl.linkActivated.connect(self._open_row_path)
             self._table.setCellWidget(row, self._COL_PATH, path_lbl)
 
         layout.addWidget(self._table, stretch=1)
@@ -334,7 +334,7 @@ class BatchProgressDialog(QDialog):
             f"border-radius:6px;font-size:12px;padding:0 12px;}}"
             f"QPushButton:hover{{background:{_bt.bg_input};}}"
             f"QPushButton:disabled{{color:{_bt.text_muted};border-color:{_bt.border};}}")
-        self._open_folder_btn.clicked.connect(lambda: (_log_open(f"[OpenFolder] Button clicked: {self._output_dir!r}"), _open_path(self._output_dir)))
+        self._open_folder_btn.clicked.connect(self._open_output_dir)
         footer.addWidget(self._open_folder_btn)
 
         self._report_btn = QPushButton("⬇  Download Report")
@@ -395,6 +395,14 @@ class BatchProgressDialog(QDialog):
         self._path_signal.connect(self._on_path_update)
 
     # ── internal helpers ──────────────────────────────────────────────────────
+
+    def _open_output_dir(self):
+        _log_open(f"[OpenFolder] Button clicked: {self._output_dir!r}")
+        _open_path(self._output_dir)
+
+    def _open_row_path(self, url: str):
+        _log_open(f"[OpenFolder] Row link clicked: {url!r}")
+        _open_path(url)
 
     def _set_status_item(self, row: int, text: str):
         _bt = _t()
