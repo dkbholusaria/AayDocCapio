@@ -277,14 +277,17 @@ class AayDocCapioApp(QMainWindow):
         if hasattr(self, "dir_lbl"):
             self.dir_lbl.setStyleSheet(
                 f"color:{t.text_primary};font-size:12px;background:transparent;")
+        _dir_btn_style = (
+            f"QPushButton{{background:transparent;color:{t.text_primary};"
+            f"border:1px solid {t.border};border-radius:6px;"
+            f"padding:4px 12px;font-weight:bold;font-size:12px;}}"
+            f"QPushButton:hover{{background:{t.bg_table_alt};}}"
+            f"QPushButton:disabled{{color:{t.text_muted};border-color:{t.border};}}"
+        )
         if hasattr(self, "_browse_btn"):
-            self._browse_btn.setStyleSheet(
-                f"QPushButton{{background:transparent;color:{t.text_primary};"
-                f"border:1px solid {t.border};border-radius:6px;"
-                f"padding:4px 12px;font-weight:bold;font-size:12px;}}"
-                f"QPushButton:hover{{background:{t.bg_table_alt};}}"
-                f"QPushButton:disabled{{color:{t.text_muted};border-color:{t.border};}}"
-            )
+            self._browse_btn.setStyleSheet(_dir_btn_style)
+        if hasattr(self, "_open_btn"):
+            self._open_btn.setStyleSheet(_dir_btn_style)
 
         # ── chk_headless ──────────────────────────────────────────────────────
         if hasattr(self, "chk_headless"):
@@ -742,6 +745,7 @@ class AayDocCapioApp(QMainWindow):
         open_btn = _btn("🗂  Open", "outline", height=26)
         open_btn.setToolTip("Open output folder in Explorer")
         open_btn.clicked.connect(self._open_output_folder)
+        self._open_btn = open_btn
 
         dir_row = QHBoxLayout(); dir_row.setContentsMargins(0,0,0,0); dir_row.setSpacing(8)
         dir_row.addWidget(self.dir_lbl); dir_row.addWidget(browse_btn); dir_row.addWidget(open_btn)
