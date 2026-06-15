@@ -728,6 +728,8 @@ class AayDocCapioApp(QMainWindow):
         else:
             default_dir = _default_download_dir()
             self.vault.update_setting("download_root_dir", default_dir)
+        if sys.platform == "win32":
+            default_dir = default_dir.replace("/", "\\")
         self.dir_lbl = QLabel(default_dir)
         self.dir_lbl.setStyleSheet(f"color:{_t().text_primary};font-size:12px;background:transparent;")
         self.dir_lbl.setWordWrap(False)
@@ -1701,6 +1703,8 @@ class AayDocCapioApp(QMainWindow):
         chosen = QFileDialog.getExistingDirectory(self, "Select Output Directory",
             self.dir_lbl.text())
         if chosen:
+            if sys.platform == "win32":
+                chosen = chosen.replace("/", "\\")
             self.dir_lbl.setText(chosen)
             self.vault.update_setting("download_root_dir", chosen)
             self.log(f"[Settings] Output folder: {chosen}")
