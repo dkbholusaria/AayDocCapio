@@ -2171,6 +2171,21 @@ class AayDocCapioApp(QMainWindow):
         except Exception as e:
             self.log(f"[System Error] Browser init failed: {e}"); return
 
+        # Warm up the ITD portal before the first client — loads the Angular bundle,
+        # CDN assets and sets session cookies so the first client's dashboard renders
+        # at the same speed as subsequent clients.
+        try:
+            self.log("[System] Warming up ITD portal...")
+            _warmup_page = await context.new_page()
+            await _warmup_page.goto(
+                "https://eportal.incometax.gov.in/iec/foservices/#/login",
+                wait_until="domcontentloaded", timeout=60000)
+            await asyncio.sleep(5)
+            await _warmup_page.close()
+            self.log("[System] Portal warm-up done.")
+        except Exception as _wu_err:
+            self.log(f"[System] Portal warm-up skipped: {_wu_err}")
+
         try:
             for i, target in enumerate(targets):
                 if not self.is_running:
