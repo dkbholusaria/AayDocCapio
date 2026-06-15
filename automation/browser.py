@@ -236,7 +236,7 @@ class BrowserManager:
 
         # Match the competitor's working context exactly: fixed 1600x900 viewport,
         # no bypass_csp (real Chrome handles CSP fine and the portal expects it).
-        ctx = await self._browser.new_context(
+        _context_kwargs = dict(
             viewport={"width": 1600, "height": 900},
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -247,6 +247,17 @@ class BrowserManager:
             timezone_id="Asia/Kolkata",
             accept_downloads=True,
         )
+        try:
+            ctx = await self._browser.new_context(**_context_kwargs)
+        except Exception as e:
+            # Browser object is stale (disconnected Chrome process) — force a full restart.
+            if log_callback:
+                log_callback(f"[Browser] Context creation failed ({e}), restarting browser...")
+            self._browser = None
+            self._playwright = None
+            await self._ensure_browser(log_callback, interactive)
+            ctx = await self._browser.new_context(**_context_kwargs)
+
         # Spoof automation-detection properties
         await ctx.add_init_script("""() => {
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });

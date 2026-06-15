@@ -72,13 +72,26 @@ async def login_itd(user_id: str, password: str, log_callback, context: BrowserC
 
 async def _do_login(page, user_id, uid_masked, password, log_callback, is_running=None):
 
-    log_callback("[Auth] Loading ITD Portal...")
-    await page.goto(
-        "https://eportal.incometax.gov.in/iec/foservices/#/login",
-        wait_until="domcontentloaded", timeout=90000)
+    _ITD_LOGIN = "https://eportal.incometax.gov.in/iec/foservices/#/login"
+    for _nav_attempt in range(1, 4):
+        try:
+            log_callback(f"[Auth] Loading ITD Portal{f' (retry {_nav_attempt})' if _nav_attempt > 1 else ''}...")
+            await page.goto(_ITD_LOGIN, wait_until="domcontentloaded", timeout=90000)
+            break
+        except Exception as _nav_err:
+            err_str = str(_nav_err)
+            # Transient network errors — retry with a short backoff
+            if any(k in err_str for k in ("ERR_EMPTY_RESPONSE", "ERR_CONNECTION_RESET",
+                                           "ERR_CONNECTION_REFUSED", "ERR_NAME_NOT_RESOLVED",
+                                           "ERR_TIMED_OUT", "net::")):
+                if _nav_attempt < 3:
+                    log_callback(f"[Auth] Portal unreachable ({err_str.split(chr(10))[0].strip()}) — retrying in 5 s…")
+                    await asyncio.sleep(5)
+                    continue
+            raise  # non-network error or final attempt — propagate
+
     # Real Chrome keeps background connections alive so networkidle never fires.
-    # domcontentloaded (already done above by goto) is sufficient; just wait for
-    # the Angular app to mount the login form.
+    # domcontentloaded is sufficient; wait for the Angular app to mount the login form.
     await asyncio.sleep(3)
 
     # ── Maintenance check ────────────────────────────────────────────────────

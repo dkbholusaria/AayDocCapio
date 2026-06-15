@@ -587,7 +587,7 @@ async def _download_modal_row(portal: Page, row_text: str, save_path: str,
         step("Clicking Download")
         async with portal.expect_download(timeout=60000) as dl_info:
             await dl_btn.click(timeout=20000)
-            # Brief pause to let any inline portal error render
+            # Brief pause to let any inline portal error or "no data" banner render
             await asyncio.sleep(1.5)
             # Check for portal-side error shown inside the modal row
             try:
@@ -600,12 +600,30 @@ async def _download_modal_row(portal: Page, row_text: str, save_path: str,
                 raise
             except Exception:
                 pass
+            # Early "no data" check — avoids burning the full 60s download timeout
+            try:
+                modal_txt = (await modal.inner_text(timeout=2000)).strip()
+                if _re.search(r"don't have any|do not have any", modal_txt, _re.IGNORECASE):
+                    m = _re.search(r"((?:you )?(?:don't|do not) have any[^\n.!?]*[.!?]?)",
+                                   modal_txt, _re.IGNORECASE)
+                    reason = m.group(1).strip() if m else f"No {label} data for this FY"
+                    raise RuntimeError(f"__no_data__: {reason}")
+            except RuntimeError:
+                raise
+            except Exception:
+                pass
         download = await dl_info.value
         await download.save_as(save_path)
         step(f"Saved: {os.path.basename(save_path)}")
         log(f"[Victory] {label} PDF downloaded: {os.path.basename(save_path)}")
         return {"ok": True}
     except RuntimeError as e:
+        msg = str(e)
+        if msg.startswith("__no_data__: "):
+            reason = msg[len("__no_data__: "):]
+            step(f"No data: {reason}")
+            log(f"[Warning] {label}: {reason}")
+            return {"ok": False, "status": "no_data", "reason": reason}
         step(f"Portal error: {e}")
         log(f"[Warning] {label}: {e}")
         return {"ok": False, "status": "error", "reason": str(e)}
