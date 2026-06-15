@@ -470,3 +470,95 @@ Pending / optional:
 - Large-file queued path (Activity History) — implemented but seldom exercised
   since files download instantly
 - Windows build with all latest changes (rebuild required to deploy to clients)
+
+---
+
+## 15. v1.4.4 Fixes — Login & Dashboard Reliability (2026-06-15)
+
+Several issues observed during live 93-client batch runs prompted a round of
+reliability fixes.
+
+### 15.1 First-client timeout after long idle (portal warm-up)
+
+**Problem:** After a substantial idle period the ITD portal's Angular bundle,
+CDN assets and cookies are cold. The first client's dashboard took 60s+ to
+render the nav menu, causing the `e-File` hover to time out. Clients 2 onwards
+were consistently faster because the assets were cached.
+
+**Fix:** Added a portal warm-up step in `_execute_batch()` (`app.py`) before
+the first client loop. Opens `#/login`, waits 5s for the Angular bundle to load,
+then closes the tab. Costs ~5s per batch start; eliminates the cold-start timeout.
+
+### 15.2 e-File menu hover timeout on slow dashboards
+
+**Problem:** Even after the loader overlay cleared, the Angular nav menu was
+sometimes not interactive. A single 30s `wait_for(visible)` + 30s hover timeout
+meant the entire 60s was wasted before failing. HUF and company accounts were
+most affected (slower dashboard render).
+
+**Fix:** In `downloader_26as.py`, replaced the single wait+hover with a retry
+loop (4 attempts × 30s wait + 10s hover). Between attempts: presses Escape and
+scrolls to top to nudge Angular re-rendering. Also increased dashboard sentinel
+timeout from 20s → 40s in `auth.py`, plus an 8s extra buffer when the sentinel
+fires late.
+
+### 15.3 Active session dialog (B-04)
+
+**Problem:** If a client was already logged in on another device the ITD portal
+showed an "already logged in / active session exists" dialog after the Continue
+click on the PAN screen. The SAM-wait loop (200 × 300ms = 60s) exhausted without
+ever finding `passwordCheckBox-input`.
+
+**Fix:** Inside the SAM-wait loop in `auth.py`, scan the page body for
+active-session keywords every iteration. When detected, click the first visible
+Continue/Proceed/Yes/OK button to dismiss the dialog, then continue waiting for
+the SAM checkbox normally.
+
+### 15.4 Locked account — no fast-fail
+
+**Problem:** When an account was locked the portal showed an inline error
+("e-filing account has been locked due to security reasons") on the PAN screen.
+The code didn't detect it and waited the full 60s SAM timeout before failing with
+a cryptic "SAM page did not appear" message.
+
+**Fix:** Added a locked-account check immediately after the Continue click (and
+again inside the SAM-wait loop as a belt-and-suspenders). Raises
+`RuntimeError("ACCOUNT LOCKED: …")` immediately. `errors.py` maps this to a
+clean status column message.
+
+### 15.5 26AS conversion status not reflected in batch dialog
+
+**Problem:** After moving conversion to run immediately per-client (v1.4.0→v1.4.4
+refactor), the status column was never updated — it stayed at `✅ 26AS Downloaded`
+even though Excel + HTML were generated successfully.
+
+**Fix:** Added `set_status(pan, "⏳ Converting to Excel...")` before conversion
+and `set_status(pan, "✅ 26AS + Excel + HTML")` on success in `app.py`, matching
+the strings used by the old `_auto_convert_26as()` end-of-batch path.
+
+### 15.6 "Open Folder" fails on SUBST / mapped drives
+
+**Problem:** On Windows, clicking "Open Folder" in the batch progress dialog
+showed: *"D:\Trackers is not available. The path cannot be traversed because it
+contains an untrusted mount point."* The user's output directory was set to a
+virtual drive created with `SUBST D: C:\...`. Windows Explorer resolves SUBST
+drives fine, but `os.startfile()` calls `ShellExecuteW` which rejects paths
+through untrusted mount points.
+
+**Fix:** In `config.py`, added `_resolve_win_path()` which runs `subst` and
+parses its output to detect virtual drives and map them back to their real `C:\`
+path. `_open_path()` now calls this resolver and passes the real path to
+`explorer.exe` via `subprocess.Popen`, with `os.startfile()` as a fallback.
+
+---
+
+## 16. Status (as of 2026-06-15)
+
+All v1.4.4 fixes shipped. Current known open items:
+
+- **B-02** — PDF unlock fails for some TIS/AIS files (non-standard password formulas)
+- **B-05** — Duplicate records on re-import (vault upsert audit needed)
+- **B-06** — Wrong DOB causes 26AS ZIP extraction to fail silently
+- **B-07 / F-10** — Large 26AS on-demand flow via tdscpc.gov.in not yet automated
+- **F-08** — AIS JSON download for oversized AIS (P3)
+- **F-11–F-14** — Client groups, auto-update, log history, multi-AY download (backlog)

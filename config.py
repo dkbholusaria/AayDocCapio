@@ -63,6 +63,32 @@ def _bundled_dir() -> str:
     return os.path.dirname(os.path.abspath(__file__))
 
 
+def _resolve_win_path(path: str) -> str:
+    """
+    Resolve SUBST / mapped-drive paths to their real target so explorer.exe
+    can open them without the 'untrusted mount point' error.
+    Checks 'subst' output first, then falls back to os.path.realpath()
+    for junction points and symlinks.
+    """
+    import re
+    drive = os.path.splitdrive(path)[0].upper()
+    if not drive:
+        return os.path.realpath(path)
+    drive_slash = drive + "\\"
+    try:
+        out = subprocess.check_output(["subst"], text=True, timeout=3)
+        for line in out.splitlines():
+            # subst output format: "D:\: => C:\Real\Path"
+            m = re.match(r"([A-Z]:\\):\s*=>\s*(.+)", line)
+            if m and m.group(1).upper() == drive_slash.upper():
+                real_root = m.group(2).rstrip("\\")
+                rel = os.path.relpath(path, drive_slash)
+                return os.path.join(real_root, rel) if rel != "." else real_root
+    except Exception:
+        pass
+    return os.path.realpath(path)
+
+
 def _open_path(path: str):
     """Open a file or folder in the OS file manager / default app."""
     if not path:
@@ -74,7 +100,13 @@ def _open_path(path: str):
             "It will be created when the first file is downloaded.")
         return
     if sys.platform == "win32":
-        os.startfile(path)
+        # os.startfile() fails on SUBST/mapped drives with "untrusted mount point".
+        # Resolve to the real underlying path and call explorer.exe directly.
+        try:
+            resolved = _resolve_win_path(path)
+            subprocess.Popen(["explorer.exe", resolved])
+        except Exception:
+            os.startfile(path)
     elif sys.platform == "darwin":
         subprocess.Popen(["open", path])
     else:
