@@ -120,27 +120,29 @@ def _open_path(path: str):
         return
     try:
         if sys.platform == "win32":
-            # Try 1: resolve SUBST/mapped drive and call explorer.exe directly
+            # Try 1: cmd /c start with shell=True — Windows shell resolves
+            # SUBST/mapped drives natively; works from both script and .exe
             try:
                 resolved = _resolve_win_path(path)
-                _log_open(f"[OpenFolder] Trying explorer.exe with: {resolved!r}")
-                subprocess.Popen(["explorer.exe", resolved],
-                                 creationflags=0x08000000)  # CREATE_NO_WINDOW
-                _log_open(f"[OpenFolder] explorer.exe launched OK")
-                return
-            except Exception as e:
-                _log_open(f"[OpenFolder] explorer.exe failed: {e}")
-
-            # Try 2: cmd /c start — Windows shell resolves SUBST drives natively
-            try:
-                _log_open(f"[OpenFolder] Trying cmd /c start with: {path!r}")
+                _log_open(f"[OpenFolder] Trying cmd /c start with: {resolved!r}")
                 subprocess.Popen(
-                    ["cmd", "/c", "start", "", path],
-                    creationflags=0x08000000)
+                    f'cmd /c start "" "{resolved}"',
+                    shell=True, creationflags=0x08000000)
                 _log_open(f"[OpenFolder] cmd /c start launched OK")
                 return
             except Exception as e:
                 _log_open(f"[OpenFolder] cmd /c start failed: {e}")
+
+            # Try 2: full path to explorer.exe
+            try:
+                explorer = os.path.join(
+                    os.environ.get("WINDIR", "C:\\Windows"), "explorer.exe")
+                _log_open(f"[OpenFolder] Trying explorer at: {explorer!r} path: {path!r}")
+                subprocess.Popen([explorer, path])
+                _log_open(f"[OpenFolder] explorer.exe launched OK")
+                return
+            except Exception as e:
+                _log_open(f"[OpenFolder] explorer.exe failed: {e}")
 
             # Try 3: os.startfile fallback
             _log_open(f"[OpenFolder] Falling back to os.startfile: {path!r}")

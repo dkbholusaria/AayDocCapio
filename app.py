@@ -100,7 +100,7 @@ class AayDocCapioApp(QMainWindow):
 
         try:
             log_path = os.path.join(_app_dir(), "app.log")
-            _MAX_LOG_BYTES = 1 * 1024 * 1024  # 1 MB
+            _MAX_LOG_BYTES = 5 * 1024 * 1024  # 5 MB
             if os.path.exists(log_path) and os.path.getsize(log_path) > _MAX_LOG_BYTES:
                 with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
                     content = f.read()
