@@ -710,19 +710,18 @@ class AayDocCapioApp(QMainWindow):
 
         # ── Output Directory ──────────────────────────────────────────────────
         # Prefer Windows path whenever USERPROFILE is set (native Windows or WSL).
-        # A saved /home/... path from a WSL dev session must not be shown when
-        # running on Windows. Only override the saved path if it looks like a
-        # Linux/WSL path (starts with /) — never override a valid Windows path
-        # the user has chosen (e.g. D:\Trackers).
+        # Use saved path if it exists and is reachable — regardless of format
+        # (Windows drive, UNC //wsl.localhost/..., SUBST, junction, etc.).
+        # Only fall back to the Windows default when running on Windows and the
+        # saved path is a bare Linux path (/home/...) that Windows cannot reach.
         _saved_dir = self.vault.get_setting("download_root_dir", "")
-        _saved_is_linux = _saved_dir.startswith("/")
-        if _saved_dir and not _saved_is_linux and os.path.isdir(_saved_dir):
-            default_dir = _saved_dir
-        elif os.environ.get("USERPROFILE") and _saved_is_linux:
-            # Saved path is a WSL/Linux path — replace with Windows default
-            default_dir = _default_download_dir()
-            self.vault.update_setting("download_root_dir", default_dir)
-        elif _saved_dir and os.path.isdir(_saved_dir):
+        _on_windows = sys.platform == "win32"
+        _is_bare_linux = (
+            _saved_dir.startswith("/")
+            and not _saved_dir.startswith("//")
+            and not _saved_dir.startswith("\\\\")
+        )
+        if _saved_dir and not (_on_windows and _is_bare_linux) and os.path.isdir(_saved_dir):
             default_dir = _saved_dir
         else:
             default_dir = _default_download_dir()
