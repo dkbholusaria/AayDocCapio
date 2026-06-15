@@ -174,6 +174,10 @@ Write-Host "  Executable  : AayDocCapio.exe"
 Write-Host "  This takes 10-20 minutes on first run."
 Write-Host ""
 
+# Clean Nuitka's incremental build cache so all changed files are recompiled
+if (Test-Path "dist\app.build") { Remove-Item -Recurse -Force "dist\app.build"; Write-Host "  Cleaned Nuitka build cache." }
+if (Test-Path "dist\app.dist")  { Remove-Item -Recurse -Force "dist\app.dist";  Write-Host "  Cleaned previous dist output." }
+
 & $PYTHON -m nuitka `
     --standalone `
     --windows-console-mode=disable `
