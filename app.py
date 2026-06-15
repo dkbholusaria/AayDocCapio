@@ -123,8 +123,15 @@ class AayDocCapioApp(QMainWindow):
         # Apply saved theme after UI is built
         QTimer.singleShot(0, lambda: self._apply_theme(self._current_theme))
 
+        client_count = len(self.vault.get_all_assessees())
+        self.log(f"[System] AayDocCapio v{APP_VERSION} started — {client_count} client(s) in vault.")
+
         # Check Chromium on startup in background — installs silently if missing
         QTimer.singleShot(1500, self._check_browser)
+
+    def closeEvent(self, event):
+        self.log("[System] AayDocCapio closed.")
+        super().closeEvent(event)
 
     # ── Build UI ──────────────────────────────────────────────────────────────
 
@@ -190,6 +197,7 @@ class AayDocCapioApp(QMainWindow):
         """Switch theme by name and persist the choice."""
         self._current_theme = theme
         self.vault.update_setting("theme", theme)
+        self.log(f"[System] Theme set to: {theme}")
         t = get_theme(theme)
         import ui._theme as _theme_mod
         _theme_mod._active_theme = t
@@ -1621,7 +1629,7 @@ class AayDocCapioApp(QMainWindow):
                     fields["name"].text(), fields["pan"].text(),
                     fields["dob"].text(), fields["pwd"].text(), edit_id)
                 action = "updated" if editing else "added"
-                self.log(f"[Vault] {fields['pan'].text()} {action}.")
+                self.log(f"[Vault] Client {action}: {fields['pan'].text()} — {fields['name'].text()}")
                 dlg.accept()
                 self.refresh_grid()
             except ValueError as ve:
@@ -1894,7 +1902,7 @@ class AayDocCapioApp(QMainWindow):
         mode_log = {"26as": "26AS download",
                     "request_ais": "AIS generation requests",
                     "ais_tis": "AIS/TIS download"}
-        self.log(f"[System] Starting {mode_log[mode]}...")
+        self.log(f"[System] Starting {mode_log[mode]} — {len(targets)} client(s) | {ay_label} | Output: {output_dir}")
 
         # Year tag shown in progress dialog:
         #   26AS  → "AY 2025-26" or "TY 2025-26" (whatever the user configured)
