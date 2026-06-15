@@ -743,7 +743,6 @@ class AayDocCapioApp(QMainWindow):
         browse_btn.clicked.connect(self.browse_output_dir)
 
         open_btn = _btn("🗂  Open", "outline", height=26)
-        open_btn.setToolTip("Open output folder in Explorer")
         open_btn.clicked.connect(self._open_output_folder)
         self._open_btn = open_btn
 
