@@ -243,8 +243,8 @@ QTextEdit {{
 }}
 
 QToolTip {{
-    background-color: {t.bg_menu}; color: {t.text_primary};
-    border: 1px solid {t.border}; border-radius: 4px;
+    background-color: #FFFDE7; color: #1E293B;
+    border: 1px solid #CBD5E1; border-radius: 4px;
     padding: 5px 9px; font-size: 11px;
     opacity: 255;
 }}
