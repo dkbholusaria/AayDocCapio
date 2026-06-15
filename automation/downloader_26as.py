@@ -54,19 +54,26 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
             pass
             
         log_callback("[26AS] Hovering over e-File menu...")
-        efile = page.locator("//*[normalize-space(.)='e-File']").first
-        await efile.wait_for(state="visible", timeout=60000)
-        # Retry hover up to 3 times — Angular menu may not be interactive immediately
-        # after the overlay clears even though the element is visible.
-        for _attempt in range(3):
+        # Retry the full wait+hover cycle — dashboard Angular nav may take time to
+        # mount even after the overlay clears. Each attempt waits up to 30s for the
+        # element to appear, then tries to hover it.
+        for _attempt in range(4):
             try:
-                await efile.hover(timeout=15000)
+                efile = page.locator("//*[normalize-space(.)='e-File']").first
+                await efile.wait_for(state="visible", timeout=30000)
+                await efile.hover(timeout=10000)
                 break
             except Exception:
-                if _attempt == 2:
+                if _attempt == 3:
                     raise
-                log_callback(f"[26AS] e-File hover attempt {_attempt + 1} failed — retrying...")
-                await asyncio.sleep(3)
+                log_callback(f"[26AS] e-File menu not ready (attempt {_attempt + 1}/4) — waiting...")
+                # Nudge the page to help Angular finish rendering the nav
+                try:
+                    await page.keyboard.press("Escape")
+                    await page.evaluate("window.scrollTo(0, 0)")
+                except Exception:
+                    pass
+                await asyncio.sleep(5)
         await asyncio.sleep(1.0)
         log_callback("[26AS] Hovering over Income Tax Returns...")
         returns = page.locator("//*[text()='Income Tax Returns']").first
