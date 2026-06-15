@@ -1932,13 +1932,11 @@ class AayDocCapioApp(QMainWindow):
                     "ais_tis": "AIS/TIS download"}
         self.log(f"[System] Starting {mode_log[mode]} — {len(targets)} client(s) | {ay_label} | Output: {output_dir}")
 
-        # Year tag shown in progress dialog:
-        #   26AS  → "AY 2025-26" or "TY 2025-26" (whatever the user configured)
-        #   AIS/TIS → "FY 2024-25"
-        if mode == "26as":
-            year_tag = f"{year_type} {ay}"
+        # Year tag shown in progress dialog — always show both AY/TY and FY
+        if fy and fy != ay:
+            year_tag = f"{year_type} {ay} (FY {fy})"
         else:
-            year_tag = f"FY {fy}" if fy else ay
+            year_tag = f"{year_type} {ay}"
 
         # Show progress dialog (on main thread via signal)
         self._show_progress_signal.emit(targets, mode, year_tag, output_dir)

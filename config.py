@@ -25,10 +25,10 @@ def _app_dir() -> str:
 
 
 def _log_open(msg: str):
-    """Write directly to app.log — works in both script and Nuitka compiled mode."""
+    """Write open-folder diagnostics to a separate file to avoid Windows file-lock conflict with the main logging.FileHandler."""
     try:
         from datetime import datetime
-        log_path = os.path.join(_app_dir(), "app.log")
+        log_path = os.path.join(_app_dir(), "open_folder.log")
         line = f"[{datetime.now().strftime('%d-%m-%Y %H:%M:%S')}] {msg}\n"
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(line)
@@ -80,10 +80,13 @@ def _bundled_dir() -> str:
 def _is_reparse_point(path: str) -> bool:
     """Return True if path is a junction or symlink (reparse point) on Windows."""
     try:
-        import stat
-        st = os.lstat(path)
-        return bool(st.st_file_attributes & 0x400)  # FILE_ATTRIBUTE_REPARSE_POINT
-    except Exception:
+        import ctypes
+        attrs = ctypes.windll.kernel32.GetFileAttributesW(path)
+        result = bool(attrs != 0xFFFFFFFF and attrs & 0x400)  # FILE_ATTRIBUTE_REPARSE_POINT
+        _log_open(f"[OpenFolder] _is_reparse_point({path!r}) attrs={attrs:#010x} result={result}")
+        return result
+    except Exception as e:
+        _log_open(f"[OpenFolder] _is_reparse_point error: {e}")
         return False
 
 
