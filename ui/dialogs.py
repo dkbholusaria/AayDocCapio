@@ -10,7 +10,7 @@ from PyQt6.QtGui import QFont, QColor
 
 from ui._theme import _t
 from ui.helpers import _btn, _lbl, _status_style, _UI_FONT
-from config import _open_path
+from config import _open_path, _log_open
 from themes import MONO_FONT_NAME as _MONO_FONT
 
 
@@ -290,7 +290,7 @@ class BatchProgressDialog(QDialog):
             path_lbl.setWordWrap(False)
             path_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
             path_lbl.setOpenExternalLinks(False)
-            path_lbl.linkActivated.connect(lambda url: _open_path(url))
+            path_lbl.linkActivated.connect(lambda url: (_log_open(f"[OpenFolder] Row link clicked: {url!r}"), _open_path(url)))
             self._table.setCellWidget(row, self._COL_PATH, path_lbl)
 
         layout.addWidget(self._table, stretch=1)
@@ -334,7 +334,7 @@ class BatchProgressDialog(QDialog):
             f"border-radius:6px;font-size:12px;padding:0 12px;}}"
             f"QPushButton:hover{{background:{_bt.bg_input};}}"
             f"QPushButton:disabled{{color:{_bt.text_muted};border-color:{_bt.border};}}")
-        self._open_folder_btn.clicked.connect(lambda: _open_path(self._output_dir))
+        self._open_folder_btn.clicked.connect(lambda: (_log_open(f"[OpenFolder] Button clicked: {self._output_dir!r}"), _open_path(self._output_dir)))
         footer.addWidget(self._open_folder_btn)
 
         self._report_btn = QPushButton("⬇  Download Report")
