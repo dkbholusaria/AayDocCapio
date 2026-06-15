@@ -9,12 +9,14 @@ All notable changes to AayDocCapio are documented here.
 ### Improvements
 - **26AS conversion now runs immediately** after each client's TXT download instead of waiting for the full batch to complete — Excel/HTML files are ready while the next client logs in
 - **Dashboard settling improved** — sentinel timeout increased from 20s to 40s; slow accounts that miss the sentinel now get an extra 8s buffer before the nav menu is used, preventing e-File hover timeouts
-- **e-File menu hover retry** — retries up to 3 times with a 3s pause between attempts if the Angular nav menu isn't interactive yet after the overlay clears
+- **e-File menu hover retry** — full wait+hover cycle retried up to 4 times with a 5s pause and page nudge between attempts if the Angular nav menu isn't interactive yet
+- **Portal warm-up before first client** — opens the ITD login page once before the batch loop so the Angular bundle, CDN assets and cookies are preloaded; eliminates the slower first-client load that caused hover timeouts after long idle periods
 
 ### Bug Fixes
 - **Account locked fast-fail** — inline "e-filing account has been locked" error on the PAN screen is now detected immediately, failing fast with a clear message instead of waiting 60s for SAM page
 - **Active session dialog handled (B-04)** — "already logged in / active session" portal dialog during login is now detected and auto-dismissed (Continue/Proceed/Yes/OK), allowing login to proceed normally
 - **Conversion status not updated in batch dialog** — status column now shows `⏳ Converting to Excel…` during conversion and `✅ 26AS + Excel + HTML` on completion (was stuck at `✅ 26AS Downloaded`)
+- **"Open Folder" fails on SUBST/mapped drives** — `os.startfile()` was rejected by Windows with "untrusted mount point" error for virtual drives (e.g. `SUBST D: C:\...`); now resolves the real underlying path via `subst` command output before calling `explorer.exe` directly, with fallback to original behaviour
 
 ---
 
