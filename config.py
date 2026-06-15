@@ -77,15 +77,36 @@ def _bundled_dir() -> str:
     return os.path.dirname(os.path.abspath(__file__))
 
 
+def _is_reparse_point(path: str) -> bool:
+    """Return True if path is a junction or symlink (reparse point) on Windows."""
+    try:
+        import stat
+        st = os.lstat(path)
+        return bool(st.st_file_attributes & 0x400)  # FILE_ATTRIBUTE_REPARSE_POINT
+    except Exception:
+        return False
+
+
 def _resolve_win_path(path: str) -> str:
     """
-    Resolve SUBST / mapped-drive paths to their real target.
-    Checks 'subst' output first, then falls back to os.path.realpath().
+    Resolve the real filesystem path for Explorer to open without errors.
+    - SUBST drives: parse 'subst' output to find the real root
+    - Junctions / symlinks: use os.path.realpath() — Explorer raises
+      "untrusted mount point" when asked to traverse reparse points directly
+    - Everything else: return as-is
     """
     import re
-    drive = os.path.splitdrive(path)[0].upper()
+    win_path = path.replace("/", "\\")
+
+    # Check for junction / symlink first — Explorer can't traverse them
+    if _is_reparse_point(win_path):
+        real = os.path.realpath(win_path)
+        _log_open(f"[OpenFolder] Reparse point resolved: {win_path} → {real}")
+        return real
+
+    drive = os.path.splitdrive(win_path)[0].upper()
     if not drive:
-        return os.path.realpath(path)
+        return win_path
     drive_slash = drive + "\\"
     try:
         out = subprocess.check_output(["subst"], text=True, timeout=3,
@@ -96,16 +117,14 @@ def _resolve_win_path(path: str) -> str:
             m = re.match(r"([A-Z]:\\):\s*=>\s*(.+)", line)
             if m and m.group(1).upper() == drive_slash.upper():
                 real_root = m.group(2).rstrip("\\")
-                rel = os.path.relpath(path, drive_slash)
+                rel = os.path.relpath(win_path, drive_slash)
                 resolved = os.path.join(real_root, rel) if rel != "." else real_root
-                _log_open(f"[OpenFolder] SUBST resolved: {path} → {resolved}")
+                _log_open(f"[OpenFolder] SUBST resolved: {win_path} → {resolved}")
                 return resolved
     except Exception as e:
         _log_open(f"[OpenFolder] subst command failed: {e}")
-    # Not a SUBST drive — return as-is. Explorer handles junctions/symlinks fine;
-    # resolving them would open the target instead of the intended path.
-    _log_open(f"[OpenFolder] No SUBST mapping found, using path as-is: {path}")
-    return path
+    _log_open(f"[OpenFolder] No mapping found, using path as-is: {win_path}")
+    return win_path
 
 
 def _open_path(path: str):
@@ -124,7 +143,7 @@ def _open_path(path: str):
             # Try 1: cmd /c start with shell=True — Windows shell resolves
             # SUBST/mapped drives natively; works from both script and .exe
             try:
-                resolved = _resolve_win_path(path).replace("/", "\\")
+                resolved = _resolve_win_path(path)
                 _log_open(f"[OpenFolder] Trying cmd /c start with: {resolved!r}")
                 subprocess.Popen(
                     f'cmd /c start "" "{resolved}"',
