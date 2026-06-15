@@ -112,6 +112,19 @@ async def _do_login(page, user_id, uid_masked, password, log_callback, is_runnin
     log_callback("[Auth] Clicking Continue after PAN...")
     await _click_btn(page, log_callback, timeout=20000)
 
+    # Check for locked-account error shown inline on the PAN screen
+    await asyncio.sleep(1)
+    try:
+        page_text = (await page.inner_text("body")).lower()
+        if "account has been locked" in page_text or "e-filing account" in page_text and "locked" in page_text:
+            raise RuntimeError(
+                "ACCOUNT LOCKED: This e-filing account has been locked due to security reasons. "
+                "The client must unlock their account at the ITD portal before it can be automated.")
+    except RuntimeError:
+        raise
+    except Exception:
+        pass
+
     # ── Step 3: Wait for SAM checkbox, tick it, click Continue ───────────────
     log_callback("[Auth] Waiting for SAM page (Step 2)...")
     await update_browser_status(page, "Auth: Waiting for Step 2...")
@@ -125,6 +138,46 @@ async def _do_login(page, user_id, uid_masked, password, log_callback, is_runnin
             sam_found = False
         if sam_found:
             break
+
+        # Fast-fail if locked account error appears during the wait
+        try:
+            page_text = (await page.inner_text("body")).lower()
+            if "account has been locked" in page_text or ("e-filing account" in page_text and "locked" in page_text):
+                raise RuntimeError(
+                    "ACCOUNT LOCKED: This e-filing account has been locked due to security reasons. "
+                    "The client must unlock their account at the ITD portal before it can be automated.")
+        except RuntimeError:
+            raise
+        except Exception:
+            pass
+
+        # B-04: portal may show an "active session" / "already logged in" dialog.
+        # Detect any Continue/Proceed/Yes button inside a modal and click it.
+        try:
+            active_session = await page.evaluate("""() => {
+                const keywords = ['already logged', 'active session', 'session exists',
+                                  'do you wish to continue', 'existing session'];
+                const body = document.body.innerText.toLowerCase();
+                return keywords.some(k => body.includes(k));
+            }""")
+            if active_session:
+                for dismiss_sel in (
+                    "button:has-text('Continue')",
+                    "button:has-text('Proceed')",
+                    "button:has-text('Yes')",
+                    "button:has-text('OK')",
+                ):
+                    try:
+                        btn = page.locator(dismiss_sel).first
+                        if await btn.is_visible(timeout=500):
+                            log_callback("[Auth] Active session dialog detected — dismissing...")
+                            await btn.click()
+                            await asyncio.sleep(1)
+                            break
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
     if not sam_found:
         await _dump_inputs(page, log_callback)
@@ -290,10 +343,12 @@ async def _do_login(page, user_id, uid_masked, password, log_callback, is_runnin
     # ── Step 7: Dashboard settling ────────────────────────────────────────────
     log_callback("[Auth] Dashboard settling...")
     await update_browser_status(page, "Auth: Dashboard settling...")
+    sentinel_ok = False
     try:
         await page.wait_for_selector(
             "//div[contains(text(), 'Welcome Back')] | //a[normalize-space(.)='AIS']",
-            state="visible", timeout=20000)
+            state="visible", timeout=40000)
+        sentinel_ok = True
         await asyncio.sleep(4)
     except Exception:
         log_callback("[Warning] Dashboard sentinel timed out. Proceeding cautiously.")
@@ -304,6 +359,12 @@ async def _do_login(page, user_id, uid_masked, password, log_callback, is_runnin
         log_callback("[Auth] Loader overlay cleared.")
     except Exception:
         log_callback("[Auth] Loader overlay already gone or not present.")
+
+    # If the sentinel never fired, give the Angular nav menu extra time to render
+    # before handing back the page — without this the e-File hover times out.
+    if not sentinel_ok:
+        log_callback("[Auth] Waiting extra time for nav menu to render...")
+        await asyncio.sleep(8)
 
     log_callback(f"[Auth] Dashboard ready: {page.url}")
     return page

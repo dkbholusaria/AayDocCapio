@@ -4,6 +4,8 @@ def _friendly_error(raw: str) -> str:
     English suitable for display in the progress table status column.
     """
     r = raw.lower()
+    if "account locked" in r:
+        return "Account locked — client must unlock via ITD portal (incometax.gov.in) before retrying."
     if "authentication failed" in r:
         for prefix in ("authentication failed: ", "authentication failed"):
             if raw.lower().startswith(prefix):

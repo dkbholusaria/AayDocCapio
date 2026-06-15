@@ -56,7 +56,17 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
         log_callback("[26AS] Hovering over e-File menu...")
         efile = page.locator("//*[normalize-space(.)='e-File']").first
         await efile.wait_for(state="visible", timeout=60000)
-        await efile.hover()
+        # Retry hover up to 3 times — Angular menu may not be interactive immediately
+        # after the overlay clears even though the element is visible.
+        for _attempt in range(3):
+            try:
+                await efile.hover(timeout=15000)
+                break
+            except Exception:
+                if _attempt == 2:
+                    raise
+                log_callback(f"[26AS] e-File hover attempt {_attempt + 1} failed — retrying...")
+                await asyncio.sleep(3)
         await asyncio.sleep(1.0)
         log_callback("[26AS] Hovering over Income Tax Returns...")
         returns = page.locator("//*[text()='Income Tax Returns']").first
