@@ -124,7 +124,7 @@ def _open_path(path: str):
             # Try 1: cmd /c start with shell=True — Windows shell resolves
             # SUBST/mapped drives natively; works from both script and .exe
             try:
-                resolved = _resolve_win_path(path)
+                resolved = _resolve_win_path(path).replace("/", "\\")
                 _log_open(f"[OpenFolder] Trying cmd /c start with: {resolved!r}")
                 subprocess.Popen(
                     f'cmd /c start "" "{resolved}"',
@@ -138,8 +138,9 @@ def _open_path(path: str):
             try:
                 explorer = os.path.join(
                     os.environ.get("WINDIR", "C:\\Windows"), "explorer.exe")
-                _log_open(f"[OpenFolder] Trying explorer at: {explorer!r} path: {path!r}")
-                subprocess.Popen([explorer, path])
+                win_path = path.replace("/", "\\")
+                _log_open(f"[OpenFolder] Trying explorer at: {explorer!r} path: {win_path!r}")
+                subprocess.Popen([explorer, win_path])
                 _log_open(f"[OpenFolder] explorer.exe launched OK")
                 return
             except Exception as e:
