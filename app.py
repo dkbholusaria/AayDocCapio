@@ -2086,10 +2086,7 @@ class AayDocCapioApp(QMainWindow):
             self._ais_requested_time = None
 
         elif mode == "26as" and not self._batch_aborted:
-            def _set_status(pan, text):
-                if self._progress_dialog:
-                    self._progress_dialog.set_status(pan, text)
-            self._auto_convert_26as(_set_status)
+            pass  # conversion now happens inline per-client in _execute_batch
 
     def _convert_26as_manual(self):
         from automation.as26_converter import convert_26as_txt
@@ -2213,6 +2210,16 @@ class AayDocCapioApp(QMainWindow):
                                 set_status(pan, "✅ 26AS Downloaded")
                             if txt_path:
                                 self._batch_26as_txts.append((pan, txt_path))
+                                # Convert immediately while next client logs in
+                                set_status(pan, "⏳ Converting to Excel...")
+                                try:
+                                    from automation.as26_converter import convert_26as_txt
+                                    self.log(f"[Convert] Converting 26AS → Excel/HTML for {pan}…")
+                                    convert_26as_txt(txt_path, log_callback=self.log)
+                                    set_status(pan, "✅ 26AS + Excel + HTML")
+                                except Exception as _conv_exc:
+                                    self.log(f"[Convert] Warning: conversion failed for {pan}: {_conv_exc}")
+                                    set_status(pan, "⚠ Excel convert failed")
                         else:
                             set_status(pan, f"❌ 26AS Failed — {err_msg}")
 

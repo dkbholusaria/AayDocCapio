@@ -4,6 +4,20 @@ All notable changes to AayDocCapio are documented here.
 
 ---
 
+## [1.4.4] — 2026-06-15
+
+### Improvements
+- **26AS conversion now runs immediately** after each client's TXT download instead of waiting for the full batch to complete — Excel/HTML files are ready while the next client logs in
+- **Dashboard settling improved** — sentinel timeout increased from 20s to 40s; slow accounts that miss the sentinel now get an extra 8s buffer before the nav menu is used, preventing e-File hover timeouts
+- **e-File menu hover retry** — retries up to 3 times with a 3s pause between attempts if the Angular nav menu isn't interactive yet after the overlay clears
+
+### Bug Fixes
+- **Account locked fast-fail** — inline "e-filing account has been locked" error on the PAN screen is now detected immediately, failing fast with a clear message instead of waiting 60s for SAM page
+- **Active session dialog handled (B-04)** — "already logged in / active session" portal dialog during login is now detected and auto-dismissed (Continue/Proceed/Yes/OK), allowing login to proceed normally
+- **Conversion status not updated in batch dialog** — status column now shows `⏳ Converting to Excel…` during conversion and `✅ 26AS + Excel + HTML` on completion (was stuck at `✅ 26AS Downloaded`)
+
+---
+
 ## [1.4.3] — 2026-06-14
 
 ### Improvements
