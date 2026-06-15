@@ -24,6 +24,18 @@ def _app_dir() -> str:
     return os.path.dirname(os.path.abspath(__file__))
 
 
+def _log_open(msg: str):
+    """Write directly to app.log — works in both script and Nuitka compiled mode."""
+    try:
+        from datetime import datetime
+        log_path = os.path.join(_app_dir(), "app.log")
+        line = f"[{datetime.now().strftime('%d-%m-%Y %H:%M:%S')}] {msg}\n"
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        pass
+
+
 def _default_download_dir() -> str:
     """
     Sensible default output directory per platform.
@@ -67,10 +79,8 @@ def _bundled_dir() -> str:
 
 def _resolve_win_path(path: str) -> str:
     """
-    Resolve SUBST / mapped-drive paths to their real target so explorer.exe
-    can open them without the 'untrusted mount point' error.
-    Checks 'subst' output first, then falls back to os.path.realpath()
-    for junction points and symlinks.
+    Resolve SUBST / mapped-drive paths to their real target.
+    Checks 'subst' output first, then falls back to os.path.realpath().
     """
     import re
     drive = os.path.splitdrive(path)[0].upper()
@@ -78,7 +88,9 @@ def _resolve_win_path(path: str) -> str:
         return os.path.realpath(path)
     drive_slash = drive + "\\"
     try:
-        out = subprocess.check_output(["subst"], text=True, timeout=3)
+        out = subprocess.check_output(["subst"], text=True, timeout=3,
+                                      creationflags=0x08000000)  # CREATE_NO_WINDOW
+        _log_open(f"[OpenFolder] subst output: {out.strip()!r}")
         for line in out.splitlines():
             # subst output format: "D:\: => C:\Real\Path"
             m = re.match(r"([A-Z]:\\):\s*=>\s*(.+)", line)
@@ -86,13 +98,12 @@ def _resolve_win_path(path: str) -> str:
                 real_root = m.group(2).rstrip("\\")
                 rel = os.path.relpath(path, drive_slash)
                 resolved = os.path.join(real_root, rel) if rel != "." else real_root
-                _log.info("[OpenFolder] SUBST drive resolved: %s → %s", path, resolved)
+                _log_open(f"[OpenFolder] SUBST resolved: {path} → {resolved}")
                 return resolved
     except Exception as e:
-        _log.warning("[OpenFolder] subst resolution failed: %s", e)
+        _log_open(f"[OpenFolder] subst command failed: {e}")
     real = os.path.realpath(path)
-    if real != path:
-        _log.info("[OpenFolder] Path resolved via realpath: %s → %s", path, real)
+    _log_open(f"[OpenFolder] realpath: {path} → {real}")
     return real
 
 
@@ -100,25 +111,41 @@ def _open_path(path: str):
     """Open a file or folder in the OS file manager / default app."""
     if not path:
         return
+    _log_open(f"[OpenFolder] Requested: {path!r}  exists={os.path.exists(path)}")
     if not os.path.exists(path):
         from PyQt6.QtWidgets import QMessageBox
-        _log.warning("[OpenFolder] Path does not exist: %s", path)
         QMessageBox.information(None, "Folder Not Found",
             f"The folder has not been created yet:\n{path}\n\n"
             "It will be created when the first file is downloaded.")
         return
-    _log.info("[OpenFolder] Opening: %s", path)
     try:
         if sys.platform == "win32":
-            # os.startfile() fails on SUBST/mapped drives with "untrusted mount point".
-            # Resolve to the real underlying path and call explorer.exe directly.
+            # Try 1: resolve SUBST/mapped drive and call explorer.exe directly
             try:
                 resolved = _resolve_win_path(path)
-                subprocess.Popen(["explorer.exe", resolved])
-                _log.info("[OpenFolder] Opened via explorer.exe: %s", resolved)
+                _log_open(f"[OpenFolder] Trying explorer.exe with: {resolved!r}")
+                subprocess.Popen(["explorer.exe", resolved],
+                                 creationflags=0x08000000)  # CREATE_NO_WINDOW
+                _log_open(f"[OpenFolder] explorer.exe launched OK")
+                return
             except Exception as e:
-                _log.warning("[OpenFolder] explorer.exe failed (%s) — falling back to os.startfile", e)
-                os.startfile(path)
+                _log_open(f"[OpenFolder] explorer.exe failed: {e}")
+
+            # Try 2: cmd /c start — Windows shell resolves SUBST drives natively
+            try:
+                _log_open(f"[OpenFolder] Trying cmd /c start with: {path!r}")
+                subprocess.Popen(
+                    ["cmd", "/c", "start", "", path],
+                    creationflags=0x08000000)
+                _log_open(f"[OpenFolder] cmd /c start launched OK")
+                return
+            except Exception as e:
+                _log_open(f"[OpenFolder] cmd /c start failed: {e}")
+
+            # Try 3: os.startfile fallback
+            _log_open(f"[OpenFolder] Falling back to os.startfile: {path!r}")
+            os.startfile(path)
+
         elif sys.platform == "darwin":
             subprocess.Popen(["open", path])
         else:
@@ -130,7 +157,7 @@ def _open_path(path: str):
             else:
                 subprocess.Popen(["xdg-open", path])
     except Exception as e:
-        _log.error("[OpenFolder] Failed to open path '%s': %s", path, e)
+        _log_open(f"[OpenFolder] All attempts failed for {path!r}: {e}")
         from PyQt6.QtWidgets import QMessageBox
         QMessageBox.warning(None, "Could Not Open Folder",
             f"Failed to open folder in file manager:\n{path}\n\nError: {e}")
