@@ -102,9 +102,10 @@ def _resolve_win_path(path: str) -> str:
                 return resolved
     except Exception as e:
         _log_open(f"[OpenFolder] subst command failed: {e}")
-    real = os.path.realpath(path)
-    _log_open(f"[OpenFolder] realpath: {path} → {real}")
-    return real
+    # Not a SUBST drive — return as-is. Explorer handles junctions/symlinks fine;
+    # resolving them would open the target instead of the intended path.
+    _log_open(f"[OpenFolder] No SUBST mapping found, using path as-is: {path}")
+    return path
 
 
 def _open_path(path: str):
