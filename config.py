@@ -1,4 +1,6 @@
-import sys, os, subprocess
+import sys, os, subprocess, logging
+
+_log = logging.getLogger(__name__)
 
 
 def _app_dir() -> str:
@@ -83,10 +85,15 @@ def _resolve_win_path(path: str) -> str:
             if m and m.group(1).upper() == drive_slash.upper():
                 real_root = m.group(2).rstrip("\\")
                 rel = os.path.relpath(path, drive_slash)
-                return os.path.join(real_root, rel) if rel != "." else real_root
-    except Exception:
-        pass
-    return os.path.realpath(path)
+                resolved = os.path.join(real_root, rel) if rel != "." else real_root
+                _log.info("[OpenFolder] SUBST drive resolved: %s → %s", path, resolved)
+                return resolved
+    except Exception as e:
+        _log.warning("[OpenFolder] subst resolution failed: %s", e)
+    real = os.path.realpath(path)
+    if real != path:
+        _log.info("[OpenFolder] Path resolved via realpath: %s → %s", path, real)
+    return real
 
 
 def _open_path(path: str):
@@ -95,25 +102,35 @@ def _open_path(path: str):
         return
     if not os.path.exists(path):
         from PyQt6.QtWidgets import QMessageBox
+        _log.warning("[OpenFolder] Path does not exist: %s", path)
         QMessageBox.information(None, "Folder Not Found",
             f"The folder has not been created yet:\n{path}\n\n"
             "It will be created when the first file is downloaded.")
         return
-    if sys.platform == "win32":
-        # os.startfile() fails on SUBST/mapped drives with "untrusted mount point".
-        # Resolve to the real underlying path and call explorer.exe directly.
-        try:
-            resolved = _resolve_win_path(path)
-            subprocess.Popen(["explorer.exe", resolved])
-        except Exception:
-            os.startfile(path)
-    elif sys.platform == "darwin":
-        subprocess.Popen(["open", path])
-    else:
-        wsl_exe = "/mnt/c/Windows/explorer.exe"
-        if os.path.exists(wsl_exe):
-            wsl_path = subprocess.run(
-                ["wslpath", "-w", path], capture_output=True, text=True).stdout.strip()
-            subprocess.Popen([wsl_exe, wsl_path or path])
+    _log.info("[OpenFolder] Opening: %s", path)
+    try:
+        if sys.platform == "win32":
+            # os.startfile() fails on SUBST/mapped drives with "untrusted mount point".
+            # Resolve to the real underlying path and call explorer.exe directly.
+            try:
+                resolved = _resolve_win_path(path)
+                subprocess.Popen(["explorer.exe", resolved])
+                _log.info("[OpenFolder] Opened via explorer.exe: %s", resolved)
+            except Exception as e:
+                _log.warning("[OpenFolder] explorer.exe failed (%s) — falling back to os.startfile", e)
+                os.startfile(path)
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", path])
         else:
-            subprocess.Popen(["xdg-open", path])
+            wsl_exe = "/mnt/c/Windows/explorer.exe"
+            if os.path.exists(wsl_exe):
+                wsl_path = subprocess.run(
+                    ["wslpath", "-w", path], capture_output=True, text=True).stdout.strip()
+                subprocess.Popen([wsl_exe, wsl_path or path])
+            else:
+                subprocess.Popen(["xdg-open", path])
+    except Exception as e:
+        _log.error("[OpenFolder] Failed to open path '%s': %s", path, e)
+        from PyQt6.QtWidgets import QMessageBox
+        QMessageBox.warning(None, "Could Not Open Folder",
+            f"Failed to open folder in file manager:\n{path}\n\nError: {e}")
