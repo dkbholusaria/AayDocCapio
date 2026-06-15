@@ -156,8 +156,10 @@ class AayDocCapioApp(QMainWindow):
         st_menu = menubar.addMenu("Settings")
         act_yr   = QAction("📅  Manage Assessment Years", self); act_yr.triggered.connect(self.open_manage_years)
         act_dir  = QAction("📂  Change Output Folder",    self); act_dir.triggered.connect(self.browse_output_dir)
+        act_open = QAction("🗂  Open Output Folder",      self); act_open.triggered.connect(self._open_output_folder)
         st_menu.addAction(act_yr)
         st_menu.addAction(act_dir)
+        st_menu.addAction(act_open)
         st_menu.addSeparator()
 
         # Appearance submenu — built dynamically from THEMES registry
@@ -735,8 +737,12 @@ class AayDocCapioApp(QMainWindow):
         self._browse_btn = browse_btn
         browse_btn.clicked.connect(self.browse_output_dir)
 
+        open_btn = _btn("🗂  Open", "outline", height=26)
+        open_btn.setToolTip("Open output folder in Explorer")
+        open_btn.clicked.connect(self._open_output_folder)
+
         dir_row = QHBoxLayout(); dir_row.setContentsMargins(0,0,0,0); dir_row.setSpacing(8)
-        dir_row.addWidget(self.dir_lbl); dir_row.addWidget(browse_btn)
+        dir_row.addWidget(self.dir_lbl); dir_row.addWidget(browse_btn); dir_row.addWidget(open_btn)
 
         dir_col = QWidget(); dir_col.setStyleSheet("background:transparent;")
         dir_col.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
@@ -1683,6 +1689,12 @@ class AayDocCapioApp(QMainWindow):
     def _open_saved_path(self, path: str):
         from config import _open_path, _log_open
         _log_open(f"[OpenFolder] Grid link clicked: {path!r}")
+        _open_path(path)
+
+    def _open_output_folder(self):
+        from config import _open_path, _log_open
+        path = self.dir_lbl.text()
+        _log_open(f"[OpenFolder] Main window Open button: {path!r}")
         _open_path(path)
 
     def browse_output_dir(self):
