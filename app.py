@@ -19,7 +19,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QMetaObject, Q_ARG, QModelIndex
 from PyQt6.QtGui import QFont, QTextCursor, QColor, QRegularExpressionValidator, QPalette, QAction, QIcon, QPixmap
 from PyQt6.QtCore import QRegularExpression
 
-from config import _app_dir, _default_download_dir, _bundled_dir, _open_path
+from config import _app_dir, _default_download_dir, _bundled_dir
 from utils import get_timestamp
 from ui._theme import _t, _active_theme
 from ui.helpers import _btn, _lbl, _shadow, _status_style, _STATUS_FG, _UI_FONT
@@ -1253,13 +1253,14 @@ class AayDocCapioApp(QMainWindow):
             path_lbl = QLabel()
             path_lbl.setContentsMargins(6, 0, 6, 0)
             path_lbl.setStyleSheet("background:transparent; border:none; font-size:11px;")
-            if saved_path and os.path.isdir(saved_path):
+            if saved_path and os.path.exists(saved_path):
                 path_lbl.setText(
                     f'<a href="{saved_path}" style="color:#1D4ED8;text-decoration:underline;">'
                     f'{saved_path}</a>'
                 )
                 path_lbl.setToolTip(saved_path)
-                path_lbl.linkActivated.connect(lambda p=saved_path: _open_path(p))
+                path_lbl.linkActivated.connect(
+                    lambda p=saved_path: self._open_saved_path(p))
             else:
                 path_lbl.setText('<span style="color:#94A3B8;">—</span>')
             self.client_table.setCellWidget(i, self._TC_PATH, path_lbl)
@@ -1678,6 +1679,11 @@ class AayDocCapioApp(QMainWindow):
         self.refresh_grid()
 
     # ── Settings ──────────────────────────────────────────────────────────────
+
+    def _open_saved_path(self, path: str):
+        from config import _open_path, _log_open
+        _log_open(f"[OpenFolder] Grid link clicked: {path!r}")
+        _open_path(path)
 
     def browse_output_dir(self):
         chosen = QFileDialog.getExistingDirectory(self, "Select Output Directory",
