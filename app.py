@@ -4,7 +4,7 @@ Run:  python3 app.py
 """
 from version import __version__ as APP_VERSION
 
-import sys, os, json, asyncio, threading, datetime, time, subprocess
+import sys, os, json, asyncio, threading, datetime, time, subprocess, logging
 from themes import THEMES, ThemeColors, build_stylesheet, get_theme, MONO_FONT_NAME as _MONO_FONT
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton,
@@ -108,6 +108,12 @@ class AayDocCapioApp(QMainWindow):
                     f.write(content[len(content) // 2:])
             with open(log_path, "a", encoding="utf-8") as f:
                 f.write(f"\n=== Session Started {get_timestamp()} ===\n")
+            # Route stdlib logging (used by config._open_path etc.) to app.log
+            _fh = logging.FileHandler(log_path, encoding="utf-8")
+            _fh.setFormatter(logging.Formatter("%(asctime)s %(message)s",
+                                               datefmt="%d-%m-%Y %H:%M:%S"))
+            logging.getLogger().addHandler(_fh)
+            logging.getLogger().setLevel(logging.INFO)
         except Exception:
             pass
 
