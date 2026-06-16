@@ -496,7 +496,7 @@ class AayDocCapioApp(QMainWindow):
         vl.addSpacing(6)
         vl.addLayout(_link_row("icon_vcard.png",    "www.ailearrning.guru",             "https://www.ailearrning.guru"))
         vl.addSpacing(6)
-        vl.addLayout(_link_row("icon_virtualcard.png", "Virtual Card",                  "https://www.qrcodechimp.com/page/deepakb?chk1668183417"))
+        vl.addLayout(_link_row("icon_virtualcard.png", "E-Visiting Card",               "https://deepak.bholusaria.com"))
         vl.addSpacing(16)
 
         # ── Divider ───────────────────────────────────────────────────────────
