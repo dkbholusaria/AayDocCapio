@@ -964,52 +964,67 @@
 
 <!-- ── Features ───────────────────────────────────────────────────── -->
     <div class="section-label">Features</div>
-    <h2 id="features">Everything you need for bulk tax downloads</h2>
+    <h2 id="features">Everything you need — from bulk downloads to client delivery</h2>
     <div class="cards">
       <div class="card">
         <span class="card-icon">🔐</span>
         <h3>Encrypted Credential Vault</h3>
-        <p>PAN, DOB, and portal passwords are stored locally in <code>tax_vault.json</code> with PBKDF2HMAC + Fernet AES-128. No cloud sync or telemetry.</p>
+        <p>PAN, DOB, portal passwords, and email addresses stored locally in <code>tax_vault.json</code> with PBKDF2HMAC + Fernet AES-128. No cloud sync or telemetry.</p>
       </div>
       <div class="card">
         <span class="card-icon">📑</span>
-        <h3>26AS, AIS and TIS</h3>
-        <p>Download Form 26AS PDF + TXT, AIS PDF, and TIS PDF for all selected clients in a single sequential batch.</p>
+        <h3>26AS, AIS and TIS Downloads</h3>
+        <p>Download Form 26AS PDF + TXT, AIS PDF, and TIS PDF for all selected clients in a single sequential batch — with instant or queued AIS generation.</p>
       </div>
       <div class="card">
         <span class="card-icon">📘</span>
         <h3>26AS Excel Workbook</h3>
-        <p>Convert 26AS TXT into Excel + HTML with Assessee Details, Part I-IX sheets, summary links, and large-file streaming.</p>
+        <p>Auto-converts 26AS TXT into structured Excel + HTML — Assessee Details, Part I–IX sheets, summary links, and large-file streaming for 200K+ row files.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">📧</span>
+        <h3>Mail Docs to Clients</h3>
+        <p>Batch-email AIS, TIS and 26AS files directly to clients in one click. Scan your download folder, match PANs, pick recipients, and send — with per-row live status.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">✉️</span>
+        <h3>All Major Email Providers</h3>
+        <p>One-click presets for <strong>Gmail, Outlook.com, Microsoft 365 / Office 365, Exchange, Yahoo Mail, iCloud</strong> and Custom SMTP — auto-fills host, port and encryption with provider-specific setup guidance.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">✍️</span>
+        <h3>Rich Text Email Composer</h3>
+        <p>Font, size, Bold / Italic / Underline toolbar, CC and BCC fields. Smart placeholders: <code>{client_name}</code>, <code>{pan}</code>, <code>{ay}</code>, <code>{documents}</code> — documents render as a numbered list of actual attached files.</p>
       </div>
       <div class="card">
         <span class="card-icon">📊</span>
         <h3>Live Batch Progress</h3>
-        <p>Per-client real-time status, conversion state, saved-folder links, Stop control, and step-by-step logs.</p>
+        <p>Per-client real-time status for both downloads and email sends — conversion state, saved-folder links, Stop control, and step-by-step logs.</p>
       </div>
       <div class="card">
         <span class="card-icon">📥</span>
-        <h3>Excel / CSV Import</h3>
-        <p>Bulk-load assessees from Excel or CSV. Generate a pre-formatted import template in one click.</p>
+        <h3>Excel / CSV Import &amp; Export</h3>
+        <p>Bulk-load assessees from Excel or CSV including Email and CC columns. Export client data or generate a pre-formatted import template in one click.</p>
       </div>
       <div class="card">
         <span class="card-icon">🗂️</span>
         <h3>Status and History</h3>
-        <p>Filter by status and review the last result and saved location per client, per AY/FY.</p>
+        <p>Filter by download status and review the last result and saved location per client, per AY/FY. Email activity logged with session dividers and per-client audit trail.</p>
       </div>
       <div class="card">
         <span class="card-icon">📅</span>
         <h3>AY / TY / FY Management</h3>
-        <p>Manage assessment, tax, and financial year entries from Settings and keep output folders consistently labelled.</p>
+        <p>Add, remove, reorder and toggle assessment, tax, and financial year entries from Settings — output folders are consistently labelled to match.</p>
       </div>
       <div class="card">
         <span class="card-icon">🔓</span>
         <h3>Auto Unlocking</h3>
-        <p>PDFs and 26AS TXT ZIPs are unlocked using PAN and DOB-derived passwords, with clear warnings if DOB is wrong.</p>
+        <p>PDFs and 26AS TXT ZIPs are unlocked automatically using PAN and DOB-derived passwords, with clear warnings if the DOB on record is wrong.</p>
       </div>
       <div class="card">
         <span class="card-icon">🌗</span>
         <h3>Themes and Headless Mode</h3>
-        <p>Light and Dark Navy themes, plus hidden browser automation by default with visible debug mode when needed.</p>
+        <p>Light and Dark Navy themes with preference saved across sessions. Browser automation runs hidden by default — switch to visible mode for CAPTCHA handling.</p>
       </div>
     </div>
   </div>
@@ -1036,7 +1051,7 @@
       </div>
       <div class="step">
         <h3>Select clients and click Run</h3>
-        <p>Tick one or more clients, click <strong>▶ Run</strong>, and choose <em>Download 26AS</em> or <em>Download / Request AIS &amp; TIS</em>. A live progress popup tracks every client in real time.</p>
+        <p>Tick one or more clients, click <strong>⬇ Download</strong>, and choose <em>Download 26AS</em> or <em>Download / Request AIS &amp; TIS</em>. A live progress popup tracks every client in real time.</p>
       </div>
       <div class="step">
         <h3>Collect your files</h3>
