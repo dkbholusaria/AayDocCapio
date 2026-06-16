@@ -1,20 +1,21 @@
 # AayDocCapio
 
-**v1.4.4** — A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click.
+**v1.5.6** — A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click — and now **emailing those documents directly to clients**.
 
 Built with **PyQt6** + **Playwright**. Runs on Windows, macOS, and Linux/WSL.
 
 ---
 
-## What's New in 1.4.x
+## What's New in 1.5.6
 
-- **Status filter dropdown** — filter client grid by All / Downloaded / Partially Completed / Failed / Queued / Not run yet
-- **26AS TXT → Excel + HTML converter** — auto-runs after each 26AS batch; also available via Tools menu
-- **Form 26AS Excel workbook** — Assessee Details sheet, one sheet per Part (I-IX), Summary sheet with hyperlinks
-- **Locked-file fallback** — writes a timestamped alternate file if Excel is open during conversion
-- **Large 26AS detection** — TRACES on-demand messages now show a clear actionable error
-- **ITD login fix for real Chrome** — avoids waiting forever on background Chrome network activity
-- **Modular codebase** — app.py split into `config.py`, `utils.py`, `ui/`, `automation/errors.py`
+- **Mail Docs to Clients** — batch email AIS/TIS/26AS to clients; scan folder, pick recipients, send in one click
+- **Email provider presets** — Gmail, Outlook, Office 365, Exchange, Yahoo, iCloud, Custom with auto-filled SMTP settings
+- **Rich text email composer** — font, size, bold/italic/underline, CC, BCC, HTML templates with placeholders
+- **Numbered document list** — `{documents}` placeholder renders as a numbered list of actual attached files
+- **"Powered by AayDocCapio"** footer on every outgoing email
+- **Email Docs + Exit buttons** on main toolbar; "Run" renamed to "Download"
+- **Session dividers** in email activity log
+- Bug fix: batch send crash on HTML bodies with CSS `{}` braces
 
 See the full [CHANGELOG](CHANGELOG.md) for details.
 

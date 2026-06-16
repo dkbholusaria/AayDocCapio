@@ -4,6 +4,56 @@ All notable changes to AayDocCapio are documented here.
 
 ---
 
+## [1.5.6] — 2026-06-16
+
+### New Features
+
+#### Email Delivery
+- **Mail Docs to Clients dialog** — scan a download folder, match client PANs, select recipients, and send tax documents in bulk. Accessible via the new **Email Docs** button on the main toolbar or Tools → Mail Docs to Clients
+- **Batch email with live status** — per-row progress: ⏳ Sending → ✅ Sent / ❌ Failed with friendly SMTP error messages
+- **Inline email editing** — type or correct a client's email address directly in the table; saved to vault before sending
+- **Numbered document list** — `{documents}` placeholder in email body renders as a numbered HTML list identifying each attached file by type (Form 26AS PDF, Form 26AS Excel, AIS, TIS)
+- **"Powered by AayDocCapio"** footer appended automatically to every outgoing email with a clickable link to the download page
+- **Session log dividers** — email log now shows `── SESSION STARTED ──` / `── SESSION ENDED ──` separators between app sessions
+- **Client name in email log** — every send attempt logs the client name and PAN for easy audit
+
+#### Email Provider Presets
+One-click SMTP configuration for all major providers — selecting a tile auto-fills host, port, encryption, and shows provider-specific setup help with clickable links:
+
+| Provider | SMTP Host | Port |
+|---|---|---|
+| Gmail | smtp.gmail.com | 587 |
+| Outlook.com / Hotmail | smtp-mail.outlook.com | 587 |
+| Microsoft 365 / Office 365 | smtp.office365.com | 587 |
+| Exchange (on-premise) | configurable | 587 |
+| Yahoo Mail | smtp.mail.yahoo.com | 587 |
+| iCloud Mail | smtp.mail.me.com | 587 |
+| Custom / Other | any | any |
+
+#### Rich Text Email Composer
+- Font family picker, font size, Bold / Italic / Underline toolbar
+- Placeholder chips: `{client_name}`, `{pan}`, `{ay}`, `{firm_name}`, `{documents}`
+- CC and BCC fields; BCC added to SMTP envelope but not email headers
+- Send Test Email button to verify settings before bulk send
+
+### UI Improvements
+- **Download button** — "Run" renamed to "Download" for clarity
+- **Email Docs button** — quick-launch on main toolbar (no menu navigation)
+- **Exit button** — one-click close on main toolbar with clean session-end logging
+- **Mail Docs table** — sortable on all columns, filter bar with one-click clear (×), Select All/None respects active filter, resizable columns
+- **Fluency multicolor icons** — all buttons, menus, and context menus across the entire app now have icons
+- **Premium help notes** — blue left-bordered info panels with clickable links in Email Settings
+- **Dropdown arrow** — visible in dark theme via CSS triangle fallback
+
+### Bug Fixes
+- **Batch send silent crash** — `format_map()` crashed on HTML bodies containing CSS `{}` braces; switched to explicit per-placeholder `.replace()` 
+- **Mail Docs sorting** — sorting now correctly moves checkboxes, email fields, CC fields, and send status together with the row (previously only text items moved)
+- **Checkbox backgrounds** — white flash in Mail Docs table fixed; checkbox container background now matches alternating row color
+- **Font combo editable** — `QFontComboBox` no longer accepts typed input (dropdown-only)
+- **Qt font warnings** — `qt.text.font.db: OpenType support missing` console spam suppressed via `qInstallMessageHandler`
+
+---
+
 ## [1.4.4] — 2026-06-15
 
 ### Improvements
