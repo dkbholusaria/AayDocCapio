@@ -128,7 +128,7 @@ class VaultManager:
             if "settings" not in data:
                 data["settings"] = {}
                 updated = True
-            
+
             # Migrate old entries if needed (add uuid, clean up keys)
             for entry in data["assessees"]:
                 if "id" not in entry:
@@ -136,7 +136,13 @@ class VaultManager:
                     updated = True
                 if "pan" in entry:
                     entry["pan"] = entry["pan"].strip().upper()
-            
+                if "email" not in entry:
+                    entry["email"] = ""
+                    updated = True
+                if "cc" not in entry:
+                    entry["cc"] = ""
+                    updated = True
+
             if updated:
                 self._save_raw(data)
 
@@ -176,14 +182,15 @@ class VaultManager:
             assessees.append(decrypted)
         return assessees
 
-    def add_update_assessee(self, name: str, pan: str, dob: str, password: str, assessee_id: str = None) -> str:
+    def add_update_assessee(self, name: str, pan: str, dob: str, password: str,
+                            assessee_id: str = None, email: str = "", cc: str = "") -> str:
         """Adds or updates a single assessee."""
         raw_data = self._get_raw()
         _validate_fields(name, pan, dob, password)
         pan = pan.strip().upper()
-        
+
         password_enc = self.encrypt_password(password)
-        
+
         found = False
         if assessee_id:
             # Update by ID
@@ -194,7 +201,9 @@ class VaultManager:
                         "name": name.strip(),
                         "pan": pan,
                         "dob": dob.strip(),
-                        "password_enc": password_enc
+                        "password_enc": password_enc,
+                        "email": email.strip(),
+                        "cc": cc.strip(),
                     }
                     found = True
                     break
@@ -208,11 +217,13 @@ class VaultManager:
                         "name": name.strip(),
                         "pan": pan,
                         "dob": dob.strip(),
-                        "password_enc": password_enc
+                        "password_enc": password_enc,
+                        "email": email.strip(),
+                        "cc": cc.strip(),
                     }
                     found = True
                     break
-        
+
         if not found:
             new_id = str(uuid.uuid4())
             raw_data["assessees"].append({
@@ -220,12 +231,26 @@ class VaultManager:
                 "name": name.strip(),
                 "pan": pan,
                 "dob": dob.strip(),
-                "password_enc": password_enc
+                "password_enc": password_enc,
+                "email": email.strip(),
+                "cc": cc.strip(),
             })
             assessee_id = new_id
 
         self._save_raw(raw_data)
         return assessee_id
+
+    def update_assessee_email(self, pan: str, email: str, cc: str = "") -> bool:
+        """Update only the email and cc fields for a client by PAN. Returns True if found."""
+        raw_data = self._get_raw()
+        pan = pan.strip().upper()
+        for entry in raw_data["assessees"]:
+            if entry.get("pan") == pan:
+                entry["email"] = email.strip()
+                entry["cc"] = cc.strip()
+                self._save_raw(raw_data)
+                return True
+        return False
 
     def delete_assessee(self, assessee_id: str):
         """Deletes an assessee by ID."""
@@ -307,7 +332,7 @@ class VaultManager:
             row_num = idx + 2
             try:
                 def _cell(key):
-                    v = row[col[key]] if col[key] < len(row) else None
+                    v = row[col[key]] if key in col and col[key] < len(row) else None
                     return str(v).strip() if v is not None and str(v).strip() not in ("", "None") else ""
 
                 name = _cell('name')
@@ -322,6 +347,8 @@ class VaultManager:
                     dob = _normalise_dob(str(dob_val).strip())
 
                 password = _cell('password')
+                email = _cell('email') if 'email' in col else ""
+                cc = _cell('cc') if 'cc' in col else ""
 
                 if not name or not pan or not dob or not password:
                     errors.append(f"Row {row_num}: Missing values in Name, PAN, DOB, or Password.")
@@ -332,7 +359,7 @@ class VaultManager:
                     continue
 
                 is_existing = pan in existing_pans
-                self.add_update_assessee(name, pan, dob, password)
+                self.add_update_assessee(name, pan, dob, password, email=email, cc=cc)
                 if is_existing:
                     updated_count += 1
                 else:
@@ -345,8 +372,9 @@ class VaultManager:
 
     def generate_template(self, file_path: str):
         """Generates an Excel import template with sample columns."""
-        headers = ["Name", "PAN", "DOB", "Password"]
-        sample = ["John Doe", "AAAPT0001A", "01-01-1980", "YourPortalPassword"]
+        headers = ["Name", "PAN", "DOB", "Password", "Email", "CC"]
+        sample = ["John Doe", "AAAPT0001A", "01-01-1980", "YourPortalPassword",
+                  "client@example.com", "spouse@example.com;accountant@firm.com"]
         if file_path.endswith('.csv'):
             with open(file_path, 'w', newline='', encoding='utf-8') as f:
                 csv.writer(f).writerows([headers, sample])
@@ -362,8 +390,9 @@ class VaultManager:
     def export_data(self, file_path: str):
         """Exports all saved assessees (with decrypted passwords) to Excel or CSV."""
         assessees = self.get_all_assessees()
-        headers = ["Name", "PAN", "DOB", "Password"]
-        rows = [[a.get("name", ""), a.get("pan", ""), a.get("dob", ""), a.get("password", "")]
+        headers = ["Name", "PAN", "DOB", "Password", "Email", "CC"]
+        rows = [[a.get("name", ""), a.get("pan", ""), a.get("dob", ""), a.get("password", ""),
+                 a.get("email", ""), a.get("cc", "")]
                 for a in assessees]
         if file_path.endswith('.csv'):
             with open(file_path, 'w', newline='', encoding='utf-8') as f:
@@ -388,4 +417,69 @@ class VaultManager:
     def update_setting(self, key: str, value):
         raw_data = self._get_raw()
         raw_data["settings"][key] = value
+        self._save_raw(raw_data)
+
+    # --- Email / SMTP Settings ---
+
+    _EMAIL_DEFAULTS = {
+        "smtp_host": "",
+        "smtp_port": "587",
+        "smtp_user": "",
+        "smtp_from": "",            # optional Send-As address; uses smtp_user when blank
+        "smtp_password_enc": "",
+        "smtp_use_tls": True,       # legacy — kept for back-compat; use smtp_encryption
+        "smtp_encryption": "STARTTLS",  # "STARTTLS" | "SSL/TLS" | "None"
+        "firm_name": "",
+        "bcc_addresses": "",
+        "email_subject_tpl": "[Action Required] Your Annual Income Tax Documents for {ay} | {client_name}",
+        "email_body_tpl": (
+            "<p>Dear {client_name},</p>"
+            "<p>We hope this message finds you well.</p>"
+            "<p>Please find attached your Income Tax documents for <b>{ay}</b>, "
+            "as downloaded from the Income Tax Department's e-Filing portal:</p>"
+            "<p>{documents}</p>"
+            "<p>Kindly review the attached documents at your earliest convenience. "
+            "If you notice any discrepancies or have any queries, please do not "
+            "hesitate to contact us and we will be happy to assist you.</p>"
+            "<p>Please note that these documents are sourced directly from the "
+            "IT Department portal and are provided for your reference and records.</p>"
+            "<p>Warm regards,<br><b>{firm_name}</b></p>"
+        ),
+    }
+
+    def get_email_settings(self) -> dict:
+        raw = self._get_raw().get("settings", {})
+        cfg = {}
+        for k, default in self._EMAIL_DEFAULTS.items():
+            cfg[k] = raw.get(k, default)
+        # Migrate legacy smtp_use_tls → smtp_encryption
+        if "smtp_encryption" not in raw and "smtp_use_tls" in raw:
+            cfg["smtp_encryption"] = "STARTTLS" if raw["smtp_use_tls"] else "None"
+        # Migrate plain-text body template → HTML
+        body = cfg.get("email_body_tpl", "")
+        if body and not body.lstrip().startswith("<"):
+            import html as _html
+            cfg["email_body_tpl"] = (
+                "<p style='white-space:pre-wrap'>"
+                + _html.escape(body).replace("\n", "<br>")
+                + "</p>"
+            )
+        # Decrypt password for caller
+        cfg["smtp_password"] = self.decrypt_password(cfg.get("smtp_password_enc", ""))
+        return cfg
+
+    def save_email_settings(self, cfg: dict):
+        """Save SMTP settings. Pass plain-text 'smtp_password'; it will be encrypted."""
+        raw_data = self._get_raw()
+        s = raw_data.setdefault("settings", {})
+        for k in self._EMAIL_DEFAULTS:
+            if k == "smtp_password_enc":
+                continue
+            if k in cfg:
+                s[k] = cfg[k]
+        if "smtp_password" in cfg and cfg["smtp_password"]:
+            s["smtp_password_enc"] = self.encrypt_password(cfg["smtp_password"])
+        elif "smtp_password" in cfg and not cfg["smtp_password"]:
+            # Blank password clears the stored encrypted value
+            s["smtp_password_enc"] = ""
         self._save_raw(raw_data)

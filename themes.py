@@ -197,7 +197,7 @@ QComboBox {{
 QComboBox:hover {{ border-color: {t.accent}; }}
 QComboBox:focus {{ border: 1.5px solid {t.border_focus}; }}
 QComboBox::drop-down {{ border: none; width: 28px; subcontrol-origin: padding; subcontrol-position: right center; }}
-QComboBox::down-arrow {{ image: url(resources/chevron_down.png); width: 10px; height: 6px; }}
+QComboBox::down-arrow {{ image: url(resources/icons/chevron_down.png); width: 10px; height: 6px; }}
 QComboBox QAbstractItemView {{
     border: 1px solid {t.border};
     background: {t.bg_input};

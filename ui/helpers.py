@@ -1,6 +1,7 @@
-import sys
+import sys, os
 from PyQt6.QtWidgets import QPushButton, QLabel, QGraphicsDropShadowEffect
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QColor, QIcon, QPixmap
+from PyQt6.QtCore import QSize, Qt
 
 
 # Font name used for PyQt6 QFont() calls — full stacks live in themes.py
@@ -18,11 +19,25 @@ def _shadow(blur=18, offset_y=3, alpha=22):
     return e
 
 
-def _btn(text, style="secondary", height=36, min_width=None):
+def _icon_path(name: str) -> str:
+    """Return absolute path to resources/{name}.png, or empty string if not found."""
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    p = os.path.join(here, "resources", "icons", name)
+    return p if os.path.isfile(p) else ""
+
+
+def _btn(text, style="secondary", height=36, min_width=None, icon: str = ""):
     b = QPushButton(text)
     b.setMinimumHeight(height)
     if min_width:
         b.setMinimumWidth(min_width)
+    if icon:
+        p = _icon_path(icon)
+        if p:
+            px = QPixmap(p).scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio,
+                                   Qt.TransformationMode.SmoothTransformation)
+            b.setIcon(QIcon(px))
+            b.setIconSize(QSize(20, 20))
     t = _t()
     COLORS = {
         "primary":   ("#2563EB",      "#1D4ED8",      "white"),

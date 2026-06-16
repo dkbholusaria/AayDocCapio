@@ -5,6 +5,13 @@ Run:  python3 app.py
 from version import __version__ as APP_VERSION
 
 import sys, os, json, asyncio, threading, datetime, time, subprocess, logging
+
+# Force XCB (X11) backend on Linux/WSL2 — must be set before Qt initialises.
+# WSLg sets WAYLAND_DISPLAY which Qt6 prefers; unsetting it prevents the
+# "Wayland connection broke" hang that requires WSL restart to fix.
+if sys.platform != "win32":
+    os.environ["QT_QPA_PLATFORM"] = "xcb"
+    os.environ.pop("WAYLAND_DISPLAY", None)
 from themes import THEMES, ThemeColors, build_stylesheet, get_theme, MONO_FONT_NAME as _MONO_FONT
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton,
@@ -63,6 +70,8 @@ class AayDocCapioApp(QMainWindow):
         self.setWindowTitle("AayDocCapio — Tax Documents. Delivered to You.")
         self.setMinimumSize(1100, 720)
         self.resize(1200, 780)
+        from automation.emailer import log_session_start
+        log_session_start()
 
         self.vault = VaultManager(
             vault_path=os.path.join(_app_dir(), "tax_vault.json"))
@@ -131,6 +140,8 @@ class AayDocCapioApp(QMainWindow):
 
     def closeEvent(self, event):
         self.log("[System] AayDocCapio closed.")
+        from automation.emailer import log_session_end
+        log_session_end()
         super().closeEvent(event)
 
     # ── Build UI ──────────────────────────────────────────────────────────────
@@ -141,10 +152,14 @@ class AayDocCapioApp(QMainWindow):
 
         # Client Master menu
         cm_menu = menubar.addMenu("Client Master")
-        act_add  = QAction("➕  Add New Client",          self); act_add.triggered.connect(self._open_add_client)
-        act_imp  = QAction("📥  Import from CSV / Excel", self); act_imp.triggered.connect(self.bulk_import)
-        act_exp  = QAction("📤  Export Client Data",      self); act_exp.triggered.connect(self.export_data)
-        act_tpl  = QAction("📄  Download Import Template",self); act_tpl.triggered.connect(self.generate_template)
+        def _micon(f):
+            p = os.path.join(_bundled_dir(), "resources", "icons", f)
+            return QIcon(QPixmap(p).scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio,
+                         Qt.TransformationMode.SmoothTransformation)) if os.path.isfile(p) else QIcon()
+        act_add  = QAction(_micon("menu_add_client.png"), "Add New Client",           self); act_add.triggered.connect(self._open_add_client)
+        act_imp  = QAction(_micon("menu_import.png"),     "Import from CSV / Excel",  self); act_imp.triggered.connect(self.bulk_import)
+        act_exp  = QAction(_micon("menu_export.png"),     "Export Client Data",       self); act_exp.triggered.connect(self.export_data)
+        act_tpl  = QAction(_micon("menu_template.png"),   "Download Import Template", self); act_tpl.triggered.connect(self.generate_template)
         cm_menu.addAction(act_add)
         cm_menu.addSeparator()
         cm_menu.addAction(act_imp)
@@ -160,6 +175,9 @@ class AayDocCapioApp(QMainWindow):
         st_menu.addAction(act_yr)
         st_menu.addAction(act_dir)
         st_menu.addAction(act_open)
+        st_menu.addSeparator()
+        act_email = QAction("✉  Email Settings…", self); act_email.triggered.connect(self._open_email_settings)
+        st_menu.addAction(act_email)
         st_menu.addSeparator()
 
         # Appearance submenu — built dynamically from THEMES registry
@@ -177,11 +195,15 @@ class AayDocCapioApp(QMainWindow):
         act_convert = QAction("📊  Convert 26AS TXT → Excel + HTML…", self)
         act_convert.triggered.connect(self._convert_26as_manual)
         tools_menu.addAction(act_convert)
+        tools_menu.addSeparator()
+        act_mail = QAction("✉  Mail Docs to Clients…", self)
+        act_mail.triggered.connect(self._open_mail_docs)
+        tools_menu.addAction(act_mail)
         self._tools_menu = tools_menu
 
         # Help menu
         help_menu = menubar.addMenu("Help")
-        about_action = QAction("About AayDocCapio", self)
+        about_action = QAction(_micon("menu_about.png"), "About AayDocCapio", self)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
 
@@ -449,7 +471,7 @@ class AayDocCapioApp(QMainWindow):
             row = QHBoxLayout(); row.setSpacing(10); row.setContentsMargins(0,0,0,0)
             icon_l = QLabel()
             icon_l.setFixedSize(22, 22)
-            icon_path = os.path.join(_bundled_dir(), "resources", icon_file)
+            icon_path = os.path.join(_bundled_dir(), "resources", "icons", icon_file)
             if os.path.exists(icon_path):
                 icon_l.setPixmap(QPixmap(icon_path).scaled(22, 22, Qt.AspectRatioMode.KeepAspectRatio,
                                                             Qt.TransformationMode.SmoothTransformation))
@@ -474,7 +496,7 @@ class AayDocCapioApp(QMainWindow):
         vl.addSpacing(6)
         vl.addLayout(_link_row("icon_vcard.png",    "www.ailearrning.guru",             "https://www.ailearrning.guru"))
         vl.addSpacing(6)
-        vl.addLayout(_link_row("icon_vcard.png",    "Virtual Card",                     "https://www.qrcodechimp.com/page/deepakb?chk1668183417"))
+        vl.addLayout(_link_row("icon_virtualcard.png", "Virtual Card",                  "https://www.qrcodechimp.com/page/deepakb?chk1668183417"))
         vl.addSpacing(16)
 
         # ── Divider ───────────────────────────────────────────────────────────
@@ -738,11 +760,11 @@ class AayDocCapioApp(QMainWindow):
         self.dir_lbl.setWordWrap(False)
         self.dir_lbl.setMaximumWidth(320)
         self.dir_lbl.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        browse_btn = _btn("📂  Browse", "outline", height=26)
+        browse_btn = _btn("Browse", "outline", height=26, icon="btn_browse.png")
         self._browse_btn = browse_btn
         browse_btn.clicked.connect(self.browse_output_dir)
 
-        open_btn = _btn("🗂  Open", "outline", height=26)
+        open_btn = _btn("Open", "outline", height=26, icon="btn_open.png")
         open_btn.clicked.connect(self._open_output_folder)
         self._open_btn = open_btn
 
@@ -879,9 +901,13 @@ class AayDocCapioApp(QMainWindow):
                 f"QMenu::item:selected {{ background:{_mt.accent}; color:{_mt.accent_text}; }}"
                 f"QMenu::separator {{ height:1px; background:{_mt.border}; margin:3px 0; }}"
             )
-            menu.addAction("✏  Edit Client",   lambda av=a:   self._open_edit_client(av))
+            def _cicon(f):
+                p = os.path.join(_bundled_dir(), "resources", "icons", f)
+                return QIcon(QPixmap(p).scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio,
+                             Qt.TransformationMode.SmoothTransformation)) if os.path.isfile(p) else QIcon()
+            menu.addAction(_cicon("icon_edit.png"),   "Edit Client",   lambda av=a:     self._open_edit_client(av))
             menu.addSeparator()
-            menu.addAction("🗑  Delete Client", lambda id_=a_id: self.delete_assessee(id_))
+            menu.addAction(_cicon("icon_delete.png"), "Delete Client", lambda id_=a_id: self.delete_assessee(id_))
             # Show menu at the cell's bottom-left corner
             rect = self.client_table.visualItemRect(item)
             pos  = self.client_table.viewport().mapToGlobal(rect.bottomLeft())
@@ -958,18 +984,34 @@ class AayDocCapioApp(QMainWindow):
 
         hl.addStretch()
 
-        self.btn_delete_sel = _btn("🗑  Delete Selected", "danger", height=34, min_width=130)
+        self.btn_delete_sel = _btn("Delete Selected", "danger", height=34, min_width=130, icon="btn_delete.png")
         self.btn_delete_sel.setEnabled(False)
         self.btn_delete_sel.clicked.connect(self.delete_selected)
         hl.addWidget(self.btn_delete_sel)
         hl.addSpacing(8)
 
-        # ── Run dropdown (split-style: label + arrow) ─────────────────────────
+        # ── Email Docs button ─────────────────────────────────────────────────
+        self.btn_email_docs = _btn("Email Docs", "secondary", height=34, icon="btn_send.png")
+        self.btn_email_docs.setToolTip("Mail downloaded tax documents to clients")
+        self.btn_email_docs.clicked.connect(self._open_mail_docs)
+        hl.addWidget(self.btn_email_docs)
+        hl.addSpacing(8)
+
+        # ── Download dropdown (split-style: label + arrow) ────────────────────
         self.btn_run = QToolButton()
-        self.btn_run.setText("▶  Run")
+        self.btn_run.setText("  Download")
         self.btn_run.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
         self.btn_run.setFixedHeight(34)
-        self.btn_run.setMinimumWidth(110)
+        self.btn_run.setMinimumWidth(130)
+        from ui.helpers import _icon_path
+        from PyQt6.QtGui import QIcon, QPixmap
+        from PyQt6.QtCore import QSize, Qt
+        _run_icon_p = _icon_path("btn_run.png")
+        if _run_icon_p:
+            _run_px = QPixmap(_run_icon_p).scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            self.btn_run.setIcon(QIcon(_run_px))
+            self.btn_run.setIconSize(QSize(20, 20))
+            self.btn_run.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.btn_run.setStyleSheet(
             "QToolButton{"
             "  background:#16A34A; color:#FFFFFF; border:none;"
@@ -1018,6 +1060,13 @@ class AayDocCapioApp(QMainWindow):
         self.btn_run.setMenu(run_menu)
         self.btn_run.clicked.connect(lambda: self.btn_run.showMenu())
         hl.addWidget(self.btn_run)
+        hl.addSpacing(8)
+
+        # ── Exit button ───────────────────────────────────────────────────────
+        self.btn_exit = _btn("Exit", "danger", height=34, icon="btn_cancel.png")
+        self.btn_exit.setToolTip("Close AayDocCapio")
+        self.btn_exit.clicked.connect(self.close)
+        hl.addWidget(self.btn_exit)
 
         # ── AIS status line (hidden until Request AIS runs) ───────────────────
         self.ais_status_bar = QFrame()
@@ -1617,6 +1666,29 @@ class AayDocCapioApp(QMainWindow):
             lambda v: fields["pwd"].setEchoMode(
                 QLineEdit.EchoMode.Normal if v else QLineEdit.EchoMode.Password))
         vl.addWidget(show_cb)
+        vl.addSpacing(14)
+
+        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet(f"background:{t.border};border:none;max-height:1px;")
+        vl.addWidget(sep)
+        vl.addSpacing(10)
+
+        # ── Email ─────────────────────────────────────────────────────────────
+        vl.addWidget(_field_label("Email Address (optional)"))
+        fields["email"] = QLineEdit()
+        fields["email"].setPlaceholderText("client@example.com")
+        fields["email"].setFixedHeight(34)
+        fields["email"].setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
+        vl.addWidget(fields["email"])
+        vl.addSpacing(10)
+
+        # ── CC ────────────────────────────────────────────────────────────────
+        vl.addWidget(_field_label("CC (optional — separate multiple with  ;)"))
+        fields["cc"] = QLineEdit()
+        fields["cc"].setPlaceholderText("spouse@example.com;accountant@firm.com")
+        fields["cc"].setFixedHeight(34)
+        fields["cc"].setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
+        vl.addWidget(fields["cc"])
         vl.addSpacing(18)
 
         # Pre-fill if editing
@@ -1625,11 +1697,13 @@ class AayDocCapioApp(QMainWindow):
             fields["pan"].setText(a.get("pan", ""))
             fields["dob"].setText(a.get("dob", ""))
             fields["pwd"].setText(a.get("password", ""))
+            fields["email"].setText(a.get("email", ""))
+            fields["cc"].setText(a.get("cc", ""))
 
         # Buttons
         btn_row = QHBoxLayout()
-        btn_cancel = _btn("Cancel", "secondary", height=34)
-        btn_save   = _btn("Update Client" if editing else "Add Client", "primary", height=34)
+        btn_cancel = _btn("Cancel", "secondary", height=34, icon="btn_cancel.png")
+        btn_save   = _btn("Update Client" if editing else "Add Client", "primary", height=34, icon="btn_add_client.png")
         btn_row.addWidget(btn_cancel)
         btn_row.addStretch()
         btn_row.addWidget(btn_save)
@@ -1642,7 +1716,9 @@ class AayDocCapioApp(QMainWindow):
                 edit_id = a.get("id") if editing else None
                 self.vault.add_update_assessee(
                     fields["name"].text(), fields["pan"].text(),
-                    fields["dob"].text(), fields["pwd"].text(), edit_id)
+                    fields["dob"].text(), fields["pwd"].text(), edit_id,
+                    email=fields["email"].text(),
+                    cc=fields["cc"].text())
                 action = "updated" if editing else "added"
                 self.log(f"[Vault] Client {action}: {fields['pan'].text()} — {fields['name'].text()}")
                 dlg.accept()
@@ -1657,6 +1733,17 @@ class AayDocCapioApp(QMainWindow):
 
     def save_assessee(self):
         self._open_add_client()
+
+    # ── Email menu handlers ───────────────────────────────────────────────────
+
+    def _open_email_settings(self):
+        from ui.dialogs import SmtpSettingsDialog
+        SmtpSettingsDialog(self, self.vault).exec()
+
+    def _open_mail_docs(self):
+        from ui.dialogs import MailDocsDialog
+        ay_label = self.ay_combo.currentText() if hasattr(self, "ay_combo") else ""
+        MailDocsDialog(self, self.vault, ay_label).exec()
 
     def delete_assessee(self, assessee_id):
         if QMessageBox.question(self, "Confirm Delete",
@@ -1838,8 +1925,10 @@ class AayDocCapioApp(QMainWindow):
         if not assessees:
             QMessageBox.information(self, "No Data", "No assessees saved yet.")
             return
+        _out_dir = self.vault.get_setting("download_root_dir", "")
+        _default = os.path.join(_out_dir, "Assessee_Export") if _out_dir and os.path.isdir(_out_dir) else "Assessee_Export"
         path, _ = QFileDialog.getSaveFileName(self, "Export Saved Data",
-            "Assessee_Export", "Excel Workbook (*.xlsx);;CSV (*.csv)")
+            _default, "Excel Workbook (*.xlsx);;CSV (*.csv)")
         if not path:
             return
         if not (path.endswith('.xlsx') or path.endswith('.csv')):
@@ -2412,6 +2501,14 @@ if __name__ == "__main__":
 
     try:
         _diag("Step 1: QApplication()")
+        # Suppress harmless font-db OpenType warnings from QFontComboBox scanning
+        from PyQt6.QtCore import qInstallMessageHandler
+        def _qt_msg_filter(msg_type, context, msg):
+            if "OpenType support missing" in msg or "qt.text.font.db" in msg:
+                return
+            import sys as _sys
+            _sys.stderr.write(msg + "\n")
+        qInstallMessageHandler(_qt_msg_filter)
         app = QApplication(sys.argv)
         _diag("Step 2: setApplicationName")
         app.setApplicationName("AayDocCapio")

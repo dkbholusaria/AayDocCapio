@@ -4,6 +4,31 @@ All notable changes to AayDocCapio are documented here.
 
 ---
 
+## [1.5.6] — 2026-06-16
+
+### New Features
+- **Mail Docs to Clients** — batch email AIS/TIS/26AS files to clients; scan folder, match PANs, select recipients, send in one click with per-row live status
+- **Email provider presets** — Gmail, Outlook.com, Microsoft 365/Office 365, Exchange, Yahoo, iCloud, Custom; one click auto-fills SMTP settings and shows provider-specific help
+- **Rich text email composer** — font, size, Bold/Italic/Underline toolbar, CC/BCC, HTML templates with `{client_name}`, `{pan}`, `{ay}`, `{firm_name}`, `{documents}` placeholders
+- **Numbered document list** — `{documents}` renders as a numbered HTML list of actual attached files (26AS PDF, 26AS Excel, AIS, TIS)
+- **"Powered by AayDocCapio"** footer on every outgoing email
+- **Email Docs + Exit buttons** on main toolbar; "Run" renamed to "Download"
+- **Session dividers** in email activity log; client name logged on every send attempt
+
+### UI Improvements
+- Mail Docs table: sortable all columns, filter with × clear button, Select All/None respects filter, resizable columns
+- Fluency multicolor icons on all buttons, menus, context menus across the app
+- Premium blue left-bordered help notes with clickable links in Email Settings
+- Dropdown arrow visible in dark theme
+
+### Bug Fixes
+- Batch send silent crash on HTML bodies with CSS `{}` braces
+- Mail Docs sorting now moves all row widgets correctly
+- Checkbox backgrounds match table row color (no white flash)
+- Font combo non-editable; Qt font warnings suppressed
+
+---
+
 ## [1.4.4] — 2026-06-15
 
 ### Improvements
