@@ -254,10 +254,12 @@ QMenu {{
     border: 1px solid {t.border};
     border-radius: 6px;
     padding: 4px 0;
+    icon-size: 20px;
 }}
-QMenu::item {{ padding: 8px 24px; color: {t.text_primary}; }}
+QMenu::item {{ padding: 7px 20px 7px 12px; color: {t.text_primary}; }}
 QMenu::item:selected {{ background: {t.accent}; color: {t.accent_text}; }}
 QMenu::separator {{ height: 1px; background: {t.border}; margin: 4px 0; }}
+QMenu::icon {{ padding-left: 6px; }}
 
 QMenuBar {{
     background: {t.bg_menubar};
