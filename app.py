@@ -195,6 +195,9 @@ class AayDocCapioApp(QMainWindow):
         act_convert = QAction("📊  Convert 26AS TXT → Excel + HTML…", self)
         act_convert.triggered.connect(self._convert_26as_manual)
         tools_menu.addAction(act_convert)
+        act_ais_convert = QAction("📊  Convert AIS JSON → Excel…", self)
+        act_ais_convert.triggered.connect(self._convert_ais_json_manual)
+        tools_menu.addAction(act_ais_convert)
         tools_menu.addSeparator()
         act_mail = QAction("✉  Mail Docs to Clients…", self)
         act_mail.triggered.connect(self._open_mail_docs)
@@ -2249,6 +2252,135 @@ class AayDocCapioApp(QMainWindow):
         if fail:
             msg += f"\n\n{fail} file(s) failed — check the log for details."
         QMessageBox.information(self, "Convert Complete", msg)
+
+    def _convert_ais_json_manual(self):
+        from PyQt6.QtWidgets import (
+            QFileDialog, QMessageBox, QDialog, QVBoxLayout,
+            QHBoxLayout, QLabel, QLineEdit, QComboBox, QPushButton, QFrame,
+        )
+        from ui.helpers import _lbl, _btn
+
+        # ── Step 1: pick JSON file ────────────────────────────────────────
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "Select AIS JSON file(s)",
+            self.vault.get_setting("download_root_dir", ""),
+            "AIS JSON Files (*.json);;All Files (*)")
+        if not paths:
+            return
+
+        # ── Step 2: credentials dialog ────────────────────────────────────
+        clients = self.vault.get_clients()
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("AIS JSON — Credentials")
+        dlg.setFixedWidth(420)
+        dlg.setModal(True)
+        t = _t()
+        dlg.setStyleSheet(
+            f"QDialog{{background:{t.bg_window};}}"
+            f"QLabel{{color:{t.text_primary};background:transparent;}}"
+            f"QLineEdit{{border:1px solid {t.border};border-radius:6px;"
+            f"padding:5px 10px;font-size:12px;background:{t.bg_input};"
+            f"color:{t.text_primary};}}"
+            f"QComboBox{{border:1px solid {t.border};border-radius:6px;"
+            f"padding:4px 10px;font-size:12px;background:{t.bg_input};"
+            f"color:{t.text_primary};}}"
+            f"QComboBox::drop-down{{border:none;width:20px;}}"
+        )
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(18, 16, 18, 16)
+        lay.setSpacing(10)
+
+        lay.addWidget(_lbl("Enter PAN and Date of Birth to decrypt the AIS JSON.", 11,
+                           color=t.text_muted))
+
+        # Vault shortcut
+        if clients:
+            combo_lbl = QLabel("Select from vault (optional):")
+            combo_lbl.setStyleSheet("font-size:11px;font-weight:600;")
+            lay.addWidget(combo_lbl)
+            combo = QComboBox()
+            combo.addItem("— manual entry —", None)
+            for c in clients:
+                combo.addItem(f"{c['name']}  ({c['pan']})", c)
+            lay.addWidget(combo)
+
+            sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
+            sep.setStyleSheet(f"background:{t.border};border:none;max-height:1px;")
+            lay.addWidget(sep)
+
+        pan_lbl = QLabel("PAN:")
+        pan_lbl.setStyleSheet("font-size:11px;font-weight:600;")
+        lay.addWidget(pan_lbl)
+        pan_edit = QLineEdit()
+        pan_edit.setPlaceholderText("e.g. AFCPB9287R")
+        pan_edit.setFixedHeight(34)
+        lay.addWidget(pan_edit)
+
+        dob_lbl = QLabel("Date of Birth:")
+        dob_lbl.setStyleSheet("font-size:11px;font-weight:600;")
+        lay.addWidget(dob_lbl)
+        dob_edit = QLineEdit()
+        dob_edit.setPlaceholderText("DD-MM-YYYY  (e.g. 09-07-1979)")
+        dob_edit.setFixedHeight(34)
+        lay.addWidget(dob_edit)
+
+        if clients:
+            def _on_client_selected(idx):
+                c = combo.itemData(idx)
+                if c:
+                    pan_edit.setText(c.get("pan", ""))
+                    dob_edit.setText(c.get("dob", ""))
+                else:
+                    pan_edit.clear(); dob_edit.clear()
+            combo.currentIndexChanged.connect(_on_client_selected)
+
+        btn_row = QHBoxLayout()
+        ok_btn = _btn("Convert", "primary", height=36)
+        cancel_btn = _btn("Cancel", "secondary", height=36)
+        ok_btn.clicked.connect(dlg.accept)
+        cancel_btn.clicked.connect(dlg.reject)
+        btn_row.addStretch()
+        btn_row.addWidget(cancel_btn)
+        btn_row.addWidget(ok_btn)
+        lay.addLayout(btn_row)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        pan_val = pan_edit.text().strip().upper()
+        dob_val = dob_edit.text().strip()
+        if not pan_val or not dob_val:
+            QMessageBox.warning(self, "Missing Credentials",
+                                "Please enter both PAN and Date of Birth.")
+            return
+
+        # ── Step 3: convert each file ─────────────────────────────────────
+        from automation.ais_converter import convert_ais_json
+        ok_files, fail_files = [], []
+
+        for p in paths:
+            try:
+                xlsx = convert_ais_json(p, log_callback=self.log,
+                                        pan=pan_val, dob=dob_val)
+                self.log(f"[Victory] AIS converted: {os.path.basename(xlsx)}")
+                ok_files.append(os.path.basename(xlsx))
+            except ValueError:
+                self.log(f"[Error] AIS decrypt failed for {os.path.basename(p)} "
+                         f"— check PAN / DOB.")
+                fail_files.append(os.path.basename(p))
+            except Exception as e:
+                self.log(f"[Error] AIS convert failed for {os.path.basename(p)}: {e}")
+                fail_files.append(os.path.basename(p))
+
+        msg = f"Converted {len(ok_files)} AIS JSON file(s) to Excel."
+        if ok_files:
+            msg += "\n\nSaved alongside source JSON:\n"
+            msg += "\n".join(f"  • {f}" for f in ok_files)
+        if fail_files:
+            msg += f"\n\n{len(fail_files)} file(s) failed — check PAN / DOB and the log."
+            msg += "\n" + "\n".join(f"  • {f}" for f in fail_files)
+        QMessageBox.information(self, "AIS Convert Complete", msg)
 
     def _auto_convert_26as(self, set_status=None):
         from automation.as26_converter import convert_26as_txt

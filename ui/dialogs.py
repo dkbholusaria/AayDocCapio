@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
     QCheckBox, QRadioButton, QLineEdit, QScrollArea, QWidget,
     QFrame, QTableWidget, QTableWidgetItem, QHeaderView,
     QAbstractItemView, QProgressBar, QSizePolicy, QFileDialog, QMessageBox,
-    QTextEdit, QSpinBox, QComboBox, QFontComboBox,
+    QTextEdit, QSpinBox, QComboBox, QFontComboBox, QTabWidget,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import (
@@ -699,8 +699,14 @@ class SmtpSettingsDialog(QDialog):
         self._selected_preset: str | None = None
         self._test_result.connect(self._on_test_result)
         self.setWindowTitle("Email Settings")
-        self.setMinimumSize(843, 927)
+        self.setMinimumSize(843, 560)
         self.setModal(True)
+        self.setWindowFlags(
+            Qt.WindowType.Dialog |
+            Qt.WindowType.WindowTitleHint |
+            Qt.WindowType.WindowSystemMenuHint |
+            Qt.WindowType.WindowCloseButtonHint |
+            Qt.WindowType.WindowMaximizeButtonHint)
         self._build_ui()
 
     # ── build ─────────────────────────────────────────────────────────────────
@@ -733,7 +739,7 @@ class SmtpSettingsDialog(QDialog):
 
         cfg = self._vault.get_email_settings()
 
-        # ── outer: header bar (fixed) + scroll area (stretchy) + footer bar (fixed)
+        # ── outer: header bar (fixed) + tab widget (stretchy) + footer bar (fixed)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
@@ -773,25 +779,53 @@ class SmtpSettingsDialog(QDialog):
         outer.addWidget(hdr_widget)
         outer.addWidget(sep_top)
 
-        # ── Scrollable content ────────────────────────────────────────────────
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet(
+        # ── Shared scroll area stylesheet ─────────────────────────────────────
+        _scroll_ss = (
             f"QScrollArea{{background:{t.bg_window};border:none;}}"
             f"QScrollBar:vertical{{width:8px;background:{t.bg_table_alt};}}"
             f"QScrollBar::handle:vertical{{background:{t.border};border-radius:4px;min-height:24px;}}"
             f"QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{{height:0px;}}"
         )
 
-        content = QWidget()
-        content.setStyleSheet(f"QWidget{{background:{t.bg_window};}}")
-        main = QVBoxLayout(content)
-        main.setContentsMargins(16, 16, 16, 16)
-        main.setSpacing(0)
-        scroll.setWidget(content)
-        outer.addWidget(scroll, stretch=1)
+        # ── Tab widget ────────────────────────────────────────────────────────
+        tab = QTabWidget()
+        tab.setStyleSheet(
+            f"QTabWidget::pane{{border:1px solid {t.border};border-top:none;}}"
+            f"QTabBar::tab{{background:{t.bg_table_alt};color:{t.text_muted};"
+            f"padding:8px 18px;border:1px solid {t.border};border-bottom:none;"
+            f"border-radius:6px 6px 0 0;margin-right:2px;}}"
+            f"QTabBar::tab:selected{{background:{t.bg_window};color:{t.text_primary};font-weight:600;}}"
+            f"QTabBar::tab:hover{{background:{t.bg_input};}}"
+        )
+        outer.addWidget(tab, stretch=1)
+
+        # ── Tab 1 — SMTP / Sender ─────────────────────────────────────────────
+        tab1_scroll = QScrollArea()
+        tab1_scroll.setWidgetResizable(True)
+        tab1_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        tab1_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        tab1_scroll.setStyleSheet(_scroll_ss)
+        tab1_content = QWidget()
+        tab1_content.setStyleSheet(f"QWidget{{background:{t.bg_window};}}")
+        tab1_main = QVBoxLayout(tab1_content)
+        tab1_main.setContentsMargins(16, 16, 16, 16)
+        tab1_main.setSpacing(0)
+        tab1_scroll.setWidget(tab1_content)
+        tab.addTab(tab1_scroll, "SMTP / Sender")
+
+        # ── Tab 2 — Email Template ────────────────────────────────────────────
+        tab2_scroll = QScrollArea()
+        tab2_scroll.setWidgetResizable(True)
+        tab2_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        tab2_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        tab2_scroll.setStyleSheet(_scroll_ss)
+        tab2_content = QWidget()
+        tab2_content.setStyleSheet(f"QWidget{{background:{t.bg_window};}}")
+        tab2_main = QVBoxLayout(tab2_content)
+        tab2_main.setContentsMargins(16, 16, 16, 16)
+        tab2_main.setSpacing(0)
+        tab2_scroll.setWidget(tab2_content)
+        tab.addTab(tab2_scroll, "Email Template")
 
         def _flbl(text):
             l = QLabel(text)
@@ -799,9 +833,13 @@ class SmtpSettingsDialog(QDialog):
                 f"font-size:11px;font-weight:600;color:{t.text_muted};margin-bottom:3px;")
             return l
 
-        # ── Provider picker ───────────────────────────────────────────────────
-        main.addWidget(_lbl("Select your email provider", 12, bold=True))
-        main.addSpacing(10)
+        # ─────────────────────────────────────────────────────────────────────
+        # Tab 1 content
+        # ─────────────────────────────────────────────────────────────────────
+
+        # Provider picker
+        tab1_main.addWidget(_lbl("Select your email provider", 12, bold=True))
+        tab1_main.addSpacing(10)
 
         tile_row = QHBoxLayout()
         tile_row.setSpacing(8)
@@ -810,8 +848,8 @@ class SmtpSettingsDialog(QDialog):
             self._tile_btns[preset["name"]] = btn
             tile_row.addWidget(btn)
         tile_row.addStretch()
-        main.addLayout(tile_row)
-        main.addSpacing(10)
+        tab1_main.addLayout(tile_row)
+        tab1_main.addSpacing(10)
 
         self._help_note = QLabel("")
         self._help_note.setWordWrap(True)
@@ -824,10 +862,10 @@ class SmtpSettingsDialog(QDialog):
             f"border-radius:0 6px 6px 0;padding:10px 14px;"
             f"font-size:11px;line-height:160%;")
         self._help_note.hide()
-        main.addWidget(self._help_note)
-        main.addSpacing(20)
+        tab1_main.addWidget(self._help_note)
+        tab1_main.addSpacing(20)
 
-        # ── Outgoing Mail (SMTP) ──────────────────────────────────────────────
+        # SMTP Server / Port / Encryption
         row_host = QHBoxLayout(); row_host.setSpacing(10)
 
         host_col = QVBoxLayout(); host_col.setSpacing(4)
@@ -858,9 +896,10 @@ class SmtpSettingsDialog(QDialog):
         self._enc.setFixedWidth(110)
         enc_col.addWidget(self._enc)
         row_host.addLayout(enc_col)
-        main.addLayout(row_host)
-        main.addSpacing(12)
+        tab1_main.addLayout(row_host)
+        tab1_main.addSpacing(12)
 
+        # Username / Password
         user_pwd_row = QHBoxLayout(); user_pwd_row.setSpacing(12)
 
         user_col = QVBoxLayout(); user_col.setSpacing(4)
@@ -891,9 +930,10 @@ class SmtpSettingsDialog(QDialog):
         pwd_col.addLayout(pwd_field_row)
         user_pwd_row.addLayout(pwd_col, stretch=25)
 
-        main.addLayout(user_pwd_row)
-        main.addSpacing(10)
+        tab1_main.addLayout(user_pwd_row)
+        tab1_main.addSpacing(10)
 
+        # Send As / From + BCC
         from_bcc_row = QHBoxLayout(); from_bcc_row.setSpacing(12)
 
         from_col = QVBoxLayout(); from_col.setSpacing(4)
@@ -912,18 +952,13 @@ class SmtpSettingsDialog(QDialog):
         bcc_col.addWidget(self._bcc)
         from_bcc_row.addLayout(bcc_col, stretch=1)
 
-        main.addLayout(from_bcc_row)
-        main.addSpacing(12)
+        tab1_main.addLayout(from_bcc_row)
+        tab1_main.addStretch()
 
-        # ── Firm / Identity ───────────────────────────────────────────────────
-        main.addWidget(_flbl("Firm Name  (used in {firm_name} placeholder)"))
-        self._firm = QLineEdit(cfg.get("firm_name", ""))
-        self._firm.setPlaceholderText("Bholusaria & Associates")
-        self._firm.setFixedHeight(34)
-        main.addWidget(self._firm)
-        main.addSpacing(20)
+        # ─────────────────────────────────────────────────────────────────────
+        # Tab 2 content
+        # ─────────────────────────────────────────────────────────────────────
 
-        # ── Email Template ────────────────────────────────────────────────────
         _ph_chip_ss = (
             f"QPushButton{{background:{t.bg_table_alt};color:{t.accent};"
             f"border:1px solid {t.border};border-radius:5px;"
@@ -941,6 +976,15 @@ class SmtpSettingsDialog(QDialog):
             f"selection-background-color:{t.accent};}}"
         )
 
+        # Firm Name (moved from Tab 1 — belongs with template placeholders)
+        tab2_main.addWidget(_flbl("Firm Name  (used in {firm_name} placeholder)"))
+        self._firm = QLineEdit(cfg.get("firm_name", ""))
+        self._firm.setPlaceholderText("Bholusaria & Associates")
+        self._firm.setFixedHeight(34)
+        tab2_main.addWidget(self._firm)
+        tab2_main.addSpacing(20)
+
+        # Subject line + chips
         self._subj = QLineEdit(cfg.get("email_subject_tpl", ""))
         self._subj.setFixedHeight(34)
 
@@ -954,14 +998,14 @@ class SmtpSettingsDialog(QDialog):
             pb.setStyleSheet(_ph_chip_ss)
             pb.clicked.connect(lambda _, p=ph: self._subj.insert(p))
             subj_lbl_row.addWidget(pb)
-        main.addLayout(subj_lbl_row)
-        main.addSpacing(2)
-        main.addWidget(self._subj)
-        main.addSpacing(12)
+        tab2_main.addLayout(subj_lbl_row)
+        tab2_main.addSpacing(2)
+        tab2_main.addWidget(self._subj)
+        tab2_main.addSpacing(12)
 
         # Body — rich-text editor
-        main.addWidget(_flbl("Body"))
-        main.addSpacing(4)
+        tab2_main.addWidget(_flbl("Body"))
+        tab2_main.addSpacing(4)
 
         _fmt_btn_ss = (
             f"QPushButton{{background:{t.bg_table_alt};color:{t.text_primary};"
@@ -991,7 +1035,7 @@ class SmtpSettingsDialog(QDialog):
             btn.toggled.connect(_apply)
             return btn
 
-        # Single row: font family | size | B I U | separator | placeholder chips
+        # Single row: font family | size | B I U | placeholder chips
         fmt_bar = QHBoxLayout(); fmt_bar.setSpacing(6)
 
         self._font_combo = QFontComboBox()
@@ -1044,8 +1088,8 @@ class SmtpSettingsDialog(QDialog):
             pb.clicked.connect(lambda _, p=ph: self._body.insertPlainText(p))
             fmt_bar.addWidget(pb)
         fmt_bar.addStretch()
-        main.addLayout(fmt_bar)
-        main.addSpacing(4)
+        tab2_main.addLayout(fmt_bar)
+        tab2_main.addSpacing(4)
 
         self._body = QTextEdit()
         self._body.setAcceptRichText(True)
@@ -1059,17 +1103,17 @@ class SmtpSettingsDialog(QDialog):
                           .replace("\n", "<br>")
                 + "</p>"
             )
-        self._body.setFixedHeight(180)
+        self._body.setMinimumHeight(200)
+        self._body.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._body.currentCharFormatChanged.connect(self._sync_fmt_buttons)
-        main.addWidget(self._body)
-        main.addStretch()
+        tab2_main.addWidget(self._body, stretch=1)
 
         # Auto-highlight tile if saved host matches a known preset
         saved_host = cfg.get("smtp_host", "")
         if saved_host in _HOST_TO_PRESET:
             self._highlight_tile(_HOST_TO_PRESET[saved_host])
 
-        # ── Footer bar (fixed, outside scroll) ───────────────────────────────
+        # ── Footer bar (fixed, outside tabs) ──────────────────────────────────
         sep_bot = QFrame()
         sep_bot.setFrameShape(QFrame.Shape.HLine)
         sep_bot.setStyleSheet(f"background:{t.border};border:none;max-height:1px;")
@@ -1095,10 +1139,9 @@ class SmtpSettingsDialog(QDialog):
         footer_lay.addWidget(save_btn)
         outer.addWidget(footer_widget)
 
-        self.resize(843, 927)
-        # Ensure dialog always opens scrolled to the top
+        self.resize(843, 680)
         from PyQt6.QtCore import QTimer
-        QTimer.singleShot(0, lambda: scroll.verticalScrollBar().setValue(0))
+        QTimer.singleShot(0, lambda: tab1_scroll.verticalScrollBar().setValue(0))
 
     # ── tile factory ──────────────────────────────────────────────────────────
 
