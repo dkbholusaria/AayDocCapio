@@ -181,7 +181,7 @@ class AayDocCapioApp(QMainWindow):
         st_menu.addSeparator()
 
         # Appearance submenu — built dynamically from THEMES registry
-        appear_menu = st_menu.addMenu("Appearance")
+        appear_menu = st_menu.addMenu(_micon("menu_appearance.png"), "Appearance")
         _icons = {"light": "☀", "dark": "🌙"}
         for theme_key, theme_colors in THEMES.items():
             icon = _icons.get(theme_key, "●")
