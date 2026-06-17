@@ -1410,12 +1410,8 @@ def _smtp_help_page_html(logo_uri: str, icon_uris: dict) -> str:
     def provider_card(name: str, server: str, port: str, enc: str,
                       color: str, body_html: str) -> str:
         return (
-            f'<div style="background:#fff;border:1px solid rgba(10,22,40,0.09);'
-            f'border-radius:14px;margin-bottom:16px;overflow:hidden;'
-            f'box-shadow:0 2px 8px rgba(10,22,40,0.06),0 8px 24px rgba(10,22,40,0.07);">'
-            # gradient top stripe
-            f'<div style="height:3px;background:linear-gradient(90deg,#0F3A68,#0078D4,#B88924);"></div>'
-            f'<div style="padding:18px 22px;">'
+            f'<div class="prov-card">'
+            f'<div class="prov-body">'
             # header row: icon + name + server badges
             f'<div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:14px;">'
             f'{provider_icon(name, color)}'
@@ -1588,6 +1584,34 @@ def _smtp_help_page_html(logo_uri: str, icon_uris: dict) -> str:
     .enc-name{{font-family:Consolas,Menlo,monospace;font-weight:700;
       font-size:0.85rem;color:#2563EB;min-width:80px;padding-top:1px;}}
     .enc-desc{{color:#1A2233;font-size:0.9rem;line-height:1.6;}}
+    .prov-card{{
+      background:#FFFFFF;border:1px solid rgba(10,22,40,0.09);
+      border-radius:14px;margin-bottom:16px;overflow:hidden;
+      box-shadow:0 2px 8px rgba(10,22,40,0.06),0 8px 24px rgba(10,22,40,0.07);
+      position:relative;
+      transition:transform 240ms cubic-bezier(0.33,1,0.68,1),
+                 box-shadow 240ms cubic-bezier(0.33,1,0.68,1),
+                 border-color 240ms cubic-bezier(0.33,1,0.68,1);}}
+    .prov-card::before{{
+      content:"";position:absolute;left:0;right:0;top:0;height:3px;
+      background:linear-gradient(90deg,#0F3A68,#0078D4,#B88924);
+      border-radius:14px 14px 0 0;}}
+    .prov-card::after{{
+      content:"";position:absolute;inset:0;border-radius:inherit;
+      background:radial-gradient(
+        500px circle at var(--mouse-x,50%) var(--mouse-y,50%),
+        rgba(15,58,104,0.07),transparent 40%);
+      opacity:0;
+      transition:opacity 240ms cubic-bezier(0.33,1,0.68,1);
+      pointer-events:none;}}
+    .prov-card:hover{{
+      transform:translateY(-4px);
+      border-color:rgba(15,58,104,0.25);
+      box-shadow:0 0 0 1px rgba(15,58,104,0.08),
+                 0 12px 36px rgba(10,22,40,0.13),
+                 0 4px 12px rgba(10,22,40,0.07);}}
+    .prov-card:hover::after{{opacity:1;}}
+    .prov-body{{padding:18px 22px 20px;}}
     table.trouble{{width:100%;border-collapse:collapse;border-radius:12px;overflow:hidden;
       border:1px solid rgba(10,22,40,0.09);
       box-shadow:0 2px 8px rgba(10,22,40,0.05);}}
@@ -1677,6 +1701,18 @@ def _smtp_help_page_html(logo_uri: str, icon_uris: dict) -> str:
   <span style="opacity:0.6;">You can close this tab when done.</span>
 </div>
 
+<script>
+  // Fluent reveal highlight — track mouse position per card (same as landing page)
+  (function() {{
+    document.querySelectorAll('.prov-card').forEach(function(card) {{
+      card.addEventListener('mousemove', function(e) {{
+        var rect = card.getBoundingClientRect();
+        card.style.setProperty('--mouse-x', ((e.clientX - rect.left) / rect.width * 100).toFixed(1) + '%');
+        card.style.setProperty('--mouse-y', ((e.clientY - rect.top) / rect.height * 100).toFixed(1) + '%');
+      }});
+    }});
+  }})();
+</script>
 </body>
 </html>"""
 
