@@ -1345,10 +1345,17 @@ class SmtpSettingsDialog(QDialog):
 def _smtp_help_page_html(logo_uri: str, icon_uris: dict) -> str:
     """Return a fully self-contained HTML string for the SMTP help page."""
 
-    def logo_img(height=40):
-        if logo_uri:
-            return f'<img src="{logo_uri}" alt="AayDocCapio" style="height:{height}px;display:block;">'
-        return '<span style="font-family:\'Plus Jakarta Sans\',sans-serif;font-size:1.1rem;font-weight:800;color:#fff;">AayDocCapio</span>'
+    hero_logo_html = (
+        f'<div style="max-width:700px;width:94%;margin:0 auto 32px;background:#fff;'
+        f'border:1px solid rgba(10,22,40,0.10);border-radius:20px;'
+        f'box-shadow:0 8px 32px rgba(10,22,40,0.10),0 2px 8px rgba(10,22,40,0.06);'
+        f'padding:28px 120px;overflow:hidden;display:flex;align-items:center;justify-content:center;">'
+        f'<img src="{logo_uri}" alt="AayDocCapio" style="width:100%;display:block;"/>'
+        f'</div>'
+        if logo_uri else
+        '<div style="margin-bottom:32px;font-family:\'Plus Jakarta Sans\',sans-serif;'
+        'font-size:2rem;font-weight:900;color:#09152A;">AayDoc<span style="color:#B88924;">Capio</span>™</div>'
+    )
 
     def provider_icon(name: str, color: str) -> str:
         uri = icon_uris.get(name, "")
@@ -1533,15 +1540,14 @@ def _smtp_help_page_html(logo_uri: str, icon_uris: dict) -> str:
     body{{font-family:'Inter',-apple-system,"Segoe UI",sans-serif;background:#F3F6FA;
           color:#1A2233;line-height:1.65;font-size:0.97rem;}}
     a{{color:#0F3A68;}} a:hover{{color:#B88924;}}
-    nav{{background:linear-gradient(90deg,#0A1628 0%,#0F3A68 50%,#0A1628 100%);
-         border-bottom:1px solid rgba(255,255,255,0.12);
-         box-shadow:0 2px 16px rgba(10,22,40,0.4);
+    nav{{background:linear-gradient(90deg,#0d47a1 0%,#1565c0 40%,#1976d2 100%);
+         border-bottom:1px solid rgba(255,255,255,0.15);
+         box-shadow:0 2px 16px rgba(13,71,161,0.5);
          padding:0 40px;display:flex;align-items:center;
-         justify-content:space-between;height:60px;
+         justify-content:space-between;height:56px;
          position:sticky;top:0;z-index:100;}}
     .nav-brand{{font-family:'Plus Jakarta Sans',sans-serif;color:#fff;
-                font-size:0.9rem;font-weight:700;letter-spacing:0.01em;
-                opacity:0.85;}}
+                font-size:1.05rem;font-weight:800;letter-spacing:-0.01em;}}
     .hero{{background:
       radial-gradient(ellipse 65% 50% at 15% 60%,rgba(15,58,104,0.05) 0%,transparent 55%),
       radial-gradient(ellipse 55% 45% at 85% 20%,rgba(14,165,233,0.05) 0%,transparent 50%),
@@ -1595,14 +1601,14 @@ def _smtp_help_page_html(logo_uri: str, icon_uris: dict) -> str:
 
 <!-- NAV -->
 <nav>
-  {logo_img(38)}
-  <div class="nav-brand">Email Setup Help</div>
+  <span class="nav-brand">AayDoc <span style="color:#B88924;">Capio</span>™</span>
+  <span class="nav-brand" style="font-size:0.82rem;font-weight:500;opacity:0.75;letter-spacing:0;">✉ Email Setup Help</span>
 </nav>
 
 <!-- HERO -->
 <div class="hero">
+  {hero_logo_html}
   <div class="hero-badge">✉ SMTP Configuration Guide</div>
-  <h1>Email Setup Help</h1>
   <p>Configure AayDocCapio to send tax documents directly to your clients using your existing email account.</p>
 </div>
 
