@@ -206,6 +206,10 @@ class AayDocCapioApp(QMainWindow):
 
         # Help menu
         help_menu = menubar.addMenu("Help")
+        smtp_help_action = QAction("✉  Email Setup Help…", self)
+        smtp_help_action.triggered.connect(self._open_smtp_help)
+        help_menu.addAction(smtp_help_action)
+        help_menu.addSeparator()
         about_action = QAction(_micon("menu_about.png"), "About AayDocCapio", self)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
@@ -391,6 +395,12 @@ class AayDocCapioApp(QMainWindow):
                 f" font-family: '{_MONO_FONT}', monospace;"
                 f" font-size: 11px; color: {t.text_log}; padding: 8px 16px; }}"
             )
+
+    def _open_smtp_help(self):
+        import webbrowser
+        from ui.dialogs import _write_smtp_help_html
+        path = _write_smtp_help_html()
+        webbrowser.open("file:///" + path.replace(os.sep, "/"))
 
     def _show_about(self):
         import webbrowser
@@ -2269,7 +2279,7 @@ class AayDocCapioApp(QMainWindow):
             return
 
         # ── Step 2: credentials dialog ────────────────────────────────────
-        clients = self.vault.get_clients()
+        clients = self.vault.get_all_assessees()
 
         dlg = QDialog(self)
         dlg.setWindowTitle("AIS JSON — Credentials")
@@ -2294,15 +2304,30 @@ class AayDocCapioApp(QMainWindow):
         lay.addWidget(_lbl("Enter PAN and Date of Birth to decrypt the AIS JSON.", 11,
                            color=t.text_muted))
 
-        # Vault shortcut
-        if clients:
+        # Vault shortcut — sorted, searchable combo
+        sorted_clients = sorted(clients, key=lambda x: x.get("name", "").lower()) if clients else []
+
+        if sorted_clients:
+            from PyQt6.QtCore import Qt
+            from PyQt6.QtWidgets import QCompleter
+
             combo_lbl = QLabel("Select from vault (optional):")
             combo_lbl.setStyleSheet("font-size:11px;font-weight:600;")
             lay.addWidget(combo_lbl)
+
             combo = QComboBox()
-            combo.addItem("— manual entry —", None)
-            for c in clients:
+            combo.setEditable(True)
+            combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+            combo.setMaxVisibleItems(12)
+            combo.setFixedHeight(34)
+            combo.addItem("— type to search or select —", None)
+            for c in sorted_clients:
                 combo.addItem(f"{c['name']}  ({c['pan']})", c)
+
+            completer = QCompleter([f"{c['name']}  ({c['pan']})" for c in sorted_clients])
+            completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+            completer.setFilterMode(Qt.MatchFlag.MatchContains)
+            combo.setCompleter(completer)
             lay.addWidget(combo)
 
             sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
@@ -2325,7 +2350,7 @@ class AayDocCapioApp(QMainWindow):
         dob_edit.setFixedHeight(34)
         lay.addWidget(dob_edit)
 
-        if clients:
+        if sorted_clients:
             def _on_client_selected(idx):
                 c = combo.itemData(idx)
                 if c:
@@ -2334,6 +2359,14 @@ class AayDocCapioApp(QMainWindow):
                 else:
                     pan_edit.clear(); dob_edit.clear()
             combo.currentIndexChanged.connect(_on_client_selected)
+
+            def _on_text_activated(text):
+                idx = combo.findText(text)
+                if idx >= 0:
+                    _on_client_selected(idx)
+            combo.lineEdit().editingFinished.connect(
+                lambda: _on_text_activated(combo.currentText())
+            )
 
         btn_row = QHBoxLayout()
         ok_btn = _btn("Convert", "primary", height=36)

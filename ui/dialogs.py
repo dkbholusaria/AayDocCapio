@@ -1503,6 +1503,20 @@ def _smtp_help_page_html(logo_uri: str, icon_uris: dict) -> str:
         ])
     )
 
+    custom_body = (
+        '<p style="color:#1A2233;font-size:0.9rem;margin:0 0 10px;">'
+        'Use this when your organisation runs its own mail server or a third-party SMTP relay '
+        '(e.g. Amazon SES, SendGrid, Zoho Mail, Brevo, or a cPanel server).</p>'
+        + bullets_html([
+            '<strong>Host:</strong> the SMTP hostname given by your provider or IT admin (e.g. <code style="font-size:0.85rem;">smtp.zoho.in</code>, <code style="font-size:0.85rem;">email-smtp.ap-south-1.amazonaws.com</code>)',
+            '<strong>Port:</strong> typically 587 with STARTTLS, or 465 with SSL/TLS. Port 25 is usually blocked by ISPs.',
+            '<strong>Username and Password:</strong> your SMTP credentials — not always the same as your login email.',
+            'If your provider gives you an API key instead of a password, paste it in the Password field.',
+        ])
+        + '<p style="color:#5A6B84;font-size:0.85rem;margin-top:10px;">'
+        'Not sure which settings to use? Check your provider\'s documentation under "SMTP settings" or "Outgoing mail server".</p>'
+    )
+
     providers_html = (
         provider_card("Gmail",      "smtp.gmail.com",          "587", "STARTTLS", "#EA4335", gmail_body)
         + provider_card("Outlook.com", "smtp-mail.outlook.com", "587", "STARTTLS", "#0078D4", outlook_body)
@@ -1510,6 +1524,7 @@ def _smtp_help_page_html(logo_uri: str, icon_uris: dict) -> str:
         + provider_card("Exchange",    "mail.yourcompany.com",  "587", "STARTTLS", "#0F6CBD", exchange_body)
         + provider_card("Yahoo",       "smtp.mail.yahoo.com",   "587", "STARTTLS", "#6001D2", yahoo_body)
         + provider_card("iCloud",      "smtp.mail.me.com",      "587", "STARTTLS", "#3478F6", icloud_body)
+        + provider_card("Custom",      "your.smtp.host",        "587", "STARTTLS", "#64748B", custom_body)
     )
 
     # ── Troubleshooting rows ───────────────────────────────────────────────────
