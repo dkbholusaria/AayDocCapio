@@ -1433,7 +1433,7 @@ def _smtp_help_page_html(logo_uri: str, icon_uris: dict) -> str:
 
     # ── Provider bodies ────────────────────────────────────────────────────────
     gmail_body = (
-        '<p style="color:#1A2233;font-size:0.9rem;margin:0 0 6px;">Google blocks your regular password for third-party apps — you must create an <strong>App Password</strong>.</p>'
+        '<p style="color:#1A2233;font-size:0.9rem;margin:0 0 6px;">Google blocks your regular password for third-party apps. You must create an <strong>App Password</strong>.</p>'
         + steps_html([
             f'Go to {lnk("myaccount.google.com", "myaccount.google.com")} → Security',
             'Enable <strong>2-Step Verification</strong> (required first)',
@@ -1441,7 +1441,7 @@ def _smtp_help_page_html(logo_uri: str, icon_uris: dict) -> str:
             'Select app: <strong>Mail</strong> → Generate',
             'Copy the 16-character password → paste into AayDocCapio',
         ])
-        + warn_box("Do NOT use your regular Gmail password — it will always fail.")
+        + warn_box("Do NOT use your regular Gmail password. It will always fail.")
     )
 
     outlook_body = (
@@ -1451,7 +1451,7 @@ def _smtp_help_page_html(logo_uri: str, icon_uris: dict) -> str:
             '<code style="font-size:0.85rem;">@outlook.com</code> &nbsp; <code style="font-size:0.85rem;">@hotmail.com</code> &nbsp; <code style="font-size:0.85rem;">@live.com</code> &nbsp; <code style="font-size:0.85rem;">@msn.com</code>',
         ])
         + '<p style="color:#B91C1C;font-size:0.88rem;margin:8px 0 10px;font-weight:600;">'
-        '⚠ Work or school account (e.g. name@company.com, name@college.edu)? Use <strong>Office 365</strong> instead — this preset will not work for those.</p>'
+        '⚠ Work or school account (e.g. name@company.com, name@college.edu)? Use <strong>Office 365</strong> instead. This preset will not work for those.</p>'
         + bullets_html([
             'Without MFA: use your regular Outlook.com / Hotmail password.',
             f'With MFA enabled: go to {lnk("mysignins.microsoft.com/security-info", "mysignins.microsoft.com/security-info")} → Add sign-in method → App password → create one and paste it here.',
@@ -1460,14 +1460,14 @@ def _smtp_help_page_html(logo_uri: str, icon_uris: dict) -> str:
 
     o365_body = (
         warn_box('If MFA is on, your regular password will NOT work even if "Authenticated SMTP" is ticked in Admin Centre. You MUST use an App Password.')
-        + option_label('Option 1 — App Password (required when MFA is on, no admin needed):')
+        + option_label('Option 1 (Preferred): App Password, works with or without MFA, no admin needed:')
         + steps_html([
             f'Go to {lnk("mysignins.microsoft.com/security-info", "mysignins.microsoft.com/security-info")}',
             'Click <strong>+ Add sign-in method</strong> → choose <strong>App password</strong> → Next',
             'Enter a name (e.g. AayDocCapio) → Next',
             'Copy the generated password and paste it into AayDocCapio',
         ])
-        + option_label('Option 2 — Enable Authenticated SMTP (only if MFA is OFF):')
+        + option_label('Option 2: Enable Authenticated SMTP (only if MFA is OFF):')
         + steps_html([
             f'Go to {lnk("admin.microsoft.com", "Microsoft 365 Admin Centre")} → Users → [your user] → <strong>Mail</strong> tab',
             'Click <strong>Manage email apps</strong> → tick <strong>Authenticated SMTP</strong> → Save',
@@ -1515,10 +1515,10 @@ def _smtp_help_page_html(logo_uri: str, icon_uris: dict) -> str:
     # ── Troubleshooting rows ───────────────────────────────────────────────────
     trouble_data = [
         ("535 / Authentication failed",  "Wrong password, or regular password used instead of App Password."),
-        ("5.7.139 Unsuccessful",          "Office 365 with MFA — use an App Password (see guide above)."),
+        ("5.7.139 Unsuccessful",          "Office 365 with MFA. Use an App Password (see guide above)."),
         ("Connection timed out",          "Wrong port or firewall blocking SMTP. Try port 465 + SSL/TLS."),
         ("SSL handshake failed",          "Switch between STARTTLS and SSL/TLS, or check the port number."),
-        ("Relay access denied",           "SMTP server requires authentication — verify username and password."),
+        ("Relay access denied",           "SMTP server requires authentication. Verify username and password."),
         ("Clients not receiving",         "Check spam/junk folder at client's end. Check BCC settings."),
     ]
     trouble_rows = ""
@@ -1542,7 +1542,7 @@ def _smtp_help_page_html(logo_uri: str, icon_uris: dict) -> str:
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet"/>
-  <title>AayDocCapio — Email Setup Help</title>
+  <title>AayDocCapio: Email Setup Help</title>
   <style>
     *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0;}}
     body{{font-family:'Inter',-apple-system,"Segoe UI",sans-serif;background:#F3F6FA;
@@ -1656,7 +1656,7 @@ def _smtp_help_page_html(logo_uri: str, icon_uris: dict) -> str:
     <p style="color:#1A2233;font-size:0.97rem;line-height:1.75;max-width:720px;">
       SMTP is the protocol used to <strong>send</strong> email. AayDocCapio uses your existing
       email account to deliver tax documents to clients. Your password is stored
-      <strong>AES-256 encrypted</strong> in the local vault — it never leaves your machine.
+      <strong>AES-256 encrypted</strong> in the local vault. It never leaves your machine.
     </p>
 
     <div style="margin-top:28px;">
