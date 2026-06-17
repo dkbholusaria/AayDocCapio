@@ -1444,10 +1444,19 @@ def _smtp_help_page_html(logo_uri: str, icon_uris: dict) -> str:
         + warn_box("Do NOT use your regular Gmail password — it will always fail.")
     )
 
-    outlook_body = bullets_html([
-        'Without MFA: use your regular Outlook.com password.',
-        f'With MFA: go to {lnk("mysignins.microsoft.com/security-info", "mysignins.microsoft.com/security-info")} → Add sign-in method → App password → create one and paste it here.',
-    ])
+    outlook_body = (
+        '<p style="color:#1A2233;font-size:0.9rem;margin:0 0 10px;">'
+        'This preset covers <strong>personal Microsoft accounts</strong> with these email addresses:</p>'
+        + bullets_html([
+            '<code style="font-size:0.85rem;">@outlook.com</code> &nbsp; <code style="font-size:0.85rem;">@hotmail.com</code> &nbsp; <code style="font-size:0.85rem;">@live.com</code> &nbsp; <code style="font-size:0.85rem;">@msn.com</code>',
+        ])
+        + '<p style="color:#B91C1C;font-size:0.88rem;margin:8px 0 10px;font-weight:600;">'
+        '⚠ Work or school account (e.g. name@company.com, name@college.edu)? Use <strong>Office 365</strong> instead — this preset will not work for those.</p>'
+        + bullets_html([
+            'Without MFA: use your regular Outlook.com / Hotmail password.',
+            f'With MFA enabled: go to {lnk("mysignins.microsoft.com/security-info", "mysignins.microsoft.com/security-info")} → Add sign-in method → App password → create one and paste it here.',
+        ])
+    )
 
     o365_body = (
         warn_box('If MFA is on, your regular password will NOT work even if "Authenticated SMTP" is ticked in Admin Centre. You MUST use an App Password.')
