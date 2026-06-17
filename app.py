@@ -169,19 +169,19 @@ class AayDocCapioApp(QMainWindow):
 
         # Settings menu
         st_menu = menubar.addMenu("Settings")
-        act_yr   = QAction("📅  Manage Assessment Years", self); act_yr.triggered.connect(self.open_manage_years)
-        act_dir  = QAction("📂  Change Output Folder",    self); act_dir.triggered.connect(self.browse_output_dir)
-        act_open = QAction("🗂  Open Output Folder",      self); act_open.triggered.connect(self._open_output_folder)
+        act_yr   = QAction(_micon("btn_scan.png"),          "Manage Assessment Years", self); act_yr.triggered.connect(self.open_manage_years)
+        act_dir  = QAction(_micon("btn_browse_folder.png"), "Change Output Folder",    self); act_dir.triggered.connect(self.browse_output_dir)
+        act_open = QAction(_micon("btn_browse.png"),        "Open Output Folder",      self); act_open.triggered.connect(self._open_output_folder)
         st_menu.addAction(act_yr)
         st_menu.addAction(act_dir)
         st_menu.addAction(act_open)
         st_menu.addSeparator()
-        act_email = QAction("✉  Email Settings…", self); act_email.triggered.connect(self._open_email_settings)
+        act_email = QAction(_micon("icon_email.png"), "Email Settings…", self); act_email.triggered.connect(self._open_email_settings)
         st_menu.addAction(act_email)
         st_menu.addSeparator()
 
         # Appearance submenu — built dynamically from THEMES registry
-        appear_menu = st_menu.addMenu("🎨  Appearance")
+        appear_menu = st_menu.addMenu("Appearance")
         _icons = {"light": "☀", "dark": "🌙"}
         for theme_key, theme_colors in THEMES.items():
             icon = _icons.get(theme_key, "●")
@@ -192,21 +192,21 @@ class AayDocCapioApp(QMainWindow):
 
         # Tools menu
         tools_menu = menubar.addMenu("Tools")
-        act_convert = QAction("📊  Convert 26AS TXT → Excel + HTML…", self)
+        act_convert = QAction(_micon("menu_export.png"),   "Convert 26AS TXT → Excel + HTML…", self)
         act_convert.triggered.connect(self._convert_26as_manual)
         tools_menu.addAction(act_convert)
-        act_ais_convert = QAction("📊  Convert AIS JSON → Excel…", self)
+        act_ais_convert = QAction(_micon("menu_template.png"), "Convert AIS JSON → Excel…", self)
         act_ais_convert.triggered.connect(self._convert_ais_json_manual)
         tools_menu.addAction(act_ais_convert)
         tools_menu.addSeparator()
-        act_mail = QAction("✉  Mail Docs to Clients…", self)
+        act_mail = QAction(_micon("btn_send.png"), "Mail Docs to Clients…", self)
         act_mail.triggered.connect(self._open_mail_docs)
         tools_menu.addAction(act_mail)
         self._tools_menu = tools_menu
 
         # Help menu
         help_menu = menubar.addMenu("Help")
-        smtp_help_action = QAction(_micon("btn_send.png"), "Email Setup Help…", self)
+        smtp_help_action = QAction(_micon("btn_send_test.png"), "Email Setup Help…", self)
         smtp_help_action.triggered.connect(self._open_smtp_help)
         help_menu.addAction(smtp_help_action)
         help_menu.addSeparator()
