@@ -206,7 +206,7 @@ class AayDocCapioApp(QMainWindow):
 
         # Help menu
         help_menu = menubar.addMenu("Help")
-        smtp_help_action = QAction("✉  Email Setup Help…", self)
+        smtp_help_action = QAction(_micon("btn_send.png"), "Email Setup Help…", self)
         smtp_help_action.triggered.connect(self._open_smtp_help)
         help_menu.addAction(smtp_help_action)
         help_menu.addSeparator()
@@ -2320,14 +2320,24 @@ class AayDocCapioApp(QMainWindow):
             combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
             combo.setMaxVisibleItems(12)
             combo.setFixedHeight(34)
-            combo.addItem("— type to search or select —", None)
+            combo.addItem("", None)
             for c in sorted_clients:
                 combo.addItem(f"{c['name']}  ({c['pan']})", c)
 
             completer = QCompleter([f"{c['name']}  ({c['pan']})" for c in sorted_clients])
             completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
             completer.setFilterMode(Qt.MatchFlag.MatchContains)
+            completer.popup().setStyleSheet(
+                f"QListView{{background:{t.bg_input};color:{t.text_primary};"
+                f"border:1px solid {t.border};border-radius:4px;"
+                f"padding:2px;font-size:12px;}}"
+                f"QListView::item{{padding:4px 8px;}}"
+                f"QListView::item:hover{{background:{t.accent_light};color:{t.text_primary};}}"
+                f"QListView::item:selected{{background:{t.accent};color:{t.accent_text};}}"
+            )
             combo.setCompleter(completer)
+            combo.lineEdit().setPlaceholderText("Type name or PAN to search…")
+            combo.setCurrentIndex(-1)
             lay.addWidget(combo)
 
             sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
