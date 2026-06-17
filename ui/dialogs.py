@@ -1428,13 +1428,16 @@ def _smtp_help_page_html(logo_uri: str, icon_uris: dict) -> str:
             f'</div></div>'
         )
 
+    def lnk(url: str, label: str) -> str:
+        return f'<a href="https://{url}" target="_blank" rel="noopener" style="color:#2563EB;font-weight:600;">{label}</a>'
+
     # ── Provider bodies ────────────────────────────────────────────────────────
     gmail_body = (
         '<p style="color:#1A2233;font-size:0.9rem;margin:0 0 6px;">Google blocks your regular password for third-party apps — you must create an <strong>App Password</strong>.</p>'
         + steps_html([
-            'Go to <strong>myaccount.google.com</strong> → Security',
+            f'Go to {lnk("myaccount.google.com", "myaccount.google.com")} → Security',
             'Enable <strong>2-Step Verification</strong> (required first)',
-            'Go to <strong>myaccount.google.com/apppasswords</strong>',
+            f'Go to {lnk("myaccount.google.com/apppasswords", "myaccount.google.com/apppasswords")}',
             'Select app: <strong>Mail</strong> → Generate',
             'Copy the 16-character password → paste into AayDocCapio',
         ])
@@ -1443,21 +1446,21 @@ def _smtp_help_page_html(logo_uri: str, icon_uris: dict) -> str:
 
     outlook_body = bullets_html([
         'Without MFA: use your regular Outlook.com password.',
-        'With MFA: go to <strong>mysignins.microsoft.com/security-info</strong> → Add sign-in method → App password → create one and paste it here.',
+        f'With MFA: go to {lnk("mysignins.microsoft.com/security-info", "mysignins.microsoft.com/security-info")} → Add sign-in method → App password → create one and paste it here.',
     ])
 
     o365_body = (
         warn_box('If MFA is on, your regular password will NOT work even if "Authenticated SMTP" is ticked in Admin Centre. You MUST use an App Password.')
         + option_label('Option 1 — App Password (required when MFA is on, no admin needed):')
         + steps_html([
-            'Go to <strong>mysignins.microsoft.com/security-info</strong>',
+            f'Go to {lnk("mysignins.microsoft.com/security-info", "mysignins.microsoft.com/security-info")}',
             'Click <strong>+ Add sign-in method</strong> → choose <strong>App password</strong> → Next',
             'Enter a name (e.g. AayDocCapio) → Next',
             'Copy the generated password and paste it into AayDocCapio',
         ])
         + option_label('Option 2 — Enable Authenticated SMTP (only if MFA is OFF):')
         + steps_html([
-            'Admin Centre → Users → [your user] → <strong>Mail</strong> tab',
+            f'Go to {lnk("admin.microsoft.com", "Microsoft 365 Admin Centre")} → Users → [your user] → <strong>Mail</strong> tab',
             'Click <strong>Manage email apps</strong> → tick <strong>Authenticated SMTP</strong> → Save',
         ])
     )
@@ -1474,7 +1477,7 @@ def _smtp_help_page_html(logo_uri: str, icon_uris: dict) -> str:
     yahoo_body = (
         '<p style="color:#1A2233;font-size:0.9rem;margin:0 0 6px;">Yahoo requires an <strong>App Password</strong>:</p>'
         + steps_html([
-            'Go to Yahoo Account Security (login.yahoo.com → Security)',
+            f'Go to {lnk("login.yahoo.com/account/security", "Yahoo Account Security")}',
             'Click <strong>Generate app password</strong>',
             'Select <strong>Other app</strong> → enter "AayDocCapio" → Get password',
             'Copy and paste into AayDocCapio',
@@ -1484,7 +1487,7 @@ def _smtp_help_page_html(logo_uri: str, icon_uris: dict) -> str:
     icloud_body = (
         '<p style="color:#1A2233;font-size:0.9rem;margin:0 0 6px;">Requires an <strong>App-Specific Password</strong>:</p>'
         + steps_html([
-            'Go to <strong>appleid.apple.com</strong> → Sign-In and Security',
+            f'Go to {lnk("appleid.apple.com", "appleid.apple.com")} → Sign-In and Security',
             'Click <strong>App-Specific Passwords</strong> → Generate',
             'Enter label "AayDocCapio" → Create',
             'Copy and paste into AayDocCapio',
