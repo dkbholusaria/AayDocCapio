@@ -336,65 +336,63 @@ Hand the user the following filled-in prompt to paste into **ChatGPT (DALL·E / 
 
 ---
 
-**FLYER PROMPT TEMPLATE** (fill `[VERSION]`, `[DATE]`, and `[FEATURES]` before handing to the user):
+**FLYER PROMPT TEMPLATE** (fill `[VERSION]`, `[DATE]`, `[HERO]`, `[SUBHERO]`, `[MOCKUP_DESCRIPTION]`, `[FLOW_ITEMS]`, and `[FEATURES]` before handing to the user):
 
 ```text
-Create a professional product release announcement flyer as a portrait image (1080 × 1350 px).
+Create a professional product release announcement flyer as a portrait image (1080 × 1350 px), suitable for WhatsApp and LinkedIn.
 
-─── BRAND ───
-Product name: AayDocCapio
-Tagline: Smarter Tax Document Automation for Indian CAs
-Website: download.aaydoccapio.com
-
-─── VISUAL STYLE ───
+─── BRAND & PALETTE ───
+Product name: AayDocCapio (render as "AayDoc Capio™" — "AayDoc" in white, "Capio" in electric blue #2979FF)
 Background: deep navy #0A1628, full bleed
-Accent color: warm gold / amber #F5A623 for highlights, icons, dividers
+Primary accent: electric blue #2979FF (headlines, highlights, arrows, links)
 Body text: white #FFFFFF
-Secondary text: light steel #A8B8D0
+Secondary text: light grey #B0BEC5
 Typography: Inter or similar clean geometric sans-serif — NO script, NO decorative fonts
-Graphic elements: subtle abstract geometry only — thin diagonal lines, faint concentric arcs, or a soft radial glow in the upper-right corner in navy-on-navy; nothing literal (no Excel screenshots, no tax forms, no hands)
-Style reference: fintech SaaS launch card — minimal, premium, data-driven feel
 
-─── EXACT TEXT TO RENDER ON THE FLYER ───
-(Render every word exactly as written below — do not paraphrase or omit)
+─── THREE-ZONE LAYOUT (top to bottom) ───
 
-[TOP BAR]
-Left: AayDocCapio   (gold, 18px, semi-bold)
-Right: v[VERSION]   (white pill badge with gold border, 14px)
+ZONE 1 — HEADLINE (top ~35% of image, left-aligned, 60px left/right padding)
+- Hero headline: large, bold, white, ~72px, 2–3 lines
+  [HERO — e.g. "Now Convert\nAIS JSON —\nto Excel"]
+  (key word or phrase on its own line in electric blue #2979FF, bold)
+- Blue underline accent bar (~60px wide, 3px tall) below the last hero line
+- Sub-headline: white, ~24px, normal weight
+  [SUBHERO — e.g. "Full capital gains workbook generated in one click"]
+- Email provider / tool logos row (small icon + label pairs, ~28px tall, separated by bullet dots):
+  [FLOW_ITEMS — e.g. icon labels like "TDS/TCS • Salary • SFT • Dividends • More"]
 
-[RELEASE LINE]
-NEW RELEASE · [DATE]   (gold, all-caps, letter-spaced, 13px, centered)
+ZONE 2 — CENTRAL VISUAL MOCKUP (middle ~40% of image)
+- A dark laptop (MacBook Pro style, no logo) shown at a slight upward angle, left-of-center
+- The laptop screen shows a simplified UI mockup of [MOCKUP_DESCRIPTION]
+  Use dark sidebar (#0F2040) with white menu labels; main panel lighter navy (#162033); blue active item highlight
+- From the laptop screen, 3–4 glowing blue curved arrows radiate to the right toward output cards:
+  [OUTPUT_CARDS — e.g. 3–4 rounded dark cards, each with an icon + short label like "STCG Sheet ✓", "Capital Market (All) ✓", "Audit Trail ✓", "ReadMe – Capital Gains ✓"]
+  Each card has a small green checkmark badge (✓ in green circle) on its right edge
+- Floating file icons mid-flight along the arrows: PDF icon, Excel (green X) icon
 
-[THIN GOLD DIVIDER LINE]
+ZONE 3 — BRANDING FOOTER (bottom ~25%, slightly lighter navy #0D1E35, centered)
+- Product wordmark large: "AayDoc" (white, bold, ~52px) + "Capio™" (electric blue, bold, ~52px)
+- Thin blue divider line (~120px wide) below wordmark
+- Tagline: "Tax Documents. [TAGLINE_HIGHLIGHT]" — highlighted word(s) in electric blue
+  [TAGLINE — e.g. "Tax Documents. Converted to Insights."]
 
-[HERO HEADLINE — largest text on the flyer, white, bold, centered, ~56px]
-[HERO — one punchy line, e.g. "AIS JSON → Excel. In One Click."]
+─── EXACT TEXT TO RENDER ───
+(Render every word exactly as written — do not paraphrase or omit)
 
-[SUB-HEADLINE — light steel, centered, ~20px]
-[SUBHEAD — one line expanding on the hero, e.g. "Full capital gains workbook generated automatically from your AIS JSON file."]
+Hero line 1–3: [HERO]
+Sub-headline: [SUBHERO]
+Flow items row: [FLOW_ITEMS]
+Output card labels: [OUTPUT_CARDS]
+Footer tagline: [TAGLINE]
+Bottom-right corner (tiny, grey): download.aaydoccapio.com
 
-[SECTION LABEL — gold, all-caps, letter-spaced, 12px]
-WHAT'S NEW IN v[VERSION]
-
-[FEATURE LIST — white, 17px, left-aligned, gold "›" chevron bullets, 28px line spacing]
-[FEATURES — 4–5 lines, each under 12 words, render verbatim]
-
-[THIN GOLD DIVIDER LINE]
-
-[BOTTOM BAR — light steel, 13px, centered]
-For Indian CAs · Runs locally · No cloud · download.aaydoccapio.com
-
-─── LAYOUT RULES ───
-- 48px padding on all sides
-- Top bar flush to top padding
-- Release line immediately below top bar
-- Hero headline is the visual anchor — give it the most vertical space
-- Feature list left-aligned inside a centered column (max 880px wide)
-- Bottom bar flush to bottom padding
-- No drop shadows on text
-- No mockup frames, device previews, or outer borders
-
-Output: single flat flyer image, no surrounding UI chrome.
+─── RENDERING RULES ───
+- Laptop mockup must look realistic — dark aluminium chassis, thin bezel, keyboard visible
+- Glowing blue arrows must look like animated data-flow lines (soft neon glow, not flat)
+- Output cards: rounded corners (12px), dark fill (#0F2040), thin blue border (#2979FF 40% opacity)
+- No drop shadows on text; subtle glow on arrows and card borders only
+- No watermarks, no outer frames, no device brand logos
+- Output: single flat flyer image, no mockup shell around it
 ```
 
 ---
