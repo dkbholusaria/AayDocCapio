@@ -253,7 +253,16 @@ grep -r "OLD_VERSION" --include="*.py" --include="*.md" --include="*.html" --inc
 python3 -c "from version import __version__; print(__version__)"
 ```
 
-### Step 7 — Build & Release
+### Step 7 — Create release branch
+
+```bash
+git checkout -b release/vX.Y.Z
+git push origin refs/heads/release/vX.Y.Z:refs/heads/release/vX.Y.Z
+```
+
+Branch naming convention: `release/vX.Y.Z` (e.g. `release/v1.6.3`). Always use the full ref push form to avoid ambiguity with tags of the same name.
+
+### Step 8 — Build & Release
 ```bash
 # Build Windows installers (run from PowerShell on Windows machine):
 powershell -ExecutionPolicy Bypass -File "\\wsl.localhost\Ubuntu-24.04\home\deepak\projects\AayDocCapio\scripts\setup_and_build.ps1"
