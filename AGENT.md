@@ -268,6 +268,143 @@ bash scripts/release.sh
 
 ---
 
+## Release Announcements
+
+> **Trigger phrase:** When the user says something like "announce the release", "post about this release", "write WhatsApp/LinkedIn message", "flyer", "draft announcement", generate the prompts below and hand them to the user to run in ChatGPT or NanoBanana.
+
+### Step 1 — Gather inputs from CHANGELOG.md
+
+Read the latest `## [X.Y.Z]` block from `Documentation/CHANGELOG.md` and extract:
+
+- Version number and date
+- Feature names and one-line descriptions
+- Audience impact (what CAs/tax professionals can now do)
+
+### Step 2A — Generate text announcement prompt
+
+Hand the user the following filled-in prompt to paste into ChatGPT / NanoBanana for **WhatsApp + LinkedIn text**:
+
+---
+
+**TEXT PROMPT TEMPLATE** (fill `[VERSION]`, `[DATE]`, and `[FEATURES]` before handing to the user):
+
+```text
+You are a product communications specialist writing for an Indian CA / tax professional audience.
+
+Product: AayDocCapio — a Windows desktop app for Indian CAs that automates bulk download of Form 26AS, AIS, and TIS from the ITD e-Filing portal. All data stays local; nothing is uploaded anywhere.
+
+New release: v[VERSION] — [DATE]
+
+Key new features:
+[FEATURES — paste bullet points from CHANGELOG verbatim]
+
+Write TWO announcements:
+
+---
+
+1. WHATSAPP MESSAGE
+- Audience: CA colleagues and clients in a WhatsApp group
+- Tone: warm, conversational, professional — like a message from a trusted colleague
+- Length: 5–8 lines max, no more
+- Format: plain text, minimal formatting (a few line breaks, maybe 1–2 bold phrases using *asterisks*)
+- Open with the biggest benefit, not the version number
+- End with a soft call-to-action (e.g. "Let me know if you'd like to try it")
+- Do NOT use hashtags
+- Do NOT use emojis unless they add genuine clarity (1–2 max if used)
+
+---
+
+2. LINKEDIN POST
+- Audience: Indian CAs, tax professionals, fintech followers on LinkedIn
+- Tone: professional, proud, clear — founder sharing a milestone
+- Length: 150–200 words
+- Format: short punchy opening line (no "Excited to announce"), then 3–4 bullet points of key features, then a closing line
+- Use line breaks generously for readability
+- End with 4–6 relevant hashtags (#AayDocCapio #IncomeTax #CA #TaxTech #ITD or similar)
+- Do NOT start with "I am excited" or "Thrilled to share"
+
+---
+
+Keep both grounded in concrete CA workflow benefits — what pain does this solve, what time does it save. Avoid marketing fluff.
+```
+
+---
+
+### Step 2B — Generate flyer image prompt
+
+Hand the user the following filled-in prompt to paste into **ChatGPT (DALL·E / GPT-4o image gen) or NanoBanana** for a shareable visual flyer:
+
+---
+
+**FLYER PROMPT TEMPLATE** (fill `[VERSION]`, `[DATE]`, and `[FEATURES]` before handing to the user):
+
+```text
+Create a professional product release announcement flyer as a portrait image (1080 × 1350 px).
+
+─── BRAND ───
+Product name: AayDocCapio
+Tagline: Smarter Tax Document Automation for Indian CAs
+Website: download.aaydoccapio.com
+
+─── VISUAL STYLE ───
+Background: deep navy #0A1628, full bleed
+Accent color: warm gold / amber #F5A623 for highlights, icons, dividers
+Body text: white #FFFFFF
+Secondary text: light steel #A8B8D0
+Typography: Inter or similar clean geometric sans-serif — NO script, NO decorative fonts
+Graphic elements: subtle abstract geometry only — thin diagonal lines, faint concentric arcs, or a soft radial glow in the upper-right corner in navy-on-navy; nothing literal (no Excel screenshots, no tax forms, no hands)
+Style reference: fintech SaaS launch card — minimal, premium, data-driven feel
+
+─── EXACT TEXT TO RENDER ON THE FLYER ───
+(Render every word exactly as written below — do not paraphrase or omit)
+
+[TOP BAR]
+Left: AayDocCapio   (gold, 18px, semi-bold)
+Right: v[VERSION]   (white pill badge with gold border, 14px)
+
+[RELEASE LINE]
+NEW RELEASE · [DATE]   (gold, all-caps, letter-spaced, 13px, centered)
+
+[THIN GOLD DIVIDER LINE]
+
+[HERO HEADLINE — largest text on the flyer, white, bold, centered, ~56px]
+[HERO — one punchy line, e.g. "AIS JSON → Excel. In One Click."]
+
+[SUB-HEADLINE — light steel, centered, ~20px]
+[SUBHEAD — one line expanding on the hero, e.g. "Full capital gains workbook generated automatically from your AIS JSON file."]
+
+[SECTION LABEL — gold, all-caps, letter-spaced, 12px]
+WHAT'S NEW IN v[VERSION]
+
+[FEATURE LIST — white, 17px, left-aligned, gold "›" chevron bullets, 28px line spacing]
+[FEATURES — 4–5 lines, each under 12 words, render verbatim]
+
+[THIN GOLD DIVIDER LINE]
+
+[BOTTOM BAR — light steel, 13px, centered]
+For Indian CAs · Runs locally · No cloud · download.aaydoccapio.com
+
+─── LAYOUT RULES ───
+- 48px padding on all sides
+- Top bar flush to top padding
+- Release line immediately below top bar
+- Hero headline is the visual anchor — give it the most vertical space
+- Feature list left-aligned inside a centered column (max 880px wide)
+- Bottom bar flush to bottom padding
+- No drop shadows on text
+- No mockup frames, device previews, or outer borders
+
+Output: single flat flyer image, no surrounding UI chrome.
+```
+
+---
+
+### Step 3 — Save announcement assets (optional)
+
+If the user asks to save the drafted messages or flyer prompts, save them as `Plans/announcement_vX.Y.Z.md` (untracked, in `.gitignore`'d `Plans/` folder).
+
+---
+
 ## Dev Environment Setup
 
 ### Linux / macOS / WSL (run from source)
