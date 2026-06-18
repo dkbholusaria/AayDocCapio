@@ -2,7 +2,7 @@
 
 > **Version:** AIS JSON schema version 11.0.0 (AIS Utility, FY 2024-25 downloads)  
 > **Last updated:** 2026-06-17  
-> Verified against 7 real decrypted AIS files: Vikas Banga, Pankaj Poddar, Rakesh Kumar, Deepak Bholusaria, Shivasis Das, Suraj Prasad, Raja Sood (all FY 2024-25).
+> Verified against 7 real decrypted AIS files. 
 
 ---
 
