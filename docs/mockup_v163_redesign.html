@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800;900&display=swap" rel="stylesheet" />
+  <title>MOCKUP — AayDocCapio Landing Page Redesign</title>
+  <style>
+    /* ── Design tokens (same as production) ───────────────────── */
+    :root {
+      --navy:        #0F3A68;
+      --navy-dark:   #0A1628;
+      --blue:        #0078D4;
+      --blue-vivid:  #2563EB;
+      --blue-2:      #0EA5E9;
+      --gold:        #B88924;
+      --gold-lt:     #F5C96B;
+      --white:       #FFFFFF;
+      --bg:          #F3F6FA;
+      --bg2:         #E8EEF6;
+      --text:        #1A2233;
+      --heading:     #09152A;
+      --muted:       #5A6B84;
+      --line:        rgba(10,22,40,0.10);
+      --card:        rgba(255,255,255,0.92);
+      --shadow-sm:   0 1px 3px rgba(10,22,40,0.07);
+      --shadow-md:   0 8px 24px rgba(10,22,40,0.10), 0 2px 6px rgba(10,22,40,0.06);
+      --shadow-lg:   0 20px 56px rgba(10,22,40,0.15);
+      --ease-fluent: cubic-bezier(0.33, 1, 0.68, 1);
+      --radius-sm:   6px;
+      --radius-md:   10px;
+      --radius-lg:   14px;
+      --radius-xl:   20px;
+      --font-body:    'Inter', -apple-system, sans-serif;
+      --font-display: 'Plus Jakarta Sans', 'Inter', sans-serif;
+      --hero-bg-start: #0A1628;
+      --hero-bg-end:   #07111F;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    /* ── Mockup banner ───────────────────────────────────────── */
+    .mockup-banner {
+      background: #7C3AED;
+      color: #fff;
+      text-align: center;
+      padding: 10px 20px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      position: sticky;
+      top: 0;
+      z-index: 999;
+    }
+    .mockup-banner span { opacity: 0.75; font-weight: 400; margin-left: 8px; }
+
+    /* ── Hero ─────────────────────────────────────────────────── */
+    .hero {
+      background: linear-gradient(160deg, var(--hero-bg-start) 0%, #0D2244 55%, var(--hero-bg-end) 100%);
+      color: var(--white);
+      text-align: center;
+      padding: 72px 24px 56px;
+    }
+    .hero-logo { height: 72px; margin-bottom: 24px; }
+
+    .hero-desc {
+      font-size: 1.15rem;
+      color: rgba(255,255,255,0.82);
+      max-width: 620px;
+      margin: 0 auto 20px;
+      line-height: 1.65;
+    }
+    .hero-desc strong { color: #fff; }
+
+    /* ── NEW: Audience badge row ─────────────────────────────── */
+    .audience-badges {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      margin: 0 auto 28px;
+      max-width: 680px;
+    }
+    .audience-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,0.10);
+      border: 1px solid rgba(255,255,255,0.18);
+      color: rgba(255,255,255,0.90);
+      font-size: 12.5px;
+      font-weight: 600;
+      padding: 5px 13px;
+      border-radius: 999px;
+      letter-spacing: 0.01em;
+      backdrop-filter: blur(4px);
+    }
+    .audience-badge .badge-icon { font-size: 14px; }
+
+    /* annotation callout */
+    .anno {
+      display: inline-block;
+      background: #7C3AED;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+      letter-spacing: 0.05em;
+      vertical-align: middle;
+      margin-left: 6px;
+    }
+
+    .release-badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.10);
+      border: 1px solid rgba(255,255,255,0.20);
+      color: var(--gold-lt);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 5px 14px;
+      border-radius: 999px;
+      margin-bottom: 28px;
+      letter-spacing: 0.03em;
+    }
+
+    /* download grid */
+    .download-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      max-width: 720px;
+      margin: 0 auto 20px;
+    }
+    .download-card {
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      text-align: left;
+    }
+    .download-card h3 {
+      font-family: var(--font-display);
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+    .download-card p {
+      font-size: 12.5px;
+      color: rgba(255,255,255,0.55);
+      margin-bottom: 14px;
+      line-height: 1.5;
+    }
+    .btn {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 10px 18px;
+      border-radius: var(--radius-md);
+      font-family: var(--font-display);
+      font-size: 14px;
+      font-weight: 700;
+      text-decoration: none;
+      width: 100%;
+      text-align: center;
+    }
+    .btn-primary { background: var(--blue-vivid); color: #fff; }
+    .btn-secondary { background: rgba(255,255,255,0.12); color: #fff; border: 1px solid rgba(255,255,255,0.2); }
+    .btn-sub { font-size: 11px; font-weight: 500; opacity: 0.7; margin-top: 2px; }
+    .hero-meta { font-size: 12px; color: rgba(255,255,255,0.45); margin-top: 16px; }
+
+    /* ── Section scaffold ────────────────────────────────────── */
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+    section { padding: 72px 0; }
+    section.alt { background: var(--white); }
+    .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--blue-vivid);
+      margin-bottom: 10px;
+    }
+    section h2 {
+      font-family: var(--font-display);
+      font-size: clamp(1.5rem, 3vw, 2.1rem);
+      font-weight: 800;
+      color: var(--heading);
+      margin-bottom: 36px;
+      line-height: 1.25;
+    }
+
+    /* ── NEW: Tabbed features ─────────────────────────────────── */
+    .tabs-wrap { margin-bottom: 8px; }
+    .tab-nav {
+      display: flex;
+      gap: 4px;
+      border-bottom: 2px solid var(--line);
+      margin-bottom: 32px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .tab-nav::-webkit-scrollbar { display: none; }
+    .tab-btn {
+      padding: 10px 20px;
+      font-family: var(--font-display);
+      font-size: 13.5px;
+      font-weight: 700;
+      color: var(--muted);
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      white-space: nowrap;
+      margin-bottom: -2px;
+      transition: color 180ms, border-color 180ms;
+    }
+    .tab-btn:hover { color: var(--navy); }
+    .tab-btn.active {
+      color: var(--blue-vivid);
+      border-bottom-color: var(--blue-vivid);
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+
+    /* ── NEW: Feature card with benefit framing ──────────────── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      box-shadow: var(--shadow-sm);
+      transition: box-shadow 200ms var(--ease-fluent), transform 200ms var(--ease-fluent);
+    }
+    .card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+    .card-icon { font-size: 28px; display: block; margin-bottom: 12px; }
+    .card h3 {
+      font-family: var(--font-display);
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--heading);
+      margin-bottom: 6px;
+    }
+
+    /* NEW: benefit line */
+    .card-benefit {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--blue-vivid);
+      background: #EFF6FF;
+      border-radius: 4px;
+      padding: 3px 8px;
+      display: inline-block;
+      margin-bottom: 10px;
+    }
+
+    .card p {
+      font-size: 13.5px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    /* ── What's New ──────────────────────────────────────────── */
+    .change-list { display: flex; flex-direction: column; gap: 16px; margin-bottom: 28px; }
+    .change-item {
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: 16px;
+      align-items: start;
+      padding: 16px 20px;
+      background: var(--bg);
+      border-radius: var(--radius-md);
+      border-left: 3px solid var(--blue-vivid);
+    }
+    .change-item strong {
+      font-family: var(--font-display);
+      font-size: 13.5px;
+      font-weight: 700;
+      color: var(--heading);
+    }
+    .change-item span { font-size: 13.5px; color: var(--muted); }
+
+    /* ── Strip ───────────────────────────────────────────────── */
+    .strip {
+      background: var(--navy-dark);
+      color: rgba(255,255,255,0.75);
+      text-align: center;
+      padding: 20px 24px;
+      font-size: 14px;
+    }
+    .strip strong { color: #fff; }
+
+    /* ── Annotation boxes ─────────────────────────────────────── */
+    .anno-box {
+      background: #F5F3FF;
+      border: 1.5px dashed #7C3AED;
+      border-radius: var(--radius-md);
+      padding: 14px 18px;
+      margin: 24px 0;
+      font-size: 13px;
+      color: #4C1D95;
+    }
+    .anno-box strong { color: #3B0764; }
+    .anno-label {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #7C3AED;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    @media (max-width: 600px) {
+      .change-item { grid-template-columns: 1fr; }
+      .tab-btn { padding: 10px 14px; font-size: 13px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Mockup banner ─────────────────────────────────────────────── -->
+<div class="mockup-banner">
+  MOCKUP — AayDocCapio Landing Page Redesign
+  <span>Three patterns adopted from TallyPrime 7.1: Audience Badges · Tabbed Features · Feature→Benefit framing</span>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     CHANGE 1 — HERO: Audience badges added below tagline
+     ════════════════════════════════════════════════════════════════ -->
+<div class="hero">
+  <img src="AayDoc_FullLogo.png" alt="AayDocCapio" class="hero-logo"
+       onerror="this.style.display='none'; this.nextElementSibling.style.display='block'">
+  <h1 style="display:none; font-family:var(--font-display); font-size:2rem; font-weight:900; color:#fff; margin-bottom:16px;">AayDocCapio</h1>
+
+  <p class="hero-desc">
+    Automates the secure bulk retrieval of <strong>Form 26AS, AIS and TIS</strong>
+    directly from the Income Tax e-Filing Portal — for multiple clients, in one click.
+  </p>
+
+  <!-- ── NEW: Audience badges ── -->
+  <div class="audience-badges">
+    <div class="audience-badge"><span class="badge-icon">👩‍💼</span> Chartered Accountants</div>
+    <div class="audience-badge"><span class="badge-icon">📋</span> Tax Professionals</div>
+    <div class="audience-badge"><span class="badge-icon">🏢</span> CA Firms</div>
+    <div class="audience-badge"><span class="badge-icon">💼</span> Tax Consultants</div>
+    <div class="audience-badge"><span class="badge-icon">📊</span> Finance Teams</div>
+  </div>
+  <!-- annotation -->
+  <div style="margin-bottom:20px;">
+    <span style="background:#7C3AED; color:#fff; font-size:11px; font-weight:700; padding:3px 10px; border-radius:4px; letter-spacing:0.05em;">
+      NEW — Audience badges: visitors self-identify in 2 seconds
+    </span>
+  </div>
+
+  <div class="release-badge">Latest Release · v1.6.3 · 18 Jun 2026</div>
+
+  <div class="download-grid" id="download">
+    <div class="download-card">
+      <h3>Windows Setup</h3>
+      <p>Recommended for existing Windows users.</p>
+      <a class="btn btn-primary" href="#">
+        Download .exe
+        <span class="btn-sub">v1.6.3 · Wizard Installer</span>
+      </a>
+    </div>
+    <div class="download-card">
+      <h3>Windows MSI</h3>
+      <p>For new enterprise or IT-managed installs.</p>
+      <a class="btn btn-secondary" href="#">
+        Download .msi
+        <span class="btn-sub">v1.6.3 · Silent / managed install</span>
+      </a>
+    </div>
+    <div class="download-card">
+      <h3>macOS App</h3>
+      <p>Apple Silicon app bundle packaged as a zip.</p>
+      <a class="btn btn-secondary" href="#">
+        Download macOS zip
+        <span class="btn-sub">v1.6.3 · .app bundle</span>
+      </a>
+    </div>
+  </div>
+  <p class="hero-meta">Windows 10 / 11 64-bit · macOS Apple Silicon · Requires Google Chrome for AIS/TIS</p>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════════
+     CHANGE 2 — FEATURES: Tabbed groups + benefit framing
+     ════════════════════════════════════════════════════════════════ -->
+<section>
+  <div class="wrap">
+    <div class="anno-box">
+      <span class="anno-label">Change 2 — Tabbed Features + Benefit Framing</span>
+      <strong>Before:</strong> All 13 cards in one flat grid — visitors scroll through everything whether relevant or not.<br>
+      <strong>After:</strong> Cards grouped into 4 tabs (Downloads · Excel Reports · Email · Settings). Each card gets a blue "Who benefits" chip above the description, adopted from TallyPrime's feature→benefit pairing.
+    </div>
+
+    <div class="section-label">Features</div>
+    <h2 id="features">Everything you need — from bulk downloads to client delivery</h2>
+
+    <div class="tabs-wrap">
+      <!-- Tab nav -->
+      <div class="tab-nav" role="tablist">
+        <button class="tab-btn active" onclick="switchTab(event,'downloads')" role="tab">⬇ Downloads</button>
+        <button class="tab-btn" onclick="switchTab(event,'excel')" role="tab">📊 Excel Reports</button>
+        <button class="tab-btn" onclick="switchTab(event,'email')" role="tab">📧 Email Delivery</button>
+        <button class="tab-btn" onclick="switchTab(event,'manage')" role="tab">⚙ Manage & Settings</button>
+      </div>
+
+      <!-- Tab: Downloads -->
+      <div id="tab-downloads" class="tab-panel active">
+        <div class="card">
+          <span class="card-icon">📑</span>
+          <h3>26AS, AIS and TIS Downloads</h3>
+          <div class="card-benefit">Saves hours of manual portal logins per client</div>
+          <p>Download Form 26AS PDF + TXT, AIS PDF, and TIS PDF for all selected clients in a single sequential batch — with instant or queued AIS generation.</p>
+        </div>
+        <div class="card">
+          <span class="card-icon">🔐</span>
+          <h3>Encrypted Credential Vault</h3>
+          <div class="card-benefit">Client PANs &amp; passwords never leave your machine</div>
+          <p>PAN, DOB, portal passwords, and email addresses stored locally in <code>tax_vault.json</code> with PBKDF2HMAC + Fernet AES-128. No cloud sync or telemetry.</p>
+        </div>
+        <div class="card">
+          <span class="card-icon">🔓</span>
+          <h3>Auto Unlocking</h3>
+          <div class="card-benefit">No more manual password entry for every PDF</div>
+          <p>PDFs and 26AS TXT ZIPs are unlocked automatically using PAN and DOB-derived passwords, with clear warnings if the DOB on record is wrong.</p>
+        </div>
+        <div class="card">
+          <span class="card-icon">📊</span>
+          <h3>Live Batch Progress</h3>
+          <div class="card-benefit">Know exactly which client succeeded or failed in real time</div>
+          <p>Per-client real-time status for downloads — conversion state, saved-folder links, Stop control, and step-by-step logs.</p>
+        </div>
+      </div>
+
+      <!-- Tab: Excel Reports -->
+      <div id="tab-excel" class="tab-panel">
+        <div class="card">
+          <span class="card-icon">📘</span>
+          <h3>26AS Excel Workbook</h3>
+          <div class="card-benefit">Structured data — ready for review without opening PDFs</div>
+          <p>Auto-converts 26AS TXT into structured Excel + HTML — Assessee Details, Part I–IX sheets, summary links, and large-file streaming for 200K+ row files.</p>
+        </div>
+        <div class="card">
+          <span class="card-icon">📊</span>
+          <h3>AIS JSON → Excel Workbook</h3>
+          <div class="card-benefit">Capital gains auto-computed — no manual formula work</div>
+          <p>Convert a downloaded AIS JSON into a structured Excel workbook — one sheet per income/transaction category, plus a <strong>Capital Market (All)</strong> consolidated sheet that auto-computes STCG, LTCG, and Section 55(2)(ac) grandfathering adjustments.</p>
+        </div>
+        <div class="card">
+          <span class="card-icon">📥</span>
+          <h3>Excel / CSV Import &amp; Export</h3>
+          <div class="card-benefit">Onboard a full client list in minutes, not hours</div>
+          <p>Bulk-load assessees from Excel or CSV including Email and CC columns. Export client data or generate a pre-formatted import template in one click.</p>
+        </div>
+      </div>
+
+      <!-- Tab: Email -->
+      <div id="tab-email" class="tab-panel">
+        <div class="card">
+          <span class="card-icon">📧</span>
+          <h3>Mail Docs to Clients</h3>
+          <div class="card-benefit">Eliminate the step of manually attaching &amp; sending each document</div>
+          <p>Batch-email AIS, TIS and 26AS files directly to clients in one click. Scan your download folder, match PANs, pick recipients, and send — with per-row live status.</p>
+        </div>
+        <div class="card">
+          <span class="card-icon">✉️</span>
+          <h3>All Major Email Providers</h3>
+          <div class="card-benefit">Works with your existing email — no new account needed</div>
+          <p>One-click presets for <strong>Gmail, Outlook.com, Microsoft 365 / Office 365, Exchange, Yahoo Mail, iCloud</strong> and Custom SMTP — auto-fills host, port and encryption.</p>
+        </div>
+        <div class="card">
+          <span class="card-icon">✍️</span>
+          <h3>Rich Text Email Composer</h3>
+          <div class="card-benefit">Professional, personalised emails without typing each one</div>
+          <p>Font, size, Bold / Italic / Underline toolbar, CC and BCC fields. Smart placeholders: <code>{client_name}</code>, <code>{pan}</code>, <code>{ay}</code>, <code>{documents}</code> — render as a numbered list of actual attached files.</p>
+        </div>
+      </div>
+
+      <!-- Tab: Manage & Settings -->
+      <div id="tab-manage" class="tab-panel">
+        <div class="card">
+          <span class="card-icon">🗂️</span>
+          <h3>Status and History</h3>
+          <div class="card-benefit">Always know what was downloaded and when, per client</div>
+          <p>Filter by download status and review the last result and saved location per client, per AY/FY. Email activity logged with session dividers and per-client audit trail.</p>
+        </div>
+        <div class="card">
+          <span class="card-icon">📅</span>
+          <h3>AY / TY / FY Management</h3>
+          <div class="card-benefit">Handles multi-year filing without re-configuration</div>
+          <p>Add, remove, reorder and toggle assessment, tax, and financial year entries from Settings — output folders are consistently labelled to match.</p>
+        </div>
+        <div class="card">
+          <span class="card-icon">🌗</span>
+          <h3>Themes and Headless Mode</h3>
+          <div class="card-benefit">Comfortable for long sessions; handles CAPTCHA when needed</div>
+          <p>Light and Dark Navy themes with preference saved across sessions. Browser automation runs hidden by default — switch to visible mode for CAPTCHA handling.</p>
+        </div>
+      </div>
+    </div><!-- /.tabs-wrap -->
+  </div>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════════
+     CHANGE 3 — WHAT'S NEW: Same cards, benefit chip added
+     ════════════════════════════════════════════════════════════════ -->
+<section class="alt" id="whats-new">
+  <div class="wrap">
+    <div class="anno-box">
+      <span class="anno-label">Change 3 — What's New: Benefit framing added</span>
+      <strong>Before:</strong> Feature name as heading, prose description.<br>
+      <strong>After:</strong> Two-column layout (feature name left · description right) borrowed from TallyPrime's benefits table — scannable at a glance.
+    </div>
+
+    <div class="section-label">What's new</div>
+    <h2>AayDocCapio v1.6.3</h2>
+    <div class="change-list">
+      <div class="change-item">
+        <strong>AIS JSON → Excel workbook</strong>
+        <span>Convert a downloaded AIS JSON file into a structured Excel workbook in one click — Tools → Convert AIS JSON → Excel…</span>
+      </div>
+      <div class="change-item">
+        <strong>Per-category sheets</strong>
+        <span>One sheet per AIS/TIS section — TDS/TCS, Salary, Dividend, Interest, SFT transactions, Demand &amp; Refund, Proceedings — with flat-table layout, Indian numeric formatting, and per-deductor subtotals.</span>
+      </div>
+      <div class="change-item">
+        <strong>Capital Market (All) — consolidated sheet</strong>
+        <span>Aggregates all SFT-17 and SFT-18 capital market sales into a single view. Live linked formulas auto-compute STCG, LTCG (without indexation), and LTCG (with indexation) including Section 55(2)(ac) grandfathering adjustments for assets acquired before 31-Jan-2018.</span>
+      </div>
+      <div class="change-item">
+        <strong>Audit Trail sheet</strong>
+        <span>Per-SFT-code reconciliation of sales consideration and capital gain summaries, with formula links back to individual category sheets.</span>
+      </div>
+      <div class="change-item">
+        <strong>ReadMe — Capital Gains sheet</strong>
+        <span>Plain-English guide to every capital gains column, covering Sections 112A, 112, and 55(2)(ac), with a note on the indexation-abolition change effective 23-Jul-2024.</span>
+      </div>
+      <div class="change-item">
+        <strong>Brand row + decrypted companion</strong>
+        <span>Every workbook opens with an assessee name / PAN / FY header row, and a <code>_decrypted.json</code> is saved alongside for audit purposes.</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ── Strip ─────────────────────────────────────────────────────── -->
+<div class="strip">
+  Built for <strong>Chartered Accountants &amp; Tax Professionals</strong> — eliminate repetitive manual downloads across all your clients.
+</div>
+
+<!-- ── Summary of changes ─────────────────────────────────────────── -->
+<section>
+  <div class="wrap">
+    <div class="section-label">Mockup Summary</div>
+    <h2>What changed and why</h2>
+    <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(300px,1fr)); gap:20px; margin-top:8px;">
+      <div class="card">
+        <span class="card-icon">👥</span>
+        <h3>Audience Badges <span class="anno">NEW</span></h3>
+        <div class="card-benefit">Adopted from TallyPrime's persona chip system</div>
+        <p>Five role chips (CA, Tax Professional, CA Firm, Tax Consultant, Finance Team) appear below the hero tagline. Visitors self-identify in under 2 seconds — they know this tool is for them before they read a word.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">🗂️</span>
+        <h3>Tabbed Features <span class="anno">NEW</span></h3>
+        <div class="card-benefit">Adopted from TallyPrime's segmented feature interface</div>
+        <p>13 cards reorganised into 4 tabs: Downloads, Excel Reports, Email Delivery, Manage &amp; Settings. A CA who only cares about downloads doesn't wade through email composer details. Tabs also leave room to grow without the page feeling cluttered.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">💡</span>
+        <h3>Benefit Chips <span class="anno">NEW</span></h3>
+        <div class="card-benefit">Adopted from TallyPrime's feature→benefit pairing</div>
+        <p>Each feature card now has a short blue chip above the description that answers <em>"what problem does this solve?"</em> — e.g. "Capital gains auto-computed — no manual formula work". Converts feature descriptions into value propositions.</p>
+      </div>
+    </div>
+    <div class="anno-box" style="margin-top:32px;">
+      <span class="anno-label">Production note</span>
+      Everything else (hero gradient, download buttons, How it works, Screenshots, Security table, FAQ) stays unchanged from the current <code>index.html</code>. Only the hero badge row, features section, and card layout need to change.
+    </div>
+  </div>
+</section>
+
+<script>
+  function switchTab(e, name) {
+    // deactivate all buttons and panels
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    // activate clicked
+    e.target.classList.add('active');
+    document.getElementById('tab-' + name).classList.add('active');
+  }
+</script>
+</body>
+</html>

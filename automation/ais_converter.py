@@ -218,15 +218,20 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
         return wb.add_format(d)
 
     F_DEFAULT    = _fmt()
-    F_NUM        = _fmt(align="right", num_fmt="#,##0.00")
-    F_HDR        = _fmt(bold=True, color=WHITE, bg=GREEN, align="center")
+    F_NUM        = _fmt(align="right", num_fmt='#,##0.00;(#,##0.00);"-"')
+    F_QTY        = _fmt(align="right", num_fmt='#,##0.00')
+    F_HDR        = _fmt(bold=True, color=WHITE, bg=GREEN, align="center", wrap=True)
     F_SUBTOT_LBL = _fmt(bold=True, color=GREEN_TXT, bg=SUBTTL, align="right",
                         top_color=GREEN)
     F_SUBTOT_NUM = _fmt(bold=True, color=GREEN_TXT, bg=SUBTTL, align="right",
-                        num_fmt="#,##0.00", top_color=GREEN)
+                        num_fmt='#,##0.00;(#,##0.00);"-"', top_color=GREEN)
+    F_SUBTOT_QTY = _fmt(bold=True, color=GREEN_TXT, bg=SUBTTL, align="right",
+                        num_fmt='#,##0.00', top_color=GREEN)
     F_GRAND_LBL  = _fmt(bold=True, color=WHITE, bg=NAVY, align="right")
     F_GRAND_NUM  = _fmt(bold=True, color=GREEN_NUM, bg=NAVY, align="right",
-                        num_fmt="#,##0.00")
+                        num_fmt='#,##0.00;(#,##0.00);"-"')
+    F_GRAND_QTY  = _fmt(bold=True, color=GREEN_NUM, bg=NAVY, align="right",
+                        num_fmt='#,##0.00')
     F_BRAND_L    = _fmt(bold=True, size=10, color=WHITE, bg=NAVY, align="left")
     F_BRAND_R    = _fmt(size=8, color=GREY, bg=NAVY, align="right")
     F_LABEL      = _fmt(bold=True, bg=LABEL)
@@ -249,7 +254,7 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
     def _hdr_row(ws, cols, row=1):
         for c, h in enumerate(cols):
             ws.write(row, c, _DISPLAY_RENAME.get(h, h), F_HDR)
-        ws.set_row(row, 15)
+        ws.set_row(row, 28)  # Set height to 28 to support text wrapped headers
         ws.autofilter(row, 0, row, len(cols) - 1)
 
     def _autofit(ws, widths):
@@ -281,7 +286,8 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
                     is_num = col_name in num_col_names
                     amt = _parse_amount(str(v)) if is_num else None
                     if amt is not None:
-                        ws.write_number(row_start, ci, amt, F_NUM)
+                        is_qty = any(q in col_name.lower() for q in ["quantity", "qty", "count"])
+                        ws.write_number(row_start, ci, amt, F_QTY if is_qty else F_NUM)
                         totals[ci] = totals.get(ci, 0) + amt
                     else:
                         ws.write(row_start, ci, str(v) if v is not None else "", F_DEFAULT)
@@ -289,22 +295,26 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
             row_start += 1
         return row_start, totals
 
-    def _subtotal_row(ws, row, ncols, label, totals, col_widths):
+    def _subtotal_row(ws, row, ncols, label, totals, col_widths, cols=None):
         """Write a subtotal row after a group."""
         ws.write(row, 0, label, F_SUBTOT_LBL)
         for ci in range(1, ncols):
             if ci in totals:
-                ws.write_number(row, ci, totals[ci], F_SUBTOT_NUM)
+                col_name = cols[ci] if cols and ci < len(cols) else ""
+                is_qty = any(q in col_name.lower() for q in ["quantity", "qty", "count"])
+                ws.write_number(row, ci, totals[ci], F_SUBTOT_QTY if is_qty else F_SUBTOT_NUM)
             else:
                 ws.write_blank(row, ci, None, F_SUBTOT_LBL)
         ws.set_row(row, 14)
         col_widths[0] = max(col_widths.get(0, 0), len(label))
 
-    def _grand_total_row(ws, row, ncols, grand_totals, col_widths):
+    def _grand_total_row(ws, row, ncols, grand_totals, col_widths, cols=None):
         ws.write(row, 0, "Grand Total", F_GRAND_LBL)
         for ci in range(1, ncols):
             if ci in grand_totals:
-                ws.write_number(row, ci, grand_totals[ci], F_GRAND_NUM)
+                col_name = cols[ci] if cols and ci < len(cols) else ""
+                is_qty = any(q in col_name.lower() for q in ["quantity", "qty", "count"])
+                ws.write_number(row, ci, grand_totals[ci], F_GRAND_QTY if is_qty else F_GRAND_NUM)
             else:
                 ws.write_blank(row, ci, None, F_GRAND_LBL)
         ws.set_row(row, 15)
@@ -371,7 +381,7 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
     _hdr_row(ws_sum, SUMMARY_COLS)
 
     row_s = 2
-    col_w = {i: len(h) for i, h in enumerate(SUMMARY_COLS)}
+    col_w = {i: min(len(h), 15) for i, h in enumerate(SUMMARY_COLS)}
     sec_labels = {
         "tdsTcs": "B1 — TDS/TCS",
         "sft": "B2 — SFT",
@@ -444,7 +454,7 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
         ws.freeze_panes(2, 0)
 
         row = 2
-        col_w = {i: len(h) for i, h in enumerate(cols)}
+        col_w = {i: min(len(h), 15) for i, h in enumerate(cols)}
         subtotal_rows = []
         sr = 0
 
@@ -528,9 +538,9 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
                                      _c("TSN"), _c("Quarter"), _c("Date of Payment/Credit")]):
                 col_w[ci] = max(col_w.get(ci, 0), len(str(v)))
 
-        ws_tds = wb.add_worksheet("Part B1 - TDS TCS")
+        ws_tds = wb.add_worksheet("Part B1 (TDS TCS)")
         _write_tds_sheet(ws_tds, tds_standard, STD_COLS, STD_NUM,
-                         "GRAND TOTAL — Part B1 · TDS & TCS",
+                         "GRAND TOTAL — Part B1 (TDS-TCS)",
                          _std_row, label_merge_end=7)
 
     # ── TDS on Property 194IA(P) sheet ────────────────────────────────────
@@ -565,9 +575,9 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
                                      _c("Property Address"), _c("Date of Payment/Credit")]):
                 col_w[ci] = max(col_w.get(ci, 0), len(str(v)))
 
-        ws_prop = wb.add_worksheet("Part B1 - TDS on Property")
+        ws_prop = wb.add_worksheet("TDS-194IA(P) (Property)")
         _write_tds_sheet(ws_prop, tds_property, PROP_COLS, PROP_NUM,
-                         "GRAND TOTAL — Part B1 · TDS on Property (194IA)",
+                         "GRAND TOTAL — TDS-194IA(P) (Property)",
                          _prop_row, label_merge_end=7)
 
     # ── SFT — one sheet per info_code ─────────────────────────────────────
@@ -673,26 +683,26 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
     # For sheets where Source IS a data column, prefix = ["Sr.", "Source"]
     # col_rename: optional dict for _map_to_superset
     _SFT_SHEET_DEF = {
-        "SFT-005":        ("B2 - SFT-005 Time Deposit",        _SFT_PRSN_BASE,    _SFT_PRSN_NUM,   None),
-        "SFT-006":        ("B2 - SFT-006 Credit Card",         _SFT_006_COLS,     _SFT_006_NUM,    None),
-        "SFT-008":        ("B2 - SFT-008 Purchase of Shares",  _SFT_PRSN_BASE,    _SFT_PRSN_NUM,   None),
-        "SFT-010":        ("B2 - SFT-010 MF Purchase",         _SFT_PRSN_BASE,    _SFT_PRSN_NUM,   None),
-        "SFT-012":        ("B2 - SFT-012 Immovable Property",  _SFT_012_COLS,     _SFT_012_NUM,    None),
-        "SFT-015":        ("B2 - SFT-015 Dividend",            _SFT_015_COLS,     _SFT_015_NUM,    None),
-        "SFT-016(SB)":    ("B2 - SFT-016 Interest Savings",    _SFT_016_COLS,     _SFT_016_NUM,    None),
-        "SFT-016(TD)":    ("B2 - SFT-016 Interest Term Dep",   _SFT_016_COLS,     _SFT_016_NUM,    None),
-        "SFT-016(RD)":    ("B2 - SFT-016 Interest Rec Dep",    _SFT_016_COLS,     _SFT_016_NUM,    None),
-        "SFT-17(Pur)":    ("B2 - SFT-17 Sec Purchase Dep",     _SFT_17PUR_COLS,   _SFT_17PUR_NUM,  None),
-        "SFT-18(Pur)":    ("B2 - SFT-18 MF Purchase RTA",      _SFT_18PUR_COLS,   _SFT_18PUR_NUM,  _PURCHASE_COL_MAP),
-        "SFT-18(Div)":    ("B2 - SFT-18 MF Dividend RTA",      _SFT_18DIV_COLS,   _SFT_18DIV_NUM,  None),
-        "SFT-17-LES(M)":  ("B2 - SFT-17 Equity Sale Dep",      _SFT_17M_SUPERSET, _SFT_17M_NUM,    None),
-        "SFT-17-LDB(M)":  ("B2 - SFT-17 Debenture Sale Dep",   _SFT_17M_SUPERSET, _SFT_17M_NUM,    None),
-        "SFT-17-EMF(M)":  ("B2 - SFT-17 Eq MF Sale Dep",       _SFT_17M_SUPERSET, _SFT_17M_NUM,    None),
-        "SFT-17-UBT(M)":  ("B2 - SFT-17 Bus Trust Sale Dep",   _SFT_17M_SUPERSET, _SFT_17M_NUM,    None),
-        "SFT-17-OTU(M)":  ("B2 - SFT-17 Othr Units Sale Dep",  _SFT_17M_SUPERSET, _SFT_17M_NUM,    None),
-        "SFT-17-LES(OC)": ("B2 - SFT-17 Equity Off-Market",    _SFT_17OC_COLS,    _SFT_17OC_NUM,   None),
-        "SFT-18-EMF(M)":  ("B2 - SFT-18 Eq MF Sale RTA",       _SFT_18M_SUPERSET, _SFT_18M_NUM,    None),
-        "SFT-18-OTU(M)":  ("B2 - SFT-18 Othr Units Sale RTA",  _SFT_18M_SUPERSET, _SFT_18M_NUM,    None),
+        "SFT-005":        ("SFT-005 (Time Dep)",               _SFT_PRSN_BASE,    _SFT_PRSN_NUM,   None),
+        "SFT-006":        ("SFT-006 (Credit Card)",            _SFT_006_COLS,     _SFT_006_NUM,    None),
+        "SFT-008":        ("SFT-008 (Purchase of Shares)",     _SFT_PRSN_BASE,    _SFT_PRSN_NUM,   None),
+        "SFT-010":        ("SFT-010 (MF Purchase)",            _SFT_PRSN_BASE,    _SFT_PRSN_NUM,   None),
+        "SFT-012":        ("SFT-012 (IMP)",                    _SFT_012_COLS,     _SFT_012_NUM,    None),
+        "SFT-015":        ("SFT-015 (Dividend)",               _SFT_015_COLS,     _SFT_015_NUM,    None),
+        "SFT-016(SB)":    ("SFT-016(SB) (Int-SB)",             _SFT_016_COLS,     _SFT_016_NUM,    None),
+        "SFT-016(TD)":    ("SFT-016(TD) (Int-TD)",             _SFT_016_COLS,     _SFT_016_NUM,    None),
+        "SFT-016(RD)":    ("SFT-016(RD) (Int-RD)",             _SFT_016_COLS,     _SFT_016_NUM,    None),
+        "SFT-17(Pur)":    ("SFT-17(Pur) (Sec Buy)",            _SFT_17PUR_COLS,   _SFT_17PUR_NUM,  None),
+        "SFT-18(Pur)":    ("SFT-18(Pur) (MF Buy)",             _SFT_18PUR_COLS,   _SFT_18PUR_NUM,  _PURCHASE_COL_MAP),
+        "SFT-18(Div)":    ("SFT-18(Div) (MF Div)",             _SFT_18DIV_COLS,   _SFT_18DIV_NUM,  None),
+        "SFT-17-LES(M)":  ("SFT-17-LES(M) (Eq Sale)",          _SFT_17M_SUPERSET, _SFT_17M_NUM,    None),
+        "SFT-17-LDB(M)":  ("SFT-17-LDB(M) (Debenture Sale)",   _SFT_17M_SUPERSET, _SFT_17M_NUM,    None),
+        "SFT-17-EMF(M)":  ("SFT-17-EMF(M) (EqMF Sale)",        _SFT_17M_SUPERSET, _SFT_17M_NUM,    None),
+        "SFT-17-UBT(M)":  ("SFT-17-UBT(M) (REIT)",             _SFT_17M_SUPERSET, _SFT_17M_NUM,    None),
+        "SFT-17-OTU(M)":  ("SFT-17-OTU(M) (Othr Units)",       _SFT_17M_SUPERSET, _SFT_17M_NUM,    None),
+        "SFT-17-LES(OC)": ("SFT-17-LES(OC) (Off-Mkt)",         _SFT_17OC_COLS,    _SFT_17OC_NUM,   None),
+        "SFT-18-EMF(M)":  ("SFT-18-EMF(M) (EqMF-RTA)",         _SFT_18M_SUPERSET, _SFT_18M_NUM,    None),
+        "SFT-18-OTU(M)":  ("SFT-18-OTU(M) (Othr Units)",       _SFT_18M_SUPERSET, _SFT_18M_NUM,    None),
     }
 
     # Codes that use flat detail rows + summary block below (no per-group subtotals)
@@ -712,7 +722,7 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
         n_prefix = 3  # Sr. | Source | Count
         full_cols = ["Sr.", "Source", "Count"] + superset
         ncols = len(full_cols)
-        col_w = {i: len(h) for i, h in enumerate(full_cols)}
+        col_w = {i: min(len(h), 15) for i, h in enumerate(full_cols)}
         num_col_indices = sorted(i + n_prefix for i, c in enumerate(superset) if c in num_set)
 
         ws = wb.add_worksheet(ws_name)
@@ -810,7 +820,7 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
         n_prefix = 2  # Sr. | Source
         full_cols = ["Sr.", "Source"] + superset
         ncols = len(full_cols)
-        col_w = {i: len(h) for i, h in enumerate(full_cols)}
+        col_w = {i: min(len(h), 15) for i, h in enumerate(full_cols)}
         num_col_indices = {i + n_prefix for i, c in enumerate(superset) if c in num_set}
 
         ws = wb.add_worksheet(ws_name)
@@ -880,9 +890,12 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
         ws.merge_range(row, 1, row, merge_end, grand_lbl, F_GRAND_LBL)
         for ci in num_col_indices:
             col_letter = chr(ord('A') + ci)
+            col_name = full_cols[ci]
+            is_qty = any(q in col_name.lower() for q in ["quantity", "qty", "count"])
+            fmt = F_GRAND_QTY if is_qty else F_GRAND_NUM
             ws.write_formula(row, ci,
                 f"=SUM({col_letter}{xl_row(detail_start)}:{col_letter}{xl_row(detail_end)})",
-                F_GRAND_NUM)
+                fmt)
         ws.set_row(row, 15)
         _sheet_grand_row[ws_name] = row
         _autofit(ws, [col_w.get(i, 8) for i in range(ncols)])
@@ -901,9 +914,9 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
     wb.get_worksheet_by_name("General Info").set_tab_color(TC_GENERAL)
     wb.get_worksheet_by_name("Summary").set_tab_color(TC_GENERAL)
     if tds_standard:
-        wb.get_worksheet_by_name("Part B1 - TDS TCS").set_tab_color(TC_TAX)
+        wb.get_worksheet_by_name("Part B1 (TDS TCS)").set_tab_color(TC_TAX)
     if tds_property:
-        wb.get_worksheet_by_name("Part B1 - TDS on Property").set_tab_color(TC_TAX)
+        wb.get_worksheet_by_name("TDS-194IA(P) (Property)").set_tab_color(TC_TAX)
 
     # Helper: write one SFT sheet with tab colour
     def _write_sft(code, tab_color):
@@ -952,7 +965,7 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
         _hdr_row(ws_tax, tax_cols)
 
         row_tx = 2
-        col_w = {i: len(h) for i, h in enumerate(tax_cols)}
+        col_w = {i: min(len(h), 15) for i, h in enumerate(tax_cols)}
         grand = {}
 
         for vals in tax_rows:
@@ -969,7 +982,7 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
                 col_w[ci] = max(col_w.get(ci, 0), len(str(v)))
             row_tx += 1
 
-        _grand_total_row(ws_tax, row_tx, ncols, grand, col_w)
+        _grand_total_row(ws_tax, row_tx, ncols, grand, col_w, tax_cols)
         _autofit(ws_tax, [col_w.get(i, 8) for i in range(ncols)])
 
     # ── Generic flat-table writer for B4, B5, B6 ─────────────────────────
@@ -997,7 +1010,7 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
         _hdr_row(ws, COLS)
 
         row_g = 2
-        col_w = {i: len(h) for i, h in enumerate(COLS)}
+        col_w = {i: min(len(h), 15) for i, h in enumerate(COLS)}
         grand = {}
 
         for elem in elems:
@@ -1012,11 +1025,11 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
             if l1_rows:
                 src = l2.get("source","")[:30]
                 lbl = f"Subtotal — {l2.get('info_code','')}  [{src}]"
-                _subtotal_row(ws, row_g, ncols, lbl, totals, col_w)
+                _subtotal_row(ws, row_g, ncols, lbl, totals, col_w, COLS)
                 row_g += 1
 
         if grand:
-            _grand_total_row(ws, row_g, ncols, grand, col_w)
+            _grand_total_row(ws, row_g, ncols, grand, col_w, COLS)
         _autofit(ws, [col_w.get(i, 8) for i in range(ncols)])
 
     # ── B7 — Other Info: collect by code ─────────────────────────────────
@@ -1044,9 +1057,9 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
             SAL_NUM = {"Gross Salary u/s 17(1)", "Value of perquisites u/s 17(2)",
                        "Profits in lieu of salary u/s 17(3)", "Gross Salary"}
             SAL_SUPERSET = SAL_COLS[2:]
-            _log("Writing B7 - Salary (TDS Annexure II) sheet…")
-            _write_sft_sheet("B7 - Salary", elems, SAL_SUPERSET, SAL_NUM, None)
-            ws = wb.get_worksheet_by_name("B7 - Salary")
+            _log("Writing TDS-Ann.II-SAL (Salary) sheet…")
+            _write_sft_sheet("TDS-Ann.II-SAL (Salary)", elems, SAL_SUPERSET, SAL_NUM, None)
+            ws = wb.get_worksheet_by_name("TDS-Ann.II-SAL (Salary)")
         else:
             ws_name = f"B7 - {code}"[:31]
             _log(f"Writing {ws_name} sheet…")
@@ -1109,17 +1122,13 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
     #  Y=24 STCG (Rs.)     Z=25 LTCG w/o Idx     AA=26 LTCG with Idx
     #  AB=27 Tax @10%      AC=28 Status
     CM_COLS = [
-        "SFT Code", "Sr.", "Source", "TSN",
-        "AMC Name (Code)", "Date of Sale/Transfer", "ISIN", "Security Name",
-        "Security Class", "Debit Type", "Credit Type", "Asset Type",
-        "Quantity", "Sale Price Per unit",
-        "Gross Sale Consideration", "STT", "Gross Cost of Acquisition",
-        "FMV 31-Jan-2018 (per unit)", "Total FMV u/s 55(2)(ac)",
-        "Adj. FMV (lower of Sale & FMV)", "Adj. Cost (no indexation)",
-        "Cost with Indexation", "Indexed Cost of Acquisition",
-        "Transfer Expenditure",
-        "STCG (Rs.)", "LTCG w/o Indexation (Rs.)", "LTCG with Indexation (Rs.)",
-        "Tax @10%", "Status",
+        "SFT Code", "Sr.", "Source", "TransID", "AMC Name (Code)", 
+        "Debit Type", "Credit Type", "Date of Sale/Transfer", "ISIN", "Security Name", 
+        "Security Class", "Asset Type", "Quantity", "Sale Price (Per unit)", "Sale Consideration (net)", 
+        "STT", "Gross Cost of Acquisition (w/o index)", "Indexed Cost of Acquisition", "FMV 31-Jan-2018 (per unit)", "FMV 31-Jan-2018 (Total)", 
+        "Assets Eligible for GrandFathering", "Effetive FMV 31-03-2028 for long term assets", "Adj. FMV (lower of Sale & FMV)", 
+        "Adj. Cost of Acquisition (no indexation) (higher of Adj. FMV or Actual CoA)", "Capital Gain (w/o Indexation)", "Capital Gain (w/ Indexation)", 
+        "STCG (Rs.)", "LTCG w/o Indexation (Rs.)", "LTCG with Indexation (Rs.)", "Status"
     ]
     # Column letter helper (0-based index → Excel letter, supports AA etc.)
     def _col_letter(idx):
@@ -1128,14 +1137,14 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
         return chr(ord('A') + idx // 26 - 1) + chr(ord('A') + idx % 26)
     # (sft_code, individual_sheet_name)
     CM_SOURCES = [
-        ("SFT-17-LES(M)",  "B2 - SFT-17 Equity Sale Dep"),
-        ("SFT-17-LDB(M)",  "B2 - SFT-17 Debenture Sale Dep"),
-        ("SFT-17-EMF(M)",  "B2 - SFT-17 Eq MF Sale Dep"),
-        ("SFT-17-UBT(M)",  "B2 - SFT-17 Bus Trust Sale Dep"),
-        ("SFT-17-OTU(M)",  "B2 - SFT-17 Othr Units Sale Dep"),
-        ("SFT-17-LES(OC)", "B2 - SFT-17 Equity Off-Market"),
-        ("SFT-18-EMF(M)",  "B2 - SFT-18 Eq MF Sale RTA"),
-        ("SFT-18-OTU(M)",  "B2 - SFT-18 Othr Units Sale RTA"),
+        ("SFT-17-LES(M)",  "SFT-17-LES(M) (Eq Sale)"),
+        ("SFT-17-LDB(M)",  "SFT-17-LDB(M) (Debenture Sale)"),
+        ("SFT-17-EMF(M)",  "SFT-17-EMF(M) (EqMF Sale)"),
+        ("SFT-17-UBT(M)",  "SFT-17-UBT(M) (REIT)"),
+        ("SFT-17-OTU(M)",  "SFT-17-OTU(M) (Othr Units)"),
+        ("SFT-17-LES(OC)", "SFT-17-LES(OC) (Off-Mkt)"),
+        ("SFT-18-EMF(M)",  "SFT-18-EMF(M) (EqMF-RTA)"),
+        ("SFT-18-OTU(M)",  "SFT-18-OTU(M) (Othr Units)"),
     ]
 
     # Collect data from individual sheets that actually exist
@@ -1152,54 +1161,249 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
         cm_groups.append((sft_code, ind_name, elems))
 
     if cm_groups:
-        _log("Writing Capital Market — Consolidated sheet…")
-        CM_WS_NAME = "Capital Market — Consolidated"
+        _log("Writing ⭐ Capital Market (All) sheet…")
+        CM_WS_NAME = "⭐ Capital Market (All)"
         ncols_cm = len(CM_COLS)
-        col_w_cm = {i: len(h) for i, h in enumerate(CM_COLS)}
+        CM_IDEAL_WIDTHS = [
+            14,  # SFT Code
+            5,   # Sr.
+            12,  # Source
+            14,  # TransID
+            20,  # AMC Name (Code)
+            10,  # Debit Type
+            10,  # Credit Type
+            13,  # Date of Sale/Transfer
+            13,  # ISIN
+            25,  # Security Name
+            18,  # Security Class
+            12,  # Asset Type
+            10,  # Quantity
+            12,  # Sale Price (Per unit)
+            16,  # Sale Consideration (net)
+            8,   # STT
+            16,  # Gross Cost of Acquisition (w/o index)
+            16,  # Indexed Cost of Acquisition
+            12,  # FMV 31-Jan-2018 (per unit)
+            15,  # FMV 31-Jan-2018 (Total)
+            15,  # Assets Eligible for GrandFathering
+            15,  # Effetive FMV 31-03-2028 for long term assets
+            12,  # Adj. FMV (lower of Sale & FMV)
+            18,  # Adj. Cost of Acquisition (no indexation) (higher of Adj. FMV or Actual CoA)
+            15,  # Capital Gain (w/o Indexation)
+            15,  # Capital Gain (w/ Indexation)
+            12,  # STCG (Rs.)
+            12,  # LTCG w/o Indexation (Rs.)
+            12,  # LTCG with Indexation (Rs.)
+            12   # Status
+        ]
+        col_w_cm = {i: CM_IDEAL_WIDTHS[i] for i in range(ncols_cm)}
         # Numeric col indices for subtotal/grand total (only input data cols, not formula cols)
         CM_INPUT_NUM = {
-            "Quantity", "Sale Price Per unit",
-            "Gross Sale Consideration", "STT", "Gross Cost of Acquisition",
-            "FMV 31-Jan-2018 (per unit)", "Indexed Cost of Acquisition",
-            "Transfer Expenditure",
+            "Quantity", "Sale Price (Per unit)", "Sale Consideration (net)",
+            "STT", "Gross Cost of Acquisition (w/o index)", "Indexed Cost of Acquisition",
+            "FMV 31-Jan-2018 (per unit)", "FMV 31-Jan-2018 (Total)",
         }
         CM_FORMULA_COLS = {
+            "Assets Eligible for GrandFathering",
+            "Effetive FMV 31-03-2028 for long term assets",
             "Adj. FMV (lower of Sale & FMV)",
-            "Adj. Cost (no indexation)", "Cost with Indexation",
+            "Adj. Cost of Acquisition (no indexation) (higher of Adj. FMV or Actual CoA)",
+            "Capital Gain (w/o Indexation)",
+            "Capital Gain (w/ Indexation)",
             "STCG (Rs.)", "LTCG w/o Indexation (Rs.)", "LTCG with Indexation (Rs.)",
-            "Tax @10%",
         }
-        # Total FMV is now a direct value from JSON, so add to input num set
-        CM_INPUT_NUM_EXT = CM_INPUT_NUM | {"Total FMV u/s 55(2)(ac)"}
-        cm_num_idx = sorted(i for i, c in enumerate(CM_COLS) if c in CM_INPUT_NUM_EXT)
-        cm_subtot_idx = sorted(i for i, c in enumerate(CM_COLS)
-                               if c in CM_INPUT_NUM_EXT | {"STCG (Rs.)", "LTCG w/o Indexation (Rs.)",
-                                                            "LTCG with Indexation (Rs.)"})
+        CM_SUM_COLS = {
+            "Quantity", "Sale Consideration (net)", "STT",
+            "Gross Cost of Acquisition (w/o index)", "Indexed Cost of Acquisition",
+            "FMV 31-Jan-2018 (Total)", "STCG (Rs.)",
+            "LTCG w/o Indexation (Rs.)", "LTCG with Indexation (Rs.)"
+        }
+        cm_subtot_idx = sorted(i for i, c in enumerate(CM_COLS) if c in CM_SUM_COLS)
 
         # Column letter references (supports AA, AB etc.)
         def _cl(col_name):
             return _col_letter(CM_COLS.index(col_name))
 
+        F_CM_GRP_HDR = _fmt(bold=True, size=10, color=WHITE, bg="#0E6674", align="center", wrap=True)
+        F_CM_HDR     = _fmt(bold=True, size=10, color=WHITE, bg="#0E6674", align="center", wrap=True)
+        F_CM_NUM_HDR = _fmt(bold=False, size=9, color=WHITE, bg="#0B535D", align="center")
+
         F_CM_SUB_LBL = _fmt(bold=True, color=WHITE, bg="#0E6674", align="left")
         F_CM_SUB_NUM = _fmt(bold=True, color=WHITE, bg="#0E6674",
-                            align="right", num_fmt="#,##0.00")
-        F_CM_FORMULA = _fmt(bold=False, bg="#f5fff5", align="right", num_fmt="#,##0.00")
+                            align="right", num_fmt='#,##0.00;(#,##0.00);"-"')
+        F_CM_SUB_QTY = _fmt(bold=True, color=WHITE, bg="#0E6674",
+                            align="right", num_fmt='#,##0.00')
+        F_CM_FORMULA = _fmt(bold=False, bg="#f5fff5", align="right", num_fmt='#,##0.00;(#,##0.00);"-"')
         F_AUDIT_HDR  = _fmt(bold=True, color=WHITE, bg=NAVY, align="left")
-        F_AUDIT_NUM  = _fmt(bold=False, bg="#f9f9f9", align="right", num_fmt="#,##0.00")
+        F_AUDIT_NUM  = _fmt(bold=False, bg="#f9f9f9", align="right", num_fmt='#,##0.00;(#,##0.00);"-"')
         F_AUDIT_LBL  = _fmt(bold=False, bg="#f9f9f9", align="left")
         F_AUDIT_TOT_LBL = _fmt(bold=True, color=WHITE, bg=NAVY, align="left")
         F_AUDIT_TOT_NUM = _fmt(bold=True, color=WHITE, bg=NAVY,
-                               align="right", num_fmt="#,##0.00")
+                               align="right", num_fmt='#,##0.00;(#,##0.00);"-"')
+
+        # Long term styling
+        BLUE_TINT = "#f0f4ff"
+        F_LT          = _fmt(bg=BLUE_TINT)
+        F_LT_NUM      = _fmt(align="right", num_fmt='#,##0.00;(#,##0.00);"-"', bg=BLUE_TINT)
+        F_LT_FORMULA  = _fmt(bg="#e6f2ff", align="right", num_fmt='#,##0.00;(#,##0.00);"-"')
+        F_QTY         = _fmt(align="right", num_fmt='#,##0.00')
+        F_LT_QTY      = _fmt(align="right", num_fmt='#,##0.00', bg=BLUE_TINT)
 
         ws_cm = wb.add_worksheet(CM_WS_NAME)
         ws_cm.set_tab_color(TC_SALE)
         ws_cm.hide_gridlines(2)
         _brand_row(ws_cm, ncols_cm)
-        _hdr_row(ws_cm, CM_COLS)
-        ws_cm.freeze_panes(2, 6)   # freeze up to ISIN column
+        
+        # Row 2 (index 1): Group Headers
+        for c in range(ncols_cm):
+            ws_cm.write_blank(1, c, None, F_CM_GRP_HDR)
+        ws_cm.merge_range(1, 7, 1, 17, 'Security Transactions details', F_CM_GRP_HDR)
+        ws_cm.merge_range(1, 18, 1, 23, 'Grandfathering u/s 55(2)(ac) [1961] or 90(7) [2025] for LTA accquired upto 31-1-2018', F_CM_GRP_HDR)
+        ws_cm.merge_range(1, 24, 1, 28, 'Capital Gain Bifurcation', F_CM_GRP_HDR)
+        ws_cm.set_row(1, 28)
+        
+        # Row 3 (index 2): Column Names
+        for c, h in enumerate(CM_COLS):
+            ws_cm.write(2, c, h, F_CM_HDR)
+        ws_cm.set_row(2, 35)
+        
+        # Row 4 (index 3): Column Numbers (1 to 30)
+        for c in range(ncols_cm):
+            ws_cm.write(3, c, str(c + 1), F_CM_NUM_HDR)
+        ws_cm.set_row(3, 18)
 
-        row_cm = 2
+        ws_cm.freeze_panes(4, 9)   # freeze rows 1-4 and columns A-I (up to ISIN)
+        ws_cm.autofilter(3, 0, 3, ncols_cm - 1)
+
+        row_cm = 4
+        sr_cm = 1
         subtotal_rows_cm = []   # (sft_code, ind_sheet_name, subtotal_row)
+        ind_sheet_row_counters = {}  # ind_name -> row index (starts at 3)
+
+        def get_link_formulas(sft_code, ind_name, ind_row):
+            sheet_esc = ind_name.replace("'", "''")
+            formulas = {}
+            
+            formulas["SFT Code"] = sft_code
+            formulas["Source"] = f"='{sheet_esc}'!B{ind_row}"
+            formulas["TransID"] = f"='{sheet_esc}'!C{ind_row}"
+            
+            if "SFT-18" in sft_code:
+                formulas["AMC Name (Code)"] = f"='{sheet_esc}'!D{ind_row}"
+            else:
+                formulas["AMC Name (Code)"] = ""
+                
+            if sft_code == "SFT-17-LES(OC)":
+                formulas["Debit Type"] = f"='{sheet_esc}'!F{ind_row}"
+            elif "SFT-17" in sft_code:
+                formulas["Debit Type"] = f"='{sheet_esc}'!H{ind_row}"
+            elif "SFT-18" in sft_code:
+                formulas["Debit Type"] = f"='{sheet_esc}'!I{ind_row}"
+                
+            if sft_code == "SFT-17-LES(OC)":
+                formulas["Credit Type"] = ""
+            elif "SFT-17" in sft_code:
+                formulas["Credit Type"] = f"='{sheet_esc}'!I{ind_row}"
+            elif "SFT-18" in sft_code:
+                formulas["Credit Type"] = f"='{sheet_esc}'!J{ind_row}"
+                
+            if sft_code == "SFT-17-LES(OC)":
+                formulas["Date of Sale/Transfer"] = f"='{sheet_esc}'!E{ind_row}"
+            elif "SFT-17" in sft_code:
+                formulas["Date of Sale/Transfer"] = f"='{sheet_esc}'!D{ind_row}"
+            elif "SFT-18" in sft_code:
+                formulas["Date of Sale/Transfer"] = f"='{sheet_esc}'!E{ind_row}"
+                
+            if sft_code == "SFT-17-LES(OC)":
+                formulas["ISIN"] = f"='{sheet_esc}'!G{ind_row}"
+            elif "SFT-17" in sft_code:
+                formulas["ISIN"] = f"='{sheet_esc}'!E{ind_row}"
+            elif "SFT-18" in sft_code:
+                formulas["ISIN"] = f"='{sheet_esc}'!G{ind_row}"
+                
+            if sft_code == "SFT-17-LES(OC)":
+                formulas["Security Name"] = f"='{sheet_esc}'!H{ind_row}"
+            elif "SFT-17" in sft_code:
+                formulas["Security Name"] = f"='{sheet_esc}'!F{ind_row}"
+            elif "SFT-18" in sft_code:
+                formulas["Security Name"] = f"='{sheet_esc}'!H{ind_row}"
+                
+            if sft_code == "SFT-17-LES(OC)":
+                formulas["Security Class"] = f"='{sheet_esc}'!I{ind_row}"
+            elif "SFT-17" in sft_code:
+                formulas["Security Class"] = f"='{sheet_esc}'!G{ind_row}"
+            elif "SFT-18" in sft_code:
+                formulas["Security Class"] = f"='{sheet_esc}'!F{ind_row}"
+                
+            if sft_code == "SFT-17-LES(OC)":
+                formulas["Asset Type"] = ""
+            elif "SFT-17" in sft_code:
+                formulas["Asset Type"] = f"='{sheet_esc}'!J{ind_row}"
+            elif "SFT-18" in sft_code:
+                formulas["Asset Type"] = f"='{sheet_esc}'!K{ind_row}"
+                
+            if sft_code == "SFT-17-LES(OC)":
+                formulas["Quantity"] = f"='{sheet_esc}'!J{ind_row}"
+            elif "SFT-17" in sft_code:
+                formulas["Quantity"] = f"='{sheet_esc}'!K{ind_row}"
+            elif "SFT-18" in sft_code:
+                formulas["Quantity"] = f"='{sheet_esc}'!L{ind_row}"
+                
+            if sft_code == "SFT-17-LES(OC)":
+                formulas["Sale Price (Per unit)"] = f"='{sheet_esc}'!K{ind_row}"
+            elif "SFT-17" in sft_code:
+                formulas["Sale Price (Per unit)"] = f"='{sheet_esc}'!L{ind_row}"
+            elif "SFT-18" in sft_code:
+                formulas["Sale Price (Per unit)"] = f"='{sheet_esc}'!M{ind_row}"
+                
+            if sft_code == "SFT-17-LES(OC)":
+                formulas["Sale Consideration (net)"] = f"='{sheet_esc}'!M{ind_row}"
+            elif "SFT-17" in sft_code:
+                formulas["Sale Consideration (net)"] = f"='{sheet_esc}'!M{ind_row}"
+            elif "SFT-18" in sft_code:
+                formulas["Sale Consideration (net)"] = f"='{sheet_esc}'!N{ind_row}"
+                
+            if "SFT-18" in sft_code:
+                formulas["STT"] = f"='{sheet_esc}'!O{ind_row}"
+            else:
+                formulas["STT"] = 0
+                
+            if sft_code == "SFT-17-LES(OC)":
+                formulas["Gross Cost of Acquisition (w/o index)"] = 0
+            elif "SFT-17" in sft_code:
+                formulas["Gross Cost of Acquisition (w/o index)"] = f"='{sheet_esc}'!N{ind_row}"
+            elif "SFT-18" in sft_code:
+                formulas["Gross Cost of Acquisition (w/o index)"] = f"='{sheet_esc}'!P{ind_row}"
+                
+            if sft_code == "SFT-17-LES(OC)":
+                formulas["Indexed Cost of Acquisition"] = 0
+            elif "SFT-17" in sft_code:
+                formulas["Indexed Cost of Acquisition"] = f"='{sheet_esc}'!Q{ind_row}"
+            elif "SFT-18" in sft_code:
+                formulas["Indexed Cost of Acquisition"] = f"='{sheet_esc}'!S{ind_row}"
+                
+            if sft_code == "SFT-17-LES(OC)":
+                formulas["FMV 31-Jan-2018 (per unit)"] = 0
+            elif "SFT-17" in sft_code:
+                formulas["FMV 31-Jan-2018 (per unit)"] = f"='{sheet_esc}'!O{ind_row}"
+            elif "SFT-18" in sft_code:
+                formulas["FMV 31-Jan-2018 (per unit)"] = f"='{sheet_esc}'!Q{ind_row}"
+                
+            if sft_code == "SFT-17-LES(OC)":
+                formulas["FMV 31-Jan-2018 (Total)"] = 0
+            elif "SFT-17" in sft_code:
+                formulas["FMV 31-Jan-2018 (Total)"] = f"='{sheet_esc}'!P{ind_row}"
+            elif "SFT-18" in sft_code:
+                formulas["FMV 31-Jan-2018 (Total)"] = f"='{sheet_esc}'!R{ind_row}"
+                
+            if sft_code == "SFT-17-LES(OC)":
+                formulas["Status"] = f"='{sheet_esc}'!N{ind_row}"
+            elif "SFT-17" in sft_code:
+                formulas["Status"] = f"='{sheet_esc}'!R{ind_row}"
+            elif "SFT-18" in sft_code:
+                formulas["Status"] = f"='{sheet_esc}'!T{ind_row}"
+                
+            return formulas
 
         for sft_code, ind_name, elems in cm_groups:
             group_start = row_cm
@@ -1230,108 +1434,100 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
                                     break
                         return _row[i] if i is not None and i < len(_row) else ""
 
-                    raw_vals = [data_row[l1_idx_map[c]] if c in l1_idx_map and l1_idx_map[c] < len(data_row) else ""
-                                for c in l1_cols]
-                    mapped = _map_to_superset(raw_vals, l1_cols, superset, col_rename)
-                    sup_idx = {c: i for i, c in enumerate(superset)}
+                    # Resolve row counter for individual sheet
+                    ind_row = ind_sheet_row_counters.get(ind_name, 3)
+                    
+                    # Get the cell-by-cell formulas
+                    formulas = get_link_formulas(sft_code, ind_name, ind_row)
+                    
+                    # Highlight long term rows
+                    asset_type = str(_cv("Asset Type") or "")
+                    is_lt = "long" in asset_type.lower()
+                    row_fmt = F_LT if is_lt else F_DEFAULT
+                    num_fmt_to_use = F_LT_NUM if is_lt else F_NUM
+                    formula_fmt_to_use = F_LT_FORMULA if is_lt else F_CM_FORMULA
 
-                    def _sv(col_name):
-                        i = sup_idx.get(col_name)
-                        return mapped[i] if i is not None else ""
-
-                    # ISIN split
-                    sec_raw = _cv("Security Name (Security Code)")
-                    isin, secname = _split_security_name(str(sec_raw)) if sec_raw else ("", "")
-                    if not isin:
-                        isin    = str(_sv("ISIN"))
-                        secname = str(_sv("Security Name"))
-
-                    # Direct data values
-                    direct = {
-                        "SFT Code":                  sft_code,
-                        "Sr.":                       "",
-                        "Source":                    source,
-                        "TSN":                       str(_sv("TSN") or ""),
-                        "AMC Name (Code)":           str(_sv("AMC Name (Code)") or ""),
-                        "Date of Sale/Transfer":     str(_sv("Date of Sale/Transfer") or _cv("Date of Transfer") or ""),
-                        "ISIN":                      isin,
-                        "Security Name":             secname,
-                        "Security Class":            str(_sv("Security Class") or ""),
-                        "Debit Type":                str(_sv("Debit Type") or _sv("Nature of Transfer") or ""),
-                        "Credit Type":               str(_sv("Credit Type") or ""),
-                        "Asset Type":                str(_sv("Asset Type") or ""),
-                        "Quantity":                  _sv("Quantity") or _sv("Quantity Transferred") or "",
-                        "Sale Price Per unit":       _sv("Sale Price Per unit") or _sv("EOD Price per Unit") or "",
-                        "Gross Sale Consideration":  _sv("Sales Consideration") or _sv("Consideration") or _sv("End of the Day Value") or "",
-                        "STT":                       _sv("STT") or "",
-                        "Gross Cost of Acquisition": _sv("Cost of Acquisition") or "",
-                        # Unit FMV = FMV per unit as of 31-Jan-2018 for grandfathering
-                        "FMV 31-Jan-2018 (per unit)": _sv("Unit FMV") or "",
-                        # Total FMV u/s 55(2)(ac) = Fair Market Value (already computed in JSON as Qty × Unit FMV)
-                        "Total FMV u/s 55(2)(ac)":   _sv("Fair Market Value") or "",
-                        # Indexed Cost of Acquisition — directly from JSON (non-zero for LT indexed assets)
-                        "Indexed Cost of Acquisition": _sv("Indexed Cost of Acquisition") or "",
-                        "Transfer Expenditure":      "",
-                        "Status":                    str(_sv("Status") or "Active"),
-                    }
-
-                    # Write direct columns first
+                    # Write the 30 columns
                     for ci, col in enumerate(CM_COLS):
-                        if col in CM_FORMULA_COLS:
-                            continue  # written as formulas below
-                        val = direct.get(col, "")
-                        if col in CM_INPUT_NUM_EXT:
-                            amt = _parse_amount(str(val)) if val != "" else None
-                            ws_cm.write_number(row_cm, ci, amt if amt is not None else 0, F_NUM)
+                        col_num_fmt = (F_LT_QTY if is_lt else F_QTY) if col == "Quantity" else num_fmt_to_use
+                        if col == "Sr.":
+                            ws_cm.write_number(row_cm, ci, sr_cm, row_fmt)
+                        elif col in CM_FORMULA_COLS:
+                            continue  # written below
                         else:
-                            ws_cm.write(row_cm, ci, str(val) if val is not None else "", F_DEFAULT)
+                            val = formulas.get(col, "")
+                            if val == "" or val is None:
+                                ws_cm.write_blank(row_cm, ci, None, row_fmt if col not in CM_INPUT_NUM else col_num_fmt)
+                            elif col in CM_INPUT_NUM:
+                                if isinstance(val, (int, float)):
+                                    ws_cm.write_number(row_cm, ci, val, col_num_fmt)
+                                elif val.startswith("="):
+                                    ws_cm.write_formula(row_cm, ci, val, col_num_fmt)
+                                else:
+                                    ws_cm.write(row_cm, ci, val, col_num_fmt)
+                            else:
+                                if isinstance(val, (int, float)):
+                                    ws_cm.write_number(row_cm, ci, val, row_fmt)
+                                elif val.startswith("="):
+                                    ws_cm.write_formula(row_cm, ci, val, row_fmt)
+                                else:
+                                    ws_cm.write(row_cm, ci, val, row_fmt)
 
                     # Excel row reference (1-based)
                     xr = xl_row(row_cm)
-                    O = _cl("Gross Sale Consideration")
-                    Q = _cl("Gross Cost of Acquisition")
-                    S = _cl("Total FMV u/s 55(2)(ac)")   # direct from JSON (Fair Market Value)
-                    W = _cl("Indexed Cost of Acquisition")
-                    X = _cl("Transfer Expenditure")
-                    L = _cl("Asset Type")
-                    # T = Adj FMV = MIN(Gross Sale Consideration, Total FMV) — only if FMV>0
+                    
+                    # Grandfathering & Bifurcated gains formulas u/s 55(2)(ac)
+                    ws_cm.write_formula(row_cm, CM_COLS.index("Assets Eligible for GrandFathering"),
+                        f'=IF(AND(ISNUMBER(SEARCH("Long", L{xr})), OR(K{xr}="Listed Equity Share", K{xr}="Unit of Equity Oriented Mutual Fund", K{xr}="Unit of Business Trust", AND(K{xr}="Other Units", S{xr}>0))), "Yes - Eligible", IF(ISNUMBER(SEARCH("Short", L{xr})), "No - Short term Asset", "No - Ineligible Asset"))',
+                        row_fmt)
+                    
+                    ws_cm.write_formula(row_cm, CM_COLS.index("Effetive FMV 31-03-2028 for long term assets"),
+                        f'=IF(U{xr}="Yes - Eligible", T{xr}, 0)',
+                        formula_fmt_to_use)
+                    
                     ws_cm.write_formula(row_cm, CM_COLS.index("Adj. FMV (lower of Sale & FMV)"),
-                        f"=IF({S}{xr}>0,MIN({O}{xr},{S}{xr}),0)", F_CM_FORMULA)
-
-                    T = _cl("Adj. FMV (lower of Sale & FMV)")
-                    # U = Adj Cost (no indexation) = MAX(Gross Cost, Adj FMV)
-                    ws_cm.write_formula(row_cm, CM_COLS.index("Adj. Cost (no indexation)"),
-                        f"=IF({T}{xr}>0,MAX({Q}{xr},{T}{xr}),{Q}{xr})", F_CM_FORMULA)
-
-                    U = _cl("Adj. Cost (no indexation)")
-                    # V = Cost with Indexation = MAX(Indexed Cost, Adj FMV)
-                    ws_cm.write_formula(row_cm, CM_COLS.index("Cost with Indexation"),
-                        f"=IF({T}{xr}>0,MAX({W}{xr},{T}{xr}),{W}{xr})", F_CM_FORMULA)
-
-                    V = _cl("Cost with Indexation")
-                    # STCG = if Short term → Sale - Adj Cost - Transfer Exp
+                        f'=MIN(O{xr}, V{xr})',
+                        formula_fmt_to_use)
+                    
+                    ws_cm.write_formula(row_cm, CM_COLS.index("Adj. Cost of Acquisition (no indexation) (higher of Adj. FMV or Actual CoA)"),
+                        f'=MAX(Q{xr}, W{xr})',
+                        formula_fmt_to_use)
+                    
+                    ws_cm.write_formula(row_cm, CM_COLS.index("Capital Gain (w/o Indexation)"),
+                        f'=O{xr}-X{xr}',
+                        formula_fmt_to_use)
+                    
+                    ws_cm.write_formula(row_cm, CM_COLS.index("Capital Gain (w/ Indexation)"),
+                        f'=O{xr}-R{xr}',
+                        formula_fmt_to_use)
+                    
                     ws_cm.write_formula(row_cm, CM_COLS.index("STCG (Rs.)"),
-                        f'=IF(ISNUMBER(SEARCH("Short",{L}{xr})),{O}{xr}-{U}{xr}-{X}{xr},"")',
-                        F_CM_FORMULA)
-
-                    # LTCG w/o Indexation = if Long term → Sale - Adj Cost - Transfer Exp
+                        f'=IF(ISNUMBER(SEARCH("Short", L{xr})), Y{xr}, 0)',
+                        formula_fmt_to_use)
+                    
                     ws_cm.write_formula(row_cm, CM_COLS.index("LTCG w/o Indexation (Rs.)"),
-                        f'=IF(ISNUMBER(SEARCH("Long",{L}{xr})),{O}{xr}-{U}{xr}-{X}{xr},"")',
-                        F_CM_FORMULA)
-
-                    Z_col = _cl("LTCG w/o Indexation (Rs.)")
-                    # LTCG with Indexation = if Long term AND indexed cost available
+                        f'=IF(ISNUMBER(SEARCH("Long", L{xr})), Y{xr}, 0)',
+                        formula_fmt_to_use)
+                    
                     ws_cm.write_formula(row_cm, CM_COLS.index("LTCG with Indexation (Rs.)"),
-                        f'=IF(AND(ISNUMBER(SEARCH("Long",{L}{xr})),{V}{xr}>0),{O}{xr}-{V}{xr}-{X}{xr},"")',
-                        F_CM_FORMULA)
+                        f'=IF(ISNUMBER(SEARCH("Long", L{xr})), Z{xr}, 0)',
+                        formula_fmt_to_use)
 
-                    AA_col = _cl("LTCG with Indexation (Rs.)")
-                    # Tax @10% = Y if any LTCG
-                    ws_cm.write_formula(row_cm, CM_COLS.index("Tax @10%"),
-                        f'=IF(OR(ISNUMBER({Z_col}{xr}),ISNUMBER({AA_col}{xr})),"Y","")',
-                        F_DEFAULT)
+                    # Update column widths for variables based on raw data value
+                    for ci, col in enumerate(CM_COLS):
+                        if col == "Sr.":
+                            col_w_cm[ci] = max(col_w_cm.get(ci, 0), len(str(sr_cm)))
+                        elif col in CM_FORMULA_COLS:
+                            # computed columns are numbers/statuses; keep ideal base width
+                            pass
+                        else:
+                            raw_val = _cv(col)
+                            if raw_val is not None:
+                                col_w_cm[ci] = max(col_w_cm.get(ci, 0), len(str(raw_val)))
 
+                    sr_cm += 1
                     row_cm += 1
+                    ind_sheet_row_counters[ind_name] = ind_row + 1
 
             group_end = row_cm - 1
             if group_start > group_end:
@@ -1339,30 +1535,55 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
 
             # Subtotal row — sums input + gain cols
             sub_lbl = f"Subtotal — {sft_code}"
-            merge_end_cm = min(cm_num_idx) - 1 if cm_num_idx else ncols_cm - 1
-            ws_cm.write_blank(row_cm, 0, None, F_CM_SUB_LBL)
-            ws_cm.merge_range(row_cm, 1, row_cm, merge_end_cm, sub_lbl, F_CM_SUB_LBL)
+            ws_cm.merge_range(row_cm, 0, row_cm, 11, sub_lbl, F_CM_SUB_LBL)
             for ci in cm_subtot_idx:
                 cl = _col_letter(ci)
+                col_name = CM_COLS[ci]
+                is_qty = col_name == "Quantity"
+                fmt = F_CM_SUB_QTY if is_qty else F_CM_SUB_NUM
                 ws_cm.write_formula(row_cm, ci,
                     f"=SUM({cl}{xl_row(group_start)}:{cl}{xl_row(group_end)})",
-                    F_CM_SUB_NUM)
+                    fmt)
+            for ci in range(ncols_cm):
+                if ci < 12:
+                    continue
+                if ci not in cm_subtot_idx:
+                    ws_cm.write_blank(row_cm, ci, None, F_CM_SUB_LBL)
+
             ws_cm.set_row(row_cm, 14)
             subtotal_rows_cm.append((sft_code, ind_name, row_cm))
             row_cm += 1
 
         # Grand total — sums subtotal rows only
-        grand_lbl_cm = f"GRAND TOTAL — {CM_WS_NAME}"
-        merge_end_cm = min(cm_num_idx) - 1 if cm_num_idx else ncols_cm - 1
-        ws_cm.write_blank(row_cm, 0, None, F_GRAND_LBL)
-        ws_cm.merge_range(row_cm, 1, row_cm, merge_end_cm, grand_lbl_cm, F_GRAND_LBL)
+        grand_lbl_cm = "GRAND TOTAL"
+        ws_cm.merge_range(row_cm, 0, row_cm, 11, grand_lbl_cm, F_GRAND_LBL)
         for ci in cm_subtot_idx:
             cl = _col_letter(ci)
+            col_name = CM_COLS[ci]
+            is_qty = col_name == "Quantity"
+            fmt = F_GRAND_QTY if is_qty else F_GRAND_NUM
             ws_cm.write_formula(row_cm, ci,
                 "=" + "+".join(f"{cl}{xl_row(sr_row)}" for _, _, sr_row in subtotal_rows_cm),
-                F_GRAND_NUM)
+                fmt)
+        for ci in range(ncols_cm):
+            if ci < 12:
+                continue
+            if ci not in cm_subtot_idx:
+                ws_cm.write_blank(row_cm, ci, None, F_GRAND_LBL)
         ws_cm.set_row(row_cm, 15)
         row_cm += 1
+
+        # Register defined names
+        wb.define_name('CostWoIndex', f"='{CM_WS_NAME}'!$Q:$Q")
+        wb.define_name('CostWIndex', f"='{CM_WS_NAME}'!$R:$R")
+        wb.define_name('EligibleAssetForGF', f"='{CM_WS_NAME}'!$U:$U")
+        wb.define_name('AdjustedFMV', f"='{CM_WS_NAME}'!$W:$W")
+        wb.define_name('AdjustedCostWoIndex', f"='{CM_WS_NAME}'!$X:$X")
+        wb.define_name('CapitalGainWoIndex', f"='{CM_WS_NAME}'!$Y:$Y")
+        wb.define_name('CapitalGainWIndex', f"='{CM_WS_NAME}'!$Z:$Z")
+        wb.define_name('STCG', f"='{CM_WS_NAME}'!$AA:$AA")
+        wb.define_name('LTCGWoIndex', f"='{CM_WS_NAME}'!$AB:$AB")
+        wb.define_name('LTCGWIndex', f"='{CM_WS_NAME}'!$AC:$AC")
 
         # ── Audit Trail ──
         # Two blank spacer rows
@@ -1377,28 +1598,26 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
         row_cm += 1
         audit_start = row_cm
 
-        sc_col_cm = CM_COLS.index("Gross Sale Consideration")
+        sc_col_cm = CM_COLS.index("Sale Consideration (net)")
         sc_letter_cm = _col_letter(sc_col_cm)
 
         for sft_code, ind_name, sub_row in subtotal_rows_cm:
             # Sales Consideration from consolidated subtotal row
             consol_ref = f"{sc_letter_cm}{xl_row(sub_row)}"
             # Sales Consideration grand total from individual sheet grand total row
-            # Individual sheet grand total is always the last non-blank row
-            # We reference via INDIRECT so it works without storing the row number
             ind_sheet_safe = ind_name.replace("'", "''")
-            ind_ref = f"'{ind_sheet_safe}'!{sc_letter_cm}{xl_row(sub_row)}"
-            # Actually, individual sheets have same col layout only for SFT-17
-            # For SFT-18 Sales Consideration is at a different column
-            # Get it properly from F_GRAND_NUM row of the individual sheet
-            # Simpler: use SUMIF on individual sheet col C (Source col) — but grand total is reliable
-            # Get Sales Consideration col in the individual sheet
+            
+            # Find the individual sheet definition to resolve the Sales Consideration column letter
             ind_defn = _SFT_SHEET_DEF.get(sft_code)
             ind_grand_row = _sheet_grand_row.get(ind_name)
             if ind_defn and ind_grand_row is not None:
                 _, ind_sup, _, _ = ind_defn
-                try:
-                    sc_col_ind = ind_sup.index("Sales Consideration") + 2  # +2 for Sr./Source
+                sc_col_ind = None
+                for col_candidate in ["Sales Consideration", "Consideration", "End of the Day Value"]:
+                    if col_candidate in ind_sup:
+                        sc_col_ind = ind_sup.index(col_candidate) + 2  # +2 for Sr./Source
+                        break
+                if sc_col_ind is not None:
                     sc_letter_ind = chr(ord('A') + sc_col_ind)
                     ind_ref = f"='{ind_sheet_safe}'!{sc_letter_ind}{xl_row(ind_grand_row)}"
                     ws_cm.write(row_cm, 0, sft_code, F_AUDIT_LBL)
@@ -1412,8 +1631,6 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
                     col_w_cm[0] = max(col_w_cm.get(0, 0), len(sft_code))
                     col_w_cm[1] = max(col_w_cm.get(1, 0), len(ind_name))
                     row_cm += 1
-                except (ValueError, IndexError):
-                    pass
 
         # Audit grand total row
         ws_cm.write(row_cm, 0, "GRAND TOTAL", F_AUDIT_TOT_LBL)
@@ -1430,6 +1647,96 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
         ws_cm.set_row(row_cm, 15)
 
         _autofit(ws_cm, [col_w_cm.get(i, 8) for i in range(ncols_cm)])
+
+        # ── Plain-English Explanation Sheet ("ReadMe - Capital Gains") ──
+        _log("Writing ReadMe - Capital Gains sheet…")
+        ws_readme = wb.add_worksheet("ReadMe - Capital Gains")
+        ws_readme.set_tab_color("#808080")
+        ws_readme.hide_gridlines(2)
+        
+        # Title header: Merged A1:D1
+        ws_readme.merge_range(0, 0, 0, 3, "Capital Gains Computation Guide (u/s 55(2)(ac))", F_AUDIT_HDR)
+        ws_readme.set_row(0, 24)
+        
+        # Headers: Column, Field Name, Plain English Explanation, Tax Reference
+        readme_headers = ["Column", "Field Name", "Plain English Explanation", "Tax Reference"]
+        for ci, h in enumerate(readme_headers):
+            ws_readme.write(2, ci, h, F_AUDIT_TOT_LBL)
+        ws_readme.set_row(2, 18)
+        
+        # Table rows
+        readme_rows = [
+            ("Col U", "Assets Eligible for GrandFathering", 
+             "Checks if the asset was purchased before 31-Jan-2018. Only Long Term Equity Shares, Equity Mutual Funds, and Business Trusts are eligible. Short-term assets are excluded.", 
+             "Section 55(2)(ac)"),
+            ("Col V", "Effective FMV", 
+             "Holds the Fair Market Value (FMV) as of Jan 31, 2018 if the asset is eligible for grandfathering, otherwise zero.", 
+             "Section 55(2)(ac)"),
+            ("Col W", "Adj. FMV", 
+             "Under tax rules, the grandfathered value cannot exceed what the asset actually sold for. This takes the lower of the actual sale value or the Jan 31, 2018 FMV.", 
+             "Section 55(2)(ac)"),
+            ("Col X", "Adj. Cost of Acquisition", 
+             "The adjusted cost base used for long-term capital gain calculation. It is the higher of the actual purchase cost or the Adjusted FMV.", 
+             "Section 55(2)(ac)"),
+            ("Col Y", "Capital Gain (w/o Indexation)", 
+             "The capital gain computed without adjusting for inflation. Calculated as: Sale Consideration - Adjusted Cost of Acquisition.", 
+             "Section 112A / 111A"),
+            ("Col Z", "Capital Gain (w/ Indexation)", 
+             "The capital gain computed by adjusting the purchase cost for inflation using government Cost Inflation Indices. Calculated as: Sale Consideration - Indexed Cost of Acquisition. NOTE: Indexation benefits are abolished for transfers on or after 23-Jul-2024.", 
+             "Section 112"),
+            ("Col AA", "STCG (Rs.)", 
+             "Short-Term Capital Gains. Applies if the asset was held for a short period (typically <= 12 months for equity, <= 24/36 months for others). Grandfathering and inflation adjustments do not apply.", 
+             "Section 111A / Section 112"),
+            ("Col AB", "LTCG w/o Indexation (Rs.)", 
+             "Long-Term Capital Gains taxed at 10% (under Section 112A) without inflation indexation, utilizing the grandfathered cost base u/s 55(2)(ac). NOTE: For sales on or after 23-Jul-2024, the tax rate is 12.5% u/s 112A.", 
+             "Section 112A"),
+            ("Col AC", "LTCG with Indexation (Rs.)", 
+             "Long-Term Capital Gains computed with inflation indexation. NOTE: Under the Finance Act 2024, indexation benefits are completely abolished for transfers executed on or after 23-Jul-2024. For such transactions, this value is not applicable.", 
+             "Section 112"),
+        ]
+        
+        # Formatting for table cells
+        F_README_COL = _fmt(bold=True, align="center", border=1, bg="#f9f9f9")
+        F_README_NAME = _fmt(bold=True, align="left", border=1, bg="#f9f9f9")
+        F_README_TEXT = _fmt(align="left", wrap=True, border=1, bg="#f9f9f9")
+        F_README_REF = _fmt(align="center", border=1, bg="#f9f9f9")
+        
+        row_idx = 3
+        for col, name, desc, ref in readme_rows:
+            ws_readme.write(row_idx, 0, col, F_README_COL)
+            ws_readme.write(row_idx, 1, name, F_README_NAME)
+            ws_readme.write(row_idx, 2, desc, F_README_TEXT)
+            ws_readme.write(row_idx, 3, ref, F_README_REF)
+            ws_readme.set_row(row_idx, 40)
+            row_idx += 1
+            
+        row_idx += 2
+        
+        # Legal Disclaimer Block: styled with soft red fill (#F2DCDB) and dark red text
+        F_DISCLAIMER = _fmt(bold=False, align="left", wrap=True, border=1, bg="#F2DCDB", color="#9C0006")
+        disclaimer_text = (
+            "Disclaimer: The computations, tax references, and plain-English explanations provided in this workbook "
+            "are generated on a best-efforts basis for informational and illustrative purposes only. They do not constitute "
+            "formal professional advice, legal opinion, or tax consulting. While every care has been taken to align the "
+            "calculations with the provisions of the Income Tax Act, 1961 (including Section 55(2)(ac) and Section 112A/112), "
+            "tax laws are subject to frequent legislative amendments, administrative updates, and varying judicial interpretations. "
+            "The user is strongly advised to seek independent guidance from a qualified Chartered Accountant (CA) or tax "
+            "professional and refer to the official statutory provisions/law before filing any tax returns or making investment decisions. "
+            "The developers of this application assume no liability for any errors, omissions, or financial consequences arising "
+            "from the use of this worksheet."
+        )
+        ws_readme.merge_range(row_idx, 0, row_idx + 4, 3, disclaimer_text, F_DISCLAIMER)
+        ws_readme.set_row(row_idx, 20)
+        ws_readme.set_row(row_idx + 1, 20)
+        ws_readme.set_row(row_idx + 2, 20)
+        ws_readme.set_row(row_idx + 3, 20)
+        ws_readme.set_row(row_idx + 4, 20)
+        
+        # Column widths
+        ws_readme.set_column(0, 0, 10)
+        ws_readme.set_column(1, 1, 30)
+        ws_readme.set_column(2, 2, 80)
+        ws_readme.set_column(3, 3, 25)
 
     # ── Demand & Refund, Proceedings ─────────────────────────────────────
     _write_generic_section("Demand and Refund", sections.get("demandAndRefund"), TC_GENERAL)

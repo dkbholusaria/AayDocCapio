@@ -1,52 +1,21 @@
 # AayDocCapio
 
-**v1.5.6** — A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click — and now **emailing those documents directly to clients**.
+**v1.6.3** — A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click — and now **emailing those documents directly to clients**.
 
 Built with **PyQt6** + **Playwright**. Runs on Windows, macOS, and Linux/WSL.
 
 ---
 
-## What's New in 1.5.6
+## What's New in 1.6.3
 
-### Email Delivery — Complete Workflow
-Tax professionals can now email downloaded documents to clients without leaving the app:
+### AIS JSON → Excel Conversion
+Convert a downloaded AIS JSON file into a fully-formatted Excel workbook via Tools → Convert AIS JSON → Excel…:
 
-- **Mail Docs to Clients** — one-click access from the new **Email Docs** button on the main toolbar, or via Tools menu
-- **Scan & match** — point to your download folder; the app finds each client's AIS/TIS/26AS files automatically
-- **Numbered document list** — email body renders `{documents}` as a numbered HTML list (Form 26AS PDF, Form 26AS Excel, AIS, TIS — only the files that actually exist)
-- **Batch send** — select any subset of clients and send in one go with per-row live status (⏳ Sending → ✅ Sent / ❌ Failed)
-- **Inline email editing** — type or correct a client's email address directly in the table; saved to vault automatically before sending
-- **Filter, sort, select** — search by name/PAN/email, sort any column, Select All/None respects active filter
-- **"Powered by AayDocCapio"** footer appended automatically to every outgoing email (non-editable)
-- **Session log dividers** — email log now shows clear `── SESSION STARTED ──` / `── SESSION ENDED ──` separators between app sessions
-
-### Email Provider Support
-Full SMTP configuration with one-click presets for all major providers:
-
-| Provider | Host | Notes |
-|---|---|---|
-| **Gmail** | smtp.gmail.com:587 | Requires App Password (2FA) |
-| **Outlook.com / Hotmail** | smtp-mail.outlook.com:587 | App Password if MFA enabled |
-| **Microsoft 365 / Office 365** | smtp.office365.com:587 | SMTP AUTH must be enabled by admin |
-| **Exchange (on-premise)** | your server | Enter host manually |
-| **Yahoo Mail** | smtp.mail.yahoo.com:587 | Requires App Password |
-| **iCloud Mail** | smtp.mail.me.com:587 | Requires App-Specific Password |
-| **Custom / Other** | any | Full manual configuration |
-
-Each preset auto-fills host/port/encryption and shows provider-specific setup instructions with clickable links.
-
-### UI Improvements
-- **Download button** — "Run" renamed to "Download" for clarity
-- **Email Docs button** — quick-launch on main toolbar (no menu navigation needed)
-- **Exit button** — one-click close with clean session-end logging
-- **Rich text email composer** — font, size, bold/italic/underline, placeholders as chips
-- **Premium help notes** — blue left-bordered info panels with clickable links throughout Email Settings
-- **Fluency multicolor icons** — all buttons, menus, and context menus now have icons
-
-### Bug Fixes
-- Batch send silent crash when HTML email body contained CSS `{}` braces
-- Mail Docs sorting now correctly moves all row widgets (checkboxes, email fields, status) together
-- Checkbox and inline-edit backgrounds now match table row color (no white flash)
+- **Per-category sheets** — one sheet per AIS/TIS section (TDS/TCS, Salary, Dividend, Interest, SFT transactions, Demand & Refund, Proceedings, etc.) with flat-table layout, Indian numeric formatting, and per-deductor subtotals
+- **Capital Market (All) — consolidated sheet** — aggregates all SFT-17 and SFT-18 capital market sales across every individual category sheet into a single view; live linked formulas auto-compute STCG, LTCG (without indexation), and LTCG (with indexation) including Section 55(2)(ac) grandfathering adjustments for assets acquired before 31-Jan-2018
+- **Audit Trail sheet** — per-SFT-code reconciliation of sales consideration and capital gain summaries with formula links back to individual sheets
+- **ReadMe — Capital Gains sheet** — plain-English column guide with tax section references (112A, 112, 55(2)(ac)) and indexation-abolition disclaimer (23-Jul-2024)
+- **Brand row + decrypted companion** — every workbook includes an assessee name/PAN/FY header row and saves a `_decrypted.json` alongside for audit
 
 See the full [CHANGELOG](CHANGELOG.md) for details.
 

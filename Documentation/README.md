@@ -1,21 +1,18 @@
 # AayDocCapio
 
-**v1.5.6** — A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click — and now **emailing those documents directly to clients**.
+**v1.6.3** — A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click — and now **emailing those documents directly to clients**.
 
 Built with **PyQt6** + **Playwright**. Runs on Windows, macOS, and Linux/WSL.
 
 ---
 
-## What's New in 1.5.6
+## What's New in 1.6.3
 
-- **Mail Docs to Clients** — batch email AIS/TIS/26AS to clients; scan folder, pick recipients, send in one click
-- **Email provider presets** — Gmail, Outlook, Office 365, Exchange, Yahoo, iCloud, Custom with auto-filled SMTP settings
-- **Rich text email composer** — font, size, bold/italic/underline, CC, BCC, HTML templates with placeholders
-- **Numbered document list** — `{documents}` placeholder renders as a numbered list of actual attached files
-- **"Powered by AayDocCapio"** footer on every outgoing email
-- **Email Docs + Exit buttons** on main toolbar; "Run" renamed to "Download"
-- **Session dividers** in email activity log
-- Bug fix: batch send crash on HTML bodies with CSS `{}` braces
+- **AIS JSON → Excel** — convert a downloaded AIS JSON file to a structured Excel workbook via Tools → Convert AIS JSON → Excel…
+- **Per-category sheets** — one sheet per AIS/TIS section with flat-table layout, Indian numeric formatting, and per-deductor subtotals
+- **Capital Market (All) consolidated sheet** — aggregates all SFT-17/18 sales; auto-computes STCG, LTCG, and Section 55(2)(ac) grandfathering adjustments
+- **Audit Trail + ReadMe sheets** — capital gains reconciliation and plain-English column guide with tax section references
+- **Decrypted JSON companion** — saved alongside the workbook for audit purposes
 
 See the full [CHANGELOG](CHANGELOG.md) for details.
 
