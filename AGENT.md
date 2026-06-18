@@ -1,132 +1,383 @@
-# AayDocCapio — Agent Quick Reference
+# AayDocCapio — Developer Guide & AI Agent Guidelines
 
-Concise task guide for Claude. For full details see CLAUDE.md.
-
----
-
-## What is this app?
-
-PyQt6 desktop app for Indian tax professionals. Bulk-downloads Form 26AS, AIS, and TIS from ITD e-Filing portal using Playwright. Client credentials stored in AES-128 encrypted local vault.
-
-**Owner:** Deepak Bholusaria (deepak@bholusaria.com)
-**Repo:** github.com/dkbholusaria/AayDocCapio
-**Version:** read from `version.py`
+AayDocCapio is a PyQt6 desktop app for Indian CAs and tax professionals. It automates bulk download of Form 26AS, AIS, and TIS from the ITD e-Filing portal (`eportal.incometax.gov.in`) using Playwright browser automation. All client credentials are stored locally in an AES-128 encrypted vault — nothing is uploaded anywhere.
 
 ---
 
-## How Deepak works
+## AI Agent Response & Workflow Guidelines
+*   **Plan First:** Before acting on any request, first prepare an implementation plan, get it approved by the user, and only then start building. Always save the plan as a markdown (`.md`) file inside the untracked `Plans/` subfolder for record-keeping and audit-trail purposes.
+*   **Concise Responses:** Avoid long conversational padding.
+*   **No Trailing Summaries:** Do not append summary sections at the end of responses.
+*   **No Emojis:** Do not use emojis in responses unless explicitly requested.
+*   **Proactive Execution:** Proactively run test/verification commands to ensure correctness.
+*   **Active Python Path:** Always use the explicit `.venv/bin/python` interpreter.
+*   **Adding Packages:** Verify the project dependency manager first (default to `venv + pip` and update `requirements.txt` via `pip freeze > requirements.txt`).
+*   **Update Documentation:** Always update relevant files in the `Documentation/` directory (such as `DEVELOPMENT_LOG.md` and `ISSUES_BACKLOG.md`) periodically as changes are made or new tasks are identified.
+*   **Compact Context:** Compact the context from time to time by summarizing findings or archiving logs to save tokens.
 
-- Commits directly to `main` — no feature branches
-- Pushes via `gh` token
-- Builds Windows installers locally on Windows (via `setup_and_build.ps1`), macOS via GitHub Actions CI
-- Releases via `bash scripts/release.sh` from WSL
-- Prefers concise responses — no trailing summaries, no emojis unless asked
 
 ---
 
-## Bumping the version
+## Project Layout
 
-Edit ONE file only:
-
-```bash
-bash scripts/bump.sh patch     # 1.5.6 → 1.5.7
-bash scripts/bump.sh minor     # 1.5.6 → 1.6.0
-bash scripts/bump.sh 2.0.0     # exact
+```
+AayDocCapio/
+├── app.py                      # Single-file UI — main window, all Qt widgets
+├── version.py                  # Single source of truth: __version__ = "X.Y.Z"
+├── themes.py                   # ThemeColors dataclass, light/dark theme builders
+├── vault.py                    # Encrypted client vault (AES-128 Fernet)
+├── config.py                   # App paths (_app_dir, _default_download_dir)
+├── utils.py                    # Shared utilities (get_timestamp, etc.)
+├── as26_converter.py           # 26AS TXT → Excel + HTML converter
+├── assessment_years.json       # AY list with enabled/disabled flags
+├── requirements.txt            # Runtime pip dependencies
+├── automation/
+│   ├── auth.py                 # ITD portal login (Playwright, async)
+│   ├── browser.py              # Chrome/Chromium launch + context factory
+│   ├── downloader.py           # Batch orchestrator, per-client worker
+│   ├── downloader_26as.py      # Form 26AS download flow
+│   ├── downloader_ais_tis.py   # AIS + TIS download flow (see details below)
+│   └── pdf_unlocker.py         # pikepdf-based PDF password remover
+├── ui/
+│   ├── widgets.py              # Reusable Qt widgets
+│   ├── dialogs.py              # Modal dialogs
+│   └── helpers.py              # UI helper functions
+├── scripts/
+│   ├── bump.sh                 # Version bump helper
+│   ├── release.sh              # Full release automation (Linux/WSL)
+│   ├── setup.sh                # Dev environment setup (Linux/macOS)
+│   ├── setup_and_build.ps1     # Windows build (Nuitka + Inno + WiX)
+│   ├── installer.iss           # Inno Setup script (EXE installer)
+│   └── installer.wxs           # WiX MSI script
+├── resources/                  # Icons, fonts, installer graphics
+├── docs/                       # GitHub Pages landing page (index.html)
+└── Documentation/              # ADRs, PRD, build guides, backlog
 ```
 
-Everything else (CI workflows, installers, build scripts) reads `version.py` automatically.
-`docs/index.html` and release notes still need manual update.
+---
+
+## Key Architecture Decisions
+
+*   **PyQt6** for UI — `QTableWidget` for client grid, `QDialog` for modals, stylesheet-based theming. Do not switch to tkinter or CustomTkinter.
+*   **Playwright async** for browser automation — each client gets an isolated `BrowserContext`. Never share contexts between clients.
+*   **Real Google Chrome** (`channel="chrome"`) is required for AIS/TIS downloads. Bundled Chromium silently fails on the AIS portal. 26AS works with either.
+*   **Fixed viewport 1600×900** — the ITD portal layout breaks at narrower sizes.
+*   **`asyncio.run()` in a background `QThread`** — keeps the Qt event loop alive during downloads. Never call Qt widgets from the worker thread; use signals.
+*   **`selected_ids` set** is the source of truth for client selection state. Checkbox visual state and count label must always be derived from this set, never the other way around.
+*   **Theme detection** — use `getattr(_t(), "name", "").lower() != "light"` to check for dark mode. `_t()` returns the active `ThemeColors` instance.
 
 ---
 
-## Releasing
+## AIS / TIS Download Flow
 
-```bash
-bash scripts/release.sh          # full release
-bash scripts/release.sh --rerun  # re-upload files to existing tag
-bash scripts/release.sh --dry-run
-```
+### Two phases
 
-To upload files manually to a release:
-```bash
-gh release upload vX.Y.Z file.exe file.msi --repo dkbholusaria/AayDocCapio --clobber
-```
+**Phase 1 — `run_request_ais()` in `downloader_ais_tis.py`**
+*   Opens the AIS portal, selects the FY, clicks "Request PDF"
+*   If AIS is ready instantly → downloads it, unlocks it
+*   Also downloads TIS immediately (TIS is always available at request time)
+*   Ends by calling `status_callback(combined_status_label(ais_outcome, tis_outcome))`
+*   Returns the `ais_outcome` dict with `ais_outcome["tis"] = tis_outcome`
 
----
+**Phase 2 — `run_download_ais_tis()` in `downloader_ais_tis.py`**
+*   Used when Phase 1 queued AIS for generation ("Activity History" mode)
+*   Fetches AIS PDF from the Activity History section
+*   Ends by calling `status_callback(combined_status_label(ais_outcome, tis_outcome))`
+*   Returns `{"ais": ais_outcome, "tis": tis_outcome}`
 
-## Key files to know
+### Outcome dict pattern
 
-| File | What it does |
-|---|---|
-| `app.py` | Entire UI — 3000+ lines, single file |
-| `version.py` | `__version__ = "X.Y.Z"` — single source of truth |
-| `vault.py` | Encrypted client store; `record_download()` persists batch status |
-| `automation/downloader_ais_tis.py` | AIS + TIS download logic; `_outcome`, `_doc_label`, `combined_status_label` |
-| `automation/pdf_unlocker.py` | PDF unlock; tries 9 password candidates |
-| `automation/auth.py` | ITD portal login via Playwright |
-| `scripts/release.sh` | Full release automation |
-| `scripts/bump.sh` | Version bump helper |
-| `scripts/setup_and_build.ps1` | Windows build (Nuitka + Inno Setup + WiX) |
-| `docs/index.html` | GitHub Pages landing page — update version + date on release |
+Every document result is a dict created by `_outcome()`:
 
----
-
-## AIS/TIS status system
-
-Outcomes are dicts: `{"status": ..., "unlocked": True/False/None, "reason": ...}`
-
-Status values: `downloaded`, `requested`, `too_large`, `no_data`, `not_found`, `timeout`, `skipped`, `failed`
-
-Final status shown to user via:
 ```python
-combined_status_label(ais_outcome, tis_outcome)
-# → "⚠️ AIS locked — wrong password | ✅ TIS unlocked"
+def _outcome(status, unlocked=None, reason=None, **extra):
+    return {"status": status, "unlocked": unlocked, "reason": reason, **extra}
 ```
 
-**Terminal prefixes** (triggers vault persistence in local `set_status`):
-`"✅"  "❌"  "🕐"  "⏹"  "⬜"  "⚠"`  — the `⚠` is critical; without it locked-PDF results never save.
+**Status values:** `"downloaded"`, `"requested"`, `"too_large"`, `"no_data"`, `"not_found"`, `"timeout"`, `"aborted"`, `"skipped"`, `"already_present"`, `"failed"`
+
+**`unlocked` field:** `True` = PDF unlocked, `False` = unlock failed (wrong password), `None` = not attempted
+
+### Status display
+
+```python
+def _doc_label(o, name):   # e.g. "AIS" or "TIS"
+    # Returns e.g. "✅ AIS unlocked", "⚠️ TIS locked — wrong password", "⬜ AIS — no data for this FY"
+
+def combined_status_label(ais_o, tis_o):
+    # Returns e.g. "⚠️ AIS locked — wrong password | ✅ TIS unlocked"
+```
+
+### Critical detection order in AIS polling loop
+
+When polling the modal for AIS status, check in this exact order:
+1. `"don't have any|do not have any"` → `_outcome("no_data")` — MUST be first
+2. `"too large|unable to generate as pdf"` → `_outcome("too_large")` — but NOT `"ais utility"` (that string is always present in modal)
+3. `"reference id|activity history|submitted successfully"` → `_outcome("requested")`
 
 ---
 
-## PDF unlock passwords
+## Status Callback Architecture
 
-ITD format: `lowercase_pan + DDMMYYYY` for AIS/TIS; DOB only for 26AS.
-9 candidates tried: 3 DOB formats × 3 PAN case variants.
-Vault stores DOB as `DD-MM-YYYY`. Unlock fails when vault DOB ≠ ITD's registered DOB.
+There are TWO distinct `set_status` functions in `app.py` — don't confuse them:
+
+### Local `set_status(pan, text)` — inside the batch runner
+```python
+def set_status(pan, text):
+    if self._progress_dialog:
+        self._progress_dialog.set_status(pan, text)          # updates batch progress dialog
+    terminal = ("✅", "❌", "🕐", "⏹", "⬜", "⚠")           # ⚠ is REQUIRED here
+    if ay_label and any(text.startswith(p) for p in terminal):
+        self.vault.record_download(pan, ay_label, text, path) # persists to vault
+```
+
+**Critical:** The `⚠` prefix MUST be in the terminal list. Without it, `"⚠️ AIS locked — wrong password | ⚠️ TIS locked — wrong password"` never gets saved to the vault, so the main grid keeps showing the old status from a previous run.
 
 ---
 
-## Browser requirements
+## PDF Unlock
 
-- AIS/TIS: **real Google Chrome** (`channel="chrome"`) — bundled Chromium silently fails
-- 26AS: works with bundled Chromium
-- Viewport must be **1600×900** — portal breaks at smaller sizes
+**Password format (ITD convention):**
+*   AIS / TIS: `lowercase_pan + DDMMYYYY` e.g. `aekpb0205l12121976`
+*   Form 26AS: `DDMMYYYY` (DOB only, no PAN)
+
+**9 candidates tried** (`pdf_unlocker.py`):
+3 DOB formats × 3 PAN variants:
+*   DOB formats: `DDMMYYYY`, `DDMMYY`, `DD/MM/YYYY`
+*   PAN variants: lowercase PAN + DOB, DOB only, UPPERCASE PAN + DOB
 
 ---
 
-## CI workflows
+## Vault
 
-| Workflow | Trigger | Output |
-|---|---|---|
-| `build-windows.yml` | push tag `v*` or manual | EXE + MSI attached to GitHub Release |
-| `build-macos.yml` | push tag `v*` or manual | ZIP attached to GitHub Release |
+`vault.py` — AES-128 Fernet encryption, stored in `tax_vault.json`.
 
-Trigger manually:
+Key methods:
+```python
+vault.get_clients()                          # → list of {pan, name, password, dob, ...}
+vault.save_client(pan, name, pwd, dob)       # add/update
+vault.record_download(pan, ay, status, path) # persist download status
+vault.get_download_history(ay_label)         # → {pan: {status, path, ts}}
+```
+
+---
+
+## Versioning
+
+**Single source of truth:** `version.py`
+
+```python
+__version__ = "1.6.3"   # ← only file to edit when bumping
+```
+
+To bump version:
 ```bash
-gh workflow run build-macos.yml --repo dkbholusaria/AayDocCapio --ref main
+bash scripts/bump.sh patch    # X.Y.Z → X.Y.(Z+1)
+bash scripts/bump.sh minor    # X.Y.Z → X.(Y+1).0
+bash scripts/bump.sh 1.7.0    # exact version
 ```
-
-**Known WiX issue:** `wix eula accept wix7` must run before `wix extension add` — not after.
 
 ---
 
-## Common bugs & fixes
+## Release Workflow
 
-| Symptom | Root cause | Fix |
+> **Trigger phrase:** When the user says something like "let's bump the version", "time to release", "bump to X.Y.Z", or "new release", follow this checklist in full. No steps are optional.
+
+### Step 1 — Bump `version.py`
+```bash
+bash scripts/bump.sh X.Y.Z    # sets exact version, e.g. bash scripts/bump.sh 1.7.0
+```
+This is the single source of truth. Build scripts (`setup_and_build.ps1`, `release.sh`) pick it up automatically.
+
+### Step 2 — Update `CHANGELOG.md` and `Documentation/CHANGELOG.md`
+Prepend a new release block above the previous `[X.Y.Z]` entry in **both files**:
+
+```markdown
+## [X.Y.Z] — YYYY-MM-DD
+
+### New Features
+#### <Feature Name>
+- **<Feature>** — <description>
+
+### Improvements
+- ...
+
+### Bug Fixes
+- ...
+
+---
+```
+
+Ask the user what bullet points to include, or auto-generate based on the feature description they provide. Always include the consolidation/consolidated sheet note if the JSON-to-Excel converter was changed.
+
+### Step 3 — Update `README.md` and `Documentation/README.md`
+In **both files**:
+- Version badge on line 3: `**vOLD**` → `**vNEW**`
+- Section heading: `## What's New in OLD` → `## What's New in NEW`
+- Replace the What's New body with a concise summary of the new release (matching CHANGELOG bullets, shorter form)
+
+### Step 4 — Update `docs/index.html`
+Two sub-tasks:
+
+**A. Version bump** — replace ALL occurrences of the old version string and date:
+```bash
+sed -i 's/vOLD/vNEW/g; s/OLD.VERSION/NEW.VERSION/g; s/DD Mon YYYY/DD Mon YYYY/g' docs/index.html
+```
+Then verify with: `grep -n "OLD" docs/index.html`
+
+Locations to check: release badge, all download hrefs (`.exe`, `.msi`, macOS `.zip`), `<h2>` in What's New, installer filename references in prose (upgrade notice, install instructions, SmartScreen walkthrough).
+
+**B. What's New section** — replace the entire `<div class="change-list">` block inside `<section id="whats-new">` with new `<div class="change-item">` entries matching the new release features.
+
+**C. New feature card (if applicable)** — if a new user-facing capability was added, add a `<div class="card">` to the Features section (`<div class="cards">`, ~line 968). Follow the existing card pattern:
+```html
+<div class="card">
+  <span class="card-icon">EMOJI</span>
+  <h3>Feature Name</h3>
+  <p>One or two sentences describing the feature for a new visitor.</p>
+</div>
+```
+
+### Step 5 — Update `pyproject.toml`
+```
+version = "OLD"  →  version = "NEW"
+```
+This file is not used in the active build pipeline but must stay consistent.
+
+### Step 6 — Verify
+```bash
+# Should return zero matches (CHANGELOG historical entries and AGENT.md example are expected)
+grep -r "OLD_VERSION" --include="*.py" --include="*.md" --include="*.html" --include="*.toml" .
+
+# Confirm live version
+python3 -c "from version import __version__; print(__version__)"
+```
+
+### Step 7 — Build & Release
+```bash
+# Build Windows installers (run from PowerShell on Windows machine):
+powershell -ExecutionPolicy Bypass -File "\\wsl.localhost\Ubuntu-24.04\home\deepak\projects\AayDocCapio\scripts\setup_and_build.ps1"
+# Run the release script from WSL:
+bash scripts/release.sh
+```
+
+### Files NOT touched during a version bump
+- `scripts/bump.sh`, `scripts/release.sh`, `scripts/setup_and_build.ps1` — read `version.py` dynamically
+- `scripts/installer.iss`, `scripts/installer.wxs` — version injected at build time via template variables
+- `AGENT.md` example version strings — illustrative only, update manually only when keeping docs current
+
+---
+
+## Dev Environment Setup
+
+### Linux / macOS / WSL (run from source)
+
+```bash
+bash scripts/setup.sh        # creates .venv, installs deps, installs Playwright Chromium
+source .venv/bin/activate
+python app.py
+```
+
+### Windows (run from source)
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+playwright install chromium
+python app.py
+```
+
+---
+
+## Runtime Dependencies
+
+| Package | Purpose |
+|---|---|
+| `PyQt6>=6.11.0` | Desktop GUI framework |
+| `playwright>=1.60.0` | Browser automation |
+| `cryptography>=48.0.0` | AES-128 Fernet vault encryption |
+| `pikepdf>=10.7.2` | PDF password removal |
+| `openpyxl>=3.1.5` | Excel bulk-import / vault template generation |
+| `xlsxwriter>=3.2.0` | 26AS converter — streaming writer for large files |
+| `pillow>=12.2.0` | Custom checkbox image generation |
+
+---
+
+## Windows Build Prerequisites
+
+| Tool | Purpose | How to get |
 |---|---|---|
-| AIS always "too large" | `"ais utility"` regex matches permanent modal text | Remove `"ais utility"` from too-large regex |
-| "No data" detected as "queued" | Portal "no data" page contains "activity history" text | Check `"don't have any"` BEFORE queued regex |
-| TIS times out 60s on "no data" | `expect_download` waits for file that never comes | On timeout, read modal text and check for "no data" |
-| Main grid shows old ❌ after ⚠️ run | `"⚠"` missing from terminal prefix list | Add `"⚠"` to terminal tuple in local `set_status` |
-| PDF unlock fails | Wrong DOB in vault | Ask user to correct DOB — must match PAN card exactly |
-| WiX EULA error in CI | EULA accepted after extension install | Move `wix eula accept wix7` before `wix extension add` |
+| Nuitka | Python → native exe | `pip install nuitka ordered-set zstandard` |
+| Inno Setup 6+ | `.exe` installer | jrsoftware.org/isdl.php |
+| .NET 8 SDK | Required by WiX | dotnet.microsoft.com/download |
+| WiX Toolset v4+ | `.msi` installer | `dotnet tool install --global wix` |
+| WixToolset.UI.wixext | Wizard UI | `wix extension add WixToolset.UI.wixext --global` |
+
+---
+
+## Coding Conventions
+
+### Theme-aware colors
+
+Always use `ThemeColors` fields — never hardcode hex colors:
+
+```python
+from themes import _t
+_bt = _t()
+item.setForeground(QColor(_bt.text_primary))
+item.setBackground(QColor(_bt.bg_table))
+```
+
+### Selection state
+
+`self.selected_ids` (a `set`) is always the authoritative selection state. Never modify it during row filtering — only hide rows.
+
+### Thread safety
+
+Download workers run in a `QThread`. Update UI only via Qt signals — never call widget methods from a worker thread directly.
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Fix |
+|---|---|
+| AIS/TIS downloads silently fail | Must use `channel="chrome"` (real Chrome), not bundled Chromium |
+| `expect_download` never fires | Call it on `Page`, not `BrowserContext` |
+| Portal never reaches `networkidle` | Use `wait_until="domcontentloaded"` + `asyncio.sleep(3)` |
+| AIS "no data" misclassified as "queued" | Check `"don't have any"` BEFORE `"activity history"` in the polling loop |
+| AIS always flagged "too large" | Don't include `"ais utility"` in the too-large regex — it's always present in the modal |
+| `⚠️` statuses not shown in main grid | `"⚠"` must be in terminal prefixes in local `set_status` |
+| PDF unlock fails | Verify DOB in vault matches PAN card exactly (DD-MM-YYYY format) |
+
+---
+
+## Session Memory & Lessons Learned
+
+### Capital Market Consolidated Sheet
+*   **Blueprint Structure:** The revised `⭐ Capital Market (All)` sheet contains exactly 30 columns (shifted left to start at Column A, removing the blueprint's margin space column A). The freeze pane is set to lock headers (top 2 rows) and the first 11 columns (up to `Security Class` Column K).
+*   **Cell-by-Cell Linkage:** Raw data columns are linked directly to individual SFT sheets using Excel formulas (e.g. `='SFT-17-LES(M) (Eq Sale)'!B12`). Column mapping is dynamically resolved for depository (SFT-17), RTA (SFT-18), and off-market (SFT-17-LES(OC)) sheets.
+*   **Grandfathering & Gain Formulas (Excel-driven):**
+    *   `Assets Eligible for GrandFathering` (Col U): `=IF(AND(ISNUMBER(SEARCH("Long", L{xr})), OR(K{xr}="Listed Equity Share", K{xr}="Unit of Equity Oriented Mutual Fund", K{xr}="Unit of Business Trust", AND(K{xr}="Other Units", S{xr}>0))), "Yes - Eligible", IF(ISNUMBER(SEARCH("Short", L{xr})), "No - Short term Asset", "No - Ineligible Asset"))`
+    *   `Effective FMV` (Col V): `=IF(U{xr}="Yes - Eligible", T{xr}, 0)`
+    *   `Adj. FMV` (Col W): `=MIN(O{xr}, V{xr})`
+    *   `Adj. Cost of Acquisition` (Col X): `=MAX(Q{xr}, W{xr})`
+    *   `Capital Gain (w/o Indexation)` (Col Y): `=O{xr}-X{xr}`
+    *   `Capital Gain (w/ Indexation)` (Col Z): `=O{xr}-R{xr}`
+    *   `STCG` (Col AA): `=IF(ISNUMBER(SEARCH("Short", L{xr})), Y{xr}, 0)`
+    *   `LTCG w/o Indexation` (Col AB): `=IF(ISNUMBER(SEARCH("Long", L{xr})), Y{xr}, 0)`
+    *   `LTCG with Indexation` (Col AC): `=IF(ISNUMBER(SEARCH("Long", L{xr})), Z{xr}, 0)`
+*   **Defined Names:** Register workbook-scoped defined names pointing to entire columns for formula validation: `CostWoIndex` ($Q:$Q), `CostWIndex` ($R:$R), `EligibleAssetForGF` ($U:$U), `AdjustedFMV` ($W:$W), `AdjustedCostWoIndex` ($X:$X), `CapitalGainWoIndex` ($Y:$Y), `CapitalGainWIndex` ($Z:$Z), `STCG` ($AA:$AA), `LTCGWoIndex` ($AB:$AB), and `LTCGWIndex` ($AC:$AC).
+*   **Gains Visual Treatment:** Long-term gain rows are highlighted using a soft blue background (`#f0f4ff` for standard cells, `#e6f2ff` for formulas) to distinguish them from short-term transactions.
+*   **Subtotal & Grand Total Formulas:** SFT group subtotal rows use standard `=SUM` formulas. The Grand Total row directly sums these subtotal cells rather than summing ranges to avoid double-counting.
+*   **Plain-English Explanation Sheet ("ReadMe - Capital Gains"):** A guide sheet in the grey general theme (`#808080`) containing columns: `Column`, `Field Name`, `Plain English Explanation`, and `Tax Reference`. Explains all grandfathering/indexation columns in non-formula language for client transparency. Explicitly documents the post-23-Jul-2024 budget rule (abolition of indexation and flat 12.5% LTCG rate). Includes a prominent legal disclaimer block styled in soft red (`#F2DCDB`) stating that the calculations are informational, provided on a best-efforts basis, and do not constitute professional tax advice.
+
+
+
+---
+
+## Key Pending Updates & Open Issues
+Refer to `Documentation/ISSUES_BACKLOG.md` for the canonical tracker. Key active priorities:
+*   **B-02 & B-06 (PDF/TXT ZIP Unlock):** Expand DOB formats used for password attempts when unlocking files.
+*   **F-10 (Large 26AS Direct Downloads):** Implement automated logins to `tdscpc.gov.in` to poll on-demand 26AS requests.
+

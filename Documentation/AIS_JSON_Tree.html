@@ -1742,20 +1742,20 @@
 
 <div style="display: flex; flex-wrap: wrap; gap: 20px; max-width: 1200px; font-size: 13px;">
   <!-- Column 1 -->
-  <div style="flex: 1; min-width: 280px; background: #fdfdfd; border: 1px solid #e1ebec; border-radius: 6px; padding: 12px;">
+  <div style="flex: 1.5; min-width: 320px; background: #fdfdfd; border: 1px solid #e1ebec; border-radius: 6px; padding: 12px;">
     <h3 style="color:#0E6674; margin: 0 0 8px 0; font-size: 14px; border-bottom: 2px solid #0E6674; padding-bottom: 4px;">Security Class (SFT-17 & 18)</h3>
     <table style="width:100%; border-collapse:collapse; font-size:12px;">
-      <tr><th style="padding:4px; text-align:left; background:#edf5f6;">Code</th><th style="padding:4px; text-align:left; background:#edf5f6;">Description</th></tr>
-      <tr><td><code>LES</code></td><td>Listed Equity Share</td></tr>
-      <tr><td><code>LPS</code></td><td>Listed Preference Share</td></tr>
-      <tr><td><code>LDB</code></td><td>Listed Debenture</td></tr>
-      <tr><td><code>ZCB</code></td><td>Zero Coupon Bond</td></tr>
-      <tr><td><code>CIB</code></td><td>Listed Capital Indexed Bond</td></tr>
-      <tr><td><code>EMF</code></td><td>Unit of Equity Oriented Mutual Fund</td></tr>
-      <tr><td><code>UTI</code></td><td>Unit of UTI</td></tr>
-      <tr><td><code>UBT</code></td><td>Unit of Business Trust</td></tr>
-      <tr><td><code>OTU</code></td><td>Other Units</td></tr>
-      <tr><td><code>OTH</code></td><td>Other Listed Securities (Other than a unit)</td></tr>
+      <tr><th style="padding:4px; text-align:left; background:#edf5f6;">Code</th><th style="padding:4px; text-align:left; background:#edf5f6;">Description</th><th style="padding:4px; text-align:left; background:#edf5f6;">Consumed By (SFT Code)</th></tr>
+      <tr><td><code>LES</code></td><td>Listed Equity Share</td><td><code>SFT-17-LES(M)</code>, <code>SFT-17-LES(OC)</code></td></tr>
+      <tr><td><code>LPS</code></td><td>Listed Preference Share</td><td><code>SFT-17-LES(M)</code>, <code>SFT-17-LES(OC)</code></td></tr>
+      <tr><td><code>LDB</code></td><td>Listed Debenture</td><td><code>SFT-17-LDB(M)</code></td></tr>
+      <tr><td><code>ZCB</code></td><td>Zero Coupon Bond</td><td><code>SFT-17-LDB(M)</code></td></tr>
+      <tr><td><code>CIB</code></td><td>Listed Capital Indexed Bond</td><td><code>SFT-17-LDB(M)</code></td></tr>
+      <tr><td><code>EMF</code></td><td>Unit of Equity Oriented Mutual Fund</td><td><code>SFT-17-EMF(M)</code>, <code>SFT-18-EMF(M)</code></td></tr>
+      <tr><td><code>UTI</code></td><td>Unit of UTI</td><td><code>SFT-17-OTU(M)</code>, <code>SFT-18-OTU(M)</code></td></tr>
+      <tr><td><code>UBT</code></td><td>Unit of Business Trust</td><td><code>SFT-17-UBT(M)</code></td></tr>
+      <tr><td><code>OTU</code></td><td>Other Units</td><td><code>SFT-17-OTU(M)</code>, <code>SFT-18-OTU(M)</code></td></tr>
+      <tr><td><code>OTH</code></td><td>Other Listed Securities (Other than a unit)</td><td><code>SFT-17-OTU(M)</code>, <code>SFT-18-OTU(M)</code></td></tr>
     </table>
   </div>
 
@@ -1763,6 +1763,7 @@
   <div style="flex: 1; min-width: 280px; background: #fdfdfd; border: 1px solid #e1ebec; border-radius: 6px; padding: 12px;">
     <h3 style="color:#0E6674; margin: 0 0 8px 0; font-size: 14px; border-bottom: 2px solid #0E6674; padding-bottom: 4px;">Property Type (SFT-012)</h3>
     <table style="width:100%; border-collapse:collapse; font-size:12px;">
+
       <tr><th style="padding:4px; text-align:left; background:#edf5f6;">Code</th><th style="padding:4px; text-align:left; background:#edf5f6;">Description</th></tr>
       <tr><td><code>R</code></td><td>Residential property</td></tr>
       <tr><td><code>C</code></td><td>Commercial property</td></tr>

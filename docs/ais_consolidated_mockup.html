@@ -1,0 +1,1560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AIS Consolidated Mockup — AayDoc Capio</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Calibri, Arial, sans-serif; font-size: 12px; background: #e8e8e8; }
+
+  /* ── Tab bar ── */
+  #tab-bar {
+    position: sticky; top: 0; z-index: 100;
+    background: #1a2a3a; display: flex; flex-wrap: wrap;
+    gap: 2px; padding: 6px 8px; box-shadow: 0 2px 6px rgba(0,0,0,.4);
+  }
+  .tab {
+    padding: 5px 10px; font-size: 10.5px; font-weight: 600;
+    color: #9ab; background: #243444; border-radius: 3px;
+    cursor: pointer; white-space: nowrap; border: 1px solid #2a3a4a;
+    transition: background .15s;
+  }
+  .tab:hover { background: #2e4a60; color: #fff; }
+  .tab.active { background: #0A1628; color: #fff; border-color: #4a7aaa; }
+  .tab-sep {
+    font-size: 9px; font-weight: 800; letter-spacing: 1px;
+    color: #4a7aaa; padding: 6px 6px 2px; align-self: flex-end;
+    text-transform: uppercase; white-space: nowrap;
+    border-left: 2px solid #2a3a4a; margin-left: 4px;
+  }
+
+  /* ── Sheet panels ── */
+  .sheet { display: none; padding: 16px; }
+  .sheet.active { display: block; }
+
+  /* ── Brand row ── */
+  .brand { display: flex; margin-bottom: 0; }
+  .brand-l {
+    background: #0A1628; color: #fff;
+    font-size: 13px; font-weight: 700;
+    padding: 7px 14px; flex: 1;
+  }
+  .brand-r {
+    background: #0A1628; color: #7a9ab8; font-size: 10px;
+    padding: 7px 14px; text-align: right; white-space: nowrap;
+  }
+
+  /* ── Tables ── */
+  .sheet-wrap { background: #fff; display: inline-block; min-width: 900px;
+                box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+  table { border-collapse: collapse; width: 100%; }
+  thead th {
+    background: #0E6674; color: #fff; font-size: 11px; font-weight: 700;
+    padding: 5px 8px; text-align: left; border: 1px solid #145228; white-space: nowrap;
+  }
+  thead th.num { text-align: right; }
+  thead th.ctr { text-align: center; }
+  tbody td {
+    padding: 4px 8px; border: 1px solid #ddd;
+    font-size: 11px; color: #111; background: #fff; vertical-align: middle;
+    white-space: nowrap;
+  }
+  tbody td.num  { text-align: right; font-family: "Courier New", monospace; white-space: nowrap; }
+  tbody td.ctr  { text-align: center; }
+  tbody td.mono { font-family: "Courier New", monospace; font-size: 10.5px; }
+  tbody td.wrap { white-space: normal; max-width: 240px; font-size: 10.5px; }
+  tbody tr:nth-child(even) td { background: #f9f9f9; }
+
+  /* Section header row (General Info) */
+  tr.section-hdr td {
+    background: #0E6674 !important; color: #fff !important;
+    font-weight: 700; font-size: 11px; padding: 5px 8px;
+  }
+  tr.lbl td:first-child { background: #e8f5f7 !important; font-weight: 700; }
+
+  /* Subtotal */
+  tr.subtotal td {
+    background: #d0eef2 !important; color: #0a2d33 !important;
+    font-weight: 700; font-size: 11px; border-top: 2px solid #2a8a9a;
+    border-bottom: 1px solid #2a8a9a; padding: 5px 8px;
+  }
+  tr.subtotal td.num { text-align: right; font-family: "Courier New", monospace; }
+  tr.subtotal td.formula { font-style: italic; font-size: 10px; color: #2a6a3a; text-align: right; font-family: "Courier New", monospace; }
+
+  /* Grand total */
+  tr.grand td {
+    background: #0A1628 !important; color: #fff !important;
+    font-weight: 700; font-size: 12px;
+    border-top: 3px solid #7a9ab8; padding: 6px 8px;
+  }
+  tr.grand td.num     { text-align: right; font-family: "Courier New", monospace; white-space: nowrap; }
+  tr.grand td.formula { text-align: right; font-family: "Courier New", monospace; color: #a8d0f0; font-size: 11px; }
+
+  /* SFT group subtotal row (consolidated sheet) */
+  tr.sft-sub td {
+    background: #e8f5f7 !important; color: #0E6674 !important;
+    font-weight: 700; font-size: 11px; border-top: 2px solid #2a8a9a;
+    padding: 5px 8px;
+  }
+  tr.sft-sub td.num { text-align: right; font-family: "Courier New", monospace; white-space: nowrap; }
+  tr.sft-sub td.formula { text-align: right; font-family: "Courier New", monospace; color: #0E6674; font-size: 11px; }
+  tr.sft-sub td.grp-note { font-size: 9.5px; color: #4a7a4a; font-style: italic; }
+
+  /* Audit trail table */
+  .audit-table { margin-top: 28px; border-collapse: collapse; font-size: 11px; }
+  .audit-table th { background: #0A1628; color: #fff; padding: 6px 12px; text-align: left; white-space: nowrap; }
+  .audit-table th.num { text-align: right; }
+  .audit-table td { border: 1px solid #ccd; padding: 5px 10px; white-space: nowrap; }
+  .audit-table td.num { text-align: right; font-family: "Courier New", monospace; }
+  .audit-table td.match { color: #0E6674; font-weight: 700; }
+  .audit-table td.mismatch { color: #8b0000; font-weight: 700; }
+  .audit-table tr:nth-child(even) td { background: #f9f9f9; }
+  .audit-table tr.audit-total td { background: #0A1628 !important; color: #fff !important; font-weight: 700; }
+  .audit-table tr.audit-total td.num { text-align: right; font-family: "Courier New", monospace; }
+
+  /* Badges */
+  .badge { display: inline-block; font-size: 10px; font-weight: 700;
+           padding: 2px 7px; border-radius: 3px; white-space: nowrap; }
+  .badge-active   { background: #e0f5f7; color: #0E6674; border: 1px solid #2a8a9a; }
+  .badge-inactive { background: #f5e0e0; color: #8b0000; border: 1px solid #cc7777; }
+
+  /* Summary block (below flat detail rows) */
+  tr.sum-hdr td {
+    background: #0E6674 !important; color: #fff !important;
+    font-weight: 700; font-size: 11px; padding: 5px 8px;
+    border-top: 3px solid #0A1628;
+  }
+  tr.sum-row td {
+    background: #e8f5f7 !important; color: #0a2d33;
+    font-size: 11px; padding: 4px 8px;
+    border: 1px solid #c8d8c8;
+  }
+  tr.sum-row td.num { text-align: right; font-family: "Courier New", monospace; }
+  tr.sum-row td.formula { text-align: right; font-family: "Courier New", monospace; font-style: italic; font-size: 10px; color: #2a6a3a; }
+  tr.spacer td { background: #e8e8e8 !important; border: none; height: 8px; }
+
+  .note { font-size: 11px; color: #555; padding: 8px 14px;
+          border-top: 1px solid #ddd; background: #fafafa; }
+  h2 { font-size: 14px; color: #0E6674; margin: 0 0 6px; font-weight: 700; }
+  .sheet-desc { font-size: 11px; color: #555; margin-bottom: 10px; }
+
+  /* Capital gains colouring */
+  td.gain-pos { color: #0E6674; font-weight: 700; text-align: right; font-family: "Courier New", monospace; }
+  td.gain-neg { color: #8b0000; font-weight: 700; text-align: right; font-family: "Courier New", monospace; }
+  td.gain-nil { color: #888; text-align: right; font-family: "Courier New", monospace; }
+  tbody tr.lt  td { background: #f0f4ff !important; } /* long term rows - light blue tint */
+  tbody tr.lt:nth-child(even) td { background: #e8eeff !important; }
+</style>
+<script>
+  function showTab(id) {
+    document.querySelectorAll('.sheet').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    document.querySelector('[data-tab="' + id + '"]').classList.add('active');
+    window.scrollTo(0, 0);
+  }
+</script>
+</head>
+<body>
+
+<!-- ── Tab bar ── -->
+<div id="tab-bar">
+  <!-- General -->
+  <div class="tab active" data-tab="s-gi" onclick="showTab('s-gi')">General Info</div>
+  <div class="tab" data-tab="s-sum" onclick="showTab('s-sum')">Summary</div>
+
+  <div class="tab-sep">TDS / TAX</div>
+  <div class="tab" data-tab="s-tds" onclick="showTab('s-tds')">Part B1 (TDS/TCS)</div>
+  <div class="tab" data-tab="s-prop" onclick="showTab('s-prop')">TDS-194IA(P) (Property)</div>
+  <div class="tab" data-tab="s-tax" onclick="showTab('s-tax')">Payment of Taxes</div>
+
+  <div class="tab-sep">INCOME</div>
+  <div class="tab" data-tab="s-sal" onclick="showTab('s-sal')">TDS-Ann.II-SAL (Salary)</div>
+  <div class="tab" data-tab="s-015" onclick="showTab('s-015')">SFT-015 (Dividend)</div>
+  <div class="tab" data-tab="s-016sb" onclick="showTab('s-016sb')">SFT-016(SB) (Int-SB)</div>
+  <div class="tab" data-tab="s-016td" onclick="showTab('s-016td')">SFT-016(TD) (Int-TD)</div>
+  <div class="tab" data-tab="s-18div" onclick="showTab('s-18div')">SFT-18(Div) (MF Div)</div>
+
+  <div class="tab-sep">INFORMATIONAL</div>
+  <div class="tab" data-tab="s-005" onclick="showTab('s-005')">SFT-005 (Time Dep)</div>
+  <div class="tab" data-tab="s-006" onclick="showTab('s-006')">SFT-006 (Credit Card)</div>
+  <div class="tab" data-tab="s-012" onclick="showTab('s-012')">SFT-012 (IMP)</div>
+
+  <div class="tab-sep">PURCHASE</div>
+  <div class="tab" data-tab="s-010" onclick="showTab('s-010')">SFT-010 (MF Purchase)</div>
+  <div class="tab" data-tab="s-17pur" onclick="showTab('s-17pur')">SFT-17(Pur) (Sec Buy)</div>
+  <div class="tab" data-tab="s-18pur" onclick="showTab('s-18pur')">SFT-18(Pur) (MF Buy)</div>
+
+  <div class="tab-sep">SALE / CAPITAL GAINS</div>
+  <div class="tab" data-tab="s-cm" onclick="showTab('s-cm')">⭐ Capital Market (All)</div>
+  <div class="tab" data-tab="s-17les" onclick="showTab('s-17les')">SFT-17-LES(M) (Eq Sale)</div>
+  <div class="tab" data-tab="s-17ubt" onclick="showTab('s-17ubt')">SFT-17-UBT(M) (REIT)</div>
+  <div class="tab" data-tab="s-17oc" onclick="showTab('s-17oc')">SFT-17-LES(OC) (Off-Mkt)</div>
+  <div class="tab" data-tab="s-18emf" onclick="showTab('s-18emf')">SFT-18-EMF(M) (EqMF-RTA)</div>
+  <div class="tab" data-tab="s-18otu" onclick="showTab('s-18otu')">SFT-18-OTU(M) (Othr Units)</div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- SHEET 1: General Info -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="sheet active" id="s-gi">
+  <h2>General Info</h2>
+  <p class="sheet-desc">Part A — General Information, File Metadata, File Information. Two-column label-value layout.</p>
+  <div class="sheet-wrap" style="min-width:500px">
+    <div class="brand">
+      <div class="brand-l">AIS — Priya Mehta — FGHIJ5678K — FY 2024-25</div>
+      <div class="brand-r">AayDoc Capio™ &nbsp;·&nbsp; 20-Aug-2025 &nbsp;·&nbsp; © 2026 &nbsp;·&nbsp; CA. Deepak Bhholusaria</div>
+    </div>
+    <table>
+      <tbody>
+        <tr class="section-hdr"><td colspan="2">Part A — General Information</td></tr>
+        <tr class="lbl"><td>PAN</td><td>FGHIJ5678K</td></tr>
+        <tr class="lbl"><td>Aadhaar Number</td><td>XXXX-XXXX-1234</td></tr>
+        <tr class="lbl"><td>Name of Assessee</td><td>PANKAJ PODDAR</td></tr>
+        <tr class="lbl"><td>Date of Birth</td><td>15/03/1975</td></tr>
+        <tr class="lbl"><td>Mobile Number</td><td>9XXXXXXXXX</td></tr>
+        <tr class="lbl"><td>E-mail Address</td><td>p***@gmail.com</td></tr>
+        <tr class="lbl"><td>Address</td><td>House No. XX, Sector YY, NOIDA, UP — 201301</td></tr>
+        <tr class="section-hdr"><td colspan="2">File Metadata</td></tr>
+        <tr class="lbl"><td>PAN (logged in)</td><td>FGHIJ5678K</td></tr>
+        <tr class="lbl"><td>Financial Year</td><td>2024-25</td></tr>
+        <tr class="lbl"><td>Download Date</td><td>20-Aug-2025</td></tr>
+        <tr class="lbl"><td>JSON Version</td><td>11.0.0</td></tr>
+        <tr class="section-hdr"><td colspan="2">File Information</td></tr>
+        <tr class="lbl"><td>Download ID</td><td>ABC123456789</td></tr>
+        <tr class="lbl"><td>IP Address</td><td>XX.XX.XX.XX</td></tr>
+        <tr class="lbl"><td>Generation Date</td><td>20-Aug-2025 10:35:42</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- SHEET 2: Summary -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="sheet" id="s-sum">
+  <h2>Summary</h2>
+  <p class="sheet-desc">All l2 rows across every section — one row per element.</p>
+  <div class="sheet-wrap">
+    <div class="brand">
+      <div class="brand-l">AIS — Priya Mehta — FGHIJ5678K — FY 2024-25</div>
+      <div class="brand-r">AayDoc Capio™ &nbsp;·&nbsp; 20-Aug-2025 &nbsp;·&nbsp; © 2026 &nbsp;·&nbsp; CA. Deepak Bhholusaria</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Section</th><th>Info Category</th><th>Info Code</th>
+        <th>Description</th><th>Source</th><th class="num">Amount</th>
+      </tr></thead>
+      <tbody>
+        <tr><td>B1 — TDS/TCS</td><td>Salary</td><td>TDS-192</td><td>Tax deducted on salary</td><td>COSMO FIRST LIMITED (NSKC01155A)</td><td class="num">4,93,94,252.00</td></tr>
+        <tr><td>B1 — TDS/TCS</td><td>Dividend</td><td>TDS-194</td><td>Dividend received (Section 194)</td><td>COSMO FILMS LIMITED (MUMJ00234F)</td><td class="num">5,31,852.00</td></tr>
+        <tr><td>B1 — TDS/TCS</td><td>Interest</td><td>TDS-194A</td><td>Interest other than on Securities</td><td>ICICI BANK LIMITED (AAACI1195H)</td><td class="num">3,18,563.00</td></tr>
+        <tr><td>B2 — SFT</td><td>Dividend</td><td>SFT-015</td><td>Dividend income (SFT-015)</td><td>COSMO FILMS LIMITED (AAACC1152C.AZ447)</td><td class="num">5,31,852.00</td></tr>
+        <tr><td>B2 — SFT</td><td>MF Dividend</td><td>SFT-18(Div)</td><td>Dividend on units of mutual fund (SFT-018)</td><td>CAMS - HDFC AMC (AAACC3035G.AZ670)</td><td class="num">10,567.00</td></tr>
+        <tr><td>B2 — SFT</td><td>Interest</td><td>SFT-016(SB)</td><td>Interest income – Savings</td><td>ICICI BANK LIMITED (AAACI1195H.AB286)</td><td class="num">2,32,527.00</td></tr>
+        <tr><td>B2 — SFT</td><td>Interest</td><td>SFT-016(TD)</td><td>Interest income – Term Deposit</td><td>ICICI BANK LIMITED (AAACI1195H.AB286)</td><td class="num">3,18,563.00</td></tr>
+        <tr><td>B2 — SFT</td><td>Capital Gains</td><td>SFT-17-LES(M)</td><td>Sale of listed equity share (Depository)</td><td>NSDL (AADCN9802F.AD582)</td><td class="num">6,38,90,170.00</td></tr>
+        <tr><td>B2 — SFT</td><td>Capital Gains</td><td>SFT-17-EMF(M)</td><td>Sale of equity MF unit (Depository)</td><td>NSDL (AADCN9802F.AD582)</td><td class="num">13,21,399.00</td></tr>
+        <tr><td>B2 — SFT</td><td>Credit Card</td><td>SFT-006</td><td>Payments in respect of credit card</td><td>SBI CARDS (AAECS5981K.AB165)</td><td class="num">18,17,838.00</td></tr>
+        <tr><td>B2 — SFT</td><td>Time Deposit</td><td>SFT-005</td><td>Purchase of time deposits</td><td>ICICI BANK LIMITED (AAACI1195H.AB286)</td><td class="num">4,05,00,000.00</td></tr>
+        <tr><td>B2 — SFT</td><td>Securities</td><td>SFT-17(Pur)</td><td>Purchase of securities (Depository)</td><td>NSDL (AADCN9802F.AD582)</td><td class="num">2,60,18,214.00</td></tr>
+        <tr><td>B2 — SFT</td><td>MF Purchase</td><td>SFT-18(Pur)</td><td>Purchase of mutual funds (RTA)</td><td>CAMS - Aditya Birla Sun Life MF</td><td class="num">9,99,950.00</td></tr>
+        <tr><td>B3 — Payment of Taxes</td><td>Self Assessment</td><td>—</td><td>Income Tax — Self Assessment Tax</td><td>—</td><td class="num">4,40,224.00</td></tr>
+        <tr><td>B7 — Other Info</td><td>Salary</td><td>TDS-Ann.II-SAL</td><td>Salary (TDS Annexure II)</td><td>COSMO FIRST LIMITED (NSKC01155A)</td><td class="num">11,96,03,102.00</td></tr>
+        <tr class="grand"><td colspan="5">GRAND TOTAL</td><td class="num formula">=SUM(F3:F17)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- SHEET 3: Part B1 — TDS TCS -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="sheet" id="s-tds">
+  <h2>Part B1 — TDS &amp; TCS</h2>
+  <p class="sheet-desc">Standard TDS/TCS entries. Sr. repeated per deductor group. Subtotals =SUM(), Grand Total sums subtotal cells.</p>
+  <div class="sheet-wrap">
+    <div class="brand">
+      <div class="brand-l">AIS — Priya Mehta — FGHIJ5678K — FY 2024-25</div>
+      <div class="brand-r">AayDoc Capio™ &nbsp;·&nbsp; 20-Aug-2025 &nbsp;·&nbsp; © 2026 &nbsp;·&nbsp; CA. Deepak Bhholusaria</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th class="ctr">Sr.</th><th>Deductor / Source</th><th>TAN</th><th>Info Code</th><th>Description</th>
+        <th class="mono">TSN</th><th>Quarter</th><th>Date of Payment/Credit</th>
+        <th class="num">Amount Paid/Credited (Rs.)</th>
+        <th class="num">TDS/TCS Deducted (Rs.)</th>
+        <th class="num">TDS/TCS Deposited (Rs.)</th>
+        <th class="ctr">Status</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="ctr">1</td><td>COSMO FIRST LIMITED</td><td class="mono">NSKC01155A</td>
+          <td>TDS-192</td><td>Tax deducted on salary (Section 192)</td>
+          <td class="mono">133240055622208</td><td>Q4 (Jan–Mar)</td><td>31/03/2025</td>
+          <td class="num">4,93,94,252.00</td><td class="num">55,32,430.00</td><td class="num">55,32,430.00</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr class="subtotal">
+          <td></td><td colspan="7">Sr. 1 &nbsp;·&nbsp; Subtotal — COSMO FIRST LIMITED</td>
+          <td class="formula">=SUM(I3:I3)</td><td class="formula">=SUM(J3:J3)</td><td class="formula">=SUM(K3:K3)</td><td></td>
+        </tr>
+        <tr>
+          <td class="ctr">2</td><td>COSMO FILMS LIMITED</td><td class="mono">MUMJ00234F</td>
+          <td>TDS-194</td><td>Dividend received (Section 194)</td>
+          <td class="mono">131240965043388</td><td>Q2 (Jul–Sep)</td><td>21/05/2024</td>
+          <td class="num">5,31,852.00</td><td class="num">53,185.00</td><td class="num">53,185.00</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr class="subtotal">
+          <td></td><td colspan="7">Sr. 2 &nbsp;·&nbsp; Subtotal — COSMO FILMS LIMITED</td>
+          <td class="formula">=SUM(I6:I6)</td><td class="formula">=SUM(J6:J6)</td><td class="formula">=SUM(K6:K6)</td><td></td>
+        </tr>
+        <tr>
+          <td class="ctr">3</td><td>ICICI BANK LIMITED</td><td class="mono">AAACI1195H</td>
+          <td>TDS-194A</td><td>Interest other than "Interest on Securities"</td>
+          <td class="mono">123241326087011</td><td>Q4 (Jan–Mar)</td><td>28/05/2025</td>
+          <td class="num">3,18,563.00</td><td class="num">31,856.00</td><td class="num">31,856.00</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr class="subtotal">
+          <td></td><td colspan="7">Sr. 3 &nbsp;·&nbsp; Subtotal — ICICI BANK LIMITED</td>
+          <td class="formula">=SUM(I8:I8)</td><td class="formula">=SUM(J8:J8)</td><td class="formula">=SUM(K8:K8)</td><td></td>
+        </tr>
+        <tr class="grand">
+          <td></td><td colspan="7">GRAND TOTAL — Part B1 · TDS &amp; TCS</td>
+          <td class="formula">=I5+I7+I9</td><td class="formula">=J5+J7+J9</td><td class="formula">=K5+K7+K9</td><td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- SHEET 4: Part B1 — TDS on Property -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="sheet" id="s-prop">
+  <h2>TDS-194IA(P) — TDS on Purchase of Immovable Property</h2>
+  <p class="sheet-desc">TDS-194IA(P) — TDS on purchase of immovable property. Buyer is the assessee themselves.</p>
+  <div class="sheet-wrap">
+    <div class="brand">
+      <div class="brand-l">AIS — Rajesh Verma — LMNOP9012Q — FY 2024-25</div>
+      <div class="brand-r">AayDoc Capio™ &nbsp;·&nbsp; 29-Jul-2025 &nbsp;·&nbsp; © 2026 &nbsp;·&nbsp; CA. Deepak Bhholusaria</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th class="ctr">Sr.</th><th>Buyer Name</th><th class="mono">Buyer PAN</th><th>Info Code</th>
+        <th class="mono">TSN</th><th>Ack. No.</th><th>Property Address</th>
+        <th>Date of Payment/Credit</th>
+        <th class="num">Total Transaction Amount (Rs.)</th>
+        <th class="num">TDS Deposited (Rs.)</th>
+        <th class="ctr">Status</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="ctr">1</td><td>RAJA SOOD</td><td class="mono">LMNOP9012Q</td><td>TDS-194IA(P)</td>
+          <td class="mono">132240004013659</td><td>AL15730665</td>
+          <td class="wrap">B-601, Gurgaon, Ambience Creacions, GURGAON, 122016</td>
+          <td>05/11/2024</td><td class="num">22,10,219.00</td><td class="num">22,102.00</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr>
+          <td class="ctr">1</td><td>RAJA SOOD</td><td class="mono">LMNOP9012Q</td><td>TDS-194IA(P)</td>
+          <td class="mono">132240003257046</td><td>AL12939183</td>
+          <td class="wrap">S-301, Gurgaon, Creacions Ambience Residential Apartment Complex, GURGAON, 122016</td>
+          <td>23/09/2024</td><td class="num">63,26,755.00</td><td class="num">63,268.00</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr class="subtotal">
+          <td></td><td colspan="6">Sr. 1 &nbsp;·&nbsp; Subtotal — RAJA SOOD</td><td></td>
+          <td class="formula">=SUM(I3:I4)</td><td class="formula">=SUM(J3:J4)</td><td></td>
+        </tr>
+        <tr class="grand">
+          <td></td><td colspan="6">GRAND TOTAL — Part B1 · TDS on Property (194IA)</td><td></td>
+          <td class="formula">=I5</td><td class="formula">=J5</td><td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- SHEET 5: SFT-015 Dividend -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="sheet" id="s-015">
+  <h2>SFT-015 — Dividend Income</h2>
+  <p class="sheet-desc">Dividend income reported by companies. Flat detail rows — no subtotals in between. Summary block grouped by source appears below all detail rows. (Arjun Sharma — ABCDE1234F)</p>
+  <div class="sheet-wrap">
+    <div class="brand">
+      <div class="brand-l">AIS — Arjun Sharma — ABCDE1234F — FY 2024-25</div>
+      <div class="brand-r">AayDoc Capio™ &nbsp;·&nbsp; 23-Jul-2025 &nbsp;·&nbsp; © 2026 &nbsp;·&nbsp; CA. Deepak Bhholusaria</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th class="ctr">Sr.</th><th>Source</th>
+        <th class="mono">TSN</th><th>Reported On</th>
+        <th class="num">Dividend Amount (Rs.)</th><th class="ctr">Status</th>
+      </tr></thead>
+      <tbody>
+        <!-- ── Detail rows (flat, no subtotals) ── -->
+        <tr><td class="ctr">1</td><td>HAPPIEST MINDS TECHNOLOGIES PRIVATE LIMITED (AACCH6301G.AZ877)</td><td class="mono">122240086530206</td><td>20/05/2025</td><td class="num">250.00</td><td class="ctr"><span class="badge badge-active">Active</span></td></tr>
+        <tr><td class="ctr">2</td><td>Goldiam International Limited (AAACG2271J.AZ779)</td><td class="mono">122240024863201</td><td>08/05/2025</td><td class="num">200.00</td><td class="ctr"><span class="badge badge-active">Active</span></td></tr>
+        <tr><td class="ctr">3</td><td>VARUN BEVERAGES LIMITED (AAACV2678L.AZ419)</td><td class="mono">122240044731173</td><td>15/05/2025</td><td class="num">198.00</td><td class="ctr"><span class="badge badge-active">Active</span></td></tr>
+        <tr><td class="ctr">4</td><td>CIPLA LIMITED (AAACC1450B.AZ699)</td><td class="mono">122240268773876</td><td>31/05/2025</td><td class="num">130.00</td><td class="ctr"><span class="badge badge-active">Active</span></td></tr>
+        <tr><td class="ctr">5</td><td>NTPC LIMITED (AAACN0255D.AZ692)</td><td class="mono">122240199043426</td><td>28/05/2025</td><td class="num">3.00</td><td class="ctr"><span class="badge badge-active">Active</span></td></tr>
+
+        <!-- ── Spacer ── -->
+        <tr class="spacer"><td colspan="6"></td></tr>
+
+        <!-- ── Summary block ── -->
+        <tr class="sum-hdr"><td colspan="4">SUMMARY — by Source</td><td class="num">Dividend Amount (Rs.)</td><td></td></tr>
+        <tr class="sum-row"><td colspan="4">HAPPIEST MINDS TECHNOLOGIES PRIVATE LIMITED</td><td class="formula">=SUM(E3:E3)</td><td></td></tr>
+        <tr class="sum-row"><td colspan="4">Goldiam International Limited</td><td class="formula">=SUM(E4:E4)</td><td></td></tr>
+        <tr class="sum-row"><td colspan="4">VARUN BEVERAGES LIMITED</td><td class="formula">=SUM(E5:E5)</td><td></td></tr>
+        <tr class="sum-row"><td colspan="4">CIPLA LIMITED</td><td class="formula">=SUM(E6:E6)</td><td></td></tr>
+        <tr class="sum-row"><td colspan="4">NTPC LIMITED</td><td class="formula">=SUM(E7:E7)</td><td></td></tr>
+        <tr class="grand"><td colspan="4">GRAND TOTAL — B2 - SFT-015 Dividend</td><td class="formula">=SUM(E3:E7)</td><td></td></tr>
+      </tbody>
+    </table>
+    <div class="note">Detail rows run continuously. Summary section sums each source's detail rows. Grand total = SUM of all detail rows (E3:E7).</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- SHEET 6: SFT-016(SB) Interest Savings -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="sheet" id="s-016sb">
+  <h2>SFT-016(SB) — Interest Income – Savings Bank</h2>
+  <p class="sheet-desc">Savings bank interest. Flat detail rows — multiple accounts across banks run continuously. Summary block by source below. (Priya Mehta — FGHIJ5678K)</p>
+  <div class="sheet-wrap">
+    <div class="brand">
+      <div class="brand-l">AIS — Priya Mehta — FGHIJ5678K — FY 2024-25</div>
+      <div class="brand-r">AayDoc Capio™ &nbsp;·&nbsp; 20-Aug-2025 &nbsp;·&nbsp; © 2026 &nbsp;·&nbsp; CA. Deepak Bhholusaria</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th class="ctr">Sr.</th><th>Source</th>
+        <th class="mono">TSN</th><th>Reported On</th><th>Account Number</th><th>Account Type</th>
+        <th class="num">Interest Amount (Rs.)</th><th class="ctr">Status</th>
+      </tr></thead>
+      <tbody>
+        <!-- ── Detail rows (flat, no subtotals) ── -->
+        <tr><td class="ctr">1</td><td>ICICI BANK LIMITED (AAACI1195H.AB286)</td><td class="mono">123241323807557</td><td>28/05/2025</td><td>630001520722</td><td>Saving</td><td class="num">2,32,527.00</td><td class="ctr"><span class="badge badge-active">Active</span></td></tr>
+        <tr><td class="ctr">2</td><td>INDUSIND BANK LIMITED (AAACI1314G.AB758)</td><td class="mono">123240841143656</td><td>23/05/2025</td><td>159873518880</td><td>Saving</td><td class="num">3,456.00</td><td class="ctr"><span class="badge badge-active">Active</span></td></tr>
+        <tr><td class="ctr">2</td><td>INDUSIND BANK LIMITED (AAACI1314G.AB758)</td><td class="mono">123240841143655</td><td>23/05/2025</td><td>100158074356</td><td>Saving</td><td class="num">23,085.00</td><td class="ctr"><span class="badge badge-active">Active</span></td></tr>
+
+        <!-- ── Spacer ── -->
+        <tr class="spacer"><td colspan="8"></td></tr>
+
+        <!-- ── Summary block ── -->
+        <tr class="sum-hdr"><td colspan="6">SUMMARY — by Source</td><td class="num">Interest Amount (Rs.)</td><td></td></tr>
+        <tr class="sum-row"><td colspan="6">ICICI BANK LIMITED (AAACI1195H.AB286)</td><td class="formula">=SUM(G3:G3)</td><td></td></tr>
+        <tr class="sum-row"><td colspan="6">INDUSIND BANK LIMITED (AAACI1314G.AB758)</td><td class="formula">=SUM(G4:G5)</td><td></td></tr>
+        <tr class="grand"><td colspan="6">GRAND TOTAL — B2 - SFT-016 Interest Savings</td><td class="formula">=SUM(G3:G5)</td><td></td></tr>
+      </tbody>
+    </table>
+    <div class="note">Sr. 2 has 2 accounts at IndusInd Bank — both rows show Sr.=2, run flat. Summary sums each source's row range. Grand total = SUM of all detail rows.</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- SHEET 7: SFT-016(TD) Interest Term Deposit -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="sheet" id="s-016td">
+  <h2>SFT-016(TD) — Interest Income – Term Deposit</h2>
+  <p class="sheet-desc">Term deposit interest. Flat detail rows — multiple FDs run continuously. Summary block by source below. (Priya Mehta — FGHIJ5678K)</p>
+  <div class="sheet-wrap">
+    <div class="brand">
+      <div class="brand-l">AIS — Priya Mehta — FGHIJ5678K — FY 2024-25</div>
+      <div class="brand-r">AayDoc Capio™ &nbsp;·&nbsp; 20-Aug-2025 &nbsp;·&nbsp; © 2026 &nbsp;·&nbsp; CA. Deepak Bhholusaria</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th class="ctr">Sr.</th><th>Source</th>
+        <th class="mono">TSN</th><th>Reported On</th><th>Account Number</th><th>Account Type</th>
+        <th class="num">Interest Amount (Rs.)</th><th class="ctr">Status</th>
+      </tr></thead>
+      <tbody>
+        <!-- ── Detail rows (flat, no subtotals) ── -->
+        <tr><td class="ctr">1</td><td>ICICI BANK LIMITED (AAACI1195H.AB286)</td><td class="mono">123241326087011</td><td>28/05/2025</td><td>007113095086</td><td>Time Deposit</td><td class="num">1,037.00</td><td class="ctr"><span class="badge badge-active">Active</span></td></tr>
+        <tr><td class="ctr">1</td><td>ICICI BANK LIMITED (AAACI1195H.AB286)</td><td class="mono">123241323814103</td><td>28/05/2025</td><td>630013037777</td><td>Time Deposit</td><td class="num">13,613.00</td><td class="ctr"><span class="badge badge-active">Active</span></td></tr>
+
+        <!-- ── Spacer ── -->
+        <tr class="spacer"><td colspan="8"></td></tr>
+
+        <!-- ── Summary block ── -->
+        <tr class="sum-hdr"><td colspan="6">SUMMARY — by Source</td><td class="num">Interest Amount (Rs.)</td><td></td></tr>
+        <tr class="sum-row"><td colspan="6">ICICI BANK LIMITED (AAACI1195H.AB286)</td><td class="formula">=SUM(G3:G4)</td><td></td></tr>
+        <tr class="grand"><td colspan="6">GRAND TOTAL — B2 - SFT-016 Interest Term Dep</td><td class="formula">=SUM(G3:G4)</td><td></td></tr>
+      </tbody>
+    </table>
+    <div class="note">Sr. 1 has 2 FD accounts at ICICI — both rows run flat. Summary sums each source's row range. Grand total = SUM of all detail rows.</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- SHEET 8: SFT-012 Immovable Property -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="sheet" id="s-012">
+  <h2>SFT-012 — Sale of Immovable Property</h2>
+  <p class="sheet-desc">Property transactions reported by Sub-Registrars. Includes property address, type, stamp duty value.</p>
+  <div class="sheet-wrap">
+    <div class="brand">
+      <div class="brand-l">AIS — Rakesh Gupta — RSTUV3456W — FY 2024-25</div>
+      <div class="brand-r">AayDoc Capio™ &nbsp;·&nbsp; 28-Jul-2025 &nbsp;·&nbsp; © 2026 &nbsp;·&nbsp; CA. Deepak Bhholusaria</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th class="ctr">Sr.</th><th>Source</th>
+        <th class="mono">TSN</th><th>Reported On</th><th class="wrap">Property Address</th>
+        <th>Property Type</th><th>Transaction Type</th><th>Transaction Date</th>
+        <th class="num">Transaction Amount (Rs.)</th>
+        <th class="num">Stamp Duty Value (Rs.)</th>
+        <th class="ctr">Party Count</th>
+        <th class="num">Assigned Amount (Rs.)</th>
+        <th class="ctr">Status</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="ctr">1</td><td>Sub-Registrar Gurgaon (RTKSG1234R)</td>
+          <td class="mono">132240004013659</td><td>15/11/2024</td>
+          <td class="wrap">B-601, Ambience Creacions, Gurgaon, 122016</td>
+          <td>Residential Apartment</td><td>Purchase</td><td>05/11/2024</td>
+          <td class="num">85,36,974.00</td><td class="num">90,00,000.00</td>
+          <td class="ctr">1</td><td class="num">85,36,974.00</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr class="subtotal">
+          <td></td><td colspan="7">Sr. 1 &nbsp;·&nbsp; Subtotal — Sub-Registrar Gurgaon</td>
+          <td class="formula">=SUM(I3:I3)</td><td class="formula">=SUM(J3:J3)</td><td></td>
+          <td class="formula">=SUM(L3:L3)</td><td></td>
+        </tr>
+        <tr class="grand">
+          <td></td><td colspan="7">GRAND TOTAL — B2 - SFT-012 Immovable Property</td>
+          <td class="formula">=I4</td><td class="formula">=J4</td><td></td>
+          <td class="formula">=L4</td><td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- SHEET 9: SFT-17 Equity Sale Dep -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="sheet" id="s-17les">
+  <h2>SFT-17-LES(M) — Sale of Listed Equity Share (Depository – Market)</h2>
+  <p class="sheet-desc">Listed equity sales via NSDL/CDSL. Security-level detail with cost of acquisition and FMV.</p>
+  <div class="sheet-wrap">
+    <div class="brand">
+      <div class="brand-l">AIS — Priya Mehta — FGHIJ5678K — FY 2024-25</div>
+      <div class="brand-r">AayDoc Capio™ &nbsp;·&nbsp; 20-Aug-2025 &nbsp;·&nbsp; © 2026 &nbsp;·&nbsp; CA. Deepak Bhholusaria</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th class="ctr">Sr.</th><th>Source</th>
+        <th class="mono">TSN</th><th>Date of Sale/Transfer</th>
+        <th class="mono">ISIN</th><th>Security Name</th><th>Security Class</th>
+        <th>Debit Type</th><th>Credit Type</th><th>Asset Type</th>
+        <th class="num">Quantity</th><th class="num">Sale Price Per unit</th>
+        <th class="num">Sales Consideration</th>
+        <th class="num">Cost of Acquisition</th>
+        <th class="num">Unit FMV</th><th class="num">Fair Market Value</th>
+        <th class="num">Indexed Cost of Acquisition</th><th class="ctr">Status</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="ctr">1</td><td>NSDL (AADCN9802F.AD582)</td>
+          <td class="mono">141241346755443</td><td>28/03/2025</td>
+          <td class="mono">INE669E01016</td><td>VODAFONE IDEA LIMITED EQ</td><td>Listed Equity Share</td>
+          <td>Market</td><td>Market</td><td>Short term</td>
+          <td class="num">10,000.00</td><td class="num">6.90</td>
+          <td class="num">69,000.00</td><td class="num">80,600.00</td>
+          <td class="num">0.00</td><td class="num">0.00</td><td class="num">0.00</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr>
+          <td class="ctr">1</td><td>NSDL (AADCN9802F.AD582)</td>
+          <td class="mono">141241346755444</td><td>15/01/2025</td>
+          <td class="mono">INE040A01034</td><td>HDFC BANK LIMITED</td><td>Listed Equity Share</td>
+          <td>Market</td><td>Market</td><td>Long term</td>
+          <td class="num">500.00</td><td class="num">1,742.50</td>
+          <td class="num">8,71,250.00</td><td class="num">6,50,000.00</td>
+          <td class="num">0.00</td><td class="num">0.00</td><td class="num">0.00</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr class="subtotal">
+          <td></td><td colspan="10">Sr. 1 &nbsp;·&nbsp; Subtotal — NSDL</td>
+          <td class="formula">=SUM(K3:K4)</td>
+          <td class="formula">=SUM(M3:M4)</td><td class="formula">=SUM(N3:N4)</td>
+          <td></td><td class="formula">=SUM(P3:P4)</td><td class="formula">=SUM(Q3:Q4)</td><td></td>
+        </tr>
+        <tr class="grand">
+          <td></td><td colspan="10">GRAND TOTAL — B2 - SFT-17 Equity Sale Dep</td>
+          <td class="formula">=K5</td>
+          <td class="formula">=M5</td><td class="formula">=N5</td>
+          <td></td><td class="formula">=P5</td><td class="formula">=Q5</td><td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- SHEET 10: SFT-18 Eq MF Sale RTA -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="sheet" id="s-18emf">
+  <h2>SFT-18-EMF(M) — Sale of Unit of Equity Oriented Mutual Fund (RTA)</h2>
+  <p class="sheet-desc">MF unit sales via RTA (CAMS/KFintech). Adds AMC Name and STT columns vs SFT-17.</p>
+  <div class="sheet-wrap">
+    <div class="brand">
+      <div class="brand-l">AIS — Priya Mehta — FGHIJ5678K — FY 2024-25</div>
+      <div class="brand-r">AayDoc Capio™ &nbsp;·&nbsp; 20-Aug-2025 &nbsp;·&nbsp; © 2026 &nbsp;·&nbsp; CA. Deepak Bhholusaria</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th class="ctr">Sr.</th><th>Source</th>
+        <th class="mono">TSN</th><th>AMC Name (Code)</th><th>Date of Sale/Transfer</th>
+        <th>Security Class</th><th class="mono">ISIN</th><th>Security Name</th>
+        <th>Debit Type</th><th>Credit Type</th><th>Asset Type</th>
+        <th class="num">Quantity</th><th class="num">Sale Price Per unit</th>
+        <th class="num">Sales Consideration</th><th class="num">STT</th>
+        <th class="num">Cost of Acquisition</th>
+        <th class="num">Unit FMV</th><th class="num">Fair Market Value</th>
+        <th class="num">Indexed Cost of Acquisition</th><th class="ctr">Status</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="ctr">1</td><td>CAMS (AAACC3035G.AZ670)</td>
+          <td class="mono">141241346755454</td><td>Nippon India Mutual Fund</td><td>01/02/2025</td>
+          <td>Unit of Equity Oriented MF</td><td class="mono">INF204KB14I2</td><td>NIPPON INDIA NIFTY 50 BeES</td>
+          <td>Market</td><td>Market</td><td>Short term</td>
+          <td class="num">4,999.00</td><td class="num">264.28</td>
+          <td class="num">13,21,135.72</td><td class="num">264.00</td>
+          <td class="num">12,98,240.30</td><td class="num">0.00</td><td class="num">0.00</td><td class="num">0.00</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr class="subtotal">
+          <td></td><td colspan="11">Sr. 1 &nbsp;·&nbsp; Subtotal — CAMS</td>
+          <td class="formula">=SUM(L3:L3)</td>
+          <td class="formula">=SUM(N3:N3)</td><td class="formula">=SUM(O3:O3)</td>
+          <td class="formula">=SUM(P3:P3)</td>
+          <td></td><td class="formula">=SUM(R3:R3)</td><td class="formula">=SUM(S3:S3)</td><td></td>
+        </tr>
+        <tr class="grand">
+          <td></td><td colspan="11">GRAND TOTAL — B2 - SFT-18 Eq MF Sale RTA</td>
+          <td class="formula">=L4</td><td class="formula">=N4</td><td class="formula">=O4</td>
+          <td class="formula">=P4</td><td></td><td class="formula">=R4</td><td class="formula">=S4</td><td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- SHEET 11: SFT-18(Div) MF Dividend RTA -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="sheet" id="s-18div">
+  <h2>SFT-18(Div) — Dividend on Units of Mutual Fund (SFT-018)</h2>
+  <p class="sheet-desc">Dividend on MF units reported by RTAs. Flat detail rows — multiple AMCs/quarters run continuously. Summary block by source below. (Priya Mehta — FGHIJ5678K)</p>
+  <div class="sheet-wrap">
+    <div class="brand">
+      <div class="brand-l">AIS — Priya Mehta — FGHIJ5678K — FY 2024-25</div>
+      <div class="brand-r">AayDoc Capio™ &nbsp;·&nbsp; 20-Aug-2025 &nbsp;·&nbsp; © 2026 &nbsp;·&nbsp; CA. Deepak Bhholusaria</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th class="ctr">Sr.</th><th>Source</th>
+        <th class="mono">TSN</th><th>Quarter</th><th>Client ID</th><th>AMC Name (Code)</th>
+        <th class="ctr">No. of Holders</th><th>Holder Flag</th>
+        <th class="num">Dividend Amount (Rs.)</th><th class="ctr">Status</th>
+      </tr></thead>
+      <tbody>
+        <!-- ── Detail rows (flat, no subtotals) ── -->
+        <tr>
+          <td class="ctr">1</td>
+          <td>Computer Age Management Services Limited - HDFC Asset Management Company Limited(H) (AAACC3035G.AZ670)</td>
+          <td class="mono">142240221898989</td><td>Q4 (Jan–Mar)</td><td>24922943</td>
+          <td>HDFC Asset Management Company Limited(H)</td>
+          <td class="ctr">1</td><td>First</td><td class="num">10,566.75</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr>
+          <td class="ctr">2</td>
+          <td>KFin Technologies Pvt. Ltd - NIPPON INDIA MUTUAL FUND(RMF) (AAACC3035G.AZ671)</td>
+          <td class="mono">142240137714530</td><td>Q4 (Jan–Mar)</td><td>401114065362</td>
+          <td>NIPPON INDIA MUTUAL FUND(RMF)</td>
+          <td class="ctr">3</td><td>First</td><td class="num">3,097.60</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+
+        <!-- ── Spacer ── -->
+        <tr class="spacer"><td colspan="10"></td></tr>
+
+        <!-- ── Summary block ── -->
+        <tr class="sum-hdr"><td colspan="8">SUMMARY — by Source</td><td class="num">Dividend Amount (Rs.)</td><td></td></tr>
+        <tr class="sum-row"><td colspan="8">CAMS - HDFC Asset Management Company Limited(H)</td><td class="formula">=SUM(I3:I3)</td><td></td></tr>
+        <tr class="sum-row"><td colspan="8">KFin Technologies - NIPPON INDIA MUTUAL FUND</td><td class="formula">=SUM(I4:I4)</td><td></td></tr>
+        <tr class="grand"><td colspan="8">GRAND TOTAL — B2 - SFT-18 MF Dividend RTA</td><td class="formula">=SUM(I3:I4)</td><td></td></tr>
+      </tbody>
+    </table>
+    <div class="note">Each RTA-AMC combination is a separate element/source. Flat detail rows per RTA. Summary sums each source's row range. Grand total = SUM of all detail rows.</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- SHEET 12: SFT-17(Pur) Securities Purchase Depository -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="sheet" id="s-17pur">
+  <h2>SFT-17(Pur) — Purchase of Securities (SFT-017)</h2>
+  <p class="sheet-desc">Quarterly aggregate of securities purchased via Depository.</p>
+  <div class="sheet-wrap">
+    <div class="brand">
+      <div class="brand-l">AIS — Priya Mehta — FGHIJ5678K — FY 2024-25</div>
+      <div class="brand-r">AayDoc Capio™ &nbsp;·&nbsp; 20-Aug-2025 &nbsp;·&nbsp; © 2026 &nbsp;·&nbsp; CA. Deepak Bhholusaria</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th class="ctr">Sr.</th><th>Source</th>
+        <th class="mono">TSN</th><th>Quarter</th><th>Client ID</th><th>Holder Flag</th>
+        <th class="num">Market Purchase (Rs.)</th><th class="num">Market Sales (Rs.)</th>
+        <th class="ctr">Status</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="ctr">1</td><td>NSDL (AADCN9802F.AD582)</td>
+          <td class="mono">142240280723573</td><td>—</td><td>63634865</td><td>First</td>
+          <td class="num">1,42,06,248.65</td><td class="num">5,11,62,421.20</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr class="subtotal">
+          <td></td><td colspan="5">Sr. 1 &nbsp;·&nbsp; Subtotal — NSDL</td>
+          <td class="formula">=SUM(G3:G3)</td><td class="formula">=SUM(H3:H3)</td><td></td>
+        </tr>
+        <tr class="grand">
+          <td></td><td colspan="5">GRAND TOTAL — B2 - SFT-17 Sec Purchase Dep</td>
+          <td class="formula">=G4</td><td class="formula">=H4</td><td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- SHEET 13: SFT-18(Pur) MF Purchase RTA -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="sheet" id="s-18pur">
+  <h2>SFT-18(Pur) — Purchase of Mutual Funds (SFT-018)</h2>
+  <p class="sheet-desc">Mutual fund purchases via RTA. Adds AMC Name column vs SFT-17(Pur).</p>
+  <div class="sheet-wrap">
+    <div class="brand">
+      <div class="brand-l">AIS — Priya Mehta — FGHIJ5678K — FY 2024-25</div>
+      <div class="brand-r">AayDoc Capio™ &nbsp;·&nbsp; 20-Aug-2025 &nbsp;·&nbsp; © 2026 &nbsp;·&nbsp; CA. Deepak Bhholusaria</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th class="ctr">Sr.</th><th>Source</th>
+        <th class="mono">TSN</th><th>Quarter</th><th>Client ID</th><th>AMC Name (Code)</th>
+        <th>Holder Flag</th>
+        <th class="num">Purchase Amount (Rs.)</th><th class="num">Sales Amount (Rs.)</th>
+        <th class="ctr">Status</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="ctr">1</td><td>CAMS - Aditya Birla Sun Life MF (AAACC3035G.AZ670)</td>
+          <td class="mono">142240246926302</td><td>Q4 (Jan–Mar)</td><td>1048877159</td>
+          <td>Aditya Birla Sun Life Mutual Fund(B)</td><td>First</td>
+          <td class="num">9,99,950.00</td><td class="num">0.00</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr>
+          <td class="ctr">1</td><td>CAMS - Aditya Birla Sun Life MF (AAACC3035G.AZ670)</td>
+          <td class="mono">142240246926303</td><td>Q3 (Oct–Dec)</td><td>1048877159</td>
+          <td>Aditya Birla Sun Life Mutual Fund(B)</td><td>First</td>
+          <td class="num">4,99,950.00</td><td class="num">0.00</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr class="subtotal">
+          <td></td><td colspan="6">Sr. 1 &nbsp;·&nbsp; Subtotal — CAMS - Aditya Birla Sun Life MF</td>
+          <td class="formula">=SUM(H3:H4)</td><td class="formula">=SUM(I3:I4)</td><td></td>
+        </tr>
+        <tr class="grand">
+          <td></td><td colspan="6">GRAND TOTAL — B2 - SFT-18 MF Purchase RTA</td>
+          <td class="formula">=H5</td><td class="formula">=I5</td><td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- SHEET 14: SFT-005 Time Deposit -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="sheet" id="s-005">
+  <h2>SFT-005 — Purchase of Time Deposits</h2>
+  <p class="sheet-desc">Time deposit purchases reported by banks. Gross received = amount invested; Gross paid = maturity proceeds.</p>
+  <div class="sheet-wrap">
+    <div class="brand">
+      <div class="brand-l">AIS — Priya Mehta — FGHIJ5678K — FY 2024-25</div>
+      <div class="brand-r">AayDoc Capio™ &nbsp;·&nbsp; 20-Aug-2025 &nbsp;·&nbsp; © 2026 &nbsp;·&nbsp; CA. Deepak Bhholusaria</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th class="ctr">Sr.</th><th>Source</th>
+        <th class="mono">TSN</th><th>Reported On</th>
+        <th class="num">Gross Amount Received (Rs.)</th>
+        <th class="num">Gross Amount Paid (Rs.)</th>
+        <th class="ctr">Status</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="ctr">1</td><td>ICICI BANK LIMITED (AAACI1195H.AB286)</td>
+          <td class="mono">122240107801118</td><td>21/05/2025</td>
+          <td class="num">4,05,00,000.00</td><td class="num">4,26,37,800.00</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr class="subtotal">
+          <td></td><td colspan="3">Sr. 1 &nbsp;·&nbsp; Subtotal — ICICI BANK LIMITED</td>
+          <td class="formula">=SUM(E3:E3)</td><td class="formula">=SUM(F3:F3)</td><td></td>
+        </tr>
+        <tr class="grand">
+          <td></td><td colspan="3">GRAND TOTAL — B2 - SFT-005 Time Deposit</td>
+          <td class="formula">=E4</td><td class="formula">=F4</td><td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- SHEET 15: SFT-006 Credit Card -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="sheet" id="s-006">
+  <h2>SFT-006 — Payments Made in Respect of Credit Card</h2>
+  <p class="sheet-desc">Credit card payment amounts. Adds "Gross received in cash" column vs SFT-005.</p>
+  <div class="sheet-wrap">
+    <div class="brand">
+      <div class="brand-l">AIS — Priya Mehta — FGHIJ5678K — FY 2024-25</div>
+      <div class="brand-r">AayDoc Capio™ &nbsp;·&nbsp; 20-Aug-2025 &nbsp;·&nbsp; © 2026 &nbsp;·&nbsp; CA. Deepak Bhholusaria</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th class="ctr">Sr.</th><th>Source</th>
+        <th class="mono">TSN</th><th>Reported On</th>
+        <th class="num">Gross Amount Received (Rs.)</th>
+        <th class="num">Gross Amount Received in Cash (Rs.)</th>
+        <th class="num">Gross Amount Paid (Rs.)</th>
+        <th class="ctr">Status</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="ctr">1</td><td>SBI CARDS AND PAYMENT SERVICES (AAECS5981K.AB165)</td>
+          <td class="mono">122240154636724</td><td>22/05/2025</td>
+          <td class="num">18,17,838.00</td><td class="num">0.00</td><td class="num">—</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr class="subtotal">
+          <td></td><td colspan="3">Sr. 1 &nbsp;·&nbsp; Subtotal — SBI CARDS</td>
+          <td class="formula">=SUM(E3:E3)</td><td class="formula">=SUM(F3:F3)</td><td class="formula">=SUM(G3:G3)</td><td></td>
+        </tr>
+        <tr class="grand">
+          <td></td><td colspan="3">GRAND TOTAL — B2 - SFT-006 Credit Card</td>
+          <td class="formula">=E4</td><td class="formula">=F4</td><td class="formula">=G4</td><td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- SHEET 16: Payment of Taxes -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="sheet" id="s-tax">
+  <h2>Payment of Taxes</h2>
+  <p class="sheet-desc">B3 — Advance Tax, Self Assessment Tax challans. Direct schema — no l1/l2 nesting.</p>
+  <div class="sheet-wrap">
+    <div class="brand">
+      <div class="brand-l">AIS — Priya Mehta — FGHIJ5678K — FY 2024-25</div>
+      <div class="brand-r">AayDoc Capio™ &nbsp;·&nbsp; 20-Aug-2025 &nbsp;·&nbsp; © 2026 &nbsp;·&nbsp; CA. Deepak Bhholusaria</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Assessment Year</th><th>Major Head</th><th>Minor Head</th>
+        <th class="num">Tax (A)</th><th class="num">Surcharge (B)</th>
+        <th class="num">Education Cess (C)</th><th class="num">Others (D)</th>
+        <th class="num">Total (A+B+C+D)</th>
+        <th>BSR Code</th><th>Date of Deposit</th>
+        <th>Challan Serial No.</th><th>Challan ID No.</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td>2024-25</td><td>Income Tax (Other than Companies)</td><td>Self Assessment</td>
+          <td class="num">4,40,224.00</td><td class="num">0.00</td><td class="num">0.00</td><td class="num">0.00</td>
+          <td class="num">4,40,224.00</td><td>6390009</td><td>29/07/2024</td>
+          <td>61530</td><td>24072901018328ICIC</td>
+        </tr>
+        <tr class="grand">
+          <td colspan="3">GRAND TOTAL</td>
+          <td class="formula">=SUM(D3:D3)</td><td class="formula">=SUM(E3:E3)</td>
+          <td class="formula">=SUM(F3:F3)</td><td class="formula">=SUM(G3:G3)</td>
+          <td class="formula">=SUM(H3:H3)</td>
+          <td colspan="4"></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- SHEET 17: B7 Salary -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="sheet" id="s-sal">
+  <h2>TDS-Ann.II-SAL — Salary (TDS Annexure II)</h2>
+  <p class="sheet-desc">Salary income details from employer TDS returns. Source = employer name (TAN).</p>
+  <div class="sheet-wrap">
+    <div class="brand">
+      <div class="brand-l">AIS — Priya Mehta — FGHIJ5678K — FY 2024-25</div>
+      <div class="brand-r">AayDoc Capio™ &nbsp;·&nbsp; 20-Aug-2025 &nbsp;·&nbsp; © 2026 &nbsp;·&nbsp; CA. Deepak Bhholusaria</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th class="ctr">Sr.</th><th>Source (Employer)</th>
+        <th class="mono">TSN</th>
+        <th>Employment Start</th><th>Employment End</th>
+        <th class="num">Gross Salary u/s 17(1) (Rs.)</th>
+        <th class="num">Perquisites u/s 17(2) (Rs.)</th>
+        <th class="num">Profits in lieu u/s 17(3) (Rs.)</th>
+        <th class="num">Gross Salary (Rs.)</th>
+        <th class="ctr">Status</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="ctr">1</td><td>COSMO FIRST LIMITED (NSKC01155A)</td>
+          <td class="mono">133240055622208</td>
+          <td>01/04/2024</td><td>31/03/2025</td>
+          <td class="num">4,93,94,252.00</td><td class="num">7,02,08,850.00</td><td class="num">0.00</td>
+          <td class="num">11,96,03,102.00</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr class="subtotal">
+          <td></td><td colspan="4">Sr. 1 &nbsp;·&nbsp; Subtotal — COSMO FIRST LIMITED</td>
+          <td class="formula">=SUM(F3:F3)</td><td class="formula">=SUM(G3:G3)</td>
+          <td class="formula">=SUM(H3:H3)</td><td class="formula">=SUM(I3:I3)</td><td></td>
+        </tr>
+        <tr class="grand">
+          <td></td><td colspan="4">GRAND TOTAL — B7 - Salary</td>
+          <td class="formula">=F4</td><td class="formula">=G4</td>
+          <td class="formula">=H4</td><td class="formula">=I4</td><td></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="note">Note: Only Active rows are included. Inactive (corrected/superseded) filings are excluded from all sheets.</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- SHEET: SFT-010 Purchase of Mutual Fund Units -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="sheet" id="s-010">
+  <h2>SFT-010 — Purchase of Mutual Fund Units</h2>
+  <p class="sheet-desc">MF purchases reported by AMCs. Flat layout — Gross received = amount invested; Gross paid = redemption proceeds if any. (Rakesh Gupta — RSTUV3456W)</p>
+  <div class="sheet-wrap">
+    <div class="brand">
+      <div class="brand-l">AIS — Rakesh Gupta — RSTUV3456W — FY 2024-25</div>
+      <div class="brand-r">AayDoc Capio™ &nbsp;·&nbsp; 28-Jul-2025 &nbsp;·&nbsp; © 2026 &nbsp;·&nbsp; CA. Deepak Bhholusaria</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th class="ctr">Sr.</th><th>Source</th>
+        <th class="mono">TSN</th><th>Reported On</th>
+        <th class="num">Gross Amount Received (Rs.)</th>
+        <th class="num">Gross Amount Paid (Rs.)</th>
+        <th class="ctr">Status</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="ctr">1</td><td>NIPPON INDIA MUTUAL FUND (AAATR0090B.AM602)</td>
+          <td class="mono">122240178111939</td><td>27/05/2025</td>
+          <td class="num">24,00,000.00</td><td class="num">0.00</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr class="subtotal">
+          <td></td><td colspan="3">Sr. 1 &nbsp;·&nbsp; Subtotal — NIPPON INDIA MUTUAL FUND</td>
+          <td class="formula">=SUM(E3:E3)</td><td class="formula">=SUM(F3:F3)</td><td></td>
+        </tr>
+        <tr class="grand">
+          <td></td><td colspan="3">GRAND TOTAL — B2 - SFT-010 MF Purchase</td>
+          <td class="formula">=E4</td><td class="formula">=F4</td><td></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="note">Note: SFT-010 columns match SFT-005 (same person-level SFT structure). Gross paid = 0 when no redemption in the period.</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- SHEET: SFT-17-UBT(M) Business Trust Sale Depository -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="sheet" id="s-17ubt">
+  <h2>SFT-17-UBT(M) — Sale of Unit of Equity Oriented Mutual Fund (Depository – Market)</h2>
+  <p class="sheet-desc">Sale of REIT/InvIT units via Depository. Same 16-col structure as SFT-17-LES(M). (Deepak Bhholusaria — BCDPQ6789R)</p>
+  <div class="sheet-wrap">
+    <div class="brand">
+      <div class="brand-l">AIS — Deepak Bhholusaria — BCDPQ6789R — FY 2024-25</div>
+      <div class="brand-r">AayDoc Capio™ &nbsp;·&nbsp; 29-Aug-2025 &nbsp;·&nbsp; © 2026 &nbsp;·&nbsp; CA. Deepak Bhholusaria</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th class="ctr">Sr.</th><th>Source</th>
+        <th class="mono">TSN</th><th>Date of Sale/Transfer</th>
+        <th class="mono">ISIN</th><th>Security Name</th><th>Security Class</th>
+        <th>Debit Type</th><th>Credit Type</th><th>Asset Type</th>
+        <th class="num">Quantity</th><th class="num">Sale Price Per unit</th>
+        <th class="num">Sales Consideration</th>
+        <th class="num">Cost of Acquisition</th>
+        <th class="num">Unit FMV</th><th class="num">Fair Market Value</th>
+        <th class="num">Indexed Cost of Acquisition</th><th class="ctr">Status</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="ctr">1</td><td>CDSL (AAACC6233AMUMC09975A)</td>
+          <td class="mono">141241158540546</td><td>13/02/2025</td>
+          <td class="mono">INE041025011</td><td>EMBASSY OFFICE PARKS REIT — PERPETUAL</td>
+          <td>Unit of Business Trust</td><td>Market</td><td>Market</td><td>Short term</td>
+          <td class="num">12.00</td><td class="num">362.60</td>
+          <td class="num">4,351.20</td><td class="num">4,732.44</td>
+          <td class="num">0.00</td><td class="num">0.00</td><td class="num">0.00</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr>
+          <td class="ctr">1</td><td>CDSL (AAACC6233AMUMC09975A)</td>
+          <td class="mono">141241158540540</td><td>13/02/2025</td>
+          <td class="mono">INE041025011</td><td>EMBASSY OFFICE PARKS REIT — PERPETUAL</td>
+          <td>Unit of Business Trust</td><td>Market</td><td>Market</td><td>Short term</td>
+          <td class="num">2.00</td><td class="num">362.60</td>
+          <td class="num">725.20</td><td class="num">728.80</td>
+          <td class="num">0.00</td><td class="num">0.00</td><td class="num">0.00</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr>
+          <td class="ctr">1</td><td>CDSL (AAACC6233AMUMC09975A)</td>
+          <td class="mono">141241158540532</td><td>13/02/2025</td>
+          <td class="mono">INE041025011</td><td>EMBASSY OFFICE PARKS REIT — PERPETUAL</td>
+          <td>Unit of Business Trust</td><td>Market</td><td>Market</td><td>Short term</td>
+          <td class="num">4.00</td><td class="num">362.60</td>
+          <td class="num">1,450.40</td><td class="num">1,423.84</td>
+          <td class="num">0.00</td><td class="num">0.00</td><td class="num">0.00</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr class="subtotal">
+          <td></td><td colspan="10">Sr. 1 &nbsp;·&nbsp; Subtotal — CDSL</td>
+          <td class="formula">=SUM(K3:K5)</td><td></td>
+          <td class="formula">=SUM(M3:M5)</td><td class="formula">=SUM(N3:N5)</td>
+          <td></td><td class="formula">=SUM(P3:P5)</td><td class="formula">=SUM(Q3:Q5)</td><td></td>
+        </tr>
+        <tr class="grand">
+          <td></td><td colspan="10">GRAND TOTAL — B2 - SFT-17 Bus Trust Sale Dep</td>
+          <td class="formula">=K6</td><td></td>
+          <td class="formula">=M6</td><td class="formula">=N6</td>
+          <td></td><td class="formula">=P6</td><td class="formula">=Q6</td><td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- SHEET: SFT-17-LES(OC) Off-Market Equity Transfer -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="sheet" id="s-17oc">
+  <h2>SFT-17-LES(OC) — Value of Off Market Credit Transactions of Listed Equity Share (Depository)</h2>
+  <p class="sheet-desc">Off-market transfers of listed equity shares — includes transferor name/PAN, nature of transfer, EOD price. Different columns from market sales. (Rajesh Verma — LMNOP9012Q)</p>
+  <div class="sheet-wrap">
+    <div class="brand">
+      <div class="brand-l">AIS — Rajesh Verma — LMNOP9012Q — FY 2024-25</div>
+      <div class="brand-r">AayDoc Capio™ &nbsp;·&nbsp; 29-Jul-2025 &nbsp;·&nbsp; © 2026 &nbsp;·&nbsp; CA. Deepak Bhholusaria</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th class="ctr">Sr.</th><th>Source</th>
+        <th class="mono">TSN</th><th>Transferor Name (PAN)</th>
+        <th>Date of Transfer</th><th>Nature of Transfer</th>
+        <th class="mono">ISIN</th><th>Security Name</th><th>Security Class</th>
+        <th class="num">Quantity Transferred</th>
+        <th class="num">EOD Price per Unit</th>
+        <th class="num">End of the Day Value</th>
+        <th class="num">Consideration</th>
+        <th class="ctr">Status</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="ctr">1</td><td>NSDL (AADCN9802F.AD582)</td>
+          <td class="mono">143240001336337</td><td>RAJA SOOD (LMNOP9012Q)</td>
+          <td>28/06/2024</td><td>Transfer between specified family members</td>
+          <td class="mono">INE880A01017</td><td>KESORAM TEXTILE MILLS LIMITED EQ</td><td>Listed Equity Share</td>
+          <td class="num">19.00</td><td class="num">2.00</td>
+          <td class="num">38.00</td><td class="num">—</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr>
+          <td class="ctr">1</td><td>NSDL (AADCN9802F.AD582)</td>
+          <td class="mono">143240001336336</td><td>RAJA SOOD (LMNOP9012Q)</td>
+          <td>28/06/2024</td><td>Transfer between specified family members</td>
+          <td class="mono">INE322A01010</td><td>GILLETTE INDIA LIMITED EQ</td><td>Listed Equity Share</td>
+          <td class="num">100.00</td><td class="num">7,244.85</td>
+          <td class="num">7,24,485.00</td><td class="num">—</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr>
+          <td class="ctr">1</td><td>NSDL (AADCN9802F.AD582)</td>
+          <td class="mono">143240001336335</td><td>RAJA SOOD (LMNOP9012Q)</td>
+          <td>28/06/2024</td><td>Transfer between specified family members</td>
+          <td class="mono">INE239A01024</td><td>NESTLE INDIA LIMITED EQ NEW FV RE 1/-</td><td>Listed Equity Share</td>
+          <td class="num">1,500.00</td><td class="num">2,551.65</td>
+          <td class="num">38,27,475.00</td><td class="num">—</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr class="subtotal">
+          <td></td><td colspan="8">Sr. 1 &nbsp;·&nbsp; Subtotal — NSDL</td>
+          <td class="formula">=SUM(J3:J5)</td><td class="formula">=SUM(K3:K5)</td>
+          <td class="formula">=SUM(L3:L5)</td><td class="formula">=SUM(M3:M5)</td><td></td>
+        </tr>
+        <tr class="grand">
+          <td></td><td colspan="8">GRAND TOTAL — B2 - SFT-17 Equity Off-Market</td>
+          <td class="formula">=J6</td><td class="formula">=K6</td>
+          <td class="formula">=L6</td><td class="formula">=M6</td><td></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="note">Note: Consideration shows "—" when transfer is between family members at nil consideration. EOD Price and End of Day Value are still reported for FMV reference.</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- SHEET: SFT-18-OTU(M) Other Units Sale RTA -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="sheet" id="s-18otu">
+  <h2>SFT-18-OTU(M) — Sale of Other Unit (RTA)</h2>
+  <p class="sheet-desc">Sale of non-equity MF units (liquid funds, debt funds, etc.) via RTA. Same 18-col structure as SFT-18-EMF(M) with AMC Name and STT. (Sunita Nair — WXYZ7890A)</p>
+  <div class="sheet-wrap">
+    <div class="brand">
+      <div class="brand-l">AIS — Sunita Nair — WXYZ7890A — FY 2024-25</div>
+      <div class="brand-r">AayDoc Capio™ &nbsp;·&nbsp; 26-Jul-2025 &nbsp;·&nbsp; © 2026 &nbsp;·&nbsp; CA. Deepak Bhholusaria</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th class="ctr">Sr.</th><th>Source</th>
+        <th class="mono">TSN</th><th>AMC Name (Code)</th><th>Date of Sale/Transfer</th>
+        <th>Security Class</th><th class="mono">ISIN</th><th>Security Name</th>
+        <th>Debit Type</th><th>Credit Type</th><th>Asset Type</th>
+        <th class="num">Quantity</th><th class="num">Sale Price Per unit</th>
+        <th class="num">Sales Consideration</th><th class="num">STT</th>
+        <th class="num">Cost of Acquisition</th>
+        <th class="num">Unit FMV</th><th class="num">Fair Market Value</th>
+        <th class="num">Indexed Cost of Acquisition</th><th class="ctr">Status</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td class="ctr">1</td><td>CAMS (AAACC3035G.AZ670)</td>
+          <td class="mono">141241300452089</td>
+          <td>Franklin Templeton AMC (FTI)</td><td>17/03/2025</td>
+          <td>Other Units</td>
+          <td class="mono">INF090I01BG0</td><td>Franklin India Liquid Fund — Super Inst Plan — Growth</td>
+          <td>AMC (redemption)</td><td>AMC (purchase)</td><td>Short term</td>
+          <td class="num">12.98</td><td class="num">3,850.57</td>
+          <td class="num">49,999.69</td><td class="num">0.00</td>
+          <td class="num">48,545.09</td><td class="num">0.00</td><td class="num">0.00</td><td class="num">0.00</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr>
+          <td class="ctr">1</td><td>CAMS (AAACC3035G.AZ670)</td>
+          <td class="mono">141241312505733</td>
+          <td>Kotak Mahindra AMC (K)</td><td>16/03/2025</td>
+          <td>Other Units</td>
+          <td class="mono">INF174K01NI9</td><td>Kotak Liquid Fund Regular Plan Growth</td>
+          <td>AMC (redemption)</td><td>AMC (purchase)</td><td>Short term</td>
+          <td class="num">32.23</td><td class="num">5,171.48</td>
+          <td class="num">1,66,666.55</td><td class="num">0.00</td>
+          <td class="num">1,62,708.14</td><td class="num">0.00</td><td class="num">0.00</td><td class="num">0.00</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr>
+          <td class="ctr">1</td><td>CAMS (AAACC3035G.AZ670)</td>
+          <td class="mono">141241300588308</td>
+          <td>Franklin Templeton AMC (FTI)</td><td>16/03/2025</td>
+          <td>Other Units</td>
+          <td class="mono">INF090I01BG0</td><td>Franklin India Liquid Fund — Super Inst Plan — Growth</td>
+          <td>AMC (redemption)</td><td>AMC (purchase)</td><td>Short term</td>
+          <td class="num">21.64</td><td class="num">3,849.95</td>
+          <td class="num">83,332.17</td><td class="num">0.00</td>
+          <td class="num">81,329.99</td><td class="num">0.00</td><td class="num">0.00</td><td class="num">0.00</td>
+          <td class="ctr"><span class="badge badge-active">Active</span></td>
+        </tr>
+        <tr class="subtotal">
+          <td></td><td colspan="11">Sr. 1 &nbsp;·&nbsp; Subtotal — CAMS</td>
+          <td class="formula">=SUM(L3:L5)</td><td></td>
+          <td class="formula">=SUM(N3:N5)</td><td class="formula">=SUM(O3:O5)</td>
+          <td class="formula">=SUM(P3:P5)</td>
+          <td></td><td class="formula">=SUM(R3:R5)</td><td class="formula">=SUM(S3:S5)</td><td></td>
+        </tr>
+        <tr class="grand">
+          <td></td><td colspan="11">GRAND TOTAL — B2 - SFT-18 Othr Units Sale RTA</td>
+          <td class="formula">=L6</td><td></td>
+          <td class="formula">=N6</td><td class="formula">=O6</td>
+          <td class="formula">=P6</td>
+          <td></td><td class="formula">=R6</td><td class="formula">=S6</td><td></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="note">Note: "Other Units" = non-equity MF units (liquid, debt, hybrid). STT = 0 for non-equity redemptions. Same column layout as SFT-18-EMF(M).</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<!-- SHEET: Capital Market — Consolidated (SecData CSV) -->
+<!-- ════════════════════════════════════════════════════════════════════════ -->
+<div class="sheet" id="s-cm">
+  <h2>Capital Market — Consolidated (All Security Types)</h2>
+  <p class="sheet-desc">
+    Source: ITD Utility SecData CSV export — <strong>XXXPB9287X_2024-25_AIS_SecData_23072025.csv</strong><br>
+    All capital market transactions in one flat sheet: Listed Equity, Listed Debenture, Equity MF Units, Other Units.<br>
+    Short term rows on white; <span style="background:#f0f4ff;padding:0 4px;border:1px solid #ccd">long term rows in blue tint</span>.
+    Gains in <span style="color:#0E6674;font-weight:700">green</span>, losses in <span style="color:#8b0000;font-weight:700">red</span>.
+  </p>
+  <div class="sheet-wrap">
+    <div class="brand">
+      <div class="brand-l">AIS Capital Market — Arjun Sharma — ABCDE1234F — FY 2024-25</div>
+      <div class="brand-r">AayDoc Capio™ &nbsp;·&nbsp; 23-Jul-2025 &nbsp;·&nbsp; © 2026 &nbsp;·&nbsp; CA. Deepak Bhholusaria</div>
+    </div>
+    <table>
+      <thead><tr>
+        <th>FY</th>
+        <th>Reporting Entity</th>
+        <th>SFT Code</th>
+        <th>Date of Sale/Transfer</th>
+        <th class="mono">ISIN</th>
+        <th style="min-width:200px">Security Name</th>
+        <th>Security Class</th>
+        <th>Debit Type</th>
+        <th>Credit Type</th>
+        <th>Asset Type</th>
+        <th class="num">Quantity</th>
+        <th class="num">Sale Price Per unit</th>
+        <th class="num">Gross Sale Consideration (Rs.)</th>
+        <th class="num">Gross Cost of Acquisition (Rs.)</th>
+        <th class="num">FMV 31-Jan-2018 (per unit)</th>
+        <th class="num">Total FMV u/s 55(2)(ac)</th>
+        <th class="num">Adj. FMV (lower of Sale &amp; FMV)</th>
+        <th class="num">Adj. Cost (no indexation)</th>
+        <th class="num">Cost with Indexation</th>
+        <th class="num">Transfer Expenditure</th>
+        <th class="num">STCG (Rs.)</th>
+        <th class="num">LTCG w/o Indexation (Rs.)</th>
+        <th class="num">LTCG with Indexation (Rs.)</th>
+        <th class="ctr">Tax @10%</th>
+      </tr></thead>
+      <tbody>
+        <!-- ══ SFT-17-LES(M) — Listed Equity Sale (Depository Market) · rows 3–5 grouped ══ -->
+        <tr><td>2024-25</td><td>CDSL (AAACC6233A)</td><td>SFT-17-LES(M)</td><td>13/02/2025</td>
+          <td class="mono">INE999A01023</td><td>KSB LIMITED — NEW EQ SHARES FV RS.10/-</td>
+          <td>Listed Equity Share</td><td>Market</td><td>Market</td><td>Short term</td>
+          <td class="num">8.00</td><td class="num">631.12</td><td class="num">5,048.96</td>
+          <td class="num">7,143.20</td><td class="num">890.80</td><td class="num"></td><td class="num"></td>
+          <td class="num">7,143.20</td><td class="num">0.00</td><td class="num"></td>
+          <td class="gain-neg">-2,094</td><td class="gain-nil">—</td><td class="gain-nil">—</td><td class="ctr">Y</td></tr>
+        <tr><td>2024-25</td><td>CDSL (AAACC6233A)</td><td>SFT-17-LES(M)</td><td>13/02/2025</td>
+          <td class="mono">INE732A01036</td><td>KIRLOSKAR BROTHERS LIMITED — NEW EQ SHARES RS.2/-</td>
+          <td>Listed Equity Share</td><td>Market</td><td>Market</td><td>Short term</td>
+          <td class="num">2.00</td><td class="num">1,857.99</td><td class="num">3,715.98</td>
+          <td class="num">3,990.70</td><td class="num">0.00</td><td class="num"></td><td class="num"></td>
+          <td class="num">3,990.70</td><td class="num">0.00</td><td class="num"></td>
+          <td class="gain-neg">-275</td><td class="gain-nil">—</td><td class="gain-nil">—</td><td class="ctr">Y</td></tr>
+        <tr class="lt"><td>2024-25</td><td>CDSL (AAACC6233A)</td><td>SFT-17-LES(M)</td><td>13/02/2025</td>
+          <td class="mono">INE732A01036</td><td>KIRLOSKAR BROTHERS LIMITED — NEW EQ SHARES RS.2/-</td>
+          <td>Listed Equity Share</td><td>Market</td><td>Market</td><td><strong>Long term</strong></td>
+          <td class="num">4.00</td><td class="num">1,857.99</td><td class="num">7,431.96</td>
+          <td class="num">3,430.68</td><td class="num">0.00</td><td class="num"></td><td class="num"></td>
+          <td class="num">3,430.68</td><td class="num">0.00</td><td class="num"></td>
+          <td class="gain-nil">—</td><td class="gain-pos">4,001</td><td class="gain-nil">—</td><td class="ctr">Y</td></tr>
+        <tr class="sft-sub">
+          <td colspan="10">Subtotal — SFT-17-LES(M) &nbsp;<span class="grp-note">[ Excel: rows 3–5 grouped at level 1 ]</span></td>
+          <td class="num formula">=SUM(K3:K5)</td><td></td>
+          <td class="num formula">=SUM(M3:M5)</td><td class="num formula">=SUM(N3:N5)</td>
+          <td colspan="8"></td>
+          <td class="num formula">=SUM(W3:W5)</td><td class="num formula">=SUM(X3:X5)</td><td class="num formula">=SUM(Y3:Y5)</td><td></td>
+        </tr>
+
+        <!-- ══ SFT-17-LDB(M) — Listed Debenture Sale (Depository Market) · row 7 grouped ══ -->
+        <tr><td>2024-25</td><td>CDSL (AAACC6233A)</td><td>SFT-17-LDB(M)</td><td>17/03/2025</td>
+          <td class="mono">IN0020190545</td><td>GOVT OF INDIA 2.5% SGB 2019-20 SERIES IX 2028</td>
+          <td>Listed Debenture</td><td>Market</td><td>Market</td><td>Short term</td>
+          <td class="num">1.00</td><td class="num">8,470.00</td><td class="num">8,470.00</td>
+          <td class="num">8,570.00</td><td class="num">0.00</td><td class="num"></td><td class="num"></td>
+          <td class="num">8,570.00</td><td class="num">0.00</td><td class="num"></td>
+          <td class="gain-nil">—</td><td class="gain-neg">-100</td><td class="gain-nil">—</td><td class="ctr">Y</td></tr>
+        <tr class="sft-sub">
+          <td colspan="10">Subtotal — SFT-17-LDB(M) &nbsp;<span class="grp-note">[ Excel: row 7 grouped at level 1 ]</span></td>
+          <td class="num formula">=SUM(K7:K7)</td><td></td>
+          <td class="num formula">=SUM(M7:M7)</td><td class="num formula">=SUM(N7:N7)</td>
+          <td colspan="8"></td>
+          <td class="num formula">=SUM(W7:W7)</td><td class="num formula">=SUM(X7:X7)</td><td class="num formula">=SUM(Y7:Y7)</td><td></td>
+        </tr>
+
+        <!-- ══ SFT-17-EMF(M) — Equity MF Sale (Depository Market) · rows 9–10 grouped ══ -->
+        <tr><td>2024-25</td><td>NSDL (AADCN9802F)</td><td>SFT-17-EMF(M)</td><td>01/02/2025</td>
+          <td class="mono">INF204KB14I2</td><td>NIPPON INDIA MF ETF NIFTY 50 BeES</td>
+          <td>Unit of Equity Oriented MF</td><td>Market</td><td>Market</td><td>Short term</td>
+          <td class="num">4,999.00</td><td class="num">264.28</td><td class="num">13,21,135.72</td>
+          <td class="num">12,98,240.30</td><td class="num">0.00</td><td class="num"></td><td class="num"></td>
+          <td class="num">12,98,240.30</td><td class="num">0.00</td><td class="num"></td>
+          <td class="gain-pos">22,895</td><td class="gain-nil">—</td><td class="gain-nil">—</td><td class="ctr">Y</td></tr>
+        <tr><td>2024-25</td><td>NSDL (AADCN9802F)</td><td>SFT-17-EMF(M)</td><td>31/01/2025</td>
+          <td class="mono">INF204KB14I2</td><td>NIPPON INDIA MF ETF NIFTY 50 BeES</td>
+          <td>Unit of Equity Oriented MF</td><td>Market</td><td>Market</td><td>Short term</td>
+          <td class="num">1.00</td><td class="num">262.99</td><td class="num">262.99</td>
+          <td class="num">259.70</td><td class="num">0.00</td><td class="num"></td><td class="num"></td>
+          <td class="num">259.70</td><td class="num">0.00</td><td class="num"></td>
+          <td class="gain-pos">3</td><td class="gain-nil">—</td><td class="gain-nil">—</td><td class="ctr">Y</td></tr>
+        <tr class="sft-sub">
+          <td colspan="10">Subtotal — SFT-17-EMF(M) &nbsp;<span class="grp-note">[ Excel: rows 9–10 grouped at level 1 ]</span></td>
+          <td class="num formula">=SUM(K9:K10)</td><td></td>
+          <td class="num formula">=SUM(M9:M10)</td><td class="num formula">=SUM(N9:N10)</td>
+          <td colspan="8"></td>
+          <td class="num formula">=SUM(W9:W10)</td><td class="num formula">=SUM(X9:X10)</td><td class="num formula">=SUM(Y9:Y10)</td><td></td>
+        </tr>
+
+        <!-- ══ SFT-17-UBT(M) — Business Trust / REIT Sale (Depository Market) · rows 12–13 grouped ══ -->
+        <tr><td>2024-25</td><td>CDSL (AAACC6233A)</td><td>SFT-17-UBT(M)</td><td>13/02/2025</td>
+          <td class="mono">INE041025011</td><td>EMBASSY OFFICE PARKS REIT — PERPETUAL</td>
+          <td>Unit of Business Trust</td><td>Market</td><td>Market</td><td>Short term</td>
+          <td class="num">12.00</td><td class="num">362.60</td><td class="num">4,351.20</td>
+          <td class="num">4,732.44</td><td class="num">0.00</td><td class="num"></td><td class="num"></td>
+          <td class="num">4,732.44</td><td class="num">0.00</td><td class="num"></td>
+          <td class="gain-neg">-381</td><td class="gain-nil">—</td><td class="gain-nil">—</td><td class="ctr">Y</td></tr>
+        <tr><td>2024-25</td><td>CDSL (AAACC6233A)</td><td>SFT-17-UBT(M)</td><td>13/02/2025</td>
+          <td class="mono">INE041025011</td><td>EMBASSY OFFICE PARKS REIT — PERPETUAL</td>
+          <td>Unit of Business Trust</td><td>Market</td><td>Market</td><td>Short term</td>
+          <td class="num">2.00</td><td class="num">362.60</td><td class="num">725.20</td>
+          <td class="num">728.80</td><td class="num">0.00</td><td class="num"></td><td class="num"></td>
+          <td class="num">728.80</td><td class="num">0.00</td><td class="num"></td>
+          <td class="gain-neg">-4</td><td class="gain-nil">—</td><td class="gain-nil">—</td><td class="ctr">Y</td></tr>
+        <tr class="sft-sub">
+          <td colspan="10">Subtotal — SFT-17-UBT(M) &nbsp;<span class="grp-note">[ Excel: rows 12–13 grouped at level 1 ]</span></td>
+          <td class="num formula">=SUM(K12:K13)</td><td></td>
+          <td class="num formula">=SUM(M12:M13)</td><td class="num formula">=SUM(N12:N13)</td>
+          <td colspan="8"></td>
+          <td class="num formula">=SUM(W12:W13)</td><td class="num formula">=SUM(X12:X13)</td><td class="num formula">=SUM(Y12:Y13)</td><td></td>
+        </tr>
+
+        <!-- ══ SFT-17-LES(OC) — Listed Equity Off-Market Credit Transactions · rows 15–17 grouped ══ -->
+        <tr><td>2024-25</td><td>NSDL (AADCN9802F)</td><td>SFT-17-LES(OC)</td><td>28/06/2024</td>
+          <td class="mono">INE880A01017</td><td>KESORAM TEXTILE MILLS LIMITED EQ</td>
+          <td>Listed Equity Share</td><td>Market</td><td>Off market</td><td>—</td>
+          <td class="num">19.00</td><td class="num">2.00</td><td class="num">38.00</td>
+          <td class="num">—</td><td class="num">0.00</td><td class="num"></td><td class="num"></td>
+          <td class="num">—</td><td class="num">—</td><td class="num">—</td>
+          <td class="gain-nil">—</td><td class="gain-nil">—</td><td class="gain-nil">—</td><td class="ctr">Y</td></tr>
+        <tr><td>2024-25</td><td>NSDL (AADCN9802F)</td><td>SFT-17-LES(OC)</td><td>28/06/2024</td>
+          <td class="mono">INE322A01010</td><td>GILLETTE INDIA LIMITED EQ</td>
+          <td>Listed Equity Share</td><td>Market</td><td>Off market</td><td>—</td>
+          <td class="num">100.00</td><td class="num">7,244.85</td><td class="num">7,24,485.00</td>
+          <td class="num">—</td><td class="num">0.00</td><td class="num"></td><td class="num"></td>
+          <td class="num">—</td><td class="num">—</td><td class="num">—</td>
+          <td class="gain-nil">—</td><td class="gain-nil">—</td><td class="gain-nil">—</td><td class="ctr">Y</td></tr>
+        <tr><td>2024-25</td><td>NSDL (AADCN9802F)</td><td>SFT-17-LES(OC)</td><td>28/06/2024</td>
+          <td class="mono">INE239A01024</td><td>NESTLE INDIA LIMITED EQ NEW FV RE 1/-</td>
+          <td>Listed Equity Share</td><td>Market</td><td>Off market</td><td>—</td>
+          <td class="num">1,500.00</td><td class="num">2,551.65</td><td class="num">38,27,475.00</td>
+          <td class="num">—</td><td class="num">0.00</td><td class="num"></td><td class="num"></td>
+          <td class="num">—</td><td class="num">—</td><td class="num">—</td>
+          <td class="gain-nil">—</td><td class="gain-nil">—</td><td class="gain-nil">—</td><td class="ctr">Y</td></tr>
+        <tr class="sft-sub">
+          <td colspan="10">Subtotal — SFT-17-LES(OC) &nbsp;<span class="grp-note">[ Excel: rows 15–17 grouped at level 1 ]</span></td>
+          <td class="num formula">=SUM(K15:K17)</td><td></td>
+          <td class="num formula">=SUM(M15:M17)</td><td class="num">—</td>
+          <td colspan="8"></td>
+          <td class="num">—</td><td class="num">—</td><td class="num">—</td><td></td>
+        </tr>
+
+        <!-- ══ SFT-17-OTU(M) — Other Units Sale (Depository Market) · rows 19–20 grouped ══ -->
+        <tr><td>2024-25</td><td>NSDL (AADCN9802F)</td><td>SFT-17-OTU(M)</td><td>25/04/2024</td>
+          <td class="mono">INF204KB17I5</td><td>NIPPON INDIA MF ETF GOLD BeES</td>
+          <td>Other Units</td><td>Market</td><td>Market</td><td>Short term</td>
+          <td class="num">1.00</td><td class="num">60.65</td><td class="num">60.65</td>
+          <td class="num">40.27</td><td class="num">0.00</td><td class="num"></td><td class="num"></td>
+          <td class="num">40.27</td><td class="num">0.00</td><td class="num"></td>
+          <td class="gain-pos">20</td><td class="gain-nil">—</td><td class="gain-nil">—</td><td class="ctr">Y</td></tr>
+        <tr><td>2024-25</td><td>NSDL (AADCN9802F)</td><td>SFT-17-OTU(M)</td><td>21/03/2025</td>
+          <td class="mono">INF846K01CX4</td><td>AXIS MF — AXIS LIQUID FUND DIRECT PLAN GROWTH</td>
+          <td>Other Units</td><td>Market</td><td>Market</td><td>Short term</td>
+          <td class="num">1,000.00</td><td class="num">2,875.14</td><td class="num">28,75,142.00</td>
+          <td class="num">26,98,036.00</td><td class="num">0.00</td><td class="num"></td><td class="num"></td>
+          <td class="num">26,98,036.00</td><td class="num">0.00</td><td class="num"></td>
+          <td class="gain-pos">1,77,106</td><td class="gain-nil">—</td><td class="gain-nil">—</td><td class="ctr">Y</td></tr>
+        <tr class="sft-sub">
+          <td colspan="10">Subtotal — SFT-17-OTU(M) &nbsp;<span class="grp-note">[ Excel: rows 19–20 grouped at level 1 ]</span></td>
+          <td class="num formula">=SUM(K19:K20)</td><td></td>
+          <td class="num formula">=SUM(M19:M20)</td><td class="num formula">=SUM(N19:N20)</td>
+          <td colspan="8"></td>
+          <td class="num formula">=SUM(W19:W20)</td><td class="num formula">=SUM(X19:X20)</td><td class="num formula">=SUM(Y19:Y20)</td><td></td>
+        </tr>
+
+        <!-- ══ SFT-18-EMF(M) — Equity MF Sale (RTA) · rows 22–23 grouped ══ -->
+        <tr><td>2024-25</td><td>KFin (AAGCK6303B)</td><td>SFT-18-EMF(M)</td><td>26/11/2024</td>
+          <td class="mono">INF205K01122</td><td>Invesco India Arbitrage Fund — Regular Plan Growth</td>
+          <td>Unit of Equity Oriented MF</td><td>AMC (redemption)</td><td>AMC (purchase)</td><td>Short term</td>
+          <td class="num">1,73,672.99</td><td class="num">30.68</td><td class="num">53,28,443.52</td>
+          <td class="num">50,00,000.01</td><td class="num">0.00</td><td class="num"></td><td class="num"></td>
+          <td class="num">50,00,000.01</td><td class="num">0.00</td><td class="num"></td>
+          <td class="gain-pos">3,28,444</td><td class="gain-nil">—</td><td class="gain-nil">—</td><td class="ctr">Y</td></tr>
+        <tr><td>2024-25</td><td>KFin (AAGCK6303B)</td><td>SFT-18-EMF(M)</td><td>28/03/2025</td>
+          <td class="mono">INF740KA1DI4</td><td>DSP Arbitrage Fund — Reg Growth</td>
+          <td>Unit of Equity Oriented MF</td><td>AMC (redemption)</td><td>AMC (purchase)</td><td>Short term</td>
+          <td class="num">2,831.82</td><td class="num">14.71</td><td class="num">41,666.99</td>
+          <td class="num">40,692.47</td><td class="num">0.00</td><td class="num"></td><td class="num"></td>
+          <td class="num">40,692.47</td><td class="num">0.00</td><td class="num"></td>
+          <td class="gain-pos">974</td><td class="gain-nil">—</td><td class="gain-nil">—</td><td class="ctr">Y</td></tr>
+        <tr class="sft-sub">
+          <td colspan="10">Subtotal — SFT-18-EMF(M) &nbsp;<span class="grp-note">[ Excel: rows 22–23 grouped at level 1 ]</span></td>
+          <td class="num formula">=SUM(K22:K23)</td><td></td>
+          <td class="num formula">=SUM(M22:M23)</td><td class="num formula">=SUM(N22:N23)</td>
+          <td colspan="8"></td>
+          <td class="num formula">=SUM(W22:W23)</td><td class="num formula">=SUM(X22:X23)</td><td class="num formula">=SUM(Y22:Y23)</td><td></td>
+        </tr>
+
+        <!-- ══ SFT-18-OTU(M) — Other Units Sale (RTA) · rows 25–26 grouped ══ -->
+        <tr><td>2024-25</td><td>CAMS (AAACC3035G)</td><td>SFT-18-OTU(M)</td><td>17/03/2025</td>
+          <td class="mono">INF090I01BG0</td><td>Franklin India Liquid Fund — Super Institutional Plan Growth</td>
+          <td>Other Units</td><td>AMC (redemption)</td><td>AMC (purchase)</td><td>Short term</td>
+          <td class="num">12.98</td><td class="num">3,850.57</td><td class="num">49,999.69</td>
+          <td class="num">48,545.09</td><td class="num">0.00</td><td class="num"></td><td class="num"></td>
+          <td class="num">48,545.09</td><td class="num">0.00</td><td class="num"></td>
+          <td class="gain-pos">1,455</td><td class="gain-nil">—</td><td class="gain-nil">—</td><td class="ctr">Y</td></tr>
+        <tr><td>2024-25</td><td>CAMS (AAACC3035G)</td><td>SFT-18-OTU(M)</td><td>16/03/2025</td>
+          <td class="mono">INF174K01NI9</td><td>Kotak Liquid Fund Regular Plan Growth</td>
+          <td>Other Units</td><td>AMC (redemption)</td><td>AMC (purchase)</td><td>Short term</td>
+          <td class="num">32.23</td><td class="num">5,171.48</td><td class="num">1,66,666.55</td>
+          <td class="num">1,62,708.14</td><td class="num">0.00</td><td class="num"></td><td class="num"></td>
+          <td class="num">1,62,708.14</td><td class="num">0.00</td><td class="num"></td>
+          <td class="gain-pos">3,958</td><td class="gain-nil">—</td><td class="gain-nil">—</td><td class="ctr">Y</td></tr>
+        <tr class="sft-sub">
+          <td colspan="10">Subtotal — SFT-18-OTU(M) &nbsp;<span class="grp-note">[ Excel: rows 25–26 grouped at level 1 ]</span></td>
+          <td class="num formula">=SUM(K25:K26)</td><td></td>
+          <td class="num formula">=SUM(M25:M26)</td><td class="num formula">=SUM(N25:N26)</td>
+          <td colspan="8"></td>
+          <td class="num formula">=SUM(W25:W26)</td><td class="num formula">=SUM(X25:X26)</td><td class="num formula">=SUM(Y25:Y26)</td><td></td>
+        </tr>
+
+        <!-- ── Grand Total — sums subtotal rows only ── -->
+        <tr class="grand">
+          <td colspan="10">GRAND TOTAL</td>
+          <td class="num formula">=K6+K8+K11+K14+K18+K21+K24+K27</td><td></td>
+          <td class="num formula">=M6+M8+M11+M14+M18+M21+M24+M27</td>
+          <td class="num formula">=N6+N8+N11+N14+N18+N21+N24+N27</td>
+          <td colspan="8"></td>
+          <td class="num formula">=W6+W8+W11+W14+W18+W21+W24+W27</td>
+          <td class="num formula">=X6+X8+X11+X14+X18+X21+X24+X27</td>
+          <td class="num formula">=Y6+Y8+Y11+Y14+Y18+Y21+Y24+Y27</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- ══ Audit Trail ══ -->
+    <h3 style="margin:28px 0 8px; color:#0A1628; font-size:13px; letter-spacing:.5px;">
+      AUDIT TRAIL — Sale Consideration: Consolidated vs. Individual SFT Sheets
+    </h3>
+    <p style="font-size:11px;color:#555;margin:0 0 10px;">
+      Verifies that the Sale Consideration total in this consolidated sheet ties to the sum of
+      the individual AIS JSON-based SFT sheets. Any mismatch (✗) indicates a data discrepancy
+      between the ITD utility SecData export and the AIS JSON download.
+    </p>
+    <table class="audit-table">
+      <thead>
+        <tr>
+          <th>SFT Code</th>
+          <th>Description</th>
+          <th class="num">Consolidated Sheet (Rs.)</th>
+          <th class="num">Individual SFT Sheet (Rs.)</th>
+          <th class="num">Difference (Rs.)</th>
+          <th>Match?</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>SFT-17-LES(M)</td><td>Listed Equity Sale — Depository (Market)</td>
+          <td class="num formula">=M6</td>
+          <td class="num">16,196.90</td>
+          <td class="num formula">=M6 − 16196.90</td>
+          <td class="match">✓</td>
+        </tr>
+        <tr>
+          <td>SFT-17-LDB(M)</td><td>Listed Debenture Sale — Depository (Market)</td>
+          <td class="num formula">=M8</td>
+          <td class="num">8,470.00</td>
+          <td class="num formula">=M8 − 8470.00</td>
+          <td class="match">✓</td>
+        </tr>
+        <tr>
+          <td>SFT-17-EMF(M)</td><td>Equity MF Sale — Depository (Market)</td>
+          <td class="num formula">=M11</td>
+          <td class="num">13,21,398.71</td>
+          <td class="num formula">=M11 − 1321398.71</td>
+          <td class="match">✓</td>
+        </tr>
+        <tr>
+          <td>SFT-17-UBT(M)</td><td>Business Trust / REIT Sale — Depository (Market)</td>
+          <td class="num formula">=M14</td>
+          <td class="num">5,076.40</td>
+          <td class="num formula">=M14 − 5076.40</td>
+          <td class="match">✓</td>
+        </tr>
+        <tr>
+          <td>SFT-17-LES(OC)</td><td>Listed Equity — Off-Market Credit Transactions</td>
+          <td class="num formula">=M18</td>
+          <td class="num">45,51,998.00</td>
+          <td class="num formula">=M18 − 4551998.00</td>
+          <td class="match">✓</td>
+        </tr>
+        <tr>
+          <td>SFT-17-OTU(M)</td><td>Other Units Sale — Depository (Market)</td>
+          <td class="num formula">=M21</td>
+          <td class="num">28,75,202.65</td>
+          <td class="num formula">=M21 − 2875202.65</td>
+          <td class="match">✓</td>
+        </tr>
+        <tr>
+          <td>SFT-18-EMF(M)</td><td>Equity MF Sale — RTA</td>
+          <td class="num formula">=M24</td>
+          <td class="num">53,70,110.51</td>
+          <td class="num formula">=M24 − 5370110.51</td>
+          <td class="match">✓</td>
+        </tr>
+        <tr>
+          <td>SFT-18-OTU(M)</td><td>Other Units Sale — RTA</td>
+          <td class="num formula">=M27</td>
+          <td class="num">2,16,666.24</td>
+          <td class="num formula">=M27 − 216666.24</td>
+          <td class="match">✓</td>
+        </tr>
+        <tr class="audit-total">
+          <td colspan="2">GRAND TOTAL</td>
+          <td class="num formula">=M28</td>
+          <td class="num">1,43,70,119.41</td>
+          <td class="num formula">=M28 − 14370119.41</td>
+          <td class="match">✓</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="note">
+      Source: ITD Utility SecData CSV — 27 columns as exported. All security classes in one sheet.<br>
+      Short term rows = white background. Long term rows = blue tint.<br>
+      <strong>Excel grouping:</strong> detail rows within each SFT group are grouped at outline level 1 (Data → Group &amp; Outline) — click the − button on the left margin to collapse a group, leaving only its subtotal row visible.<br>
+      Individual SFT sheets (SFT-17-LES(M), SFT-18-EMF(M) etc.) use AIS JSON data; this consolidated sheet uses the richer ITD utility SecData export with computed gain/loss figures.
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -562,3 +562,13 @@ All v1.4.4 fixes shipped. Current known open items:
 - **B-07 / F-10** — Large 26AS on-demand flow via tdscpc.gov.in not yet automated
 - **F-08** — AIS JSON download for oversized AIS (P3)
 - **F-11–F-14** — Client groups, auto-update, log history, multi-AY download (backlog)
+
+---
+
+## 17. AIS Documentation Update — Security Class Enum Mappings (2026-06-18)
+
+### 17.1 Context
+In the Compliance Portal / AIS JSON schema, the `info_code` (e.g. `SFT-17-LES(M)` vs `SFT-17-EMF(M)`) and the `Security Class` enum codes (such as `LES`, `LPS`, `EMF`, etc.) are coupled. A specific transaction block under an `info_code` only consumes a subset of the security class enums. For example, `SFT-17-EMF(M)` only contains unit transactions (Security Class `EMF`), whereas Listed Equity Shares (`LES`) and Preference Shares (`LPS`) are strictly mapped under `SFT-17-LES(M)`.
+
+### 17.2 Fix
+Updated `Documentation/AIS_JSON_Tree.html` to add a new column "Consumed By (SFT Code)" to the "Security Class (SFT-17 & 18)" table, mapping each of the 10 enum codes to its corresponding SFT label.

@@ -38,6 +38,11 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+*:Zone.Identifier
+
+# Logs / temp
+email_log.txt
+scripts/tempCodeRunnerFile.sh
 
 # IDE
 .vscode/
@@ -45,3 +50,7 @@ Thumbs.db
 
 # Dynamic assets
 checkmark.png
+
+# Plans subfolder (untracked)
+Plans/
+
