@@ -2,7 +2,7 @@
 
 > **Version:** AIS JSON schema version 11.0.0 (AIS Utility, FY 2024-25 downloads)  
 > **Last updated:** 2026-06-17  
-> Verified against 5 real decrypted AIS files: Vikas Banga, Pankaj Poddar, Rakesh Kumar, Deepak Bholusaria, Shivasis Das, Suraj Prasad (all FY 2024-25).
+> Verified against 7 real decrypted AIS files: Vikas Banga, Pankaj Poddar, Rakesh Kumar, Deepak Bholusaria, Shivasis Das, Suraj Prasad, Raja Sood (all FY 2024-25).
 
 ---
 
@@ -162,7 +162,7 @@ Seven fields, always present. Rendered as key-value pairs in the General Info sh
 | B1 — TDS/TCS | `tdsTcs` | l1/l2 | Always present |
 | B2 — SFT | `sft` | l1/l2 | Always present |
 | B3 — Payment of Taxes | `paymentOfTaxes` | **direct** | Always present; different schema |
-| B4 — Demand & Refund | `demandAndRefund` | l1/l2 | Present but may have 0 elements |
+| B4 — Demand & Refund | `demandAndRefund` | **subSections (direct)** | Present but may have 0 subSections/elements |
 | B5 — Pending Proceedings | *(key unknown)* | l1/l2 | **Absent from JSON entirely** when no proceedings |
 | B6 — Completed Proceedings | *(key unknown)* | l1/l2 | **Absent from JSON entirely** when no proceedings |
 | B7 — Other Info | `other-info` | l1/l2 | Present; may have elements with `l1: null` |
@@ -171,7 +171,7 @@ Seven fields, always present. Rendered as key-value pairs in the General Info sh
 
 ## 7. Two Element Schemas
 
-### Schema A — l1/l2 (used by all sections except `paymentOfTaxes`)
+### Schema A — l1/l2 (used by `tdsTcs`, `sft`, and `other-info`)
 
 ```json
 {
@@ -240,268 +240,16 @@ The converter detects the schema by checking whether `element.get("l1")` or `ele
 
 ---
 
-## 8. B1 — TDS / TCS Detail
+## 8. Section-Specific Details (TDS/TCS, SFT, Taxes, etc.)
 
-`sectionKey: "tdsTcs"` — typically 6-20 elements, one per deductor/collector.
+For full details on the columns, data types, and schemas for each specific section (B1 through B7), refer to the interactive documentation in:
+👉 **[AIS_JSON_Tree.html](AIS_JSON_Tree.html)**
 
-**l1 columns (8, uniform across all TDS elements):**
-
-| # | Name | Type |
-|---|---|---|
-| 1 | TSN | String |
-| 2 | Quarter | String |
-| 3 | Date of Payment/Credit | String |
-| 4 | Amount Paid/Credited | decimal |
-| 5 | TDS Deducted | decimal |
-| 6 | TDS Deposited | decimal |
-| 7 | Status | String |
-| 8 | Feedback | String |
-
-l2 Info Code examples: `AIS_TDS_SAL` (salary), `AIS_TDS_INT` (interest), `AIS_TCS_GOODS` (TCS on goods), etc.
-
----
-
-## 9. B2 — SFT (Specified Financial Transactions)
-
-`sectionKey: "sft"` — up to 30+ elements. SFT codes may appear multiple times (once per reporting entity).
-
-### All 18 SFT Codes
-
-| Code | Description | Threshold | Reporter |
-|---|---|---|---|
-| SFT-001 | Purchase of bank drafts/pay orders in cash | ₹10L | Banks |
-| SFT-002 | Purchase of pre-paid instruments in cash | ₹10L | Banks |
-| SFT-003 | Cash deposits — current accounts | ₹50L | Banks |
-| SFT-004 | Cash deposits — non-current accounts | ₹10L | Banks, Post Office |
-| SFT-005 | Time deposit purchases | ₹10L | Banks, NBFCs, Post Office |
-| SFT-006 | Credit card payments | ₹1L cash / ₹10L other mode | Banks |
-| SFT-007 | Purchase of bonds/debentures | ₹10L | Issuers |
-| SFT-008 | Purchase of shares | ₹10L | Companies (including buyback) |
-| SFT-009 | Share buybacks | ₹10L | Listed companies |
-| SFT-010 | Purchase of mutual fund units | ₹10L | AMCs / RTAs |
-| SFT-011 | Foreign currency purchases | ₹10L | Authorised dealers |
-| SFT-012 | Immovable property transactions | ₹30L | Sub-Registrars |
-| SFT-013 | Cash payments for goods/services | ₹2L per transaction | Persons under tax audit |
-| SFT-014 | Cash deposits Nov–Dec 2016 (demonetization) | ₹2.5L | Banks, Post Office |
-| SFT-015 | Dividend distributions | All dividends | Companies |
-| SFT-016 | Interest payments | All interest | Banks, NBFCs, Post Office |
-| SFT-017 | Securities sale/transfer (Depository) | All transactions | CDSL, NSDL |
-| SFT-018 | MF unit sale/purchase (RTA) | All transactions | KFintech (CAMS) |
-
-### SFT Column Structures (confirmed from real files)
-
-#### SFT-005 — Time deposit purchases (6 cols)
-| # | Name |
-|---|---|
-| 1 | TSN |
-| 2 | Reported On |
-| 3 | Gross amount received from the person |
-| 4 | Gross amount paid to the person |
-| 5 | Status |
-| 6 | Feedback |
-
-#### SFT-012 — Sale of immovable property (12 cols)
-| # | Name |
-|---|---|
-| 1 | TSN |
-| 2 | Reported On |
-| 3 | Property Address |
-| 4 | Property type |
-| 5 | Transaction Type |
-| 6 | Transaction Date |
-| 7 | Transaction amount |
-| 8 | Value for Stamp Duty |
-| 9 | Party Count |
-| 10 | Transaction amount assigned |
-| 11 | Status |
-| 12 | Feedback |
-
-#### SFT-015 — Dividend from companies (5 cols)
-| # | Name |
-|---|---|
-| 1 | TSN |
-| 2 | Reported On |
-| 3 | Dividend Amount |
-| 4 | Status |
-| 5 | Feedback |
-
-Each dividend-paying company generates a separate element with Info Code `SFT-015`. A single AIS may have 10+ SFT-015 elements.
-
-#### SFT-016 — Bank interest (7 cols; same structure for all 3 sub-codes)
-
-Sub-codes: `SFT-016(SB)` savings bank, `SFT-016(TD)` term deposit, `SFT-016(RD)` recurring deposit.
-
-| # | Name |
-|---|---|
-| 1 | TSN |
-| 2 | Reported On |
-| 3 | Account Number |
-| 4 | Account Type |
-| 5 | Interest amount |
-| 6 | Status |
-| 7 | Feedback |
-
-#### SFT-017 — Capital market sales via Depository (16 cols)
-
-`l1Src: "AIS_SEC_DEP_MF"` — applies to: `SFT-17-LES(M)` listed equity, `SFT-17-LDB(M)` listed debenture, `SFT-17-EMF(M)` equity MF, `SFT-17-OTU(M)` other units, `SFT-17-UBT(M)` REIT/InvIT.
-
-| # | Name |
-|---|---|
-| 1 | TSN |
-| 2 | Date of Sale/Transfer |
-| 3 | Security Name (Security Code) |
-| 4 | Security Class |
-| 5 | Debit Type |
-| 6 | Credit Type |
-| 7 | Asset Type |
-| 8 | Quantity |
-| 9 | Sale Price Per unit |
-| 10 | Sales Consideration |
-| 11 | Cost of Acquisition |
-| 12 | Unit FMV |
-| 13 | Fair Market Value |
-| 14 | Indexed Cost of Acquisition |
-| 15 | Status |
-| 16 | Feedback |
-
-#### SFT-018 — Capital market sales via RTA (18 cols)
-
-`l1Src: "AIS_SEC_DEP_MF"` — applies to: `SFT-18-EMF(M)` equity MF, `SFT-18-OTU(M)` other units.
-
-Same as SFT-017 but with `AMC Name (Code)` inserted as column 2 (after TSN) and `STT` inserted as column 12 (after Sales Consideration). Total: 18 cols.
-
-| # | Name |
-|---|---|
-| 1 | TSN |
-| **2** | **AMC Name (Code)** |
-| 3 | Date of Sale/Transfer |
-| 4 | Security Class |
-| 5 | Security Name (Security Code) |
-| 6 | Debit Type |
-| 7 | Credit Type |
-| 8 | Asset Type |
-| 9 | Quantity |
-| 10 | Sale Price Per unit |
-| 11 | Sales Consideration |
-| **12** | **STT** |
-| 13 | Cost of Acquisition |
-| 14 | Unit FMV |
-| 15 | Fair Market Value |
-| 16 | Indexed Cost of Acquisition |
-| 17 | Status |
-| 18 | Feedback |
-
-#### SFT-17(Pur) — Depository purchase aggregate (8 cols)
-
-`l1Src: "AIS_SEC_DEP_MF_HLD_PUR_DIV"` — Info Code `SFT-17(Pur)`.
-
-| # | Name |
-|---|---|
-| 1 | TSN |
-| 2 | Quarter |
-| 3 | Client ID |
-| 4 | Holder Flag |
-| 5 | Market Purchase |
-| 6 | Market Sales |
-| 7 | Status |
-| 8 | Feedback |
-
-#### SFT-18(Pur) — RTA purchase aggregate (9 cols)
-
-`l1Src: "AIS_SEC_DEP_MF_HLD_PUR_DIV"` — Info Code `SFT-18(Pur)`.
-
-Same as SFT-17(Pur) but with `AMC Name (Code)` inserted as column 4 (between Client ID and Holder Flag).
-
-| # | Name |
-|---|---|
-| 1 | TSN |
-| 2 | Quarter |
-| 3 | Client ID |
-| **4** | **AMC Name (Code)** |
-| 5 | Holder Flag |
-| 6 | Total Purchase Amount |
-| 7 | Total Sales Value |
-| 8 | Status |
-| 9 | Feedback |
-
-Multiple `SFT-18(Pur)` elements appear — one per RTA (e.g. KFintech, CAMS).
-
-#### SFT-18(Div) — MF dividend via RTA (9 cols)
-
-`l1Src: "AIS_SEC_DEP_MF_HLD_PUR_DIV"` — Info Code `SFT-18(Div)`.
-
-| # | Name |
-|---|---|
-| 1 | TSN |
-| 2 | Quarter |
-| 3 | Client ID |
-| 4 | AMC Name (Code) |
-| 5 | No. of Holders |
-| 6 | Holder Flag |
-| 7 | Dividend Amount |
-| 8 | Status |
-| 9 | Feedback |
-
----
-
-## 10. B3 — Payment of Taxes (Direct Schema)
-
-`sectionKey: "paymentOfTaxes"` — uses **Schema B** (direct, no l1/l2 nesting).
-
-**12 columns:**
-
-| # | Name | Notes |
-|---|---|---|
-| 1 | Assessment Year | e.g. `2025-26` |
-| 2 | Major Head | e.g. `0021` (Income Tax) |
-| 3 | Minor Head | e.g. `300` (Advance Tax) |
-| 4 | Tax (A) | decimal |
-| 5 | Surcharge (B) | decimal |
-| 6 | Education Cess (C) | decimal |
-| 7 | Others (D) | decimal |
-| 8 | Total (A+B+C+D) | decimal |
-| 9 | BSR Code | bank branch code |
-| 10 | Date Of Deposit | e.g. `05-Dec-2024` |
-| 11 | Challan Serial Number | |
-| 12 | Challan Identification Number | |
-
-Example: Vikas Banga has 3 Advance Tax challans totalling ₹3,10,000.
-
----
-
-## 11. B4 — Demand and Refund
-
-`sectionKey: "demandAndRefund"` — uses Schema A (l1/l2). Present but may have 0 elements. Skip sheet if empty.
-
----
-
-## 12. B5 / B6 — Pending / Completed Proceedings
-
-**Absent from the JSON entirely** when there are no proceedings — not just empty sections. The converter must use `section.get("sectionKey") == "pendingProceedings"` (key unknown) and skip gracefully if not found.
-
----
-
-## 13. B7 — Other Information
-
-`sectionKey: "other-info"` — uses Schema A (l1/l2). May contain:
-
-- `AIS_TDS_ANNEX2` — Salary Annexure II (for salaried employees)
-
-#### AIS_TDS_ANNEX2 — Salary Annexure II (9 cols)
-
-| # | Name |
-|---|---|
-| 1 | TSN |
-| 2 | Employment Start Date |
-| 3 | Employment End Date |
-| 4 | Gross Salary u/s 17(1) |
-| 5 | Perquisites u/s 17(2) |
-| 6 | Profits in lieu of salary u/s 17(3) |
-| 7 | Gross Salary |
-| 8 | Status |
-| 9 | Feedback |
-
-**B7 edge case:** The B7 section may be present with elements where `l1` is `null` and `l2.columnData` is absent. This means the section header exists but there is no actual data. The converter must guard against `l1 is None` and skip the B7 sheet if all elements are empty.
+This HTML file provides:
+- Complete field listings and data types for all TDS/TCS, SFT, Taxes, Refunds, and Other Info sections (Part B1 to B7)
+- An interactive, collapsible **Part B Section & Info Code Quick Reference** index tree
+- Centralized reference tables for **short-code enum mappings** and **data format validation rules** (such as PAN, ISIN, and decimal amounts format regexes)
+- Real-world warnings highlighting data length quirks and schema types (Schema A vs. Schema B)
 
 ---
 
@@ -525,14 +273,34 @@ Example: Vikas Banga has 3 Advance Tax challans totalling ₹3,10,000.
 |---|---|---|
 | General Info | `header.columnData` + `footer.columnData` | Always |
 | Summary | All l2 rows from all sections | Always |
-| TDS / TCS | `tdsTcs` section l1 rows | If non-empty |
-| Capital Market Sales | `sft` elements with `l1Src=AIS_SEC_DEP_MF` | If non-empty |
-| Capital Market Purchases | `sft` elements with `l1Src=AIS_SEC_DEP_MF_HLD_PUR_DIV` | If non-empty |
-| SFT — Other | All other `sft` elements | If non-empty |
+| Part B1 - TDS TCS | `tdsTcs` elements excluding TDS-194IA(P) | If non-empty |
+| Part B1 - TDS on Property | `tdsTcs` elements with info_code=TDS-194IA(P) | If present |
+| B2 - SFT-005 Time Deposit | `sft` info_code=SFT-005 | If present |
+| B2 - SFT-006 Credit Card | `sft` info_code=SFT-006 | If present |
+| B2 - SFT-008 Purchase of Shares | `sft` info_code=SFT-008 | If present |
+| B2 - SFT-010 MF Purchase | `sft` info_code=SFT-010 | If present |
+| B2 - SFT-012 Immovable Property | `sft` info_code=SFT-012 | If present |
+| B2 - SFT-015 Dividend | `sft` info_code=SFT-015 | If present |
+| B2 - SFT-016 Interest Savings | `sft` info_code=SFT-016(SB) | If present |
+| B2 - SFT-016 Interest Term Dep | `sft` info_code=SFT-016(TD) | If present |
+| B2 - SFT-016 Interest Rec Dep | `sft` info_code=SFT-016(RD) | If present |
+| B2 - SFT-17 Sec Purchase Dep | `sft` info_code=SFT-17(Pur) | If present |
+| B2 - SFT-18 MF Purchase RTA | `sft` info_code=SFT-18(Pur) | If present |
+| B2 - SFT-18 MF Dividend RTA | `sft` info_code=SFT-18(Div) | If present |
+| B2 - SFT-17 Equity Sale Dep | `sft` info_code=SFT-17-LES(M) | If present |
+| B2 - SFT-17 Debenture Sale Dep | `sft` info_code=SFT-17-LDB(M) | If present |
+| B2 - SFT-17 Eq MF Sale Dep | `sft` info_code=SFT-17-EMF(M) | If present |
+| B2 - SFT-17 Bus Trust Sale Dep | `sft` info_code=SFT-17-UBT(M) | If present |
+| B2 - SFT-17 Othr Units Sale Dep | `sft` info_code=SFT-17-OTU(M) | If present |
+| B2 - SFT-17 Equity Off-Market | `sft` info_code=SFT-17-LES(OC) | If present |
+| B2 - SFT-18 Eq MF Sale RTA | `sft` info_code=SFT-18-EMF(M) | If present |
+| B2 - SFT-18 Othr Units Sale RTA | `sft` info_code=SFT-18-OTU(M) | If present |
 | Payment of Taxes | `paymentOfTaxes` direct schema | If non-empty |
-| B7 / Other Info | `other-info` section l1 rows | If non-empty |
+| B7 - Salary | `other-info` info_code=TDS-Ann.II-SAL | If present |
 | Demand & Refund | `demandAndRefund` section | If non-empty |
 | Pending Proceedings | B5 section (unknown key) | If section present |
 | Completed Proceedings | B6 section (unknown key) | If section present |
 
-All sheets use the **flat-table** pattern: one header row, parent fields repeated on every detail row, subtotals after each group, grand total at end. No staircase/nested headers.
+**Sheet naming rule:** All SFT sheets use prefix `B2 - ` and are truncated to 31 chars (Excel limit). Unknown info codes fall back to dynamic superset and sheet name `B2 - {code}`.
+
+All sheets use the **flat-table** pattern: one header row, Sr. + Source repeated on every detail row, `=SUM()` subtotals after each source group, grand total summing subtotal cells only. No staircase/nested headers.
