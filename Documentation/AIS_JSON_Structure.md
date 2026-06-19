@@ -2,7 +2,7 @@
 
 > **Version:** AIS JSON schema version 11.0.0 (AIS Utility, FY 2024-25 downloads)  
 > **Last updated:** 2026-06-17  
-> Verified against 7 real decrypted AIS files: Vikas Banga, Pankaj Poddar, Rakesh Kumar, Deepak Bholusaria, Shivasis Das, Suraj Prasad, Raja Sood (all FY 2024-25).
+> Verified against 7 real decrypted AIS files. 
 
 ---
 
@@ -26,10 +26,10 @@ password = pan.lower() + "GQ39%*g" + dob_ddmmyyyy
 
 | Component | Example |
 |---|---|
-| PAN (lowercase) | `afcpb9287r` |
+| PAN (lowercase) | `<pan_lower>` |
 | Fixed pepper | `GQ39%*g` |
-| DOB in DDMMYYYY | `09071979` |
-| **Full password** | **`afcpb9287rGQ39%*g09071979`** |
+| DOB in DDMMYYYY | `<dob_ddmmyyyy>` |
+| **Full password** | **`<pan_lower>GQ39%*g<dob_ddmmyyyy>`** |
 
 DOB stored in vault as `DD-MM-YYYY` — strip the hyphens to get `DDMMYYYY`.
 
@@ -99,7 +99,7 @@ A `ValueError` (bad padding) means wrong PAN or DOB. The `cryptography` library 
 
 ```json
 {
-  "loggedInPan":    "AFCPB9287R",
+  "loggedInPan":    "<PAN>",
   "jsonVersion":    "11.0.0",
   "downloadDate":   "23-Jul-2025",
   "utilityVersion": "..."
@@ -119,8 +119,8 @@ Used to derive the output filename: `{PAN}-AIS-{FY}.xlsx`. FY is derived from `d
     "Date of Birth", "Mobile Number", "E-mail Address", "Address"
   ],
   "columnData": [
-    "AFCPB9287R", "XXXX-XXXX-1234", "VIKAS BANGA",
-    "09/07/1979", "9XXXXXXXXX", "v***@gmail.com", "..."
+    "<PAN>", "<MASKED_AADHAAR>", "<ASSESSEE_NAME>",
+    "<DOB_DD/MM/YYYY>", "<MOBILE>", "<EMAIL>", "<ADDRESS>"
   ]
 }
 ```
