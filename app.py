@@ -634,7 +634,7 @@ class AayDocCapioApp(QMainWindow):
         self._hdr_update_lnk.setAlignment(Qt.AlignmentFlag.AlignRight)
         self._hdr_update_lnk.setOpenExternalLinks(False)
         self._hdr_update_lnk.linkActivated.connect(self._on_update_link_clicked)
-        self._hdr_update_lnk.hide()
+        self._hdr_update_lnk.setFixedHeight(16)
         ml.addWidget(self._hdr_update_lnk)
 
         ml.addStretch()
@@ -2014,14 +2014,16 @@ class AayDocCapioApp(QMainWindow):
     def _on_update_result(self, tag: str, url: str):
         self._pending_update_url = url
         if tag:
-            self._hdr_update_lnk.setText(
-                f'<a href="#" style="color:#2563EB;font-size:11px;">&#11015; v{tag} available</a>'
-            )
-            self._hdr_update_lnk.show()
+            self._update_link_text = f'<a href="#" style="color:#2563EB;font-size:11px;">&#11015; v{tag} available</a>'
+            self._update_link_visible = True
+            self._hdr_update_lnk.setText(self._update_link_text)
             self._update_blink_timer = QTimer(self)
-            self._update_blink_timer.timeout.connect(
-                lambda: self._hdr_update_lnk.setVisible(not self._hdr_update_lnk.isVisible())
-            )
+            def _blink():
+                self._update_link_visible = not self._update_link_visible
+                self._hdr_update_lnk.setText(
+                    self._update_link_text if self._update_link_visible else ""
+                )
+            self._update_blink_timer.timeout.connect(_blink)
             self._update_blink_timer.start(600)
         elif getattr(self, "_update_check_manual", False):
             from PyQt6.QtWidgets import QMessageBox
@@ -2034,7 +2036,7 @@ class AayDocCapioApp(QMainWindow):
     def _on_update_link_clicked(self):
         if hasattr(self, "_update_blink_timer"):
             self._update_blink_timer.stop()
-        self._hdr_update_lnk.show()
+        self._hdr_update_lnk.setText(getattr(self, "_update_link_text", ""))
         url = getattr(self, "_pending_update_url", None) or \
             "https://github.com/dkbholusaria/AayDocCapio/releases/latest"
         QDesktopServices.openUrl(QUrl(url))
