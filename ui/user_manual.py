@@ -251,6 +251,11 @@ def _user_manual_page_html(img_uris: dict) -> str:
     }}
     
     /* Nested sidebar styling */
+    .sidebar-group {{
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }}
     .sidebar-nav-item.sub-item {{
       padding: 6px 14px 6px 28px;
       font-size: 0.81rem;
@@ -267,6 +272,56 @@ def _user_manual_page_html(img_uris: dict) -> str:
       border-left: 2px solid #1D4ED8;
       border-top-left-radius: 0;
       border-bottom-left-radius: 0;
+    }}
+    
+    .sidebar-nav-item.sub-sub-item {{
+      padding: 6px 14px 6px 42px;
+      font-size: 0.78rem;
+      color: #64748B;
+    }}
+    .sidebar-nav-item.sub-sub-item:hover {{
+      background: rgba(15, 58, 104, 0.03);
+      color: #0F3A68;
+    }}
+    .sidebar-nav-item.sub-sub-item.active {{
+      background: #F0F7FF;
+      color: #1D4ED8;
+      font-weight: 600;
+      border-left: 2px solid #1D4ED8;
+      border-top-left-radius: 0;
+      border-bottom-left-radius: 0;
+    }}
+
+    /* Collapsible Logic */
+    .sidebar-group .sub-item,
+    .sidebar-group .sub-sub-item {{
+      max-height: 0;
+      opacity: 0;
+      overflow: hidden;
+      padding-top: 0;
+      padding-bottom: 0;
+      margin-top: 0;
+      margin-bottom: 0;
+      pointer-events: none;
+      border-left-width: 0 !important;
+      transition: max-height 0.2s ease-out, opacity 0.2s ease-out, padding 0.2s ease-out, margin 0.2s ease-out;
+    }}
+    
+    .sidebar-group.active .sub-item {{
+      max-height: 50px;
+      opacity: 1;
+      pointer-events: auto;
+      padding: 6px 14px 6px 28px;
+      margin-top: 2px;
+      border-left-width: 2px !important;
+    }}
+    .sidebar-group.active .sub-sub-item {{
+      max-height: 50px;
+      opacity: 1;
+      pointer-events: auto;
+      padding: 6px 14px 6px 42px;
+      margin-top: 2px;
+      border-left-width: 2px !important;
     }}
 
     .content-area {{
@@ -343,7 +398,7 @@ def _user_manual_page_html(img_uris: dict) -> str:
 <!-- HERO -->
 <div class="hero">
   <div class="hero-badge">📖 Complete User Guide & Manual</div>
-  <h1>AayDocCapio Help Center</h1>
+  <h1 id="hero-title">AayDocCapio Help Center</h1>
   <p>Your comprehensive self-service guide for automated bulk retrieval of tax documents from the ITD portal.</p>
 </div>
 
@@ -352,58 +407,86 @@ def _user_manual_page_html(img_uris: dict) -> str:
   <!-- SIDEBAR NAVIGATOR -->
   <aside class="sidebar">
     <div class="sidebar-nav">
-      <a href="#overview" class="sidebar-nav-item active">1. Overview</a>
-      <a href="#what-is-adc" class="sidebar-nav-item sub-item">1.1. What is AayDocCapio?</a>
-      <a href="#no-cloud-privacy" class="sidebar-nav-item sub-item">1.2. Privacy Guarantee</a>
+      <div class="sidebar-group">
+        <a href="#overview" class="sidebar-nav-item active">1. Overview</a>
+        <a href="#what-is-adc" class="sidebar-nav-item sub-item">1.1. What is AayDocCapio?</a>
+        <a href="#no-cloud-privacy" class="sidebar-nav-item sub-item">1.2. Privacy Guarantee</a>
+      </div>
       
-      <a href="#getting-started" class="sidebar-nav-item">2. Getting Started</a>
-      <a href="#system-requirements" class="sidebar-nav-item sub-item">2.1. System Requirements</a>
-      <a href="#initial-setup" class="sidebar-nav-item sub-item">2.2. Setup Checklist</a>
+      <div class="sidebar-group">
+        <a href="#getting-started" class="sidebar-nav-item">2. Getting Started</a>
+        <a href="#system-requirements" class="sidebar-nav-item sub-item">2.1. System Requirements</a>
+        <a href="#initial-setup" class="sidebar-nav-item sub-item">2.2. Setup Checklist</a>
+      </div>
       
-      <a href="#managing-clients" class="sidebar-nav-item">3. Managing Clients</a>
-      <a href="#client-profiles" class="sidebar-nav-item sub-item">3.1. Client Profiles</a>
-      <a href="#importance-of-dob" class="sidebar-nav-item sub-item">3.2. DOB Importance</a>
-      <a href="#bulk-import-export" class="sidebar-nav-item sub-item">3.3. Bulk Import & Export</a>
+      <div class="sidebar-group">
+        <a href="#managing-clients" class="sidebar-nav-item">3. Managing Clients</a>
+        <a href="#client-profiles" class="sidebar-nav-item sub-item">3.1. Client Profiles</a>
+        <a href="#importance-of-dob" class="sidebar-nav-item sub-item">3.2. DOB Importance</a>
+        <a href="#bulk-import-export" class="sidebar-nav-item sub-item">3.3. Bulk Import & Export</a>
+      </div>
       
-      <a href="#bulk-download" class="sidebar-nav-item">4. Bulk Download</a>
-      <a href="#select-clients-year" class="sidebar-nav-item sub-item">4.1. Setup & Select</a>
-      <a href="#bulk-26as-download" class="sidebar-nav-item sub-item">4.2. Bulk 26AS Download</a>
-      <a href="#bulk-ais-download" class="sidebar-nav-item sub-item">4.3. Bulk AIS Download</a>
-      <a href="#menu-options-download" class="sidebar-nav-item sub-item">4.4. Menu Options to Click</a>
-      <a href="#status-indicators" class="sidebar-nav-item sub-item">4.5. Status Icons & Controls</a>
+      <div class="sidebar-group">
+        <a href="#bulk-download" class="sidebar-nav-item">4. Bulk Download</a>
+        <a href="#select-clients-year" class="sidebar-nav-item sub-item">4.1. Setup & Select</a>
+        <a href="#bulk-26as-download" class="sidebar-nav-item sub-item">4.2. Bulk 26AS Download</a>
+        <a href="#bulk-ais-download" class="sidebar-nav-item sub-item">4.3. Bulk AIS Download</a>
+        <a href="#menu-options-download" class="sidebar-nav-item sub-item">4.4. Menu Options to Click</a>
+        <a href="#status-indicators" class="sidebar-nav-item sub-item">4.5. Status Icons & Controls</a>
+      </div>
       
-      <a href="#form-26as-details" class="sidebar-nav-item">5. Form 26AS Details</a>
-      <a href="#double-formats" class="sidebar-nav-item sub-item">5.1. PDF & TXT Formats</a>
-      <a href="#zip-extraction" class="sidebar-nav-item sub-item">5.2. ZIP Extraction</a>
+      <div class="sidebar-group">
+        <a href="#form-26as-details" class="sidebar-nav-item">5. Form 26AS Details</a>
+        <a href="#double-formats" class="sidebar-nav-item sub-item">5.1. PDF & TXT Formats</a>
+        <a href="#zip-extraction" class="sidebar-nav-item sub-item">5.2. ZIP Extraction</a>
+      </div>
       
-      <a href="#ais-tis-details" class="sidebar-nav-item">6. AIS & TIS Details</a>
-      <a href="#ais-tis-diffs" class="sidebar-nav-item sub-item">6.1. Key Differences</a>
-      <a href="#two-phase-queue" class="sidebar-nav-item sub-item">6.2. Two-Phase Retrieval</a>
+      <div class="sidebar-group">
+        <a href="#ais-tis-details" class="sidebar-nav-item">6. AIS & TIS Details</a>
+        <a href="#ais-tis-diffs" class="sidebar-nav-item sub-item">6.1. Key Differences</a>
+        <a href="#two-phase-queue" class="sidebar-nav-item sub-item">6.2. Two-Phase Retrieval</a>
+      </div>
       
-      <a href="#pdf-decryption" class="sidebar-nav-item">7. PDF Decryption</a>
-      <a href="#decryption-rules" class="sidebar-nav-item sub-item">7.1. Decryption Rules</a>
-      <a href="#decryption-troubleshooting" class="sidebar-nav-item sub-item">7.2. Decryption Troubleshooting</a>
+      <div class="sidebar-group">
+        <a href="#pdf-decryption" class="sidebar-nav-item">7. PDF Decryption</a>
+        <a href="#decryption-rules" class="sidebar-nav-item sub-item">7.1. Decryption Rules</a>
+        <a href="#decryption-troubleshooting" class="sidebar-nav-item sub-item">7.2. Decryption Troubleshooting</a>
+      </div>
       
-      <a href="#tools-menu-section" class="sidebar-nav-item">8. Tools Menu Utilities</a>
-      <a href="#tools-26as" class="sidebar-nav-item sub-item">8.1. Convert 26AS TXT</a>
-      <a href="#tools-ais" class="sidebar-nav-item sub-item">8.2. Convert AIS JSON</a>
+      <div class="sidebar-group">
+        <a href="#tools-menu-section" class="sidebar-nav-item">8. Tools Menu Utilities</a>
+        <a href="#tools-26as" class="sidebar-nav-item sub-item">8.1. Convert 26AS TXT</a>
+        <a href="#tools-ais" class="sidebar-nav-item sub-item">8.2. Convert AIS JSON</a>
+      </div>
       
-      <a href="#email-setup-delivery" class="sidebar-nav-item">9. Email Setup & Mailing</a>
-      <a href="#how-to-setup-email" class="sidebar-nav-item sub-item">9.1. How to Setup Email</a>
-      <a href="#email-settings-reference" class="sidebar-nav-item sub-item">9.2. Email Settings Reference</a>
-      <a href="#automated-mailing" class="sidebar-nav-item sub-item">9.3. Mailing Documents</a>
+      <div class="sidebar-group">
+        <a href="#email-setup-delivery" class="sidebar-nav-item">9. Email Setup & Mailing</a>
+        <a href="#how-to-setup-email" class="sidebar-nav-item sub-item">9.1. How to Setup Email</a>
+        <a href="#email-settings-reference" class="sidebar-nav-item sub-item">9.2. Email Settings Reference</a>
+        <a href="#gmail-setup-ref" class="sidebar-nav-item sub-sub-item">9.2.1. Gmail & Workspace</a>
+        <a href="#office365-setup-ref" class="sidebar-nav-item sub-sub-item">9.2.2. Microsoft 365</a>
+        <a href="#yahoo-icloud-setup-ref" class="sidebar-nav-item sub-sub-item">9.2.3. Yahoo & iCloud</a>
+        <a href="#custom-exchange-ref" class="sidebar-nav-item sub-sub-item">9.2.4. Custom & Exchange</a>
+        <a href="#automated-mailing" class="sidebar-nav-item sub-item">9.3. Mailing Documents</a>
+      </div>
       
-      <a href="#settings-customization" class="sidebar-nav-item">10. Settings & Sub-sections</a>
-      <a href="#settings-folder" class="sidebar-nav-item sub-item">10.1. Download Folder Path</a>
-      <a href="#settings-ay" class="sidebar-nav-item sub-item">10.2. Manage Assessment Years</a>
-      <a href="#settings-appearance" class="sidebar-nav-item sub-item">10.3. Appearance & Themes</a>
+      <div class="sidebar-group">
+        <a href="#settings-customization" class="sidebar-nav-item">10. Settings & Sub-sections</a>
+        <a href="#settings-folder" class="sidebar-nav-item sub-item">10.1. Download Folder Path</a>
+        <a href="#settings-ay" class="sidebar-nav-item sub-item">10.2. Manage Assessment Years</a>
+        <a href="#settings-appearance" class="sidebar-nav-item sub-item">10.3. Appearance & Themes</a>
+      </div>
       
-      <a href="#app-updates" class="sidebar-nav-item">11. Software Updates</a>
-      <a href="#inbuilt-auto-update" class="sidebar-nav-item sub-item">11.1. Inbuilt Auto-Update</a>
+      <div class="sidebar-group">
+        <a href="#app-updates" class="sidebar-nav-item">11. Software Updates</a>
+        <a href="#inbuilt-auto-update" class="sidebar-nav-item sub-item">11.1. Inbuilt Auto-Update</a>
+      </div>
       
-      <a href="#troubleshooting-faq" class="sidebar-nav-item">12. Troubleshooting & FAQ</a>
-      <a href="#error-resolutions" class="sidebar-nav-item sub-item">12.1. Common Portal Errors</a>
-      <a href="#faq-list" class="sidebar-nav-item sub-item">12.2. Frequently Asked Qs</a>
+      <div class="sidebar-group">
+        <a href="#troubleshooting-faq" class="sidebar-nav-item">12. Troubleshooting & FAQ</a>
+        <a href="#error-resolutions" class="sidebar-nav-item sub-item">12.1. Common Portal Errors</a>
+        <a href="#faq-list" class="sidebar-nav-item sub-item">12.2. Frequently Asked Qs</a>
+      </div>
     </div>
   </aside>
 
@@ -778,11 +861,59 @@ def _user_manual_page_html(img_uris: dict) -> str:
           {section_card(
             h3("9.2. Email Settings Reference") +
             f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
-            f'Depending on your email provider, standard login passwords may not work due to Multi-Factor Authentication (MFA). Use the references below:</p>'
+            f'Due to modern security standards, standard email account passwords are usually blocked for SMTP connections '
+            f'if Multi-Factor Authentication (MFA) is active. Refer to the specific sub-sections below to configure your provider preset:</p>'
+          )}
+        </div>
+
+        <div id="gmail-setup-ref" style="scroll-margin-top: 90px; margin-top: 16px; padding-left: 20px; border-left: 3px solid rgba(220,38,38,0.25);">
+          {section_card(
+            h3("9.2.1. Gmail & Google Workspace Configuration") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'Google blocks traditional logins via simple passwords for security. To connect your Google inbox:</p>'
+            + steps_html([
+              'Enable <strong>2-Step Verification</strong> in your Google Account security settings.',
+              'Go to <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener" style="color:#2563EB;">myaccount.google.com → Security → 2-Step Verification → App Passwords</a>.',
+              'Select <strong>Mail</strong> as the app and <strong>Other</strong> or your custom name as the device, then click <strong>Generate</strong>.',
+              'Copy the generated <strong>16-character password</strong> (e.g. <code>abcd efgh ijkl mnop</code>).',
+              'Paste this App Password into the **SMTP Password** field in AayDocCapio (spaces are ignored).'
+            ])
+          )}
+        </div>
+
+        <div id="office365-setup-ref" style="scroll-margin-top: 90px; margin-top: 16px; padding-left: 20px; border-left: 3px solid rgba(216,59,1,0.25);">
+          {section_card(
+            h3("9.2.2. Microsoft 365 & Office 365 Setup") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'For Microsoft 365 / Outlook corporate accounts, standard security settings block SMTP authentication unless configured correctly:</p>'
             + bullets_html([
-              '<strong>Gmail / Google Workspace</strong>: Standard passwords are blocked. You MUST enable 2-Step Verification and generate a <strong>16-character App Password</strong> from your Google Account settings. Enter this App Password as your SMTP password.',
-              '<strong>Microsoft 365 / Office 365</strong>: Use SMTP host `smtp.office365.com` on port `587` with `STARTTLS`. Make sure SMTP AUTH is enabled for the mailbox in the Microsoft 365 Admin Center.',
-              '<strong>iCloud</strong>: Use an app-specific password generated from appleid.apple.com.'
+              '<strong>MFA / App Passwords</strong>: If Multi-Factor Authentication is enabled, sign in to <a href="https://mysignins.microsoft.com/security-info" target="_blank" rel="noopener" style="color:#2563EB;">mysignins.microsoft.com/security-info</a>, click **+ Add sign-in method**, choose **App password**, name it, and copy the password.',
+              '<strong>Authenticated SMTP (Admin Center)</strong>: If the connection is refused, your organization\'s administrator must enable SMTP Auth for your account. Ask your IT admin to log in to the <a href="https://admin.microsoft.com" target="_blank" rel="noopener" style="color:#2563EB;">Microsoft 365 Admin Center</a> → Go to **Users → Active Users** → Click your user profile → Click **Mail** tab → Click **Manage email apps** → Ensure **Authenticated SMTP** is ticked and saved.'
+            ])
+          )}
+        </div>
+
+        <div id="yahoo-icloud-setup-ref" style="scroll-margin-top: 90px; margin-top: 16px; padding-left: 20px; border-left: 3px solid rgba(96,1,210,0.25);">
+          {section_card(
+            h3("9.2.3. Yahoo Mail & Apple iCloud Setup") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'Both Yahoo and Apple iCloud require application-specific passwords to connect to SMTP servers:</p>'
+            + bullets_html([
+              '<strong>Yahoo Mail</strong>: Log in to your <a href="https://login.yahoo.com/account/security" target="_blank" rel="noopener" style="color:#2563EB;">Yahoo Account Security page</a>. Click **Generate app password**, choose **Other app** (name it AayDocCapio), copy the generated 16-character key, and paste it into the password field.',
+              '<strong>Apple iCloud</strong>: Log in to <a href="https://appleid.apple.com" target="_blank" rel="noopener" style="color:#2563EB;">appleid.apple.com</a>. Navigate to **Sign-In and Security → App-Specific Passwords**, select **Generate**, name it, and copy the password to use in the SMTP Settings dialog.'
+            ])
+          )}
+        </div>
+
+        <div id="custom-exchange-ref" style="scroll-margin-top: 90px; margin-top: 16px; padding-left: 20px; border-left: 3px solid rgba(100,116,139,0.25);">
+          {section_card(
+            h3("9.2.4. Custom SMTP & Exchange Servers") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'If your firm uses on-premise MS Exchange or custom hosting (e.g., GoDaddy, Bluehost, Hostinger):</p>'
+            + bullets_html([
+              '<strong>Exchange SMTP Host</strong>: Typically formatted as <code>mail.yourdomain.com</code> or <code>smtp.yourdomain.com</code>. Contact your organization\'s system administrator to get the exact address.',
+              '<strong>SMTP Port & Security</strong>: Use Port <code>587</code> with <code>STARTTLS</code> (recommended) or Port <code>465</code> with <code>SSL/TLS</code>. Standard unencrypted Port <code>25</code> is typically blocked by ISPs.',
+              '<strong>Proxy & Firewall Restrictions</strong>: In corporate networks, ensure outgoing traffic on ports 587/465 is allowed by local network firewalls.'
             ]) +
             tip_box("Clicking any of the provider preset tiles in the Email Settings dialog displays a blue helper panel at the bottom with direct links to setup instructions.")
           )}
@@ -963,6 +1094,8 @@ def _user_manual_page_html(img_uris: dict) -> str:
     }});
 
     // Scrollspy logic
+    const heroTitle = document.getElementById('hero-title');
+    const navBrand = document.querySelector('.nav-brand');
     const targets = document.querySelectorAll('.content-area [id]');
     const navItems = document.querySelectorAll('.sidebar-nav-item');
 
@@ -981,12 +1114,37 @@ def _user_manual_page_html(img_uris: dict) -> str:
         currentId = targets[0].getAttribute('id');
       }}
 
+      // Clear all active states on groups
+      document.querySelectorAll('.sidebar-group').forEach(group => {{
+        group.classList.remove('active');
+      }});
+
+      // Update active state on nav items
       navItems.forEach(item => {{
         item.classList.remove('active');
         if (item.getAttribute('href') === '#' + currentId) {{
           item.classList.add('active');
+          // Add active class to the parent group so its sub-items expand
+          const group = item.closest('.sidebar-group');
+          if (group) {{
+            group.classList.add('active');
+          }}
         }}
       }});
+
+      // Dynamic Sticky Header Text change
+      if (heroTitle && navBrand) {{
+        const rect = heroTitle.getBoundingClientRect();
+        if (rect.bottom <= 0) {{
+          if (navBrand.innerHTML !== 'AayDocCapio Help Center') {{
+            navBrand.innerHTML = 'AayDocCapio Help Center';
+          }}
+        }} else {{
+          if (navBrand.innerHTML !== 'AayDoc <span style="color:#B88924;">Capio</span>™') {{
+            navBrand.innerHTML = 'AayDoc <span style="color:#B88924;">Capio</span>™';
+          }}
+        }}
+      }}
     }}
 
     window.addEventListener('scroll', updateActiveNavItem);
