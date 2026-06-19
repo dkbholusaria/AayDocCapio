@@ -609,6 +609,7 @@ def _user_manual_page_html(img_uris: dict) -> str:
               'You can also export your current client list at any time to a spreadsheet using <strong>Client Master → Export Clients…</strong>.'
             ])
           )}
+          {_img("ADC_ClientMasterMenu", "Client Master dropdown menu actions", "Client Master Menu")}
           {_img("ADC_SaveClientImportTemplate", "Saving the onboarding Excel template to disk", "Save Import Template")}
           {_img("ADC_ClientImportCompleteMessage", "Success confirmation showing imported records", "Client Import Success")}
         </div>
