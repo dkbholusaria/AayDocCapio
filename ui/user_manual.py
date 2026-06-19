@@ -877,7 +877,7 @@ def _user_manual_page_html(img_uris: dict) -> str:
             ])
           )}
           {_img("ADC_AutoUpdateBlinkingMessage", "Blinking update notification displayed under version details on the main dashboard", "Blinking update notification")}
-          {_img("ADC_UpdateAvailable", "New version detected and changelog notification", "Update Available Dialog")}
+          {_img("ADC_UpdateAvailable", "Update notification dialog shown on manual check (Help → Check for Updates)", "Update Available Dialog")}
         </div>
       </div>
     </section>
