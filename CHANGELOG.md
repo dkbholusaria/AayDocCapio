@@ -2,6 +2,23 @@
 
 All notable changes to AayDocCapio are documented here.
 
+## [1.6.4] — 2026-06-19
+
+### New Features
+
+#### Help Manual Reconstruction
+- **13-Section Interactive User Manual** — Reconstructed the full user guide inside the application `ui/user_manual.py`, featuring 34 application screenshots embedded via base64 encoding.
+- **Two-Column Navigation Layout** — Re-designed the layout to feature a split design: a left-side sticky navigator sidebar and a right-side scrollable content area.
+- **Scrollspy Navigation** — Custom JavaScript automatically tracks the active section as you scroll and highlights it in blue on the left sidebar.
+- **Clean Top Navbar** — Sticky header simplified to display the brand name on the left and a "Contact us" link pointing to `deepak.bholusaria.com` on the right.
+
+#### Download History Columns
+- **Last Download Time Column** — Added a dedicated column in the main client table to display the timestamp of the last successful download.
+- **Persistent Metadata** — Vault file (`tax_vault.json`) now records and populates timestamp details per client per Assessment Year.
+
+### Bug Fixes / Improvements
+- **Non-existent PAN detection (B-08)** — Detects "PAN does not exist" or "PAN is not registered" errors immediately after entering the PAN on the ITD portal, failing fast with a clean message instead of timing out on the SAM page.
+
 ---
 
 ## [1.6.3] — 2026-06-18

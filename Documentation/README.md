@@ -1,18 +1,16 @@
 # AayDocCapio
 
-**v1.6.3** — A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click — and now **emailing those documents directly to clients**.
+**v1.6.4** — A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click — and now **emailing those documents directly to clients**.
 
 Built with **PyQt6** + **Playwright**. Runs on Windows, macOS, and Linux/WSL.
 
 ---
 
-## What's New in 1.6.3
+## What's New in 1.6.4
 
-- **AIS JSON → Excel** — convert a downloaded AIS JSON file to a structured Excel workbook via Tools → Convert AIS JSON → Excel…
-- **Per-category sheets** — one sheet per AIS/TIS section with flat-table layout, Indian numeric formatting, and per-deductor subtotals
-- **Capital Market (All) consolidated sheet** — aggregates all SFT-17/18 sales; auto-computes STCG, LTCG, and Section 55(2)(ac) grandfathering adjustments
-- **Audit Trail + ReadMe sheets** — capital gains reconciliation and plain-English column guide with tax section references
-- **Decrypted JSON companion** — saved alongside the workbook for audit purposes
+- **Interactive User Manual with Left Sidebar & Top Navbar** — Reconstructed the full 13-section User Manual in `ui/user_manual.py`, featuring 34 base64-encoded application screenshots, custom scrollspy navigation, and a simplified top navbar containing a 'Contact us' link to `deepak.bholusaria.com`.
+- **Last Download Time Column** — Added a dedicated column in the main client table to display the timestamp of the last successful download, persisted in the vault (`tax_vault.json`).
+- **Non-existent PAN Fast-Fail** — Detects non-registered/invalid PAN errors immediately on the ITD portal and aborts the task with a clean warning instead of waiting for a timeout.
 
 See the full [CHANGELOG](CHANGELOG.md) for details.
 

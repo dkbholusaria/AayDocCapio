@@ -1,21 +1,16 @@
 # AayDocCapio
 
-**v1.6.3** — A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click — and now **emailing those documents directly to clients**.
+**v1.6.4** — A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click — and now **emailing those documents directly to clients**.
 
 Built with **PyQt6** + **Playwright**. Runs on Windows, macOS, and Linux/WSL.
 
 ---
 
-## What's New in 1.6.3
+## What's New in 1.6.4
 
-### AIS JSON → Excel Conversion
-Convert a downloaded AIS JSON file into a fully-formatted Excel workbook via Tools → Convert AIS JSON → Excel…:
-
-- **Per-category sheets** — one sheet per AIS/TIS section (TDS/TCS, Salary, Dividend, Interest, SFT transactions, Demand & Refund, Proceedings, etc.) with flat-table layout, Indian numeric formatting, and per-deductor subtotals
-- **Capital Market (All) — consolidated sheet** — aggregates all SFT-17 and SFT-18 capital market sales across every individual category sheet into a single view; live linked formulas auto-compute STCG, LTCG (without indexation), and LTCG (with indexation) including Section 55(2)(ac) grandfathering adjustments for assets acquired before 31-Jan-2018
-- **Audit Trail sheet** — per-SFT-code reconciliation of sales consideration and capital gain summaries with formula links back to individual sheets
-- **ReadMe — Capital Gains sheet** — plain-English column guide with tax section references (112A, 112, 55(2)(ac)) and indexation-abolition disclaimer (23-Jul-2024)
-- **Brand row + decrypted companion** — every workbook includes an assessee name/PAN/FY header row and saves a `_decrypted.json` alongside for audit
+- **Interactive User Manual with Left Sidebar & Top Navbar** — Reconstructed the full 13-section User Manual in `ui/user_manual.py`, featuring 34 base64-encoded application screenshots, custom scrollspy navigation, and a simplified top navbar containing a 'Contact us' link to `deepak.bholusaria.com`.
+- **Last Download Time Column** — Added a dedicated column in the main client table to display the timestamp of the last successful download, persisted in the vault (`tax_vault.json`).
+- **Non-existent PAN Fast-Fail** — Detects non-registered/invalid PAN errors immediately on the ITD portal and aborts the task with a clean warning instead of waiting for a timeout.
 
 See the full [CHANGELOG](CHANGELOG.md) for details.
 
