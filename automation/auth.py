@@ -125,7 +125,7 @@ async def _do_login(page, user_id, uid_masked, password, log_callback, is_runnin
     log_callback("[Auth] Clicking Continue after PAN...")
     await _click_btn(page, log_callback, timeout=20000)
 
-    # Check for locked-account error shown inline on the PAN screen
+    # Check for errors shown inline on the PAN screen after Continue
     await asyncio.sleep(1)
     try:
         page_text = (await page.inner_text("body")).lower()
@@ -133,6 +133,10 @@ async def _do_login(page, user_id, uid_masked, password, log_callback, is_runnin
             raise RuntimeError(
                 "ACCOUNT LOCKED: This e-filing account has been locked due to security reasons. "
                 "The client must unlock their account at the ITD portal before it can be automated.")
+        if "pan does not exist" in page_text or "pan is not registered" in page_text:
+            raise RuntimeError(
+                "AUTHENTICATION FAILED: PAN does not exist on the ITD portal. "
+                "Please verify the PAN is correct and registered at eportal.incometax.gov.in.")
     except RuntimeError:
         raise
     except Exception:
@@ -152,13 +156,17 @@ async def _do_login(page, user_id, uid_masked, password, log_callback, is_runnin
         if sam_found:
             break
 
-        # Fast-fail if locked account error appears during the wait
+        # Fast-fail if locked account or invalid PAN error appears during the wait
         try:
             page_text = (await page.inner_text("body")).lower()
             if "account has been locked" in page_text or ("e-filing account" in page_text and "locked" in page_text):
                 raise RuntimeError(
                     "ACCOUNT LOCKED: This e-filing account has been locked due to security reasons. "
                     "The client must unlock their account at the ITD portal before it can be automated.")
+            if "pan does not exist" in page_text or "pan is not registered" in page_text:
+                raise RuntimeError(
+                    "AUTHENTICATION FAILED: PAN does not exist on the ITD portal. "
+                    "Please verify the PAN is correct and registered at eportal.incometax.gov.in.")
         except RuntimeError:
             raise
         except Exception:
