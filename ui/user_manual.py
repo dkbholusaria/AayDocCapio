@@ -249,6 +249,26 @@ def _user_manual_page_html(img_uris: dict) -> str:
       border-top-left-radius: 0;
       border-bottom-left-radius: 0;
     }}
+    
+    /* Nested sidebar styling */
+    .sidebar-nav-item.sub-item {{
+      padding: 6px 14px 6px 28px;
+      font-size: 0.81rem;
+      color: #64748B;
+    }}
+    .sidebar-nav-item.sub-item:hover {{
+      background: rgba(15, 58, 104, 0.03);
+      color: #0F3A68;
+    }}
+    .sidebar-nav-item.sub-item.active {{
+      background: #F0F7FF;
+      color: #1D4ED8;
+      font-weight: 600;
+      border-left: 2px solid #1D4ED8;
+      border-top-left-radius: 0;
+      border-bottom-left-radius: 0;
+    }}
+
     .content-area {{
       flex: 1;
       min-width: 0;
@@ -333,18 +353,57 @@ def _user_manual_page_html(img_uris: dict) -> str:
   <aside class="sidebar">
     <div class="sidebar-nav">
       <a href="#overview" class="sidebar-nav-item active">1. Overview</a>
+      <a href="#what-is-adc" class="sidebar-nav-item sub-item">1.1. What is AayDocCapio?</a>
+      <a href="#no-cloud-privacy" class="sidebar-nav-item sub-item">1.2. Privacy Guarantee</a>
+      
       <a href="#getting-started" class="sidebar-nav-item">2. Getting Started</a>
-      <a href="#client-vault" class="sidebar-nav-item">3. Client Vault</a>
+      <a href="#system-requirements" class="sidebar-nav-item sub-item">2.1. System Requirements</a>
+      <a href="#initial-setup" class="sidebar-nav-item sub-item">2.2. Setup Checklist</a>
+      
+      <a href="#managing-clients" class="sidebar-nav-item">3. Managing Clients</a>
+      <a href="#client-profiles" class="sidebar-nav-item sub-item">3.1. Client Profiles</a>
+      <a href="#importance-of-dob" class="sidebar-nav-item sub-item">3.2. DOB Importance</a>
+      <a href="#bulk-import-export" class="sidebar-nav-item sub-item">3.3. Bulk Import & Export</a>
+      
       <a href="#bulk-download" class="sidebar-nav-item">4. Bulk Download</a>
-      <a href="#form-26as" class="sidebar-nav-item">5. Form 26AS</a>
-      <a href="#ais-tis" class="sidebar-nav-item">6. AIS & TIS</a>
-      <a href="#pdf-unlock" class="sidebar-nav-item">7. PDF Decryption</a>
-      <a href="#import-export" class="sidebar-nav-item">8. Import / Export</a>
-      <a href="#tools-menu" class="sidebar-nav-item">9. Tools Menu</a>
-      <a href="#mail-docs" class="sidebar-nav-item">10. Mail to Clients</a>
-      <a href="#settings-themes" class="sidebar-nav-item">11. Settings & Themes</a>
-      <a href="#check-updates" class="sidebar-nav-item">12. Check for Updates</a>
-      <a href="#faq-troubleshooting" class="sidebar-nav-item">13. Troubleshooting & FAQ</a>
+      <a href="#select-clients-year" class="sidebar-nav-item sub-item">4.1. Setup & Select</a>
+      <a href="#bulk-26as-download" class="sidebar-nav-item sub-item">4.2. Bulk 26AS Download</a>
+      <a href="#bulk-ais-download" class="sidebar-nav-item sub-item">4.3. Bulk AIS Download</a>
+      <a href="#menu-options-download" class="sidebar-nav-item sub-item">4.4. Menu Options to Click</a>
+      <a href="#status-indicators" class="sidebar-nav-item sub-item">4.5. Status Icons & Controls</a>
+      
+      <a href="#form-26as-details" class="sidebar-nav-item">5. Form 26AS Details</a>
+      <a href="#double-formats" class="sidebar-nav-item sub-item">5.1. PDF & TXT Formats</a>
+      <a href="#zip-extraction" class="sidebar-nav-item sub-item">5.2. ZIP Extraction</a>
+      
+      <a href="#ais-tis-details" class="sidebar-nav-item">6. AIS & TIS Details</a>
+      <a href="#ais-tis-diffs" class="sidebar-nav-item sub-item">6.1. Key Differences</a>
+      <a href="#two-phase-queue" class="sidebar-nav-item sub-item">6.2. Two-Phase Retrieval</a>
+      
+      <a href="#pdf-decryption" class="sidebar-nav-item">7. PDF Decryption</a>
+      <a href="#decryption-rules" class="sidebar-nav-item sub-item">7.1. Decryption Rules</a>
+      <a href="#decryption-troubleshooting" class="sidebar-nav-item sub-item">7.2. Decryption Troubleshooting</a>
+      
+      <a href="#tools-menu-section" class="sidebar-nav-item">8. Tools Menu Utilities</a>
+      <a href="#tools-26as" class="sidebar-nav-item sub-item">8.1. Convert 26AS TXT</a>
+      <a href="#tools-ais" class="sidebar-nav-item sub-item">8.2. Convert AIS JSON</a>
+      
+      <a href="#email-setup-delivery" class="sidebar-nav-item">9. Email Setup & Mailing</a>
+      <a href="#how-to-setup-email" class="sidebar-nav-item sub-item">9.1. How to Setup Email</a>
+      <a href="#email-settings-reference" class="sidebar-nav-item sub-item">9.2. Email Settings Reference</a>
+      <a href="#automated-mailing" class="sidebar-nav-item sub-item">9.3. Mailing Documents</a>
+      
+      <a href="#settings-customization" class="sidebar-nav-item">10. Settings & Sub-sections</a>
+      <a href="#settings-folder" class="sidebar-nav-item sub-item">10.1. Download Folder Path</a>
+      <a href="#settings-ay" class="sidebar-nav-item sub-item">10.2. Manage Assessment Years</a>
+      <a href="#settings-appearance" class="sidebar-nav-item sub-item">10.3. Appearance & Themes</a>
+      
+      <a href="#app-updates" class="sidebar-nav-item">11. Software Updates</a>
+      <a href="#inbuilt-auto-update" class="sidebar-nav-item sub-item">11.1. Inbuilt Auto-Update</a>
+      
+      <a href="#troubleshooting-faq" class="sidebar-nav-item">12. Troubleshooting & FAQ</a>
+      <a href="#error-resolutions" class="sidebar-nav-item sub-item">12.1. Common Portal Errors</a>
+      <a href="#faq-list" class="sidebar-nav-item sub-item">12.2. Frequently Asked Qs</a>
     </div>
   </aside>
 
@@ -357,28 +416,32 @@ def _user_manual_page_html(img_uris: dict) -> str:
         <div class="section-label">Section 1</div>
         <h2>Overview</h2>
         
-        {section_card(
-          h3("What is AayDocCapio?") +
-          f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
-          f'AayDocCapio is a powerful desktop application built specifically for Chartered Accountants (CAs), '
-          f'tax practitioners, and financial auditors. It automates the tedious, repetitive process of logging into '
-          f'the Income Tax Department (ITD) portal to retrieve key tax compliance documents for multiple clients.</p>'
-          + bullets_html([
-            '<strong>Bulk Automation</strong>: Replaces hours of manual login, navigation, and file downloading with a single click.',
-            '<strong>Supported Statements</strong>: Fetches Form 26AS (TXT + PDF), Annual Information Statement (AIS PDF + JSON), and Taxpayer Information Summary (TIS PDF).',
-            '<strong>Local Decryption</strong>: Automatically decrypts downloaded files, delivering clean, password-free documents to your output folders.',
-          ])
-        )}
+        <div id="what-is-adc" style="scroll-margin-top: 90px; margin-top: 12px;">
+          {section_card(
+            h3("1.1. What is AayDocCapio?") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'AayDocCapio is a professional-grade desktop application built specifically for Chartered Accountants (CAs), '
+            f'tax practitioners, and financial auditors. It automates the tedious, repetitive process of logging into '
+            f'the Income Tax Department (ITD) portal to retrieve key tax compliance documents for multiple clients.</p>'
+            + bullets_html([
+              '<strong>Bulk Automation</strong>: Replaces hours of manual login, navigation, and file downloading with a single click.',
+              '<strong>Supported Statements</strong>: Fetches Form 26AS (TXT + PDF), Annual Information Statement (AIS PDF + JSON), and Taxpayer Information Summary (TIS PDF).',
+              '<strong>Local Decryption</strong>: Automatically decrypts downloaded files, delivering clean, password-free documents to your output folders.',
+            ])
+          )}
+        </div>
 
-        {section_card(
-          h3("No-Cloud Privacy Guarantee") +
-          f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;">'
-          f'Privacy and security are our core principles. AayDocCapio operates entirely locally on your workstation. '
-          f'Your clients\' PAN details, passwords, dates of birth, and downloaded financial statements are stored '
-          f'strictly in an encrypted local database (vault) on your machine. No data is ever transmitted, '
-          f'replicated, or stored on external cloud infrastructure. All automation actions occur directly between '
-          f'your PC and the official government servers.</p>'
-        )}
+        <div id="no-cloud-privacy" style="scroll-margin-top: 90px; margin-top: 24px;">
+          {section_card(
+            h3("1.2. No-Cloud Privacy Guarantee") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;">'
+            f'Privacy and security are our core principles. AayDocCapio operates entirely locally on your workstation. '
+            f'Your clients\' PAN details, passwords, dates of birth, and downloaded financial statements are stored '
+            f'strictly in an encrypted local database (vault) on your machine. No data is ever transmitted, '
+            f'replicated, or stored on external cloud infrastructure. All automation actions occur directly between '
+            f'your PC and the official government servers.</p>'
+          )}
+        </div>
 
         {_img("ADC_AppLandingPage", "AayDocCapio Main Desktop Application Interface", "App Landing Page")}
       </div>
@@ -390,69 +453,82 @@ def _user_manual_page_html(img_uris: dict) -> str:
         <div class="section-label">Section 2</div>
         <h2>Getting Started</h2>
 
-        {section_card(
-          h3("System Requirements") +
-          bullets_html([
-            '<strong>Operating System</strong>: Windows 10/11 (64-bit) recommended.',
-            '<strong>Google Chrome</strong>: A standard, up-to-date Google Chrome installation is required. The app utilizes Playwright to automate Chrome in the background for securing AIS/TIS documents.',
-            '<strong>Active Internet Connection</strong>: High-speed connection is recommended, as the app connects directly to official tax servers.',
-          ]) +
-          warn_box("Make sure your Google Chrome is functional and up-to-date. If Chrome is missing, the automation for AIS/TIS will fail.")
-        )}
+        <div id="system-requirements" style="scroll-margin-top: 90px; margin-top: 12px;">
+          {section_card(
+            h3("2.1. System Requirements") +
+            bullets_html([
+              '<strong>Operating System</strong>: Windows 10/11 (64-bit) recommended.',
+              '<strong>Google Chrome</strong>: A standard, up-to-date Google Chrome installation is required. The app utilizes Playwright to automate Chrome in the background for securing AIS/TIS documents.',
+              '<strong>Active Internet Connection</strong>: High-speed connection is recommended, as the app connects directly to official tax servers.',
+            ]) +
+            warn_box("Make sure your Google Chrome is functional and up-to-date. If Chrome is missing, the automation for AIS/TIS will fail.")
+          )}
+        </div>
 
-        {section_card(
-          h3("Initial Setup Checklist") +
-          steps_html([
-            'Launch the application for the first time. The app will automatically initialize a local vault.',
-            'Configure your preferred download destination folder under Settings.',
-            'Ensure that Google Chrome is launched and updated to the latest version on your PC.',
-          ])
-        )}
-
-        {section_card(
-          h3("Specifying the Download Folder") +
-          f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
-          f'All downloads are organized systematically. You can select the root folder under <strong>Settings → Download Folder</strong>. '
-          f'From that root, the app generates individual folders for each client, categorized by year:</p>'
-          f'<code style="background:rgba(10,22,40,0.06);display:block;padding:12px;border-radius:8px;font-family:monospace;font-size:0.85rem;margin-bottom:12px;">'
-          f'[Your Selected Folder] / [Client Name]_[PAN] / [Assessment Year] /</code>'
-          + tip_box("The default folder is your standard Windows 'Downloads' directory. You can redirect this to a secure file server or workspace folder.")
-        )}
-
-        {_img("ADC_SelectOutputDirectory", "Configuring the root download folder", "Select Output Directory")}
-        {_img("ADC_OutPutFolderScreenshot", "Systematic folder organization of downloaded files", "Output Folder Structure")}
+        <div id="initial-setup" style="scroll-margin-top: 90px; margin-top: 24px;">
+          {section_card(
+            h3("2.2. Setup Checklist") +
+            steps_html([
+              'Launch the application for the first time. The app will automatically initialize a local vault.',
+              'Configure your preferred download destination folder under Settings.',
+              'Ensure that Google Chrome is launched and updated to the latest version on your PC.',
+            ])
+          )}
+        </div>
       </div>
     </section>
 
-    <!-- SECTION 3: Client Vault -->
-    <section id="client-vault">
+    <!-- SECTION 3: Managing Clients -->
+    <section id="managing-clients">
       <div class="wrap">
         <div class="section-label">Section 3</div>
-        <h2>Client Vault</h2>
+        <h2>Managing Clients</h2>
 
-        {section_card(
-          h3("Managing Client Profiles") +
-          f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
-          f'The Client Vault is your local address book. Access it through the Client Master menu or the main view dashboard.</p>'
-          + steps_html([
-            'Click <strong>+ Add Client</strong> or navigate to <strong>Client Master → Add Client</strong>.',
-            'Enter the client\'s <strong>PAN</strong> (10 alphanumeric characters), <strong>Full Name</strong> (as per PAN database), <strong>Portal Password</strong>, and <strong>Date of Birth</strong> (DD-MM-YYYY format).',
-            'Click <strong>Save</strong> to commit to the local database.',
-          ])
-        )}
+        <div id="client-profiles" style="scroll-margin-top: 90px; margin-top: 12px;">
+          {section_card(
+            h3("3.1. Client Profiles") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'Managing client credentials and details is fully centralized within the client registry. '
+            f'You can access this through the <strong>Client Master</strong> menu on the top menu bar, or using the dashboard buttons.</p>'
+            + steps_html([
+              'Click the <strong>+ Add Client</strong> button on the toolbar or navigate to <strong>Client Master → Add Client</strong>.',
+              'Enter the client\'s <strong>PAN</strong> (10 alphanumeric characters), <strong>Full Name</strong> (exactly as registered), '
+              '<strong>Portal Password</strong>, and <strong>Date of Birth</strong> (DD-MM-YYYY format).',
+              'Click <strong>Save</strong> to securely write this client to your encrypted local vault.'
+            ])
+          )}
+          {_img("ADC_AddNewClient", "Add/Edit Client Details Dialog Screen", "Add New Client Dialog")}
+          {_img("ADC_ClientMasterMenu", "Client Master dropdown menu actions", "Client Master Menu")}
+        </div>
 
-        {_img("ADC_AddNewClient", "Add/Edit Client Details Dialog Screen", "Add New Client Dialog")}
+        <div id="importance-of-dob" style="scroll-margin-top: 90px; margin-top: 24px;">
+          {section_card(
+            h3("3.2. Importance of Date of Birth (DOB)") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;">'
+            f'Date of Birth is critical because it acts as the decryption key for secure documents. '
+            f'The Income Tax Department encrypts Form 26AS ZIP archives using the DOB in {badge("DDMMYYYY")} format, '
+            f'and AIS/TIS PDF files using a composite key of {badge("lowercase_pan + DDMMYYYY")}. '
+            f'Without a correct DOB stored in the profile, the local decryption engine will be unable to unlock '
+            f'and save the decrypted copies, leaving files password-protected.</p>'
+          )}
+        </div>
 
-        {section_card(
-          h3("Why is Date of Birth (DOB) Crucial?") +
-          f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;">'
-          f'The DOB is not just for profile completeness; it is the cryptographic key needed to unlock '
-          f'downloaded tax statements. Form 26AS ZIP files are password-protected using DOB in {badge("DDMMYYYY")} format, '
-          f'and AIS/TIS PDF files use a composite key of {badge("lowercase_pan + DDMMYYYY")}. Without the correct DOB, '
-          f'the local decryption engine will fail, leaving the files locked in their raw government-issued format.</p>'
-        )}
-
-        {_img("ADC_ClientMasterMenu", "Client Master dropdown menu actions", "Client Master Menu")}
+        <div id="bulk-import-export" style="scroll-margin-top: 90px; margin-top: 24px;">
+          {section_card(
+            h3("3.3. Bulk Import & Export Client Data") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'For large practices, you can onboard multiple clients at once using our import templates:</p>'
+            + steps_html([
+              'Go to <strong>Client Master → Export Template</strong> to download a pre-formatted Excel template.',
+              'Open the Excel file and fill out the client rows: <strong>PAN</strong>, <strong>Name</strong>, '
+              '<strong>Password</strong>, and <strong>DOB (DD-MM-YYYY)</strong>.',
+              'Import the filled Excel sheet using <strong>Client Master → Import Clients…</strong>.',
+              'You can also export your current client list at any time to a spreadsheet using <strong>Client Master → Export Clients…</strong>.'
+            ])
+          )}
+          {_img("ADC_SaveClientImportTemplate", "Saving the onboarding Excel template to disk", "Save Import Template")}
+          {_img("ADC_ClientImportCompleteMessage", "Success confirmation showing imported records", "Client Import Success")}
+        </div>
       </div>
     </section>
 
@@ -462,303 +538,377 @@ def _user_manual_page_html(img_uris: dict) -> str:
         <div class="section-label">Section 4</div>
         <h2>Bulk Download</h2>
 
-        {section_card(
-          h3("Running a Batch Download") +
-          steps_html([
-            'Select the clients you want to run by checking the box next to their names in the main table.',
-            'Select the target <strong>Assessment Year</strong> from the toolbar dropdown.',
-            'Select the document types to fetch: <strong>26AS</strong>, <strong>AIS</strong>, and/or <strong>TIS</strong>.',
-            'Click the primary <strong>Run Download</strong> button to start the execution.',
-            'A real-time progress dialog will pop up showing the current client, document sub-task status, and active step.',
-          ])
-        )}
+        <div id="select-clients-year" style="scroll-margin-top: 90px; margin-top: 12px;">
+          {section_card(
+            h3("4.1. Selecting Clients and Year") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'Before starting a download batch, configure the run parameters:</p>'
+            + steps_html([
+              'Check the checkbox next to the clients you want to process in the main dashboard grid.',
+              'Use the top toolbar to choose the target <strong>Assessment Year</strong> (e.g. 2025-26).'
+            ])
+          )}
+          {_img("ADC_YearSelector", "Setting the active Assessment Year", "Year Selector")}
+        </div>
 
-        {_img("ADC_DownloadOptionsMenu", "Checking options and selecting target documents", "Download Options Menu")}
-        {_img("ADC_YearSelector", "Setting the active Assessment Year", "Year Selector")}
+        <div id="bulk-26as-download" style="scroll-margin-top: 90px; margin-top: 24px;">
+          {section_card(
+            h3("4.2. How to Initiate Bulk 26AS Download") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'To download Form 26AS for multiple clients:</p>'
+            + steps_html([
+              'Select target clients by checking their rows in the table.',
+              'Under the <strong>Documents to Fetch</strong> checklist, ensure that <strong>26AS</strong> is checked.',
+              'Click the primary <strong>Download</strong> button on the toolbar.',
+              'The background automation will sequentially log in to each client\'s account, navigate to the TRACES portal, '
+              'request 26AS in HTML/PDF and TXT format, download, and auto-decrypt the files.'
+            ])
+          )}
+          {_img("ADC_26ASBatch", "Running Form 26AS download batch", "Form 26AS Batch Download")}
+        </div>
 
-        {section_card(
-          h3("Status Indicators and Batch Control") +
-          f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
-          f'Each client row updates live with icons representing their document status. Refer to the table below:</p>'
-          f'<table class="data-table" style="margin-bottom:12px;">'
-          f'<thead><tr><th style="width:60px;">Icon</th><th>Status</th><th>Meaning</th></tr></thead>'
-          f'<tbody>{status_table_rows}</tbody>'
-          f'</table>'
-          + tip_box("You can stop a long-running batch at any time. Clicking the Stop button finishes the active client and safely skips the rest.")
-        )}
+        <div id="bulk-ais-download" style="scroll-margin-top: 90px; margin-top: 24px;">
+          {section_card(
+            h3("4.3. How to Initiate Bulk AIS / TIS Download") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'To download AIS and TIS documents for multiple clients:</p>'
+            + steps_html([
+              'Select target clients by checking their rows in the table.',
+              'Under <strong>Documents to Fetch</strong>, check <strong>AIS</strong> and/or <strong>TIS</strong>.',
+              'Click the primary <strong>Download</strong> button on the toolbar.',
+              'The background automation will log in, navigate to the Compliance Portal, download instantly available statements, '
+              'or submit PDF generation requests for queued statements.'
+            ])
+          )}
+          {_img("ADC_AISDownload", "Selecting AIS download options", "AIS Download Screen")}
+        </div>
 
-        {_img("ADC_StatusBasedFilters", "Filtering client list based on download status", "Status Filters")}
+        <div id="menu-options-download" style="scroll-margin-top: 90px; margin-top: 24px;">
+          {section_card(
+            h3("4.4. Which Menu / Toolbar Options to Click") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'In addition to checking boxes and clicking the main <strong>Download</strong> button, you can trigger specific runs directly via the menus:</p>'
+            + bullets_html([
+              '<strong>Main Toolbar "Download" Dropdown</strong>: Click the dropdown arrow next to the Download button to select '
+              '<strong>Download Form 26AS Only</strong> or <strong>Download / Request TIS & AIS Only</strong>. This overrides '
+              'the dashboard checkboxes and executes only that specific task.',
+              '<strong>Right-Click Context Menu</strong>: Right-click any client row in the table and select <strong>Download Selected Clients...</strong>.'
+            ])
+          )}
+          {_img("ADC_DownloadOptionsMenu", "Checking options and selecting target documents", "Download Options Menu")}
+        </div>
+
+        <div id="status-indicators" style="scroll-margin-top: 90px; margin-top: 24px;">
+          {section_card(
+            h3("4.5. Status Indicators and Batch Control") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'A real-time progress dialog shows per-client status. Refer to the table below for icon meanings:</p>'
+            f'<table class="data-table" style="margin-bottom:12px;">'
+            f'<thead><tr><th style="width:60px;">Icon</th><th>Status</th><th>Meaning</th></tr></thead>'
+            f'<tbody>{status_table_rows}</tbody>'
+            f'</table>'
+            + tip_box("You can stop a long-running batch at any time. Clicking the Stop button finishes the active client and safely skips the rest.")
+          )}
+          {_img("ADC_StatusBasedFilters", "Filtering client list based on download status", "Status Filters")}
+        </div>
       </div>
     </section>
 
-    <!-- SECTION 5: Form 26AS -->
-    <section id="form-26as">
+    <!-- SECTION 5: Form 26AS Details -->
+    <section id="form-26as-details">
       <div class="wrap">
         <div class="section-label">Section 5</div>
-        <h2>Form 26AS</h2>
+        <h2>Form 26AS Details</h2>
 
-        {section_card(
-          h3("Understanding Form 26AS Downloads") +
-          f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
-          f'Form 26AS is the Tax Credit Statement showing details of tax deducted, tax collected, and advance tax payments.</p>'
-          + bullets_html([
-            f'<strong>Double Output Formats</strong>: The app fetches 26AS in both <strong>HTML/PDF</strong> and raw <strong>TXT (ZIP format)</strong>.',
-            f'<strong>Automatic Unzipping</strong>: The ZIP archive containing the TXT is automatically unpacked using the client\'s {badge("DDMMYYYY")} DOB password.',
-            f'<strong>Reconciliation Ready</strong>: The extracted TXT file is saved in the output directory and is ready to be converted into an audit-friendly Excel sheet.',
-          ])
-        )}
+        <div id="double-formats" style="scroll-margin-top: 90px; margin-top: 12px;">
+          {section_card(
+            h3("5.1. HTML/PDF and TXT Formats") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'Form 26AS is downloaded in two formats to maximize flexibility and usability:</p>'
+            + bullets_html([
+              '<strong>HTML/PDF Format</strong>: Provides a formatted, print-ready document containing the client\'s tax credits and details.',
+              '<strong>TXT Format (ZIP)</strong>: Used for parsing and generating clean, parsed Excel files. This is downloaded directly from the TRACES portal.'
+            ])
+          )}
+        </div>
 
-        {_img("ADC_TracesPortal26ASDownloadScreen", "TRACES portal redirection screen for 26AS", "TRACES Download Screen")}
+        <div id="zip-extraction" style="scroll-margin-top: 90px; margin-top: 24px;">
+          {section_card(
+            h3("5.2. ZIP Extraction and Decryption") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'The 26AS ZIP archive is locked by TRACES. The app automatically extracts the text file using the client\'s Date of Birth in {badge("DDMMYYYY")} format, '
+            f'ensuring a completely seamless extraction without manual intervention.</p>'
+          )}
+          {_img("ADC_TracesPortal26ASDownloadScreen", "TRACES portal redirection screen for 26AS", "TRACES Download Screen")}
+        </div>
       </div>
     </section>
 
-    <!-- SECTION 6: AIS & TIS -->
-    <section id="ais-tis">
+    <!-- SECTION 6: AIS & TIS Details -->
+    <section id="ais-tis-details">
       <div class="wrap">
         <div class="section-label">Section 6</div>
-        <h2>AIS & TIS</h2>
+        <h2>AIS & TIS Details</h2>
 
-        {section_card(
-          h3("AIS and TIS Differences") +
-          bullets_html([
-            '<strong>Annual Information Statement (AIS)</strong>: Contains comprehensive transaction data, including interest, mutual funds, stock trades, foreign remittances, and more.',
-            '<strong>Taxpayer Information Summary (TIS)</strong>: A simplified summary document showing aggregated tax category values.',
-          ])
-        )}
+        <div id="ais-tis-diffs" style="scroll-margin-top: 90px; margin-top: 12px;">
+          {section_card(
+            h3("6.1. Key Differences") +
+            bullets_html([
+              '<strong>Annual Information Statement (AIS)</strong>: Contains comprehensive transaction data, including interest, mutual funds, stock trades, foreign remittances, and more.',
+              '<strong>Taxpayer Information Summary (TIS)</strong>: A simplified summary document showing aggregated tax category values.',
+            ])
+          )}
+        </div>
 
-        {section_card(
-          h3("The Two-Phase Retrieval (Queued Requests)") +
-          f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
-          f'The Income Tax Portal generates AIS PDFs on-demand, which can lead to two scenarios:</p>'
-          + steps_html([
-            '<strong>Phase 1: Instantly Available</strong>. If the portal already has a generated PDF, AayDocCapio retrieves and decrypts it immediately.',
-            '<strong>Phase 2: Request Placed (Queued)</strong>. If a fresh PDF is required, the app submits a generation request. The status updates to a blue clock (🕐), meaning the request is queued.',
-            '<strong>Subsequent Run</strong>. Re-run the client the next day. The app detects the ready PDF from the portal\'s Activity History and downloads it.',
-          ]) +
-          tip_box("TIS documents are always generated instantly and do not suffer from portal queue delays.")
-        )}
-
-        {_img("ADC_AISDownload", "Selecting AIS download options", "AIS Download Screen")}
-        {_img("ADC_AISRequestPlaced", "AIS Request Placed - waiting for portal generation", "AIS Request Placed")}
-        {_img("ADC_AISRequestResult", "Ready AIS PDF successfully retrieved on subsequent run", "AIS Request Result")}
+        <div id="two-phase-queue" style="scroll-margin-top: 90px; margin-top: 24px;">
+          {section_card(
+            h3("6.2. Two-Phase Retrieval (Queue Mode)") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'The Income Tax Portal generates AIS PDFs on-demand, which can lead to two scenarios:</p>'
+            + steps_html([
+              '<strong>Phase 1: Instantly Available</strong>. If the portal already has a generated PDF, AayDocCapio retrieves and decrypts it immediately.',
+              '<strong>Phase 2: Request Placed (Queued)</strong>. If a fresh PDF is required, the app submits a generation request. The status updates to a blue clock (🕐), meaning the request is queued.',
+              '<strong>Subsequent Run</strong>. Re-run the client the next day. The app detects the ready PDF from the portal\'s Activity History and downloads it.',
+            ]) +
+            tip_box("TIS documents are always generated instantly and do not suffer from portal queue delays.")
+          )}
+          {_img("ADC_AISRequestPlaced", "AIS Request Placed - waiting for portal generation", "AIS Request Placed")}
+          {_img("ADC_AISRequestResult", "Ready AIS PDF successfully retrieved on subsequent run", "AIS Request Result")}
+        </div>
       </div>
     </section>
 
     <!-- SECTION 7: PDF Decryption -->
-    <section id="pdf-unlock">
+    <section id="pdf-decryption">
       <div class="wrap">
         <div class="section-label">Section 7</div>
         <h2>PDF Decryption</h2>
 
-        {section_card(
-          h3("How Decryption Works") +
-          f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
-          f'Standard government downloads are protected by strong passwords. AayDocCapio incorporates an automatic '
-          f'decryption system that removes these passwords before saving them to your folders.</p>'
-          + bullets_html([
-            'Attempts 9 password variations derived from the client\'s records.',
-            f'AIS/TIS Password Rule: {badge("lowercase_pan + DDMMYYYY")} (e.g. {badge("aaapt0001a15081985")}).',
-            f'26AS ZIP/PDF Password Rule: {badge("DDMMYYYY")} (e.g. {badge("15081985")}).',
-            'Saves a fully unlocked, password-free version of the PDF for direct viewing, printing, or archiving.',
-          ])
-        )}
-
-        {section_card(
-          h3("What happens if decryption fails?") +
-          f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;">'
-          f'If the Date of Birth or PAN spelling is incorrect in your vault, the decryption engine will fail. '
-          f'The app will leave the downloaded file intact in its password-locked state and flag the row with a yellow warning symbol (⚠️). '
-          f'To resolve, simply verify the client\'s DOB against their actual PAN card, click Edit Client, update the details, and run the client again.</p>'
-        )}
-
-        {_img("ADC_ITDPortalPANLoginScreenWithError", "Interception of PAN login errors on the ITD portal", "PAN Login Error Interception")}
-        {_img("ADC_LoginFailedDuetoIncorrectPANerror", "Invalid PAN error indication from portal", "Incorrect PAN Error")}
-      </div>
-    </section>
-
-    <!-- SECTION 8: Import / Export -->
-    <section id="import-export">
-      <div class="wrap">
-        <div class="section-label">Section 8</div>
-        <h2>Import / Export</h2>
-
-        {section_card(
-          h3("Bulk Onboarding Clients") +
-          f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
-          f'Manually adding clients one by one can be slow. AayDocCapio supports Excel-based bulk import and export.</p>'
-          + steps_html([
-            'Export a clean formatting template by clicking <strong>Client Master → Export Template</strong>.',
-            'Open the Excel template and fill in the columns: <strong>PAN</strong>, <strong>Full Name</strong>, <strong>Portal Password</strong>, and <strong>Date of Birth (DD-MM-YYYY)</strong>.',
-            'Save the spreadsheet and import it back into the app using <strong>Client Master → Import Clients…</strong>.',
-            'Review the import summary dialog containing counts of added, updated, and error rows.',
-          ])
-        )}
-
-        {_img("ADC_SaveClientImportTemplate", "Saving the onboarding Excel template to disk", "Save Import Template")}
-        {_img("ADC_ClientImportCompleteMessage", "Success confirmation showing imported records", "Client Import Success")}
-      </div>
-    </section>
-
-    <!-- SECTION 9: Tools Menu -->
-    <section id="tools-menu">
-      <div class="wrap">
-        <div class="section-label">Section 9</div>
-        <h2>Tools Menu</h2>
-
-        {section_card(
-          h3("Conversion Utilities") +
-          f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
-          f'AayDocCapio includes offline processing utilities under the Tools menu to translate raw files into structured spreadsheets.</p>'
-          + bullets_html([
-            '<strong>26AS TXT Converter</strong>: Converts the raw, unzipped 26AS TXT file into a structured Excel workbook (.xlsx) containing an overview sheet and section tabs, plus a formatted HTML summary file.',
-            '<strong>AIS JSON Converter</strong>: Converts the raw AIS JSON data into an organized multi-sheet Excel workbook. It organizes capital gains, salary, dividends, and interest into clear, filterable tables.',
-          ])
-        )}
-
-        {_img("ADC_ToolsMenu", "Utility actions in the main menu bar", "Tools Menu")}
-
-        {section_card(
-          h3("Running the 26AS Conversion") +
-          steps_html([
-            'Go to <strong>Tools → Convert 26AS TXT → Excel + HTML…</strong>',
-            'Browse and select the <strong>.txt</strong> 26AS file from the client\'s output folder.',
-            'Select the target directory and click Convert.',
-          ])
-        )}
-
-        {_img("ADC_Select26AStxtFileForConversion", "Selecting raw 26AS text file for conversion", "Select 26AS text")}
-        {_img("ADC_26ASConversionSuccessMessage", "Success alert after writing sheets and files", "26AS Success Message")}
-
-        {section_card(
-          h3("Running the AIS JSON Conversion") +
-          steps_html([
-            'Go to <strong>Tools → Convert AIS JSON → Excel…</strong>',
-            'Select the raw <strong>AIS JSON</strong> file downloaded from the ITD portal.',
-            'Set output location and confirm the conversion to build a comprehensive capital gains workbook.',
-          ])
-        )}
-
-        {_img("ADC_AISJsonSelectionScreen", "Selecting the raw AIS JSON file", "Select AIS JSON")}
-        {_img("ADC_AISConversionSuccess", "AIS JSON conversion success dialog", "AIS Success Message")}
-      </div>
-    </section>
-
-    <!-- SECTION 10: Mail Docs to Clients -->
-    <section id="mail-docs">
-      <div class="wrap">
-        <div class="section-label">Section 10</div>
-        <h2>Mail Docs to Clients</h2>
-
-        {section_card(
-          h3("Automated Client Emailing") +
-          f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
-          f'Directly deliver retrieved tax files to clients without copying files or switching to an email app.</p>'
-          + steps_html([
-            'Setup SMTP mail client parameters under Settings.',
-            'Go to the main client table, select the target clients, and click the <strong>Email Documents</strong> button.',
-            'Choose the files you wish to attach (unlocked PDFs, converted Excel sheets).',
-            'Review the email template, customize the text, and click Send.',
-          ])
-        )}
-
-        {_img("ADC_EmailSMTPSettingsDialog", "SMTP credentials configuration panel", "Email SMTP Settings")}
-        {_img("ADC_EmailTemplateEditor", "Customizing email templates and subject lines", "Email Template Editor")}
-
-        {section_card(
-          h3("SMTP Configuration and Providers") +
-          f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
-          f'Configure server parameters, ports, and secure connections. Predefined presets are included for Gmail, Office 365, Outlook.com, and Yahoo.</p>'
-          + bullets_html([
-            '<strong>Port 587 (STARTTLS)</strong>: Standard secure connection for modern mail servers.',
-            '<strong>Gmail App Passwords</strong>: If using Gmail, you must generate a 16-character App Password under your Google Account Security settings.',
-            '<strong>Test Connection</strong>: Use the "Send Test Email" utility inside the dialog to verify SMTP server handshake before running batch emails.',
-          ])
-        )}
-
-        {_img("ADC_TestMailSentConfirmation", "Test mail verification prompt", "Test Email success confirmation")}
-        {_img("ADC_SendingBulMailstoClientsConfirmation", "Verification list prior to sending client emails", "Bulk email confirmation")}
-        {_img("ADC_SendingBulMailstoClientsSuccess", "Bulk email delivery report", "Bulk email success status")}
-        {_img("ADC_SampleMailSenttoClient", "Sample delivery layout received by client", "Sample email received")}
-      </div>
-    </section>
-
-    <!-- SECTION 11: Settings & Themes -->
-    <section id="settings-themes">
-      <div class="wrap">
-        <div class="section-label">Section 11</div>
-        <h2>Settings & Themes</h2>
-
-        {section_card(
-          h3("Configuring Assessment Years") +
-          f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
-          f'AayDocCapio updates dynamically to accommodate new tax periods. Manage years via the Settings menu.</p>'
-          + steps_html([
-            'Navigate to <strong>Settings → Manage Assessment Years</strong>.',
-            'Add a new year (e.g. 2025-26) or delete old, inactive assessment periods.',
-            'These settings update the toolbar selectors and download path mapping instantly.',
-          ])
-        )}
-
-        {_img("ADC_SettingsMenu", "Global settings categories dropdown", "Settings Menu")}
-        {_img("ADC_ManageAssessmentYears", "Assessment year list management dialog", "Manage Assessment Years")}
-
-        {section_card(
-          h3("Visual Themes") +
-          f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;">'
-          f'Reduce eye strain during tax season by tailoring the interface. Change themes from <strong>Settings → Appearance</strong>. '
-          f'Options include: Light theme (clean, bright office look), Dark Navy (deep blue contrast), Slate, and Teal. '
-          f'Your theme choice is stored in your preferences and persists across app restarts.</p>'
-        )}
-      </div>
-    </section>
-
-    <!-- SECTION 12: Check for Updates -->
-    <section id="check-updates">
-      <div class="wrap">
-        <div class="section-label">Section 12</div>
-        <h2>Check for Updates</h2>
-
-        {section_card(
-          h3("Keeping AayDocCapio Updated") +
-          f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
-          f'As the ITD portal updates its code, login fields, and security checks, AayDocCapio receives frequent releases to preserve automation compatibility.</p>'
-          + steps_html([
-            'Go to <strong>Help → Check for Updates</strong> in the menu bar.',
-            'The application queries the release repository for new versions.',
-            'If a new version is detected, a dialog detailing the changelog and release notes will appear, along with a download link.',
-          ])
-        )}
-
-        {_img("ADC_UpdateAvailable", "New version detected and changelog notification", "Update Available Dialog")}
-      </div>
-    </section>
-
-    <!-- SECTION 13: FAQ & Troubleshooting -->
-    <section id="faq-troubleshooting">
-      <div class="wrap">
-        <div class="section-label">Section 13</div>
-        <h2>FAQ & Troubleshooting</h2>
-        <p style="color:#5A6B84;font-size:0.95rem;margin-bottom:24px;line-height:1.7;">
-          Common error states, issues, and quick-fix procedures.
-        </p>
-
-        <div style="overflow-x:auto; margin-bottom:28px;">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Error / Status</th>
-                <th style="min-width:200px;">Cause</th>
-                <th style="min-width:220px;">Fix</th>
-              </tr>
-            </thead>
-            <tbody>{prob_rows}</tbody>
-          </table>
+        <div id="decryption-rules" style="scroll-margin-top: 90px; margin-top: 12px;">
+          {section_card(
+            h3("7.1. Decryption Rules") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'Standard government downloads are protected by strong passwords. AayDocCapio incorporates an automatic '
+            f'decryption system that removes these passwords before saving them to your folders.</p>'
+            + bullets_html([
+              'Attempts 9 password variations derived from the client\'s records.',
+              f'AIS/TIS Password Rule: {badge("lowercase_pan + DDMMYYYY")} (e.g. {badge("aaapt0001a15081985")}).',
+              f'26AS ZIP/PDF Password Rule: {badge("DDMMYYYY")} (e.g. {badge("15081985")}).',
+              'Saves a fully unlocked, password-free version of the PDF for direct viewing, printing, or archiving.',
+            ])
+          )}
         </div>
 
-        {_img("ADC_ErrorIfOutputSubFolderisNotYetCreated", "Error indicator shown when the target output path is missing or inaccessible", "Output path error")}
-        {_img("ADC_ResumeButtonOnceDownloadisStoppedMidway", "Resume button in status column after stopping midway", "Resume button")}
+        <div id="decryption-troubleshooting" style="scroll-margin-top: 90px; margin-top: 24px;">
+          {section_card(
+            h3("7.2. Troubleshooting Decryption Failures") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;">'
+            f'If the Date of Birth or PAN spelling is incorrect in your vault, the decryption engine will fail. '
+            f'The app will leave the downloaded file intact in its password-locked state and flag the row with a yellow warning symbol (⚠️). '
+            f'To resolve, simply verify the client\'s DOB against their actual PAN card, click Edit Client, update the details, and run the client again.</p>'
+          )}
+          {_img("ADC_ITDPortalPANLoginScreenWithError", "Interception of PAN login errors on the ITD portal", "PAN Login Error Interception")}
+        </div>
+      </div>
+    </section>
 
-        <div style="margin-top:28px;">
+    <!-- SECTION 8: Tools Menu Utilities -->
+    <section id="tools-menu-section">
+      <div class="wrap">
+        <div class="section-label">Section 8</div>
+        <h2>Tools Menu Utilities</h2>
+
+        <div id="tools-26as" style="scroll-margin-top: 90px; margin-top: 12px;">
+          {section_card(
+            h3("8.1. Convert 26AS TXT to Excel + HTML") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'Translate raw TXT credit files into structured worksheets:</p>'
+            + steps_html([
+              'Go to <strong>Tools → Convert 26AS TXT to Excel + HTML…</strong>',
+              'Select the raw <strong>.txt</strong> 26AS file from the client\'s output folder.',
+              'Click Convert to output a beautifully formatted Excel workbook with separate sheets for each section, and a formatted HTML overview.'
+            ])
+          )}
+          {_img("ADC_Select26AStxtFileForConversion", "Selecting raw 26AS text file for conversion", "Select 26AS text")}
+          {_img("ADC_26ASConversionSuccessMessage", "Success alert after writing sheets and files", "26AS Success Message")}
+        </div>
+
+        <div id="tools-ais" style="scroll-margin-top: 90px; margin-top: 24px;">
+          {section_card(
+            h3("8.2. Convert AIS JSON to Excel") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'AIS JSON files contain deep structured details. You can convert them to filterable Excel sheets:</p>'
+            + steps_html([
+              'Go to <strong>Tools → Convert AIS JSON → Excel…</strong>',
+              'Select the raw <strong>AIS JSON</strong> file downloaded from the ITD portal.',
+              'Confirm the output destination to generate a capital gains reconciliation sheet.'
+            ])
+          )}
+          {_img("ADC_AISJsonSelectionScreen", "Selecting the raw AIS JSON file", "Select AIS JSON")}
+          {_img("ADC_AISConversionSuccess", "AIS JSON conversion success dialog", "AIS Success Message")}
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 9: Email Setup & Mailing -->
+    <section id="email-setup-delivery">
+      <div class="wrap">
+        <div class="section-label">Section 9</div>
+        <h2>Email Setup & Mailing</h2>
+
+        <div id="how-to-setup-email" style="scroll-margin-top: 90px; margin-top: 12px;">
+          {section_card(
+            h3("9.1. How to Setup Email (SMTP Configuration)") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'AayDocCapio allows you to email downloaded and decrypted tax documents directly to your clients '
+            f'via SMTP. Setup takes just a few steps:</p>'
+            + steps_html([
+              'Go to <strong>Settings → Email Settings</strong> in the menu bar.',
+              'Click on one of the **Provider Presets** (Gmail, Outlook, M365, Yahoo, iCloud) at the top of the dialog. This auto-populates host, port, and security settings.',
+              'Fill in your **SMTP Username** (your full email address) and **SMTP Password** (see details below).',
+              'Specify **CC** or **BCC** addresses if you want a copy sent to your backup inbox.',
+              'Enter the **Sender Name** (your firm\'s name or your name) and select your preferred font/styling.',
+              'Click **Send Test Email** to verify connection settings before proceeding.'
+            ])
+          )}
+          {_img("ADC_EmailSMTPSettingsDialog", "SMTP credentials configuration panel", "Email SMTP Settings")}
+        </div>
+
+        <div id="email-settings-reference" style="scroll-margin-top: 90px; margin-top: 24px;">
+          {section_card(
+            h3("9.2. Email Settings Reference") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'Depending on your email provider, standard login passwords may not work due to Multi-Factor Authentication (MFA). Use the references below:</p>'
+            + bullets_html([
+              '<strong>Gmail / Google Workspace</strong>: Standard passwords are blocked. You MUST enable 2-Step Verification and generate a <strong>16-character App Password</strong> from your Google Account settings. Enter this App Password as your SMTP password.',
+              '<strong>Microsoft 365 / Office 365</strong>: Use SMTP host `smtp.office365.com` on port `587` with `STARTTLS`. Make sure SMTP AUTH is enabled for the mailbox in the Microsoft 365 Admin Center.',
+              '<strong>iCloud</strong>: Use an app-specific password generated from appleid.apple.com.'
+            ]) +
+            tip_box("Clicking any of the provider preset tiles in the Email Settings dialog displays a blue helper panel at the bottom with direct links to setup instructions.")
+          )}
+          {_img("ADC_TestMailSentConfirmation", "Test mail verification prompt", "Test Email success confirmation")}
+        </div>
+
+        <div id="automated-mailing" style="scroll-margin-top: 90px; margin-top: 24px;">
+          {section_card(
+            h3("9.3. Mailing Converted/Downloaded Documents") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'Once downloads complete, bulk send documents to clients in one click:</p>'
+            + steps_html([
+              'Click the **Email Docs** button on the main toolbar or go to **Tools → Mail Docs to Clients**.',
+              'Select which documents to attach (e.g. Form 26AS PDF, 26AS Excel, AIS PDF, TIS PDF).',
+              'Draft your email body. Use placeholder chips like `{client_name}`, `{pan}`, `{ay}`, and `{documents}`. '
+              'The `{documents}` placeholder will automatically render as a bulleted list of the files attached.',
+              'Click **Send** to launch the batch. Monitor sending progress live in the status grid.'
+            ])
+          )}
+          {_img("ADC_EmailTemplateEditor", "Customizing email templates and subject lines", "Email Template Editor")}
+          {_img("ADC_SendingBulMailstoClientsConfirmation", "Verification list prior to sending client emails", "Bulk email confirmation")}
+          {_img("ADC_SendingBulMailstoClientsSuccess", "Bulk email delivery report", "Bulk email success status")}
+          {_img("ADC_SampleMailSenttoClient", "Sample delivery layout received by client", "Sample email received")}
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 10: Settings & Sub-sections -->
+    <section id="settings-customization">
+      <div class="wrap">
+        <div class="section-label">Section 10</div>
+        <h2>Settings & Sub-sections</h2>
+
+        <div id="settings-folder" style="scroll-margin-top: 90px; margin-top: 12px;">
+          {section_card(
+            h3("10.1. Download Folder Path") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'Configure where files are saved. By default, they go to your standard Downloads folder.</p>'
+            + steps_html([
+              'Go to <strong>Settings → Download Folder</strong>.',
+              'Browse and choose a target directory.',
+              'Click OK. All future runs will automatically generate structured client sub-folders here.'
+            ])
+          )}
+          {_img("ADC_SelectOutputDirectory", "Configuring the root download folder", "Select Output Directory")}
+        </div>
+
+        <div id="settings-ay" style="scroll-margin-top: 90px; margin-top: 24px;">
+          {section_card(
+            h3("10.2. Manage Assessment Years") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'Add or remove financial periods to adapt to new tax cycles:</p>'
+            + steps_html([
+              'Go to <strong>Settings → Manage Assessment Years</strong>.',
+              'Add a new year (e.g. AY 2026-27 / FY 2025-26) or delete older years.',
+              'Reorder them to set the default year at startup.'
+            ])
+          )}
+          {_img("ADC_ManageAssessmentYears", "Assessment year list management dialog", "Manage Assessment Years")}
+        </div>
+
+        <div id="settings-appearance" style="scroll-margin-top: 90px; margin-top: 24px;">
+          {section_card(
+            h3("10.3. Appearance & Themes") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;">'
+            f'Switch between Light, Dark Navy, Slate, and Teal visual styles via <strong>Settings → Appearance</strong>. '
+            f'Theme preference is saved locally and applies instantly on next application launch.</p>'
+          )}
+          {_img("ADC_SettingsMenu", "Global settings categories dropdown", "Settings Menu")}
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 11: Software Updates -->
+    <section id="app-updates">
+      <div class="wrap">
+        <div class="section-label">Section 11</div>
+        <h2>Software Updates</h2>
+
+        <div id="inbuilt-auto-update" style="scroll-margin-top: 90px; margin-top: 12px;">
+          {section_card(
+            h3("11.1. Inbuilt Auto-Update Feature") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'AayDocCapio features an **inbuilt auto-update** mechanism to ensure you always remain compatible '
+            f'with the ITD portal changes without manual downloads:</p>'
+            + bullets_html([
+              '<strong>Startup Check</strong>: On launch, the application checks our release server for any critical bug fixes or new features.',
+              '<strong>Manual Trigger</strong>: Select <strong>Help → Check for Updates</strong> from the menu bar to run a manual query.',
+              '<strong>Changelog Review</strong>: If an update is found, the app displays the new release version, date, and a detailed list of fixes.',
+              '<strong>One-Click Install</strong>: Click **Download & Install** to let the app automatically retrieve and execute the updater package.'
+            ])
+          )}
+          {_img("ADC_UpdateAvailable", "New version detected and changelog notification", "Update Available Dialog")}
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 12: Troubleshooting & FAQ -->
+    <section id="troubleshooting-faq">
+      <div class="wrap">
+        <div class="section-label">Section 12</div>
+        <h2>Troubleshooting & FAQ</h2>
+        
+        <div id="error-resolutions" style="scroll-margin-top: 90px; margin-top: 12px;">
+          <p style="color:#5A6B84;font-size:0.95rem;margin-bottom:24px;line-height:1.7;">
+            Common error states, issues, and quick-fix procedures.
+          </p>
+
+          <div style="overflow-x:auto; margin-bottom:28px;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Error / Status</th>
+                  <th style="min-width:200px;">Cause</th>
+                  <th style="min-width:220px;">Fix</th>
+                </tr>
+              </thead>
+              <tbody>{prob_rows}</tbody>
+            </table>
+          </div>
+
+          {_img("ADC_ErrorIfOutputSubFolderisNotYetCreated", "Error indicator shown when the target output path is missing or inaccessible", "Output path error")}
+          {_img("ADC_ResumeButtonOnceDownloadisStoppedMidway", "Resume button in status column after stopping midway", "Resume button")}
+        </div>
+
+        <div id="faq-list" style="scroll-margin-top: 90px; margin-top: 24px;">
           <div class="section-label" style="margin-bottom:12px;">Frequently Asked Questions</div>
           {section_card(
             '<details>'
@@ -811,28 +961,27 @@ def _user_manual_page_html(img_uris: dict) -> str:
     }});
 
     // Scrollspy logic
-    const sections = document.querySelectorAll('.content-area section');
+    const targets = document.querySelectorAll('.content-area [id]');
     const navItems = document.querySelectorAll('.sidebar-nav-item');
 
     function updateActiveNavItem() {{
-      let currentSectionId = '';
-      const scrollPosition = window.scrollY + 100; // offset for sticky navbar
+      let currentId = '';
+      const scrollPosition = window.scrollY + 100;
 
-      sections.forEach(section => {{
-        const top = section.offsetTop;
-        const height = section.offsetHeight;
-        if (scrollPosition >= top && scrollPosition < top + height) {{
-          currentSectionId = section.getAttribute('id');
+      targets.forEach(target => {{
+        const top = target.offsetTop;
+        if (scrollPosition >= top - 20) {{
+          currentId = target.getAttribute('id');
         }}
       }});
 
-      if (window.scrollY < 200) {{
-        currentSectionId = 'overview';
+      if (!currentId && targets.length > 0) {{
+        currentId = targets[0].getAttribute('id');
       }}
 
       navItems.forEach(item => {{
         item.classList.remove('active');
-        if (item.getAttribute('href') === '#' + currentSectionId) {{
+        if (item.getAttribute('href') === '#' + currentId) {{
           item.classList.add('active');
         }}
       }});

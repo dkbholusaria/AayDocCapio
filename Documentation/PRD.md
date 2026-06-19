@@ -149,9 +149,13 @@ A local, encrypted desktop app that:
 | ID | Requirement | Priority |
 |---|---|---|
 | N-01 | Integrated 13-section offline HTML User Manual with embedded app screenshots | Must |
-| N-02 | Left-side sticky navigator panel with active section scrollspy tracking | Should |
-| N-03 | Clean top sticky navbar containing logo and external 'Contact us' link | Should |
+| N-02 | Left-side sticky navigator panel with 37 nested sub-sections and JS Scrollspy tracking | Should |
+| N-03 | Clean top sticky navbar containing logo, branding, and external 'Contact us' link | Should |
 | N-04 | Last Download Time column in the client grid to display successful run history | Must |
+| N-05 | Rebranding of Client Vault to Managing Clients and grouping bulk import/export under it | Must |
+| N-06 | Step-by-step procedures for bulk 26AS/AIS downloads and specific menu options to click | Must |
+| N-07 | Comprehensive SMTP Email Setup guidelines with provider presets and Google App Passwords | Must |
+| N-08 | Detailed inbuilt check for updates and auto-updater guidelines | Should |
 
 ---
 
