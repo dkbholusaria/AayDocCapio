@@ -1326,6 +1326,7 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
             label = f"Sr. {sr}  ·  Subtotal — {name}{nf_warn}"
             _track(widths, 0, label)
             _subtotal_row(ws, r, ncols, label, num_col_indices, detail_start, detail_end)
+            row_ids[roman][sr]["xl_subtot"] = r + 1  # 1-indexed subtotal row for summary formulas
             subtotal_rows.append(r)
             r += 1
 
@@ -1478,6 +1479,7 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
             detail_end = r - 1
             label = f"Sr. {sr}  ·  Subtotal — {name}"
             _subtotal_row(ws, r, ncols, label, num_cols, detail_start, detail_end)
+            row_ids[roman][sr]["xl_subtot"] = r + 1  # 1-indexed subtotal row for summary formulas
             subtotal_rows.append(r); r += 1
 
         _grandtotal_row(ws, r, ncols, f"GRAND TOTAL — Part-{roman}",
@@ -1526,6 +1528,7 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
             detail_end = r - 1
             _subtotal_row(ws5, r, ncols5, f"Sr. {sr}  ·  Subtotal — {name}",
                           [4, 8], detail_start, detail_end)
+            row_ids["V"][sr]["xl_subtot"] = r + 1  # 1-indexed subtotal row for summary formulas
             sub5.append(r); r += 1
         _grandtotal_row(ws5, r, ncols5, "GRAND TOTAL — Part-V", [4, 8], sub5)
         for ci, h in enumerate(cols5): _track(w5, ci, h)
@@ -1613,6 +1616,16 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
     ws_sum.freeze_panes(2, 0)
     r = 2
 
+    # Column indices (0-based) for (amount, tds/tcs, deposited) per Part sheet
+    PART_AMT_COLS = {
+        "I":   (6, 7, 8),
+        "II":  (6, 7, 8),
+        "III": (6, None, None),
+        "IV":  (9, None, 10),
+        "V":   (4, 8, None),
+        "VI":  (6, 7, 8),
+    }
+
     credit_parts = [p for p in ["I","II","III","IV","V","VI"]
                     if p in parts and not parts[p]["empty"]]
     for roman in credit_parts:
@@ -1620,31 +1633,29 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
         meta       = PART_META.get(roman, {})
         part_label = f"Part-{roman}"
         sheet_name = f"Part-{roman}"
+        acols      = PART_AMT_COLS[roman]
 
         for sr, info in row_ids.get(roman, {}).items():
-            name   = info["name"]
-            tan    = info["tan"]
-            xl_row = info.get("xl_row", 3)
+            name    = info["name"]
+            tan     = info["tan"]
+            xl_row  = info.get("xl_row", 3)
+            xl_subtot = info.get("xl_subtot", xl_row)
 
+            # nf_count still requires inspecting _details
             ded_rows = _match_ded(pdata["rows"], name, tan)
-            amt = tds = dep = 0.0
             nf_count = 0
             if ded_rows:
-                dr = ded_rows[0]
-                amt = _fmt_num(dr.get("Total Amount Paid / Credited(Rs.)") or
-                               dr.get("Total Amount Paid / Debited(Rs.)")  or
-                               dr.get("Total Transaction Amount(Rs.)") or "") or 0
-                tds = _fmt_num(dr.get("Total Tax Deducted(Rs.)") or
-                               dr.get("Total Tax Collected(Rs.)") or
-                               dr.get("Total TDS Deposited(Rs.)") or "") or 0
-                dep = _fmt_num(dr.get("Total TDS Deposited(Rs.)") or
-                               dr.get("Total TCS Deposited(Rs.)") or "") or 0
-                for d in dr.get("_details", []):
+                for d in ded_rows[0].get("_details", []):
                     if (d.get("Status of Booking") or "").strip() in NON_FINAL_STATUSES:
                         nf_count += 1
 
             nf = nf_count > 0
             sf, nf_ = (F_NONFIN, F_NONFIN_NUM) if nf else (F_DEFAULT, F_NUM)
+
+            def _ref(col_idx):
+                if col_idx is None:
+                    return None
+                return f"='{sheet_name}'!{_cl(col_idx)}{xl_subtot}"
 
             ws_sum.write(r, 0, part_label, F_NAVY_CTR)
             ws_sum.write(r, 1, meta.get("title",""), sf)
@@ -1653,13 +1664,13 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
                              F_LINK, name)
             _track(w_sum, 2, name)
             ws_sum.write_url(r, 3, f"internal:'{sheet_name}'!A{xl_row}", F_LINK, tan)
-            ws_sum.write(r, 4, amt, nf_)
+            ws_sum.write_formula(r, 4, _ref(acols[0]), nf_)
             if roman == "III":
                 ws_sum.write(r, 5, "—", sf)
                 ws_sum.write(r, 6, "—", sf)
             else:
-                ws_sum.write(r, 5, tds, nf_)
-                ws_sum.write(r, 6, dep, nf_)
+                ws_sum.write_formula(r, 5, _ref(acols[1]) or '=""', nf_)
+                ws_sum.write_formula(r, 6, _ref(acols[2]) or '=""', nf_)
             ws_sum.write(r, 7, str(nf_count), sf)
             r += 1
 
