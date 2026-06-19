@@ -22,8 +22,8 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem, QHeaderView, QAbstractItemView, QToolButton, QMenu,
     QProgressBar, QCalendarWidget,
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QMetaObject, Q_ARG, QModelIndex
-from PyQt6.QtGui import QFont, QTextCursor, QColor, QRegularExpressionValidator, QPalette, QAction, QIcon, QPixmap
+from PyQt6.QtCore import Qt, pyqtSignal, pyqtSlot, QTimer, QMetaObject, Q_ARG, QModelIndex, QUrl
+from PyQt6.QtGui import QFont, QTextCursor, QColor, QRegularExpressionValidator, QPalette, QAction, QIcon, QPixmap, QDesktopServices
 from PyQt6.QtCore import QRegularExpression
 
 from config import _app_dir, _default_download_dir, _bundled_dir
@@ -138,6 +138,9 @@ class AayDocCapioApp(QMainWindow):
         # Check Chromium on startup in background — installs silently if missing
         QTimer.singleShot(1500, self._check_browser)
 
+        # Check for app updates 3s after startup
+        QTimer.singleShot(3000, self._check_for_update)
+
     def closeEvent(self, event):
         self.log("[System] AayDocCapio closed.")
         from automation.emailer import log_session_end
@@ -209,6 +212,10 @@ class AayDocCapioApp(QMainWindow):
         smtp_help_action = QAction(_micon("btn_send_test.png"), "Email Setup Help…", self)
         smtp_help_action.triggered.connect(self._open_smtp_help)
         help_menu.addAction(smtp_help_action)
+        help_menu.addSeparator()
+        act_update = QAction(_micon("menu_about.png"), "Check for Updates…", self)
+        act_update.triggered.connect(lambda: self._check_for_update(manual=True))
+        help_menu.addAction(act_update)
         help_menu.addSeparator()
         about_action = QAction(_micon("menu_about.png"), "About AayDocCapio", self)
         about_action.triggered.connect(self._show_about)
@@ -618,9 +625,18 @@ class AayDocCapioApp(QMainWindow):
         self._hdr_copy = copy_lbl
         copy_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
 
+        ml.setSpacing(1)
         ml.addStretch()
         ml.addWidget(version_lbl)
         ml.addWidget(copy_lbl)
+
+        self._hdr_update_lnk = QLabel()
+        self._hdr_update_lnk.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self._hdr_update_lnk.setOpenExternalLinks(False)
+        self._hdr_update_lnk.linkActivated.connect(self._on_update_link_clicked)
+        self._hdr_update_lnk.hide()
+        ml.addWidget(self._hdr_update_lnk)
+
         ml.addStretch()
 
         hl.addWidget(meta_block)
@@ -1980,6 +1996,48 @@ class AayDocCapioApp(QMainWindow):
             else:
                 self.log("[Browser] Chromium ready.")
         threading.Thread(target=_run, daemon=True).start()
+
+    def _check_for_update(self, manual=False):
+        if manual:
+            self._update_check_manual = True
+        from updater import check_for_update
+        def _cb(tag, url):
+            QMetaObject.invokeMethod(
+                self, "_on_update_result",
+                Qt.ConnectionType.QueuedConnection,
+                Q_ARG(str, tag or ""),
+                Q_ARG(str, url or ""),
+            )
+        check_for_update(_cb)
+
+    @pyqtSlot(str, str)
+    def _on_update_result(self, tag: str, url: str):
+        self._pending_update_url = url
+        if tag:
+            self._hdr_update_lnk.setText(
+                f'<a href="#" style="color:#2563EB;font-size:11px;">&#11015; v{tag} available</a>'
+            )
+            self._hdr_update_lnk.show()
+            self._update_blink_timer = QTimer(self)
+            self._update_blink_timer.timeout.connect(
+                lambda: self._hdr_update_lnk.setVisible(not self._hdr_update_lnk.isVisible())
+            )
+            self._update_blink_timer.start(600)
+        elif getattr(self, "_update_check_manual", False):
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(
+                self, "Up to Date",
+                f"You're on the latest version (v{APP_VERSION})."
+            )
+        self._update_check_manual = False
+
+    def _on_update_link_clicked(self):
+        if hasattr(self, "_update_blink_timer"):
+            self._update_blink_timer.stop()
+        self._hdr_update_lnk.show()
+        url = getattr(self, "_pending_update_url", None) or \
+            "https://github.com/dkbholusaria/AayDocCapio/releases/latest"
+        QDesktopServices.openUrl(QUrl(url))
 
     # ── Automation ────────────────────────────────────────────────────────────
 

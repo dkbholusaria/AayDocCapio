@@ -1798,7 +1798,6 @@ def convert_ais_json(json_path: str, log_callback=None,
     # Otherwise write alongside the source file.
     import json as _json
     src_dir  = os.path.dirname(os.path.abspath(json_path))
-    src_base = os.path.splitext(os.path.basename(json_path))[0]
     parent   = os.path.dirname(src_dir)
 
     if os.path.basename(src_dir) == "Raw JSON":
@@ -1810,8 +1809,11 @@ def convert_ais_json(json_path: str, log_callback=None,
         dec_dir  = src_dir
         xlsx_dir = src_dir
 
-    dec_path  = os.path.join(dec_dir,  src_base + "_decrypted.json")
-    xlsx_path = os.path.join(xlsx_dir, src_base + ".xlsx")
+    fy_safe = fy.replace("-", "_")
+    pan_out = (pan_in_file or "").upper()
+    canonical_base = f"{pan_out}-AIS-{fy_safe}"
+    dec_path  = os.path.join(dec_dir,  canonical_base + "_decrypted.json")
+    xlsx_path = os.path.join(xlsx_dir, canonical_base + ".xlsx")
 
     with open(dec_path, "w", encoding="utf-8") as _f:
         _json.dump(data, _f, ensure_ascii=False, indent=2)

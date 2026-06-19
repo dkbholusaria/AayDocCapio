@@ -118,6 +118,7 @@ def collect_attachments(ay_folder: str, pan: str) -> list:
         f"{pan}-26AS-*.pdf",
         f"{pan}-26AS-*.xlsx",
         f"{pan}-AIS-*.pdf",
+        f"{pan}-AIS-*.xlsx",
         f"{pan}-TIS-*.pdf",
     ]
     found = []
@@ -259,9 +260,12 @@ def _doc_list(attachments: list) -> str:
         elif "26AS" in fname and fname.endswith(".XLSX") and "26AS_XLS" not in seen:
             entries.append("Form 26AS — Annual Tax Statement (Excel)")
             seen.add("26AS_XLS")
-        elif "AIS" in fname and "AIS" not in seen:
-            entries.append("AIS — Annual Information Statement")
-            seen.add("AIS")
+        elif "AIS" in fname and fname.endswith(".PDF") and "AIS_PDF" not in seen:
+            entries.append("AIS — Annual Information Statement (PDF)")
+            seen.add("AIS_PDF")
+        elif "AIS" in fname and fname.endswith(".XLSX") and "AIS_XLS" not in seen:
+            entries.append("AIS — Annual Information Statement (Excel)")
+            seen.add("AIS_XLS")
         elif "TIS" in fname and "TIS" not in seen:
             entries.append("TIS — Taxpayer Information Summary")
             seen.add("TIS")
