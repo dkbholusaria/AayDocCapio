@@ -323,6 +323,7 @@ def _user_manual_page_html(img_uris: dict) -> str:
     <a href="#tools-menu">Utilities</a>
     <a href="#mail-docs">Mail</a>
     <a href="#faq-troubleshooting">FAQ</a>
+    <a href="https://deepak.bholusaria.com" target="_blank" rel="noopener">Contact us</a>
   </div>
 </nav>
 
