@@ -46,14 +46,6 @@ _SALES_SUPERSET = [
     "Status",
 ]
 
-# Normalise varying purchase column names to a common label
-_PURCHASE_COL_MAP = {
-    "Market Purchase":      "Purchase Amount",
-    "Total Purchase Amount":"Purchase Amount",
-    "Market Sales":         "Sales Amount",
-    "Total Sales Value":    "Sales Amount",
-}
-
 _PURCHASES_SUPERSET = [
     "TSN",
     "Quarter",
@@ -119,6 +111,26 @@ def _get_l1(elem: dict) -> tuple[list, list]:
     col_names = [c.get("name", "") if isinstance(c, dict) else str(c) for c in labels]
     rows = l1.get("columnData") or []
     return col_names, [row[:len(col_names)] for row in rows]
+
+
+def _infer_info_code(elem: dict) -> str:
+    """Return l2 info_code, with narrow l1-label fallbacks for empty l2 SFT rows."""
+    l2 = _get_l2(elem)
+    code = l2.get("info_code", "")
+    if code:
+        return code
+    for key in ("info_code", "infoCode", "code"):
+        code = elem.get(key, "")
+        if code:
+            return str(code)
+
+    l1_cols, _ = _get_l1(elem)
+    col_set = set(l1_cols)
+    if {"Total Purchase Amount", "Total Sales Value"}.issubset(col_set):
+        return "SFT-18(Pur)"
+    if {"Market Purchase", "Market Sales"}.issubset(col_set):
+        return "SFT-17(Pur)"
+    return ""
 
 
 def _active_rows(col_names: list, rows: list) -> list:
@@ -204,10 +216,12 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
 
     def _fmt(bold=False, size=10, color="#000000", italic=False,
              bg=None, align="left", valign="vcenter", wrap=False,
-             num_fmt=None, border=1, border_color="#D0D0D0", top_color=None):
+             num_fmt=None, border=1, border_color="#D0D0D0", top_color=None,
+             underline=False):
         d = {
             "font_name": "Calibri", "font_size": size,
-            "bold": bold, "italic": italic, "font_color": color,
+            "bold": bold, "italic": italic, "underline": underline,
+            "font_color": color,
             "align": align, "valign": valign, "text_wrap": wrap,
             "left": border, "right": border, "top": border, "bottom": border,
             "left_color": border_color, "right_color": border_color,
@@ -234,9 +248,13 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
                         num_fmt='#,##0.00')
     F_BRAND_L    = _fmt(bold=True, size=10, color=WHITE, bg=NAVY, align="left")
     F_BRAND_R    = _fmt(size=8, color=GREY, bg=NAVY, align="right")
+    F_TITLE      = _fmt(bold=True, size=13, color=WHITE, bg=NAVY, align="center")
+    F_SUBTITLE   = _fmt(size=8, color=GREY, bg=NAVY, align="center", wrap=True)
     F_LABEL      = _fmt(bold=True, bg=LABEL)
     F_VALUE      = _fmt()
     F_SECTION    = _fmt(bold=True, color=WHITE, bg=GREEN)
+    F_NOTES      = _fmt(bg="#fffde7", color="#6b4f00", wrap=True)
+    F_LINK       = _fmt(color="#0563C1", underline=True)
 
     report_ts = datetime.now().strftime("%d-%b-%Y %H:%M")
 
@@ -326,23 +344,61 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
     header_values = data.get("header", {}).get("columnData", [])
     footer_labels  = data.get("footer", {}).get("columnLabel", [])
     footer_values  = data.get("footer", {}).get("columnData", [])
+    part_a_labels = data.get("partA", {}).get("columnLabel", [])
+    part_a_values = data.get("partA", {}).get("columnData", [])
+    header_map = {str(k).strip(): v for k, v in zip(header_labels, header_values)}
+    part_a_map = {str(k).strip(): v for k, v in zip(part_a_labels, part_a_values)}
+    footer_map = {str(k).strip(): v for k, v in zip(footer_labels, footer_values)}
+    assessment_year = (
+        header_map.get("Assessment Year")
+        or header_map.get("Assessment Year ")
+        or ""
+    )
 
     # ── Sheet 1: General Info ──────────────────────────────────────────────
     _log("Writing General Info sheet…")
     ws_gi = wb.add_worksheet("General Info")
     ws_gi.hide_gridlines(2)
-    ws_gi.set_column(0, 0, 28)
-    ws_gi.set_column(1, 1, 52)
-    ws_gi.merge_range(0, 0, 0, 1, f"AIS — {assessee_name} — {pan} — FY {fy}", F_BRAND_L)
-    ws_gi.set_row(0, 16)
+    ws_gi.set_column(0, 0, 35)
+    ws_gi.set_column(1, 1, 60)
+    ws_gi.merge_range(0, 0, 0, 1, f"AIS — {assessee_name} — FY {fy}", F_TITLE)
+    ws_gi.set_row(0, 28)
+    ws_gi.merge_range(
+        1, 0, 1, 1,
+        "AayDoc Capio™  ·  © 2026  ·  Developed by CA. Deepak Bhholusaria  ·  linkedin.com/in/bhholusaria  ·  deepak@ailearrning.guru",
+        F_SUBTITLE)
+    ws_gi.set_row(1, 22)
 
-    row_gi = 1
-    ws_gi.merge_range(row_gi, 0, row_gi, 1, "Part A — General Information", F_SECTION)
-    ws_gi.set_row(row_gi, 16); row_gi += 1
-
-    for lbl, val in zip(header_labels, header_values):
-        ws_gi.write(row_gi, 0, lbl, F_LABEL)
-        ws_gi.write(row_gi, 1, str(val) if val is not None else "", F_VALUE)
+    row_gi = 2
+    fields_map = [
+        ("ASSESSEE INFORMATION", None),
+        ("PAN", "Permanent Account Number (PAN)"),
+        ("Aadhaar Number", "Aadhaar Number"),
+        ("Name of Assessee", "Name of Assessee"),
+        ("Date of Birth", "Date of Birth"),
+        ("Mobile Number", "Mobile Number"),
+        ("E-mail Address", "E-mail Address"),
+        ("Address", "Address"),
+        ("REPORT INFORMATION", None),
+        ("Financial Year", "__fy__"),
+        ("Assessment Year", "__ay__"),
+        ("Report Generated On", "__report_ts__"),
+    ]
+    for label, key in fields_map:
+        if key is None:
+            ws_gi.merge_range(row_gi, 0, row_gi, 1, label, F_SECTION)
+            ws_gi.set_row(row_gi, 16)
+        else:
+            ws_gi.write(row_gi, 0, label, F_LABEL)
+            if key == "__fy__":
+                val = fy
+            elif key == "__ay__":
+                val = assessment_year
+            elif key == "__report_ts__":
+                val = report_ts
+            else:
+                val = part_a_map.get(key, "")
+            ws_gi.write(row_gi, 1, str(val) if val is not None else "", F_VALUE)
         row_gi += 1
 
     row_gi += 1
@@ -369,6 +425,18 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
         ws_gi.write(row_gi, 1, str(val) if val is not None else "", F_VALUE)
         row_gi += 1
 
+    row_gi += 1
+    ws_gi.merge_range(row_gi, 0, row_gi, 1, "NOTES", F_SECTION)
+    row_gi += 1
+    notes = (
+        "· General information is read from Part A of the AIS JSON.\n"
+        "· Aadhaar and email values may be masked by the ITD portal in the source JSON.\n"
+        "· All amounts in the workbook are in INR unless stated otherwise.\n"
+        "· Summary links jump to the relevant AIS worksheet; detailed rows remain traceable to their source sheets."
+    )
+    ws_gi.merge_range(row_gi, 0, row_gi, 1, notes, F_NOTES)
+    ws_gi.set_row(row_gi, 72)
+
     # ── Sheet 2: Summary ───────────────────────────────────────────────────
     _log("Writing Summary sheet…")
     SUMMARY_COLS = [
@@ -389,7 +457,43 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
         "demandAndRefund": "B4 — Demand & Refund",
         "other-info": "B7 — Other Info",
     }
-    grand_amt = 0.0
+    summary_sft_sheet_names = {
+        "SFT-005": "SFT-005 (Time Dep)",
+        "SFT-006": "SFT-006 (Credit Card)",
+        "SFT-008": "SFT-008 (Purchase of Shares)",
+        "SFT-010": "SFT-010 (MF Purchase)",
+        "SFT-012": "SFT-012 (IMP)",
+        "SFT-015": "SFT-015 (Dividend)",
+        "SFT-016(SB)": "SFT-016(SB) (Int-SB)",
+        "SFT-016(TD)": "SFT-016(TD) (Int-TD)",
+        "SFT-016(RD)": "SFT-016(RD) (Int-RD)",
+        "SFT-17(Pur)": "SFT-17(Pur) (Sec Buy)",
+        "SFT-18(Pur)": "SFT-18(Pur) (MF Buy)",
+        "SFT-18(Div)": "SFT-18(Div) (MF Div)",
+        "SFT-17-LES(M)": "SFT-17-LES(M) (Eq Sale)",
+        "SFT-17-LDB(M)": "SFT-17-LDB(M) (Debenture Sale)",
+        "SFT-17-EMF(M)": "SFT-17-EMF(M) (EqMF Sale)",
+        "SFT-17-UBT(M)": "SFT-17-UBT(M) (REIT)",
+        "SFT-17-OTU(M)": "SFT-17-OTU(M) (Othr Units)",
+        "SFT-17-LES(OC)": "SFT-17-LES(OC) (Off-Mkt)",
+        "SFT-18-EMF(M)": "SFT-18-EMF(M) (EqMF-RTA)",
+        "SFT-18-OTU(M)": "SFT-18-OTU(M) (Othr Units)",
+    }
+
+    def _summary_target_sheet(sec_key, info_code):
+        if sec_key == "tdsTcs":
+            return "TDS-194IA(P) (Property)" if info_code == "TDS-194IA(P)" else "Part B1 (TDS TCS)"
+        if sec_key == "sft":
+            return summary_sft_sheet_names.get(info_code, f"B2 - {info_code}"[:31])
+        if sec_key == "paymentOfTaxes":
+            return "Payment of Taxes"
+        if sec_key == "demandAndRefund":
+            return "Demand and Refund"
+        if sec_key == "other-info":
+            return "TDS-Ann.II-SAL (Salary)" if info_code == "TDS-Ann.II-SAL" else f"B7 - {info_code}"[:31]
+        return None
+
+    summary_groups = {}
     for sec in sections_list:
         sec_key = sec.get("sectionKey", "")
         sec_label = sec_labels.get(sec_key, sec_key)
@@ -398,26 +502,48 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
             if not l2:
                 continue
             l2_amt = _parse_amount(l2.get("amount", "")) or 0.0
-            grand_amt += l2_amt
+            info_code = l2.get("info_code", "")
+            info_category = l2.get("category", "")
+            description = l2.get("description", "")
+            target_sheet = _summary_target_sheet(sec_key, info_code)
+            key = (sec_label, info_code, info_category, description, target_sheet)
             vals = [
                 sec_label,
-                l2.get("category", ""),
-                l2.get("info_code", ""),
-                l2.get("description", ""),
+                info_category,
+                info_code,
+                description,
                 l2.get("source", ""),
+                l2_amt,
+                target_sheet,
             ]
+            summary_groups.setdefault(key, []).append(vals)
+
+    for (sec_label, info_code, info_category, description, target_sheet), rows in summary_groups.items():
+        group_start = row_s
+        for vals in rows:
+            target = vals[6]
+            url = f"internal:'{target}'!A1" if target else None
             for ci, v in enumerate(vals):
-                ws_sum.write(row_s, ci, str(v) if v is not None else "", F_DEFAULT)
+                if ci >= len(SUMMARY_COLS):
+                    continue
+                if url and ci in {2, 3, 4}:
+                    ws_sum.write_url(row_s, ci, url, F_DEFAULT, str(v) if v is not None else "")
+                else:
+                    ws_sum.write(row_s, ci, str(v) if v is not None else "", F_DEFAULT)
                 col_w[ci] = max(col_w.get(ci, 0), len(str(v)))
-            ws_sum.write_number(row_s, 5, l2_amt, F_NUM)
-            col_w[5] = max(col_w.get(5, 0), len(f"{l2_amt:,.2f}"))
+            ws_sum.write_number(row_s, 5, vals[5], F_NUM)
+            col_w[5] = max(col_w.get(5, 0), len(f"{vals[5]:,.2f}"))
             row_s += 1
 
-    ws_sum.write(row_s, 0, "Grand Total", F_GRAND_LBL)
-    for ci in range(1, 5):
-        ws_sum.write_blank(row_s, ci, None, F_GRAND_LBL)
-    ws_sum.write_number(row_s, 5, grand_amt, F_GRAND_NUM)
-    ws_sum.set_row(row_s, 15)
+        subtotal_name = info_category or description or sec_label
+        subtotal_label = f"Subtotal: {subtotal_name} ({info_code})" if info_code else f"Subtotal: {subtotal_name}"
+        ws_sum.merge_range(row_s, 0, row_s, 4, subtotal_label, F_SUBTOT_LBL)
+        ws_sum.write_formula(row_s, 5,
+            f"=SUM(F{group_start + 1}:F{row_s})",
+            F_SUBTOT_NUM)
+        ws_sum.set_row(row_s, 14)
+        row_s += 1
+
     _autofit(ws_sum, [col_w.get(i, 8) for i in range(6)])
 
     # ── Sheet 3: TDS / TCS ────────────────────────────────────────────────
@@ -460,14 +586,13 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
 
         for elem in elems:
             l2 = _get_l2(elem)
-            if not l2:
-                continue
             l1_cols, l1_rows = _get_l1(elem)
             l1_rows = _active_rows(l1_cols, l1_rows)
             if not l1_rows:
                 continue
 
-            name, tan = _split_source(l2.get("source", ""))
+            raw_src = l2.get("source", "") if l2 else (elem.get("source", "") or "")
+            name, tan = _split_source(raw_src)
             sr += 1
             detail_start = row
             l1_idx = {n: i for i, n in enumerate(l1_cols)}
@@ -520,8 +645,19 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
 
         def _std_row(ws, row, sr, name, tan, l2, l1_idx, data_row, col_w):
             def _c(col): i = l1_idx.get(col); return data_row[i] if i is not None and i < len(data_row) else ""
+            def _first_present(*cols):
+                for col in cols:
+                    val = _c(col)
+                    if val != "":
+                        return val
+                return ""
             info_code   = l2.get("info_code", "")
             description = l2.get("description", "")
+            date_value = _first_present(
+                "Date of Payment/Credit",
+                "Date of Receipt/ Debit",
+                "Date of Receipt/Debit",
+            )
             ws.write(row, 0, sr,            F_DEFAULT)
             ws.write(row, 1, name,          F_DEFAULT)
             ws.write(row, 2, tan,           F_DEFAULT)
@@ -529,13 +665,23 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
             ws.write(row, 4, description,   F_DEFAULT)
             ws.write(row, 5, _c("TSN"),                    F_DEFAULT)
             ws.write(row, 6, _c("Quarter"),                F_DEFAULT)
-            ws.write(row, 7, _c("Date of Payment/Credit"), F_DEFAULT)
-            for ci, col in [(8, "Amount Paid/Credited"), (9, "TDS Deducted"), (10, "TDS Deposited")]:
-                amt = _parse_amount(str(_c(col)))
+            ws.write(row, 7, date_value,                   F_DEFAULT)
+            for ci, col, fallbacks in [
+                (8, "Amount Paid/Credited", ["Amount Received/Debited"]),
+                (9, "TDS Deducted", ["Tax Collected"]),
+                (10, "TDS Deposited", ["TCS Deposited"]),
+            ]:
+                val = _c(col)
+                if val == "":
+                    for fallback in fallbacks:
+                        val = _c(fallback)
+                        if val != "":
+                            break
+                amt = _parse_amount(str(val))
                 ws.write_number(row, ci, amt if amt is not None else 0, F_NUM)
             ws.write(row, 11, _c("Status"), F_DEFAULT)
             for ci, v in enumerate([sr, name, tan, info_code, description,
-                                     _c("TSN"), _c("Quarter"), _c("Date of Payment/Credit")]):
+                                     _c("TSN"), _c("Quarter"), date_value]):
                 col_w[ci] = max(col_w.get(ci, 0), len(str(v)))
 
         ws_tds = wb.add_worksheet("Part B1 (TDS TCS)")
@@ -587,8 +733,7 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
     # Group elements by info_code, preserving order of first appearance
     sft_by_code: dict[str, list] = {}
     for elem in sft_elems:
-        l2 = _get_l2(elem)
-        code = l2.get("info_code", "")
+        code = _infer_info_code(elem)
         if code:
             sft_by_code.setdefault(code, []).append(elem)
 
@@ -693,7 +838,7 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
         "SFT-016(TD)":    ("SFT-016(TD) (Int-TD)",             _SFT_016_COLS,     _SFT_016_NUM,    None),
         "SFT-016(RD)":    ("SFT-016(RD) (Int-RD)",             _SFT_016_COLS,     _SFT_016_NUM,    None),
         "SFT-17(Pur)":    ("SFT-17(Pur) (Sec Buy)",            _SFT_17PUR_COLS,   _SFT_17PUR_NUM,  None),
-        "SFT-18(Pur)":    ("SFT-18(Pur) (MF Buy)",             _SFT_18PUR_COLS,   _SFT_18PUR_NUM,  _PURCHASE_COL_MAP),
+        "SFT-18(Pur)":    ("SFT-18(Pur) (MF Buy)",             _SFT_18PUR_COLS,   _SFT_18PUR_NUM,  None),
         "SFT-18(Div)":    ("SFT-18(Div) (MF Div)",             _SFT_18DIV_COLS,   _SFT_18DIV_NUM,  None),
         "SFT-17-LES(M)":  ("SFT-17-LES(M) (Eq Sale)",          _SFT_17M_SUPERSET, _SFT_17M_NUM,    None),
         "SFT-17-LDB(M)":  ("SFT-17-LDB(M) (Debenture Sale)",   _SFT_17M_SUPERSET, _SFT_17M_NUM,    None),
@@ -739,14 +884,12 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
 
         for elem in elems:
             l2 = _get_l2(elem)
-            if not l2:
-                continue
             l1_cols, l1_rows = _get_l1(elem)
             l1_rows = _active_rows(l1_cols, l1_rows)
             if not l1_rows:
                 continue
 
-            source = l2.get("source", "")
+            source = l2.get("source", "") if l2 else (elem.get("source", "") or "")
             count_val = _parse_amount(str(l2.get("count", "") or "")) or ""
             sr += 1
             elem_start = row
@@ -835,14 +978,12 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
 
         for elem in elems:
             l2 = _get_l2(elem)
-            if not l2:
-                continue
             l1_cols, l1_rows = _get_l1(elem)
             l1_rows = _active_rows(l1_cols, l1_rows)
             if not l1_rows:
                 continue
 
-            source = l2.get("source", "")
+            source = l2.get("source", "") if l2 else (elem.get("source", "") or "")
             sr += 1
             l1_idx = {n: i for i, n in enumerate(l1_cols)}
 
@@ -1272,7 +1413,7 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
             ws_cm.write(3, c, str(c + 1), F_CM_NUM_HDR)
         ws_cm.set_row(3, 18)
 
-        ws_cm.freeze_panes(4, 9)   # freeze rows 1-4 and columns A-I (up to ISIN)
+        ws_cm.freeze_panes(4, 0)   # freeze rows 1-4 only
         ws_cm.autofilter(3, 0, 3, ncols_cm - 1)
 
         row_cm = 4
@@ -1533,6 +1674,9 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
             if group_start > group_end:
                 continue
 
+            for detail_row in range(group_start, group_end + 1):
+                ws_cm.set_row(detail_row, None, None, {"level": 1})
+
             # Subtotal row — sums input + gain cols
             sub_lbl = f"Subtotal — {sft_code}"
             ws_cm.merge_range(row_cm, 0, row_cm, 11, sub_lbl, F_CM_SUB_LBL)
@@ -1746,6 +1890,15 @@ def _write_ais_xlsx(data: dict, xlsx_path: str, pan: str, fy: str,
             _write_generic_section("Pending Proceedings", sec, TC_GENERAL)
         elif "complet" in title.lower():
             _write_generic_section("Completed Proceedings", sec, TC_GENERAL)
+
+    # ── File properties ────────────────────────────────────────────────────
+    wb.set_properties({
+        "title":    f"AIS — {assessee_name} — FY {fy}",
+        "subject":  f"Annual Information Statement | PAN: {pan} | FY: {fy}",
+        "author":   "AayDoc Capio",
+        "keywords": f"AIS, TDS, TCS, SFT, Capital Gains, {pan}, {fy}",
+        "comments": f"Generated by AayDoc Capio on {report_ts}",
+    })
 
     wb.close()
     return _safe_move(tmp_path, xlsx_path)
