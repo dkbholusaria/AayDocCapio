@@ -5,14 +5,24 @@ AayDocCapio is a PyQt6 desktop app for Indian CAs and tax professionals. It auto
 ---
 
 ## AI Agent Response & Workflow Guidelines
-*   **Plan First:** Before acting on any request, first prepare an implementation plan, get it approved by the user, and only then start building. Always save the plan as a markdown (`.md`) file inside the untracked `Plans/` subfolder for record-keeping and audit-trail purposes.
+
+### Mandatory workflow for every feature / bug fix / debug request
+
+Follow these steps in order — no step is optional:
+
+1. **Open a GitHub issue** — before anything else, create a GitHub issue for the task (`gh issue create`). Use the appropriate label (`bug`, `enhancement`) and priority (`P1`/`P2`/`P3`). Record the issue number.
+2. **Plan** — prepare an implementation plan, save it as a `.md` file in the untracked `Plans/` subfolder, and get user approval before writing any code.
+3. **Implement** — build the feature or fix following the approved plan.
+4. **Update documentation** — update `Documentation/ISSUES_BACKLOG.md` and any other relevant files in `Documentation/` to reflect the completed work.
+5. **Close the issue** — close the GitHub issue (`gh issue close <number>`) once the implementation is done and verified.
+
+### General guidelines
 *   **Concise Responses:** Avoid long conversational padding.
 *   **No Trailing Summaries:** Do not append summary sections at the end of responses.
 *   **No Emojis:** Do not use emojis in responses unless explicitly requested.
 *   **Proactive Execution:** Proactively run test/verification commands to ensure correctness.
 *   **Active Python Path:** Always use the explicit `.venv/bin/python` interpreter.
 *   **Adding Packages:** Verify the project dependency manager first (default to `venv + pip` and update `requirements.txt` via `pip freeze > requirements.txt`).
-*   **Update Documentation:** Always update relevant files in the `Documentation/` directory (such as `DEVELOPMENT_LOG.md` and `ISSUES_BACKLOG.md`) periodically as changes are made or new tasks are identified.
 *   **Compact Context:** Compact the context from time to time by summarizing findings or archiving logs to save tokens.
 
 
