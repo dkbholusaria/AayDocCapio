@@ -409,13 +409,13 @@ class AayDocCapioApp(QMainWindow):
 
     def _open_user_manual(self):
         import webbrowser
-        from ui.dialogs import _write_user_manual_html
+        from ui.user_manual import _write_user_manual_html
         path = _write_user_manual_html()
         webbrowser.open("file:///" + path.replace(os.sep, "/"))
 
     def _open_smtp_help(self):
         import webbrowser
-        from ui.dialogs import _write_smtp_help_html
+        from ui.smtp_help import _write_smtp_help_html
         path = _write_smtp_help_html()
         webbrowser.open("file:///" + path.replace(os.sep, "/"))
 
