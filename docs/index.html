@@ -942,6 +942,7 @@
       flex-shrink: 0;
     }
 
+    /* ── Tablet (≤1024px) ───────────────────────────────────────── */
     @media (max-width: 1024px) {
       .hero-outer { width: 100%; }
       .hero { grid-template-columns: 1fr; padding: 48px 40px; }
@@ -954,7 +955,80 @@
       .tab-layout { grid-template-columns: 1fr; }
       .tab-nav { flex-direction: row; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--border); }
       .section-wrap { padding: 0 40px; }
-      .release-strip { padding: 16px 40px; }
+      .release-strip { padding: 16px 40px; flex-wrap: wrap; text-align: center; }
+      .shot-grid { grid-template-columns: 1fr; }
+      .about-card { flex-direction: column; }
+      /* table scroll wrappers */
+      .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius-card); }
+      .benefit-table, .sec-table { min-width: 560px; }
+    }
+
+    /* ── Mobile (≤600px) ────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      /* navbar */
+      .navbar { padding: 0 20px; height: 64px; position: sticky; top: 0; }
+      .nav-logo img { height: 48px; }
+      .nav-links a:not(.nav-cta) { display: none; }
+      .nav-cta { margin-left: 0; }
+
+      /* hero */
+      .hero { padding: 40px 20px; gap: 24px; }
+      .hero h1 { font-size: 36px; letter-spacing: -0.01em; }
+      .hero-desc { font-size: 15px; }
+      .hero-cta-row { flex-direction: column; }
+      .btn-primary, .btn-outline { width: 100%; text-align: center; }
+      .trust-chips { gap: 8px; }
+      .trust-chip { font-size: 12px; padding: 5px 12px; }
+
+      /* sections */
+      section { padding: 48px 0; }
+      section h2 { font-size: 28px; }
+      .section-wrap { padding: 0 20px; }
+      .section-sub { font-size: 14px; margin-bottom: 32px; }
+
+      /* release strip */
+      .release-strip { padding: 14px 20px; gap: 10px; flex-direction: column; text-align: center; font-size: 13px; }
+      .release-badge-pill { font-size: 10px; }
+
+      /* feature grid: single column */
+      .feature-grid { grid-template-columns: 1fr; gap: 16px; }
+      .feature-card { padding: 24px; }
+
+      /* tabs */
+      .tab-btn { padding: 12px 16px; font-size: 13px; }
+      .tab-panel { padding: 28px 24px; }
+      .tab-panel h3 { font-size: 22px; }
+
+      /* download */
+      .download-grid { gap: 16px; }
+      .download-card { padding: 24px; }
+
+      /* steps */
+      .steps { grid-template-columns: 1fr; gap: 24px; }
+
+      /* screenshots */
+      .shot-grid { grid-template-columns: 1fr; gap: 16px; }
+
+      /* benefit / security tables */
+      .table-scroll { border-radius: var(--radius-md); }
+      .benefit-table th, .benefit-table td { padding: 12px 16px; font-size: 13px; }
+      .sec-table th, .sec-table td { padding: 12px 16px; font-size: 13px; }
+
+      /* FAQ */
+      .faq-item summary { padding: 16px 20px; font-size: 14px; }
+      .faq-item p { padding: 0 20px 16px; font-size: 13px; }
+
+      /* about */
+      .about-card { padding: 28px 24px; gap: 20px; }
+      .about-avatar { width: 60px; height: 60px; }
+      .about-card h3 { font-size: 17px; }
+
+      /* audience pills */
+      .audience-pills { gap: 8px; }
+      .audience-pill { font-size: 12px; padding: 8px 16px; }
+
+      /* etym */
+      .etym .parts { gap: 16px; }
     }
   </style>
 </head>
@@ -1189,6 +1263,7 @@
     <h2>How AayDocCapio Helps You Work Faster</h2>
     <p class="section-sub">Every feature is designed to reduce manual effort and improve accuracy for tax professionals.</p>
 
+    <div class="table-scroll">
     <table class="benefit-table">
       <thead>
         <tr>
@@ -1205,6 +1280,7 @@
         <tr><td>Encrypted Credential Vault</td><td>Client PANs and passwords never leave your machine — full local control</td></tr>
       </tbody>
     </table>
+    </div><!-- /.table-scroll -->
   </div>
 </section>
 
@@ -1403,6 +1479,7 @@
   <div class="section-wrap">
     <div class="section-eyebrow"><div class="eyebrow-dot-sm"></div> Security</div>
     <h2>Your data stays on your machine</h2>
+    <div class="table-scroll">
     <table class="sec-table">
       <thead>
         <tr><th>Concern</th><th>How it's handled</th></tr>
@@ -1416,6 +1493,7 @@
         <tr><td>Network</td><td>Credentials only submitted to the official ITD portal — no third-party services</td></tr>
       </tbody>
     </table>
+    </div><!-- /.table-scroll -->
   </div>
 </section>
 
