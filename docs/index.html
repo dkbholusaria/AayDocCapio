@@ -1033,8 +1033,9 @@
       /* benefit table → swap to cards on mobile */
       .benefit-table-wrap { display: none; }
       .benefit-cards { display: flex; }
-      /* security table scroll */
-      .sec-table th, .sec-table td { padding: 12px 16px; font-size: 13px; }
+      /* security table → swap to cards on mobile */
+      .sec-table-wrap { display: none; }
+      .sec-cards { display: flex; }
 
       /* FAQ */
       .faq-item summary { padding: 16px 20px; font-size: 14px; }
@@ -1509,7 +1510,8 @@
   <div class="section-wrap">
     <div class="section-eyebrow"><div class="eyebrow-dot-sm"></div> Security</div>
     <h2>Your data stays on your machine</h2>
-    <div class="table-scroll">
+    <!-- Desktop: table view -->
+    <div class="table-scroll sec-table-wrap">
     <table class="sec-table">
       <thead>
         <tr><th>Concern</th><th>How it's handled</th></tr>
@@ -1523,7 +1525,17 @@
         <tr><td>Network</td><td>Credentials only submitted to the official ITD portal — no third-party services</td></tr>
       </tbody>
     </table>
-    </div><!-- /.table-scroll -->
+    </div>
+
+    <!-- Mobile: stacked cards view -->
+    <div class="benefit-cards sec-cards">
+      <div class="benefit-card"><div class="benefit-card-feature">Credential storage</div><div class="benefit-card-text">AES-128 (Fernet) encrypted local file — <code>tax_vault.json</code></div></div>
+      <div class="benefit-card"><div class="benefit-card-feature">Key derivation</div><div class="benefit-card-text">PBKDF2HMAC / SHA-256, 100,000 iterations</div></div>
+      <div class="benefit-card"><div class="benefit-card-feature">Installer upgrades</div><div class="benefit-card-text"><code>tax_vault.json</code> and <code>assessment_years.json</code> are preserved during uninstall or migration</div></div>
+      <div class="benefit-card"><div class="benefit-card-feature">PAN in logs</div><div class="benefit-card-text">PAN is never included in error or log output</div></div>
+      <div class="benefit-card"><div class="benefit-card-feature">Vault in git</div><div class="benefit-card-text"><code>tax_vault.json</code> is in <code>.gitignore</code> — never committed</div></div>
+      <div class="benefit-card"><div class="benefit-card-feature">Network</div><div class="benefit-card-text">Credentials only submitted to the official ITD portal — no third-party services</div></div>
+    </div>
   </div>
 </section>
 
