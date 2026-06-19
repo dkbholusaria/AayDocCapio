@@ -27,7 +27,10 @@ def check_for_update(callback):
             if not releases:
                 callback(None, None)
                 return
-            latest = releases[0]
+            latest = next((r for r in releases if not r.get("prerelease") and not r.get("draft")), None)
+            if not latest:
+                callback(None, None)
+                return
             tag = latest.get("tag_name", "").lstrip("v")
             release_url = latest.get(
                 "html_url",
