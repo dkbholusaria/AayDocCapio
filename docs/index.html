@@ -942,6 +942,27 @@
       flex-shrink: 0;
     }
 
+    /* ── Benefit mobile cards (hidden on desktop) ───────────────── */
+    .benefit-cards { display: none; flex-direction: column; gap: 12px; }
+    .benefit-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--green);
+      border-radius: var(--radius-md);
+      padding: 16px 18px;
+    }
+    .benefit-card-feature {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: var(--dark);
+      margin-bottom: 6px;
+    }
+    .benefit-card-text {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
     /* ── Tablet (≤1024px) ───────────────────────────────────────── */
     @media (max-width: 1024px) {
       .hero-outer { width: 100%; }
@@ -1009,9 +1030,10 @@
       /* screenshots */
       .shot-grid { grid-template-columns: 1fr; gap: 16px; }
 
-      /* benefit / security tables */
-      .table-scroll { border-radius: var(--radius-md); }
-      .benefit-table th, .benefit-table td { padding: 12px 16px; font-size: 13px; }
+      /* benefit table → swap to cards on mobile */
+      .benefit-table-wrap { display: none; }
+      .benefit-cards { display: flex; }
+      /* security table scroll */
       .sec-table th, .sec-table td { padding: 12px 16px; font-size: 13px; }
 
       /* FAQ */
@@ -1263,13 +1285,11 @@
     <h2>How AayDocCapio Helps You Work Faster</h2>
     <p class="section-sub">Every feature is designed to reduce manual effort and improve accuracy for tax professionals.</p>
 
-    <div class="table-scroll">
+    <!-- Desktop: table view -->
+    <div class="table-scroll benefit-table-wrap">
     <table class="benefit-table">
       <thead>
-        <tr>
-          <th>Feature</th>
-          <th>Benefit</th>
-        </tr>
+        <tr><th>Feature</th><th>Benefit</th></tr>
       </thead>
       <tbody>
         <tr><td>Bulk 26AS / AIS / TIS Downloads</td><td>Save hours of manual portal logins — download all clients in one unattended batch</td></tr>
@@ -1280,7 +1300,17 @@
         <tr><td>Encrypted Credential Vault</td><td>Client PANs and passwords never leave your machine — full local control</td></tr>
       </tbody>
     </table>
-    </div><!-- /.table-scroll -->
+    </div>
+
+    <!-- Mobile: stacked cards view -->
+    <div class="benefit-cards">
+      <div class="benefit-card"><div class="benefit-card-feature">Bulk 26AS / AIS / TIS Downloads</div><div class="benefit-card-text">Save hours of manual portal logins — download all clients in one unattended batch</div></div>
+      <div class="benefit-card"><div class="benefit-card-feature">AIS JSON → Excel Workbook</div><div class="benefit-card-text">Structured, analysis-ready data from the ITD portal without copy-pasting a single cell</div></div>
+      <div class="benefit-card"><div class="benefit-card-feature">Capital Market consolidated sheet</div><div class="benefit-card-text">Capital gains auto-computed with Section 55(2)(ac) grandfathering — no manual formula work</div></div>
+      <div class="benefit-card"><div class="benefit-card-feature">Mail Docs to Clients</div><div class="benefit-card-text">Eliminate the step of manually attaching and sending each document to each client</div></div>
+      <div class="benefit-card"><div class="benefit-card-feature">Auto PDF Unlocking</div><div class="benefit-card-text">No more manually entering PAN/DOB passwords for every downloaded PDF</div></div>
+      <div class="benefit-card"><div class="benefit-card-feature">Encrypted Credential Vault</div><div class="benefit-card-text">Client PANs and passwords never leave your machine — full local control</div></div>
+    </div>
   </div>
 </section>
 
