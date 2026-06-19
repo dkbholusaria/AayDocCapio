@@ -552,14 +552,15 @@ path. `_open_path()` now calls this resolver and passes the real path to
 
 ---
 
-## 16. Status (as of 2026-06-15)
+## 16. Status (as of 2026-06-19)
 
-All v1.4.4 fixes shipped. Current known open items:
+All major improvements for v1.6.4 have been implemented and verified.
+- **B-02, B-05, B-06, B-07** — Closed.
+- **B-08** — Fixed: "PAN does not exist" handled gracefully.
+- **F-02** — Done: "Last Download Time" column in main client table.
+- **F-15** — Done: Help Manual restored, completely redesigned with a left navigation sidebar, scrollspy highlighting, and a sticky top navbar featuring a 'Contact us' link to `deepak.bholusaria.com`.
 
-- **B-02** — PDF unlock fails for some TIS/AIS files (non-standard password formulas)
-- **B-05** — Duplicate records on re-import (vault upsert audit needed)
-- **B-06** — Wrong DOB causes 26AS ZIP extraction to fail silently
-- **B-07 / F-10** — Large 26AS on-demand flow via tdscpc.gov.in not yet automated
+Current known open items:
 - **F-08** — AIS JSON download for oversized AIS (P3)
 - **F-11–F-14** — Client groups, auto-update, log history, multi-AY download (backlog)
 
@@ -572,3 +573,37 @@ In the Compliance Portal / AIS JSON schema, the `info_code` (e.g. `SFT-17-LES(M)
 
 ### 17.2 Fix
 Updated `Documentation/AIS_JSON_Tree.html` to add a new column "Consumed By (SFT Code)" to the "Security Class (SFT-17 & 18)" table, mapping each of the 10 enum codes to its corresponding SFT label.
+
+---
+
+## 18. User Manual Layout Overhaul & Navigation Panel (2026-06-19)
+
+### 18.1 Context
+The offline User Manual (accessible inside the app) was completely reconstructed across 13 sections, utilizing base64-encoded application screenshots to keep the document self-contained. To improve readability, the user requested adding a sticky top navbar and a left-side persistent sidebar navigator panel.
+
+### 18.2 Fix
+- **Two-Column Split Design:** Re-designed the layout using CSS Grid/Flexbox (`max-width: 1280px`) to place a 280px sticky sidebar on the left and the main content on the right.
+- **Scrollspy:** Added a native JavaScript `IntersectionObserver` or scroll tracker to dynamically toggle the `active` class on sidebar items, highlighting the current section in blue as the user scrolls.
+- **Sticky Navbar:** Cleaned up the top navigation bar to feature only the brand logo on the left and a "Contact us" link pointing to `deepak.bholusaria.com` on the right (opening in a new tab).
+
+---
+
+## 19. ITD Portal Login Resilience for Non-Existent PANs (2026-06-19)
+
+### 19.1 Context
+If a user initiates a batch run containing a PAN that does not exist or is not registered on the ITD portal, the automation would previously click "Continue" and hang waiting for the password/SAM checkbox to appear, eventually timing out after 60 seconds.
+
+### 19.2 Fix
+Updated `automation/auth.py` to check for inline error messages (e.g. "PAN does not exist" or "PAN is not registered") immediately after entering the PAN. If detected, it throws a `RuntimeError` immediately, allowing the orchestrator to fail fast, close the browser context, and proceed to the next client in the batch.
+
+---
+
+## 20. Client Table "Last Download Time" Column (2026-06-19)
+
+### 20.1 Context
+To improve tracking of client downloads, a column indicating when the last successful download occurred was added to the main client list grid.
+
+### 20.2 Fix
+- Added `Last Download Time` to the table column headers and adjusted cell widths.
+- Updated `vault.py` and `tax_vault.json` to store the date/time of successful runs.
+- Populated the column dynamically on table initialization, displaying a dash ("-") if no history exists.

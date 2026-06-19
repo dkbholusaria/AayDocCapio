@@ -180,3 +180,17 @@ This was fixed in v1.1.0. A 300ms debounce now prevents the dropdown from closin
 ### Q: The output directory shows a Linux path on Windows after running in WSL.
 
 Fixed in v1.4.0. The app now always resolves the output directory to the Windows-native Downloads path when `USERPROFILE` is set. If you stored a WSL path in the vault previously, reset the output directory in Settings.
+
+---
+
+## User Interface & History
+
+### Q: What does the "Last Download Time" column display?
+
+It displays the exact timestamp of the last successful batch run for that client under the currently selected Assessment Year. If the client has never been run or downloaded for that year, a simple dash ("-") is displayed. This history is persisted locally inside `tax_vault.json`.
+
+---
+
+### Q: How do I navigate the built-in Help Manual?
+
+The Help Manual features a sticky left sidebar listing all 13 sections. As you scroll through the guide, the sidebar automatically highlights the active section in blue using scrollspy. The top navbar remains fixed and features a "Contact us" link which points directly to `deepak.bholusaria.com` for support.

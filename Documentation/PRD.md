@@ -1,14 +1,14 @@
 # Product Requirements Document — AayDocCapio
 
-**Version:** 1.4.0  
+**Version:** 1.6.4  
 **Status:** Current  
-**Last updated:** 2026-06-11
+**Last updated:** 2026-06-19
 
 ---
 
 ## 1. Overview
 
-AayDocCapio is a standalone desktop utility for Indian Chartered Accountants and tax professionals who manage Income Tax filings for multiple clients. It automates the otherwise manual, repetitive work of logging into the ITD e-Filing portal for each client and downloading their tax documents — in bulk, in one run.
+AayDocCapio is a standalone desktop utility for Indian Chartered Accountants and tax professionals who manage Income Tax filings for multiple clients. It automates the otherwise manual, repetitive work of logging into the ITD e-Filing portal for each client and downloading their tax documents — in bulk, in one run — converting AIS JSON files to formatted Excel, and emailing these documents directly to clients.
 
 ### Problem statement
 
@@ -125,6 +125,33 @@ A local, encrypted desktop app that:
 | U-05 | Headless browser mode by default; visible mode toggle for CAPTCHA handling | Must |
 | U-06 | Output directory picker with platform-correct default (Downloads folder) | Must |
 | U-07 | Corporate proxy auto-detection from Windows registry | Should |
+
+### 4.7 Email Delivery
+
+| ID | Requirement | Priority |
+|---|---|---|
+| M-01 | Mail downloaded tax documents (26AS, AIS, TIS) directly to clients | Must |
+| M-02 | Rich text email composer with placeholder chips (e.g. `{client_name}`, `{pan}`) | Must |
+| M-03 | Bulk sending with live progress table and detailed logs | Must |
+| M-04 | Pre-configured SMTP settings for Gmail, Outlook, Microsoft 365, Yahoo, iCloud | Should |
+
+### 4.8 AIS JSON → Excel Conversion
+
+| ID | Requirement | Priority |
+|---|---|---|
+| X-01 | Decrypt and convert AIS JSON to structured Excel workbooks | Must |
+| X-02 | Per-category sheets with proper Indian numbering formats and deductor subtotals | Must |
+| X-03 | Consolidated capital market sheet (aggregating SFT-17/18) with STCG/LTCG formulas | Must |
+| X-04 | Grandfathering calculations under Section 55(2)(ac) for pre-2018 assets | Must |
+
+### 4.9 Interactive User Manual & UI Navigation
+
+| ID | Requirement | Priority |
+|---|---|---|
+| N-01 | Integrated 13-section offline HTML User Manual with embedded app screenshots | Must |
+| N-02 | Left-side sticky navigator panel with active section scrollspy tracking | Should |
+| N-03 | Clean top sticky navbar containing logo and external 'Contact us' link | Should |
+| N-04 | Last Download Time column in the client grid to display successful run history | Must |
 
 ---
 
