@@ -316,13 +316,6 @@ def _user_manual_page_html(img_uris: dict) -> str:
 <nav>
   <span class="nav-brand">AayDoc <span style="color:#B88924;">Capio</span>™</span>
   <div class="nav-links">
-    <a href="#overview">Overview</a>
-    <a href="#getting-started">Setup</a>
-    <a href="#client-vault">Vault</a>
-    <a href="#bulk-download">Downloads</a>
-    <a href="#tools-menu">Utilities</a>
-    <a href="#mail-docs">Mail</a>
-    <a href="#faq-troubleshooting">FAQ</a>
     <a href="https://deepak.bholusaria.com" target="_blank" rel="noopener">Contact us</a>
   </div>
 </nav>
