@@ -870,11 +870,13 @@ def _user_manual_page_html(img_uris: dict) -> str:
             f'with the ITD portal changes without manual downloads:</p>'
             + bullets_html([
               '<strong>Startup Check</strong>: On launch, the application checks our release server for any critical bug fixes or new features.',
+              '<strong>Blinking Update Alert</strong>: If a newer version is detected on the server, a blinking update alert link is displayed next to the version information at the bottom of the main dashboard.',
               '<strong>Manual Trigger</strong>: Select <strong>Help → Check for Updates</strong> from the menu bar to run a manual query.',
               '<strong>Changelog Review</strong>: If an update is found, the app displays the new release version, date, and a detailed list of fixes.',
               '<strong>One-Click Install</strong>: Click **Download & Install** to let the app automatically retrieve and execute the updater package.'
             ])
           )}
+          {_img("ADC_AutoUpdateBlinkingMessage", "Blinking update notification displayed under version details on the main dashboard", "Blinking update notification")}
           {_img("ADC_UpdateAvailable", "New version detected and changelog notification", "Update Available Dialog")}
         </div>
       </div>
@@ -1052,6 +1054,7 @@ def _write_user_manual_html() -> str:
         "ADC_AISDownload":                         _b64(f"{screenshots_dir}/ADC_AISDownload.png"),
         "ADC_AISRequestPlaced":                    _b64(f"{screenshots_dir}/ADC_AISRequestPlaced.png"),
         "ADC_AISRequestResult":                    _b64(f"{screenshots_dir}/ADC_AISRequestResult.png"),
+        "ADC_AutoUpdateBlinkingMessage":           _b64(f"{screenshots_dir}/ADC_AutoUpdateBlinkingMessage.png"),
     }
 
     html = _user_manual_page_html(img_uris)
