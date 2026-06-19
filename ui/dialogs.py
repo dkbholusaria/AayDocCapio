@@ -1770,6 +1770,579 @@ def _write_smtp_help_html() -> str:
     return out
 
 
+# ── User Manual HTML ──────────────────────────────────────────────────────────
+
+def _user_manual_page_html(img_uris: dict) -> str:
+    """Return a fully self-contained HTML string for the user help manual."""
+
+    def _img(key: str, caption: str, alt: str) -> str:
+        uri = img_uris.get(key, "")
+        if uri:
+            return (
+                f'<figure style="margin:20px 0;text-align:center;">'
+                f'<img src="{uri}" alt="{alt}" style="max-width:100%;border-radius:10px;'
+                f'border:1px solid rgba(10,22,40,0.12);box-shadow:0 4px 16px rgba(10,22,40,0.10);display:inline-block;"/>'
+                f'<figcaption style="margin-top:8px;font-size:0.82rem;color:#5A6B84;font-style:italic;">{caption}</figcaption>'
+                f'</figure>'
+            )
+        return (
+            f'<figure style="margin:20px 0;text-align:center;">'
+            f'<div style="background:#F1F5F9;border:2px dashed #CBD5E1;border-radius:10px;'
+            f'padding:40px 24px;color:#94A3B8;font-size:0.88rem;">'
+            f'[Screenshot: {caption}]</div>'
+            f'<figcaption style="margin-top:8px;font-size:0.82rem;color:#5A6B84;font-style:italic;">{caption}</figcaption>'
+            f'</figure>'
+        )
+
+    def warn_box(msg: str) -> str:
+        return (
+            f'<div style="background:#FEF3C7;border:1px solid #FCD34D;border-radius:8px;'
+            f'padding:10px 14px;margin:12px 0;display:flex;gap:10px;align-items:flex-start;">'
+            f'<span style="font-size:1rem;flex-shrink:0;">⚠️</span>'
+            f'<span style="color:#92400E;font-size:0.88rem;line-height:1.55;">{msg}</span>'
+            f'</div>'
+        )
+
+    def tip_box(msg: str) -> str:
+        return (
+            f'<div style="background:#ECFDF5;border:1px solid #6EE7B7;border-radius:8px;'
+            f'padding:10px 14px;margin:12px 0;display:flex;gap:10px;align-items:flex-start;">'
+            f'<span style="font-size:1rem;flex-shrink:0;">💡</span>'
+            f'<span style="color:#065F46;font-size:0.88rem;line-height:1.55;">{msg}</span>'
+            f'</div>'
+        )
+
+    def steps_html(items: list) -> str:
+        rows = ""
+        for i, item in enumerate(items):
+            rows += (
+                f'<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:8px;">'
+                f'<div style="width:26px;height:26px;border-radius:50%;flex-shrink:0;'
+                f'background:linear-gradient(135deg,#2563EB,#0078D4);'
+                f'color:#fff;font-weight:700;font-size:0.78rem;'
+                f'display:flex;align-items:center;justify-content:center;">{i+1}</div>'
+                f'<div style="color:#1A2233;font-size:0.9rem;line-height:1.6;padding-top:3px;">{item}</div>'
+                f'</div>'
+            )
+        return f'<div style="margin:10px 0;">{rows}</div>'
+
+    def bullets_html(items: list) -> str:
+        rows = ""
+        for item in items:
+            rows += (
+                f'<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:6px;">'
+                f'<div style="color:#2563EB;font-weight:700;font-size:1rem;flex-shrink:0;line-height:1.5;">•</div>'
+                f'<div style="color:#1A2233;font-size:0.9rem;line-height:1.6;">{item}</div>'
+                f'</div>'
+            )
+        return f'<div style="margin:10px 0;">{rows}</div>'
+
+    def badge(label: str) -> str:
+        return (
+            f'<code style="background:rgba(15,58,104,0.08);color:#0F3A68;'
+            f'padding:2px 8px;border-radius:6px;font-size:0.78rem;'
+            f'font-family:Consolas,Menlo,monospace;font-weight:600;">{label}</code>'
+        )
+
+    def err_badge(label: str) -> str:
+        return (
+            f'<code style="background:rgba(220,38,38,0.08);color:#B91C1C;'
+            f'padding:3px 8px;border-radius:6px;font-size:0.82rem;'
+            f'font-family:Consolas,Menlo,monospace;">{label}</code>'
+        )
+
+    def section_card(body_html: str) -> str:
+        return (
+            f'<div class="info-card">'
+            f'<div class="info-card-body">{body_html}</div>'
+            f'</div>'
+        )
+
+    def h3(text: str) -> str:
+        return (
+            f'<h3 style="font-family:\'Plus Jakarta Sans\',sans-serif;font-size:1.05rem;'
+            f'font-weight:700;color:#09152A;margin:24px 0 10px;">{text}</h3>'
+        )
+
+    # ── Status icon table ──────────────────────────────────────────────────────
+    status_rows = [
+        ("✅", "green", "Downloaded (and unlocked if applicable)", "Document saved to the output folder successfully."),
+        ("⚠️", "amber", "Downloaded but still locked", "File was saved but PDF unlock failed — usually wrong DOB. Open the file manually with the password."),
+        ("🕐", "blue",  "AIS queued — check back later", "AIS PDF generation was requested. Re-run the download the next day."),
+        ("⬜", "grey",  "No data for this year", "The portal has no 26AS or AIS data for this client and year."),
+        ("❌", "red",   "Failed", "Login failed, portal error, or download timed out. Check the error message for details."),
+        ("⏹", "grey",  "Skipped / aborted", "Batch was stopped before this client ran."),
+    ]
+    status_table_rows = ""
+    for icon, _color, short, detail in status_rows:
+        status_table_rows += (
+            f'<tr>'
+            f'<td style="padding:10px 14px;font-size:1.1rem;text-align:center;white-space:nowrap;">{icon}</td>'
+            f'<td style="padding:10px 14px;font-weight:600;color:#09152A;font-size:0.9rem;white-space:nowrap;">{short}</td>'
+            f'<td style="padding:10px 14px;color:#1A2233;font-size:0.88rem;line-height:1.55;">{detail}</td>'
+            f'</tr>'
+        )
+
+    # ── Common problems table ──────────────────────────────────────────────────
+    problems = [
+        ("❌ Invalid Password",
+         "The portal password stored in the vault is wrong or outdated.",
+         "Open the client record (••• → Edit), update the password, and re-run."),
+        ("❌ AUTHENTICATION FAILED: 2FA enabled",
+         "The client has Two-Step Authentication turned on in the ITD portal.",
+         "Ask the client to log into the ITD portal → Profile → My Profile → Login Settings → disable Two-Step Authentication."),
+        ("❌ Already logged in on another device",
+         "The client has an active session open in a browser.",
+         "Wait a few minutes for the session to expire, or ask the client to log out, then retry."),
+        ("⚠️ AIS locked — wrong password",
+         "The PDF was downloaded but the unlock attempt failed because the DOB in the vault does not match.",
+         f'Verify the Date of Birth in the client record. AIS/TIS password format: {badge("lowercase_pan + DDMMYYYY")} e.g. {badge("aaapt0001a01011980")}'),
+        ("⬜ AIS — no data for this FY",
+         "The Insight portal has no AIS data for this client for the selected year.",
+         "This is normal for newer clients or years with no transactions. No action needed."),
+        ("⬜ AIS too large — use AIS Utility",
+         "The portal cannot generate the PDF for very large AIS datasets.",
+         "Download the AIS JSON from the portal manually and use the AIS Utility desktop app. Automated support is planned for a future release."),
+        ("❌ 26AS too large for inline download",
+         "TRACES does not serve the file through the ITD portal for very large 26AS data.",
+         "Log directly into tdscpc.gov.in and place a manual download request. Automated TRACES-direct flow is planned."),
+        ("ZIP password wrong / TXT not extracted",
+         f'The 26AS ZIP password is the DOB in {badge("DDMMYYYY")} format. If the DOB is wrong, the ZIP cannot be extracted.',
+         "Check the DOB in the client record (••• → Edit) and correct it."),
+    ]
+    prob_rows = ""
+    for i, (err, cause, fix) in enumerate(problems):
+        row_bg = "#F1F5F9" if i % 2 == 0 else "#FFFFFF"
+        prob_rows += (
+            f'<tr style="background:{row_bg};">'
+            f'<td style="padding:10px 14px;vertical-align:top;">'
+            f'{err_badge(err)}</td>'
+            f'<td style="padding:10px 14px;color:#1A2233;font-size:0.85rem;line-height:1.55;vertical-align:top;">{cause}</td>'
+            f'<td style="padding:10px 14px;color:#1A2233;font-size:0.85rem;line-height:1.55;vertical-align:top;">{fix}</td>'
+            f'</tr>'
+        )
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet"/>
+  <title>AayDocCapio — User Guide</title>
+  <style>
+    *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0;}}
+    body{{font-family:'Inter',-apple-system,"Segoe UI",sans-serif;background:#F3F6FA;
+          color:#1A2233;line-height:1.65;font-size:0.97rem;}}
+    a{{color:#2563EB;}} a:hover{{color:#1D4ED8;text-decoration:underline;}}
+    nav{{background:linear-gradient(90deg,#0d47a1 0%,#1565c0 40%,#1976d2 100%);
+         border-bottom:1px solid rgba(255,255,255,0.15);
+         box-shadow:0 2px 16px rgba(13,71,161,0.5);
+         padding:0 40px;display:flex;align-items:center;
+         justify-content:space-between;height:56px;
+         position:sticky;top:0;z-index:100;}}
+    .nav-brand{{font-family:'Plus Jakarta Sans',sans-serif;color:#fff;
+                font-size:1.05rem;font-weight:800;letter-spacing:-0.01em;}}
+    .nav-links{{display:flex;gap:4px;}}
+    .nav-links a{{color:rgba(255,255,255,0.80);font-size:0.82rem;font-weight:500;
+                  text-decoration:none;padding:6px 12px;border-radius:6px;
+                  transition:background 150ms;}}
+    .nav-links a:hover{{background:rgba(255,255,255,0.15);color:#fff;text-decoration:none;}}
+    .hero{{background:
+      radial-gradient(ellipse 65% 50% at 15% 60%,rgba(15,58,104,0.05) 0%,transparent 55%),
+      radial-gradient(ellipse 55% 45% at 85% 20%,rgba(14,165,233,0.05) 0%,transparent 50%),
+      linear-gradient(160deg,#F4F7FC 0%,#FFFFFF 50%,#F6F8FC 100%);
+      padding:52px 24px 44px;text-align:center;position:relative;overflow:hidden;
+      border-bottom:1px solid rgba(10,22,40,0.07);}}
+    .hero::before{{content:"";position:absolute;inset:0;
+      background-image:radial-gradient(rgba(15,58,104,0.10) 1px,transparent 1px);
+      background-size:28px 28px;
+      mask-image:radial-gradient(ellipse 75% 70% at 50% 40%,black 20%,transparent 75%);
+      -webkit-mask-image:radial-gradient(ellipse 75% 70% at 50% 40%,black 20%,transparent 75%);
+      pointer-events:none;}}
+    .hero>*{{position:relative;z-index:1;}}
+    .hero-badge{{display:inline-flex;align-items:center;gap:8px;
+      background:#0A1628;color:#fff;border-radius:999px;
+      padding:6px 18px;font-size:0.8rem;font-weight:600;
+      letter-spacing:0.3px;margin-bottom:18px;
+      box-shadow:0 4px 14px rgba(15,58,104,0.25);}}
+    .hero h1{{font-family:'Plus Jakarta Sans',sans-serif;font-size:2rem;font-weight:800;
+              color:#09152A;letter-spacing:-0.02em;margin-bottom:12px;}}
+    .hero p{{font-size:1rem;color:#5A6B84;max-width:560px;margin:0 auto;line-height:1.7;}}
+    .toc{{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:28px;}}
+    .toc a{{background:#fff;border:1px solid rgba(10,22,40,0.12);border-radius:8px;
+             padding:8px 16px;font-size:0.82rem;font-weight:600;color:#0F3A68;
+             text-decoration:none;box-shadow:0 1px 4px rgba(10,22,40,0.06);
+             transition:all 150ms;}}
+    .toc a:hover{{background:#EFF6FF;border-color:#2563EB;color:#1D4ED8;text-decoration:none;}}
+    .wrap{{max-width:860px;margin:0 auto;padding:0 24px;}}
+    section{{padding:60px 0;}}
+    section.alt{{background:rgba(241,245,251,0.85);}}
+    section+section{{border-top:1px solid rgba(10,22,40,0.07);}}
+    section.alt+section,section+section.alt{{border-top:none;}}
+    .section-label{{font-family:'Plus Jakarta Sans',sans-serif;font-size:0.7rem;
+      font-weight:700;letter-spacing:2.5px;text-transform:uppercase;
+      color:#B88924;margin-bottom:8px;}}
+    h2{{font-family:'Plus Jakarta Sans',sans-serif;font-size:1.6rem;font-weight:800;
+        color:#09152A;margin-bottom:20px;letter-spacing:-0.02em;}}
+    .info-card{{background:#FFFFFF;border:1px solid rgba(10,22,40,0.09);
+      border-radius:14px;margin-bottom:16px;overflow:hidden;
+      box-shadow:0 2px 8px rgba(10,22,40,0.06),0 8px 24px rgba(10,22,40,0.07);
+      position:relative;
+      transition:transform 240ms cubic-bezier(0.33,1,0.68,1),
+                 box-shadow 240ms cubic-bezier(0.33,1,0.68,1),
+                 border-color 240ms cubic-bezier(0.33,1,0.68,1);}}
+    .info-card::before{{content:"";position:absolute;left:0;right:0;top:0;height:3px;
+      background:linear-gradient(90deg,#0F3A68,#0078D4,#B88924);
+      border-radius:14px 14px 0 0;}}
+    .info-card::after{{content:"";position:absolute;inset:0;border-radius:inherit;
+      background:radial-gradient(500px circle at var(--mouse-x,50%) var(--mouse-y,50%),
+        rgba(15,58,104,0.07),transparent 40%);
+      opacity:0;transition:opacity 240ms cubic-bezier(0.33,1,0.68,1);pointer-events:none;}}
+    .info-card:hover{{transform:translateY(-2px);border-color:rgba(15,58,104,0.20);
+      box-shadow:0 0 0 1px rgba(15,58,104,0.08),0 10px 30px rgba(10,22,40,0.11);}}
+    .info-card:hover::after{{opacity:1;}}
+    .info-card-body{{padding:20px 24px 22px;}}
+    table.data-table{{width:100%;border-collapse:collapse;border-radius:12px;overflow:hidden;
+      border:1px solid rgba(10,22,40,0.09);box-shadow:0 2px 8px rgba(10,22,40,0.05);}}
+    table.data-table thead tr{{background:#0A1628;}}
+    table.data-table thead th{{padding:11px 14px;text-align:left;color:rgba(255,255,255,0.85);
+      font-size:0.82rem;font-weight:600;letter-spacing:0.5px;}}
+    table.data-table tbody tr:nth-child(even){{background:#F1F5F9;}}
+    table.data-table tbody tr:nth-child(odd){{background:#FFFFFF;}}
+    .footer-strip{{background:linear-gradient(90deg,#0A1628 0%,#0F3A68 50%,#0A1628 100%);
+      color:rgba(255,255,255,0.7);text-align:center;padding:20px 24px;
+      font-size:0.85rem;border-top:1px solid rgba(255,255,255,0.06);}}
+    .footer-strip strong{{color:#F5C96B;}}
+    details summary{{cursor:pointer;font-weight:600;color:#09152A;padding:4px 0;
+      list-style:none;display:flex;align-items:center;gap:8px;}}
+    details summary::before{{content:"▶";font-size:0.65rem;color:#2563EB;
+      transition:transform 200ms;display:inline-block;}}
+    details[open] summary::before{{transform:rotate(90deg);}}
+    details+details{{border-top:1px solid rgba(10,22,40,0.07);margin-top:4px;}}
+    details{{padding:10px 0;}}
+    details p{{color:#1A2233;font-size:0.9rem;line-height:1.65;margin-top:8px;padding-left:20px;}}
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <span class="nav-brand">AayDoc <span style="color:#B88924;">Capio</span>™</span>
+  <nav class="nav-links">
+    <a href="#getting-started">Getting Started</a>
+    <a href="#running-downloads">Downloads</a>
+    <a href="#reading-results">Results</a>
+    <a href="#common-problems">Problems</a>
+    <a href="#converter">26AS Converter</a>
+  </nav>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-badge">📖 User Guide</div>
+  <h1>AayDocCapio Help</h1>
+  <p>Everything you need to bulk-download Form 26AS, AIS, and TIS for your clients — step by step.</p>
+  <div class="toc">
+    <a href="#getting-started">1. Getting Started</a>
+    <a href="#running-downloads">2. Running Downloads</a>
+    <a href="#reading-results">3. Reading Results</a>
+    <a href="#common-problems">4. Common Problems</a>
+    <a href="#converter">5. 26AS Converter</a>
+  </div>
+</div>
+
+<!-- SECTION 1: Getting Started -->
+<section id="getting-started">
+  <div class="wrap">
+    <div class="section-label">Step 1</div>
+    <h2>Getting Started</h2>
+
+    {section_card(
+      h3("What you need before your first download") +
+      bullets_html([
+        '<strong>Windows PC</strong> with AayDocCapio installed.',
+        '<strong>Google Chrome</strong> installed — required for AIS and TIS downloads. '
+        '26AS works without it, but Chrome must be present for the full feature set. '
+        'Download from <a href="https://www.google.com/chrome/" target="_blank">google.com/chrome</a>.',
+        'Your clients\' <strong>ITD portal login credentials</strong> (the username/password they use to log in at eportal.incometax.gov.in).',
+        'Each client\'s <strong>Date of Birth</strong> in DD-MM-YYYY format — needed to unlock downloaded PDFs automatically.',
+      ]) +
+      tip_box("AayDocCapio stores everything locally on your machine. No data is uploaded anywhere.")
+    )}
+
+    {section_card(
+      h3("Adding your first client") +
+      steps_html([
+        'Click <strong>Client Master → Add Client</strong> in the menu bar, or click the <strong>+ Add Client</strong> button.',
+        'Enter the client\'s <strong>PAN</strong>, <strong>Full Name</strong>, '
+        '<strong>ITD portal password</strong>, and <strong>Date of Birth</strong> (DD-MM-YYYY).',
+        'Click <strong>Save</strong>. The client appears in the main grid.',
+        'Repeat for each client. You can also bulk-import from Excel — see Import / Export below.',
+      ])
+    )}
+
+    {section_card(
+      h3("Setting the output folder") +
+      steps_html([
+        'Go to <strong>Settings → Download Folder</strong>.',
+        'Choose the folder where downloaded files should be saved.',
+        'The app creates a sub-folder for each client automatically: <code style="font-size:0.85rem;">OutputFolder / ClientName_PAN / AY /</code>',
+      ]) +
+      tip_box("The default output folder is your Windows Downloads folder. Change it once and the setting is remembered across sessions.")
+    )}
+
+    {_img("ADC_ImportDialog", "Importing clients from Excel — the Import Clients dialog", "Import dialog screenshot")}
+    {_img("ADC_ImportSuccess", "After a successful import — clients added to the vault", "Import success screenshot")}
+  </div>
+</section>
+
+<!-- SECTION 2: Running Downloads -->
+<section class="alt" id="running-downloads">
+  <div class="wrap">
+    <div class="section-label">Step 2</div>
+    <h2>Running Downloads</h2>
+
+    {section_card(
+      h3("Selecting clients and starting a batch") +
+      steps_html([
+        'Tick the checkboxes next to the clients you want to download for, or use '
+        '<strong>Select All</strong> / <strong>Select None</strong> at the top.',
+        'Choose the <strong>Assessment Year</strong> from the dropdown (e.g. 2024-25).',
+        'Tick which documents to download: <strong>26AS</strong>, <strong>AIS</strong>, <strong>TIS</strong> — or all three.',
+        'Click the <strong>Run Download</strong> button.',
+        'A progress dialog opens showing real-time status for each client. The batch runs automatically — no clicks needed.',
+      ]) +
+      warn_box("Do not close the progress dialog or put the computer to sleep while the batch is running.")
+    )}
+
+    {_img("ADC_26ASBatch", "A 26AS batch in progress — showing per-client status", "26AS batch progress screenshot")}
+
+    {section_card(
+      h3("Downloading AIS and TIS") +
+      bullets_html([
+        '<strong>AIS (Annual Information Statement)</strong> — a comprehensive statement of all financial transactions reported to the Income Tax Department.',
+        '<strong>TIS (Taxpayer Information Summary)</strong> — a summarised version of AIS, showing category-wise aggregates.',
+        'AIS and TIS are downloaded as password-protected PDFs. AayDocCapio unlocks them automatically using the client\'s PAN and DOB.',
+      ]) +
+      warn_box("AIS and TIS downloads require <strong>Google Chrome</strong>. The app will show an error if Chrome is not installed.")
+    )}
+
+    {_img("ADC_AISDownload", "Selecting AIS download options", "AIS download screenshot")}
+
+    {section_card(
+      h3("When AIS is queued (not ready immediately)") +
+      f'<p style="color:#1A2233;font-size:0.9rem;line-height:1.65;margin-bottom:10px;">'
+      f'Sometimes the ITD portal queues AIS PDF generation instead of producing it instantly. '
+      f'When this happens, the status shows {badge("🕐 AIS requested — check back tomorrow")}.</p>'
+      + steps_html([
+        'Wait until the next day — the ITD portal typically processes the request overnight.',
+        'Re-run the download for the same client and assessment year.',
+        'The app will detect that the AIS is ready and download it automatically from Activity History.',
+      ]) +
+      tip_box("TIS is always available immediately, even when AIS is queued. You will see TIS downloaded in the same run.")
+    )}
+
+    {_img("ADC_AISRequestPlaced", "AIS request placed — portal queuing the PDF", "AIS request placed screenshot")}
+    {_img("ADC_AISRequestResult", "AIS result after re-running the next day", "AIS request result screenshot")}
+
+    {section_card(
+      h3("Import clients from Excel") +
+      steps_html([
+        'Go to <strong>Client Master → Import Clients…</strong>.',
+        'Download the template first if you don\'t have it: <strong>Client Master → Export Template</strong>.',
+        'Fill in PAN, Name, Password, and DOB columns in the template.',
+        'Import the file. Existing clients (matched by PAN) are updated; new PANs are added.',
+      ])
+    )}
+  </div>
+</section>
+
+<!-- SECTION 3: Reading Results -->
+<section id="reading-results">
+  <div class="wrap">
+    <div class="section-label">Step 3</div>
+    <h2>Reading Results</h2>
+
+    {section_card(
+      h3("Status icons in the main grid") +
+      f'<p style="color:#1A2233;font-size:0.9rem;line-height:1.65;margin-bottom:16px;">'
+      f'After a batch run, each client row shows a status icon. Here is what each one means:</p>'
+      + f'<table class="data-table" style="margin-top:4px;">'
+      f'<thead><tr>'
+      f'<th style="width:48px;">Icon</th>'
+      f'<th>Meaning</th>'
+      f'<th>What to do</th>'
+      f'</tr></thead>'
+      f'<tbody>{status_table_rows}</tbody>'
+      f'</table>'
+    )}
+
+    {section_card(
+      h3("Where are the downloaded files?") +
+      bullets_html([
+        f'Files are saved to: {badge("OutputFolder / ClientName_PAN / AY /")}',
+        f'<strong>26AS PDF</strong>: {badge("AAAPT0001A_ClientName / 2024-25 / 26AS_AAAPT0001A_2024-25.pdf")}',
+        f'<strong>26AS TXT</strong>: Same folder, {badge(".txt")} extension — use this with the 26AS Converter.',
+        f'<strong>AIS PDF</strong>: {badge("AIS_AAAPT0001A_2024-25.pdf")}',
+        f'<strong>TIS PDF</strong>: {badge("TIS_AAAPT0001A_2024-25.pdf")}',
+        'Unlocked versions have <strong>no password</strong>. If unlocking failed, open with the manual password (see Common Problems).',
+      ]) +
+      tip_box("Click the folder icon next to any client in the grid to open their output folder directly in Windows Explorer.")
+    )}
+
+    {section_card(
+      h3("PDF password reference") +
+      f'<p style="color:#1A2233;font-size:0.9rem;line-height:1.65;margin-bottom:10px;">'
+      f'If a PDF was not unlocked automatically, use these passwords to open it manually:</p>'
+      + bullets_html([
+        f'<strong>AIS / TIS PDFs:</strong> {badge("lowercase_pan + DDMMYYYY")} — e.g. {badge("aaapt0001a01011980")} '
+        f'(lowercase PAN followed by DOB with no separators)',
+        f'<strong>Form 26AS PDF:</strong> {badge("DDMMYYYY")} — e.g. {badge("01011980")} '
+        f'(DOB only, no PAN, no separators)',
+        f'<strong>26AS TXT ZIP:</strong> {badge("DDMMYYYY")} — same format as 26AS PDF password.',
+      ]) +
+      warn_box("The DOB must match exactly what is registered on the ITD portal. If the DOB in your vault is wrong, PDFs will never unlock automatically — fix it in the client record (••• → Edit).")
+    )}
+  </div>
+</section>
+
+<!-- SECTION 4: Common Problems -->
+<section class="alt" id="common-problems">
+  <div class="wrap">
+    <div class="section-label">Step 4</div>
+    <h2>Common Problems</h2>
+    <p style="color:#5A6B84;font-size:0.95rem;margin-bottom:24px;line-height:1.7;">
+      Exact error messages you may see, what causes them, and how to fix them.
+    </p>
+    <div style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Error / Status</th>
+            <th style="min-width:200px;">Cause</th>
+            <th style="min-width:220px;">Fix</th>
+          </tr>
+        </thead>
+        <tbody>{prob_rows}</tbody>
+      </table>
+    </div>
+
+    <div style="margin-top:28px;">
+      <div class="section-label" style="margin-bottom:12px;">More questions</div>
+      {section_card(
+        '<details>'
+        '<summary>The batch is very slow — is this normal?</summary>'
+        '<p>Yes. The app waits 5 seconds between clients to avoid triggering the ITD portal\'s rate-limit. '
+        'For 50 clients downloading 26AS, expect 90–120 minutes total. Large batches (100+) are best run overnight.</p>'
+        '</details>'
+        '<details>'
+        '<summary>Can I stop the batch midway?</summary>'
+        '<p>Yes — click the <strong>Stop</strong> button in the progress dialog. Clients that already finished '
+        'keep their status. Clients not yet started show ⏹ Skipped. Re-run only the remaining clients by '
+        'selecting them individually.</p>'
+        '</details>'
+        '<details>'
+        '<summary>The app shows a blank/white window on startup.</summary>'
+        '<p>This is a display driver or WSL compositor glitch. Close the app and relaunch it. '
+        'If it persists, restart your PC.</p>'
+        '</details>'
+        '<details>'
+        '<summary>Antivirus flagged the installer — is it safe?</summary>'
+        '<p>Yes. AayDocCapio uses Nuitka to compile Python to a native executable, which some antivirus '
+        'engines flag as suspicious for unsigned code — this is a false positive. '
+        'Click "More info" → "Run anyway" in Windows SmartScreen. The app only connects to the official '
+        'ITD portal (eportal.incometax.gov.in) and Insight portal (ais.insight.gov.in).</p>'
+        '</details>'
+      )}
+    </div>
+  </div>
+</section>
+
+<!-- SECTION 5: 26AS Converter -->
+<section id="converter">
+  <div class="wrap">
+    <div class="section-label">Step 5</div>
+    <h2>26AS Converter</h2>
+    <p style="color:#5A6B84;font-size:0.95rem;margin-bottom:24px;line-height:1.7;">
+      Convert the raw 26AS TXT file into a structured Excel workbook and HTML report — useful for reconciliation and sharing with clients.
+    </p>
+
+    {section_card(
+      h3("How to convert a 26AS TXT file") +
+      steps_html([
+        'Go to <strong>Tools → Convert 26AS TXT → Excel + HTML…</strong>',
+        'Select the <strong>.txt file</strong> downloaded by AayDocCapio (in the client output folder).',
+        'Choose an output folder.',
+        'Click <strong>Convert</strong>. Two files are generated: an <strong>Excel workbook</strong> (.xlsx) and an <strong>HTML report</strong> (.html).',
+      ])
+    )}
+
+    {section_card(
+      h3("What the Excel workbook contains") +
+      bullets_html([
+        '<strong>Summary sheet</strong> — totals across all TDS/TCS sections at a glance.',
+        '<strong>Per-section sheets</strong> — one sheet for each 26AS section (Part A, Part B, Part C, etc.) with all deductor and transaction detail.',
+        '<strong>HTML report</strong> — a print-friendly version of the same data, useful for sharing by email.',
+      ]) +
+      tip_box("The TXT file must be extracted from the ZIP first. The ZIP password is the client\'s DOB in DDMMYYYY format.")
+    )}
+  </div>
+</section>
+
+<!-- FOOTER -->
+<div class="footer-strip">
+  <strong>AayDocCapio</strong> &nbsp;•&nbsp; User Guide &nbsp;•&nbsp;
+  <span style="opacity:0.6;">Close this tab to return to the app.</span>
+</div>
+
+<script>
+  (function() {{
+    document.querySelectorAll('.info-card').forEach(function(card) {{
+      card.addEventListener('mousemove', function(e) {{
+        var rect = card.getBoundingClientRect();
+        card.style.setProperty('--mouse-x', ((e.clientX - rect.left) / rect.width * 100).toFixed(1) + '%');
+        card.style.setProperty('--mouse-y', ((e.clientY - rect.top) / rect.height * 100).toFixed(1) + '%');
+      }});
+    }});
+  }})();
+</script>
+</body>
+</html>"""
+
+
+def _write_user_manual_html() -> str:
+    """Generate the user help manual, write to a temp file, return the file path."""
+    import base64 as _b64mod, tempfile
+    from config import _bundled_dir
+
+    def _b64(rel: str) -> str:
+        p = os.path.join(_bundled_dir(), rel)
+        if not os.path.isfile(p):
+            return ""
+        with open(p, "rb") as f:
+            data = _b64mod.b64encode(f.read()).decode()
+        ext = os.path.splitext(rel)[1].lower().lstrip(".")
+        mime = "png" if ext == "png" else "jpeg" if ext in ("jpg", "jpeg") else "png"
+        return f"data:image/{mime};base64,{data}"
+
+    screenshots_dir = "Documentation/screenshots"
+    img_uris = {
+        "ADC_26ASBatch":       _b64(f"{screenshots_dir}/ADC_26ASBatch.png"),
+        "ADC_AISDownload":     _b64(f"{screenshots_dir}/ADC_AISDownload.png"),
+        "ADC_AISRequestPlaced":_b64(f"{screenshots_dir}/ADC_AISRequestPlaced.png"),
+        "ADC_AISRequestResult":_b64(f"{screenshots_dir}/ADC_AISRequestResult.png"),
+        "ADC_Aboutus":         _b64(f"{screenshots_dir}/ADC_Aboutus.png"),
+        "ADC_ImportDialog":    _b64(f"{screenshots_dir}/ADC_ImportDialog.png"),
+        "ADC_ImportSuccess":   _b64(f"{screenshots_dir}/ADC_ImportSuccess.png"),
+    }
+
+    html = _user_manual_page_html(img_uris)
+    out = os.path.join(tempfile.gettempdir(), "aay_user_manual.html")
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(html)
+    return out
 
 
 # ── Email Log Dialog ──────────────────────────────────────────────────────────

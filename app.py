@@ -209,6 +209,10 @@ class AayDocCapioApp(QMainWindow):
 
         # Help menu
         help_menu = menubar.addMenu("Help")
+        act_manual = QAction(_micon("menu_about.png"), "User Manual", self)
+        act_manual.triggered.connect(self._open_user_manual)
+        help_menu.addAction(act_manual)
+        help_menu.addSeparator()
         smtp_help_action = QAction(_micon("btn_send_test.png"), "Email Setup Help…", self)
         smtp_help_action.triggered.connect(self._open_smtp_help)
         help_menu.addAction(smtp_help_action)
@@ -402,6 +406,12 @@ class AayDocCapioApp(QMainWindow):
                 f" font-family: '{_MONO_FONT}', monospace;"
                 f" font-size: 11px; color: {t.text_log}; padding: 8px 16px; }}"
             )
+
+    def _open_user_manual(self):
+        import webbrowser
+        from ui.dialogs import _write_user_manual_html
+        path = _write_user_manual_html()
+        webbrowser.open("file:///" + path.replace(os.sep, "/"))
 
     def _open_smtp_help(self):
         import webbrowser
@@ -2001,20 +2011,18 @@ class AayDocCapioApp(QMainWindow):
         if manual:
             self._update_check_manual = True
         from updater import check_for_update
-        def _cb(tag, url):
+        def _cb(tag, _url):
             QMetaObject.invokeMethod(
                 self, "_on_update_result",
                 Qt.ConnectionType.QueuedConnection,
                 Q_ARG(str, tag or ""),
-                Q_ARG(str, url or ""),
             )
         check_for_update(_cb)
 
-    @pyqtSlot(str, str)
-    def _on_update_result(self, tag: str, url: str):
+    @pyqtSlot(str)
+    def _on_update_result(self, tag: str):
         manual = getattr(self, "_update_check_manual", False)
         self._update_check_manual = False
-        self._pending_update_url = url
         if tag:
             # Stop any existing blink timer before starting a new one
             if hasattr(self, "_update_blink_timer"):
@@ -2049,9 +2057,7 @@ class AayDocCapioApp(QMainWindow):
         if hasattr(self, "_update_blink_timer"):
             self._update_blink_timer.stop()
         self._hdr_update_lnk.setText(getattr(self, "_update_link_text", ""))
-        url = getattr(self, "_pending_update_url", None) or \
-            "https://github.com/dkbholusaria/AayDocCapio/releases/latest"
-        QDesktopServices.openUrl(QUrl(url))
+        QDesktopServices.openUrl(QUrl("https://download.aaydoccapio.com/"))
 
     # ── Automation ────────────────────────────────────────────────────────────
 
