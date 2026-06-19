@@ -245,12 +245,14 @@ if [[ $RERUN -eq 0 ]]; then
     echo "▶  Committing …"
 
     run git add version.py "$INDEX" CHANGELOG.md
-    git diff --cached --quiet || true
-    run git commit -m "chore: release ${TAG}
+    if git diff --cached --quiet; then
+        echo "   (nothing new to commit — release files already staged or clean)"
+    else
+        run git commit -m "chore: release ${TAG}
 
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
-
-    echo "   Committed."
+        echo "   Committed."
+    fi
 
     # ── 6. Tag & push ─────────────────────────────────────────────────────────
 
