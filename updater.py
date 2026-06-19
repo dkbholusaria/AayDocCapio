@@ -4,11 +4,11 @@ import json
 from version import __version__
 
 _REPO = "dkbholusaria/AayDocCapio"
-_API  = f"https://api.github.com/repos/{_REPO}/releases/latest"
+_API  = f"https://api.github.com/repos/{_REPO}/releases"
 
 
 def check_for_update(callback):
-    """Check GitHub for a newer release in a background thread.
+    """Check GitHub for a newer release (including pre-releases) in a background thread.
 
     Calls callback(tag, release_url) if a newer version exists,
     or callback(None, None) if up to date or on any error.
@@ -23,9 +23,13 @@ def check_for_update(callback):
                 },
             )
             with urllib.request.urlopen(req, timeout=8) as r:
-                data = json.loads(r.read())
-            tag = data.get("tag_name", "").lstrip("v")
-            release_url = data.get(
+                releases = json.loads(r.read())
+            if not releases:
+                callback(None, None)
+                return
+            latest = releases[0]
+            tag = latest.get("tag_name", "").lstrip("v")
+            release_url = latest.get(
                 "html_url",
                 f"https://github.com/{_REPO}/releases/latest",
             )
@@ -41,6 +45,8 @@ def check_for_update(callback):
 
 def _newer(a: str, b: str) -> bool:
     try:
-        return tuple(int(x) for x in a.split(".")) > tuple(int(x) for x in b.split("."))
+        def _parts(v):
+            return tuple(int(x) for x in v.split("-")[0].split("."))
+        return _parts(a) > _parts(b)
     except ValueError:
         return False
