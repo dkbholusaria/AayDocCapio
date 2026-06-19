@@ -857,6 +857,7 @@ def _user_manual_page_html(img_uris: dict) -> str:
             ])
           )}
           {_img("ADC_EmailSMTPSettingsDialog", "SMTP credentials configuration panel", "Email SMTP Settings")}
+          {_img("ADC_TestMailSentConfirmation", "Test mail verification prompt", "Test Email success confirmation")}
         </div>
 
         <div id="email-settings-reference" style="scroll-margin-top: 90px; margin-top: 24px;">
@@ -919,7 +920,6 @@ def _user_manual_page_html(img_uris: dict) -> str:
             ]) +
             tip_box("Clicking any of the provider preset tiles in the Email Settings dialog displays a blue helper panel at the bottom with direct links to setup instructions.")
           )}
-          {_img("ADC_TestMailSentConfirmation", "Test mail verification prompt", "Test Email success confirmation")}
         </div>
 
         <div id="automated-mailing" style="scroll-margin-top: 90px; margin-top: 24px;">
