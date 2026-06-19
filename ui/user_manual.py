@@ -632,6 +632,7 @@ def _user_manual_page_html(img_uris: dict) -> str:
               'Use the top toolbar to choose the target <strong>Assessment Year</strong> (e.g. 2025-26).'
             ])
           )}
+          {_img("ADC_AppLandingPage", "Main dashboard grid showing client checkboxes for batch selection", "App Landing Page")}
           {_img("ADC_YearSelector", "Setting the active Assessment Year", "Year Selector")}
         </div>
 
