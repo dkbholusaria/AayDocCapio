@@ -749,6 +749,22 @@ def _html_part_IX(pdata: dict, row_ids: dict) -> str:
     )
 
 
+def _match_ded(rows, name, tan):
+    """Match deductor row by name+TAN/PAN composite key; fall back to name-only when TAN is blank."""
+    name_fields = ("Name of Deductor", "Name of Collector", "Name of Buyer", "Name of Deductee")
+    tan_fields  = ("TAN of Deductor", "TAN of Collector", "PAN of Deductee",
+                   "PAN of Buyer", "PAN of Seller", "PAN of Deductor")
+    def _n(d): return (next((d.get(f) for f in name_fields if d.get(f)), "") or "").strip()
+    def _t(d): return (next((d.get(f) for f in tan_fields  if d.get(f)), "") or "").strip()
+    tan = (tan or "").strip()
+    name = (name or "").strip()
+    if tan:
+        hit = [d for d in rows if _n(d) == name and _t(d) == tan]
+        if hit:
+            return hit
+    return [d for d in rows if _n(d) == name]
+
+
 def _html_summary(parsed: dict, row_ids: dict) -> str:
     header = parsed["header"]
     parts  = parsed["parts"]
@@ -776,9 +792,7 @@ def _html_summary(parsed: dict, row_ids: dict) -> str:
             row_id = f"p{roman}r{sr}"
 
             # Find deductor row to get amounts
-            ded_rows = [d for d in pdata["rows"]
-                        if (d.get("Name of Deductor") or d.get("Name of Collector") or
-                            d.get("Name of Buyer") or d.get("Name of Deductee") or "") == name]
+            ded_rows = _match_ded(pdata["rows"], name, tan)
             amt = tds = dep = 0.0
             has_nf = False
             nf_count = 0
@@ -820,7 +834,7 @@ def _html_summary(parsed: dict, row_ids: dict) -> str:
                 f'<td class="pbadge">{part_label}</td>'
                 f'<td>{part_title}</td>'
                 f'<td class="link"><a onclick="{onclick}">{name}{nf_name}</a></td>'
-                f'<td>{tan}</td>'
+                f'<td class="link"><a onclick="{onclick}">{tan}</a></td>'
                 f'{_td_num(amt)}{tds_cell}{nf_cell}</tr>'
             )
             alt = not alt
@@ -1612,10 +1626,7 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
             tan    = info["tan"]
             xl_row = info.get("xl_row", 3)
 
-            ded_rows = [d for d in pdata["rows"]
-                        if (d.get("Name of Deductor") or d.get("Name of Collector") or
-                            d.get("Name of Buyer")    or d.get("Name of Deductee") or "").strip()
-                           == name.strip()]
+            ded_rows = _match_ded(pdata["rows"], name, tan)
             amt = tds = dep = 0.0
             nf_count = 0
             if ded_rows:
@@ -1641,7 +1652,7 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
                              f"internal:'{sheet_name}'!A{xl_row}",
                              F_LINK, name)
             _track(w_sum, 2, name)
-            ws_sum.write(r, 3, tan, sf)
+            ws_sum.write_url(r, 3, f"internal:'{sheet_name}'!A{xl_row}", F_LINK, tan)
             ws_sum.write(r, 4, amt, nf_)
             if roman == "III":
                 ws_sum.write(r, 5, "—", sf)
