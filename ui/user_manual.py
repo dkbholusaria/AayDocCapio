@@ -864,16 +864,16 @@ def _user_manual_page_html(img_uris: dict) -> str:
 
         <div id="inbuilt-auto-update" style="scroll-margin-top: 90px; margin-top: 12px;">
           {section_card(
-            h3("11.1. Inbuilt Auto-Update Feature") +
+            h3("11.1. Inbuilt Update Checker") +
             f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
-            f'AayDocCapio features an **inbuilt auto-update** mechanism to ensure you always remain compatible '
-            f'with the ITD portal changes without manual downloads:</p>'
+            f'AayDocCapio features an **inbuilt update checker** to ensure you are notified when new releases '
+            f'are made available for compatibility with the ITD portal:</p>'
             + bullets_html([
-              '<strong>Startup Check</strong>: On launch, the application checks our release server for any critical bug fixes or new features.',
-              '<strong>Blinking Update Alert</strong>: If a newer version is detected on the server, a blinking update alert link is displayed next to the version information at the bottom of the main dashboard.',
-              '<strong>Manual Trigger</strong>: Select <strong>Help → Check for Updates</strong> from the menu bar to run a manual query.',
-              '<strong>Changelog Review</strong>: If an update is found, the app displays the new release version, date, and a detailed list of fixes.',
-              '<strong>One-Click Install</strong>: Click **Download & Install** to let the app automatically retrieve and execute the updater package.'
+              '<strong>Startup Check</strong>: On launch, the application automatically queries the release server in the background for newer versions.',
+              '<strong>Blinking Update Alert</strong>: If an update is available, a blinking blue <strong>&#11015; vX.Y.Z available</strong> link is displayed next to the version details at the bottom of the main window. Clicking this link opens the official download page in your web browser.',
+              '<strong>Manual Check</strong>: You can trigger an update check manually at any time by selecting <strong>Help → Check for Updates</strong> from the top menu bar.',
+              '<strong>Manual Trigger Dialog</strong>: If a manual check detects an update, a confirmation dialog appears prompting you to open the download page. If the app is up to date, it displays an informational confirmation message.',
+              '<strong>Installation</strong>: Once the download page (<code>https://download.aaydoccapio.com/</code>) opens, download the latest installer (e.g. <code>.exe</code> for Windows or <code>.zip</code> for macOS) and run it. The new installation automatically replaces the older version while safely keeping all your encrypted client profiles, history, and settings intact.'
             ])
           )}
           {_img("ADC_AutoUpdateBlinkingMessage", "Blinking update notification displayed under version details on the main dashboard", "Blinking update notification")}
