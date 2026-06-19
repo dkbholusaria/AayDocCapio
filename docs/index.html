@@ -104,7 +104,70 @@
     }
     .nav-cta:hover { background: var(--green-dark) !important; }
 
-    .mockup-ribbon em { color: var(--green); font-style: normal; }
+    /* ── Hamburger button (mobile only) ─────────────────────────── */
+    .nav-hamburger {
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      gap: 5px;
+      width: 36px;
+      height: 36px;
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      padding: 6px 7px;
+      flex-shrink: 0;
+    }
+    .nav-hamburger span {
+      display: block;
+      height: 2px;
+      background: var(--dark);
+      border-radius: 2px;
+      transition: transform 200ms, opacity 200ms;
+    }
+    .nav-hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+    .nav-hamburger.open span:nth-child(2) { opacity: 0; }
+    .nav-hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+    /* ── Mobile dropdown menu ────────────────────────────────────── */
+    .nav-dropdown {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0; right: 0;
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+      box-shadow: 0 8px 24px rgba(15,23,42,0.10);
+      z-index: 99;
+      padding: 12px 0;
+    }
+    .nav-dropdown.open { display: block; }
+    .nav-dropdown a {
+      display: block;
+      padding: 12px 24px;
+      font-family: var(--font-body);
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text-body);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(0,0,0,0.04);
+      transition: background 150ms, color 150ms;
+    }
+    .nav-dropdown a:last-child { border-bottom: none; }
+    .nav-dropdown a:hover { background: var(--green-light); color: var(--green-dark); }
+    .nav-dropdown .nav-cta-mobile {
+      margin: 12px 20px 4px;
+      display: block;
+      text-align: center;
+      background: var(--dark);
+      color: var(--white) !important;
+      font-weight: 600;
+      border-radius: var(--radius-pill);
+      padding: 12px 20px;
+      border-bottom: none;
+    }
+    .nav-dropdown .nav-cta-mobile:hover { background: var(--green-dark); }
 
     /* ══════════════════════════════════════════════════════════════
        HERO — white bg, left text + right floating card + tiles
@@ -989,8 +1052,8 @@
       /* navbar */
       .navbar { padding: 0 20px; height: 64px; position: sticky; top: 0; }
       .nav-logo img { height: 48px; }
-      .nav-links a:not(.nav-cta) { display: none; }
-      .nav-cta { margin-left: 0; }
+      .nav-links { display: none; }
+      .nav-hamburger { display: flex; }
 
       /* hero */
       .hero { padding: 40px 20px; gap: 24px; }
@@ -1058,7 +1121,7 @@
 <body>
 
 <!-- ── Navbar ────────────────────────────────────────────────────── -->
-<nav class="navbar">
+<nav class="navbar" style="position:sticky; top:0;">
   <a href="#" class="nav-logo">
     <img src="AayDoc_FullLogo.png" alt="AayDocCapio"
          onerror="this.style.display='none'; this.nextElementSibling.style.display='block'">
@@ -1073,6 +1136,21 @@
     <a href="https://github.com/dkbholusaria/AayDocCapio" target="_blank">GitHub</a>
     <a href="https://deepak.bholusaria.com" target="_blank" rel="noopener">Contact us</a>
     <a href="#download" class="nav-cta">⬇ Download</a>
+  </div>
+  <!-- Hamburger (mobile only) -->
+  <button class="nav-hamburger" id="nav-hamburger" aria-label="Menu" onclick="toggleMenu()">
+    <span></span><span></span><span></span>
+  </button>
+  <!-- Mobile dropdown -->
+  <div class="nav-dropdown" id="nav-dropdown">
+    <a href="#whats-new" onclick="closeMenu()">What's new</a>
+    <a href="#features" onclick="closeMenu()">Features</a>
+    <a href="#how" onclick="closeMenu()">How it works</a>
+    <a href="#benefits" onclick="closeMenu()">Benefits</a>
+    <a href="#faq" onclick="closeMenu()">FAQ</a>
+    <a href="https://github.com/dkbholusaria/AayDocCapio" target="_blank" onclick="closeMenu()">GitHub</a>
+    <a href="https://deepak.bholusaria.com" target="_blank" rel="noopener" onclick="closeMenu()">Contact us</a>
+    <a href="#download" class="nav-cta-mobile" onclick="closeMenu()">⬇ Download</a>
   </div>
 </nav>
 
@@ -1570,6 +1648,21 @@
 </section>
 
 <script>
+  function toggleMenu() {
+    const btn = document.getElementById('nav-hamburger');
+    const drop = document.getElementById('nav-dropdown');
+    btn.classList.toggle('open');
+    drop.classList.toggle('open');
+  }
+  function closeMenu() {
+    document.getElementById('nav-hamburger').classList.remove('open');
+    document.getElementById('nav-dropdown').classList.remove('open');
+  }
+  // Close menu on outside click
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.navbar')) closeMenu();
+  });
+
   function switchTab(e, name) {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
