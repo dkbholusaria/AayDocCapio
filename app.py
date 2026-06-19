@@ -2012,8 +2012,13 @@ class AayDocCapioApp(QMainWindow):
 
     @pyqtSlot(str, str)
     def _on_update_result(self, tag: str, url: str):
+        manual = getattr(self, "_update_check_manual", False)
+        self._update_check_manual = False
         self._pending_update_url = url
         if tag:
+            # Stop any existing blink timer before starting a new one
+            if hasattr(self, "_update_blink_timer"):
+                self._update_blink_timer.stop()
             self._update_link_text = f'<a href="#" style="color:#2563EB;font-size:11px;">&#11015; v{tag} available</a>'
             self._update_link_visible = True
             self._hdr_update_lnk.setText(self._update_link_text)
@@ -2025,13 +2030,20 @@ class AayDocCapioApp(QMainWindow):
                 )
             self._update_blink_timer.timeout.connect(_blink)
             self._update_blink_timer.start(600)
-        elif getattr(self, "_update_check_manual", False):
+            if manual:
+                from PyQt6.QtWidgets import QMessageBox
+                res = QMessageBox.question(
+                    self, "Update Available",
+                    f"Version {tag} is available.\n\nOpen the download page?",
+                )
+                if res == QMessageBox.StandardButton.Yes:
+                    self._on_update_link_clicked()
+        elif manual:
             from PyQt6.QtWidgets import QMessageBox
             QMessageBox.information(
                 self, "Up to Date",
                 f"You're on the latest version (v{APP_VERSION})."
             )
-        self._update_check_manual = False
 
     def _on_update_link_clicked(self):
         if hasattr(self, "_update_blink_timer"):
