@@ -2,6 +2,33 @@
 
 All notable changes to AayDocCapio are documented here.
 
+## [1.7.2] — 2026-06-19
+
+### New Features
+
+#### Auto Update
+- **In-app update checks** — Added the auto-update workflow so AayDocCapio can surface newer releases from inside the application.
+
+#### Help Manual
+- **Integrated help manual** — Added a detailed in-app help manual with structured navigation for bulk downloads, client management, settings, SMTP/email setup, and update guidance.
+
+### Improvements
+
+#### AIS JSON → Excel Workbook
+- **More reliable AIS extraction** — Fixed skipped `l1` transaction rows when `l2` summary data is empty, including SFT purchase rows, and added TCS-specific aliases for amount, tax collected, deposited amount, and receipt/debit dates.
+- **General Info sheet refresh** — AIS workbooks now capture Part A assessee fields (PAN, Aadhaar, name, DOB, mobile, email, address) with a 26AS-style header and notes section.
+- **Summary sheet navigation** — Summary rows are grouped by Info Code with meaningful subtotal labels such as `Subtotal: Dividend (TDS-194)`, internal links to destination sheets, and no unnecessary grand total.
+- **Capital Market (All) polish** — The consolidated capital market sheet now freezes only the first four header rows and adds Excel outline grouping below each SFT-code subtotal.
+- **Workbook metadata** — AIS Excel files now include Windows/Office document properties for title, subject, author, keywords, and generated comments.
+
+### Bug Fixes
+- **26AS Excel generation fixes** — Fixed minor 26AS Excel generation issues, including summary/detail accuracy and audit-trail polish.
+- **SFT-18(Pur) amounts** — `Total Purchase Amount` and `Total Sales Value` now populate correctly in the SFT-18(Pur) sheet.
+- **TDS/TCS dates** — 194K and TCS rows now populate date fields from `Date of Receipt/ Debit` when `Date of Payment/Credit` is absent.
+- **Summary hyperlink styling** — Summary cells remain internally linked but no longer appear blue and underlined.
+
+---
+
 ## [1.6.4] — 2026-06-19
 
 ### New Features

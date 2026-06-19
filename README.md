@@ -1,16 +1,17 @@
 # AayDocCapio
 
-**v1.6.4** — A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click — and now **emailing those documents directly to clients**.
+**v1.7.2** — A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click — and now **emailing those documents directly to clients**.
 
 Built with **PyQt6** + **Playwright**. Runs on Windows, macOS, and Linux/WSL.
 
 ---
 
-## What's New in 1.6.4
+## What's New in 1.7.2
 
-- **Expanded Interactive User Manual** — Upgraded the integrated HTML user manual to feature 37 nested navigation sub-sections in a left sidebar with robust scrollspy tracking, rebranded "Client Vault" to "Managing Clients" (with nested bulk import/export guidelines), and added step-by-step guides for SMTP email setup, bulk downloads, and software auto-update procedures.
-- **Last Download Time Column** — Added a dedicated column in the main client table to display the timestamp of the last successful download, persisted in the vault (`tax_vault.json`).
-- **Non-existent PAN Fast-Fail** — Detects non-registered/invalid PAN errors immediately on the ITD portal and aborts the task with a clean warning instead of waiting for a timeout.
+- **Auto Update Workflow** — AayDocCapio can now surface newer releases from inside the app, reducing manual version checks.
+- **Integrated Help Manual** — Added a structured in-app help manual covering downloads, client management, settings, SMTP/email setup, and update guidance.
+- **26AS Excel Fixes** — Minor 26AS Excel generation fixes improve summary/detail accuracy and audit-trail polish.
+- **AIS Excel Workbook Polish** — AIS extraction, General Info, Summary links/subtotals, Capital Market grouping, and workbook metadata have all been tightened for review-ready output.
 
 See the full [CHANGELOG](CHANGELOG.md) for details.
 
