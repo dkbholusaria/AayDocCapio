@@ -6,11 +6,14 @@ All notable changes to AayDocCapio are documented here.
 
 ### New Features
 
-#### Help Manual Reconstruction
-- **13-Section Interactive User Manual** — Reconstructed the full user guide inside the application `ui/user_manual.py`, featuring 34 application screenshots embedded via base64 encoding.
-- **Two-Column Navigation Layout** — Re-designed the layout to feature a split design: a left-side sticky navigator sidebar and a right-side scrollable content area.
-- **Scrollspy Navigation** — Custom JavaScript automatically tracks the active section as you scroll and highlights it in blue on the left sidebar.
-- **Clean Top Navbar** — Sticky header simplified to display the brand name on the left and a "Contact us" link pointing to `deepak.bholusaria.com` on the right.
+#### Help Manual Overhaul & Granular Navigation
+- **Expanded Sidebar Navigation** — Redesigned the left sidebar navigator with 37 interactive sections and sub-sections, using nested visual indentation and robust JavaScript Scrollspy tracking.
+- **Managing Clients Rebranding** — Rebranded "Client Vault" to "Managing Clients" and grouped the Excel bulk import/export guidelines directly under it.
+- **Bulk 26AS & AIS Download Guides** — Added step-by-step guides for initiating bulk downloads, specifically detailing the required toolbar options and dropdown menu items.
+- **SMTP Email & Mailing Setup** — Included complete SMTP email configuration instructions (covering provider presets, Google App Passwords, and test connections) alongside document-mailing templates.
+- **Settings Sub-sections** — Organized all client and application preferences under dedicated sections for Download Folder, Assessment Years, and Visual Themes.
+- **Inbuilt Auto-Update Guidelines** — Added documentation detailing the application's built-in update check on startup and manual update checks via the Help menu.
+- **Clean Sticky Navbar** — Replaced links in the top navbar with a simplified sticky header containing the AayDocCapio branding and a "Contact us" link pointing to `deepak.bholusaria.com`.
 
 #### Download History Columns
 - **Last Download Time Column** — Added a dedicated column in the main client table to display the timestamp of the last successful download.

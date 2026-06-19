@@ -607,3 +607,17 @@ To improve tracking of client downloads, a column indicating when the last succe
 - Added `Last Download Time` to the table column headers and adjusted cell widths.
 - Updated `vault.py` and `tax_vault.json` to store the date/time of successful runs.
 - Populated the column dynamically on table initialization, displaying a dash ("-") if no history exists.
+
+---
+
+## 21. Help Manual Content & Navigation Expansion (2026-06-19)
+
+### 21.1 Context
+Following the layout overhaul, the user requested an expansion of the help manual content to cover client management, bulk download procedures (26AS and AIS/TIS), SMTP email configuration, and software update instructions. The sidebar navigator was also required to support deep sub-section highlights.
+
+### 21.2 Fix
+- **Renamed Client Vault to Managing Clients:** Rebranded all references to "Client Vault" to "Managing Clients" and nested a detailed section on bulk Excel importing and exporting directly beneath profile creation instructions.
+- **Bulk Download Step-by-Step Guides:** Added comprehensive instructions explaining how to select clients and Assessment Years, how to run bulk downloads for Form 26AS, AIS, and TIS, and specific menu option commands (toolbar dropdown, run dropdown, right-click context menu).
+- **SMTP Setup and Reference Panel:** Detailed the exact email setup flow, specifying Gmail App Passwords, Office 365 port settings (587 with STARTTLS), CC/BCC backups, and how to use placeholders like `{client_name}`, `{pan}`, and `{documents}` in the template editor.
+- **Auto-Update Documentation:** Included guidelines explaining the built-in auto-updater check on startup and manual update checks via the Help menu.
+- **Granular Sidebar Navigation & Sub-sections:** Extended the left sidebar layout to support 37 interactive sections and sub-sections, styling them with nested indentation, and updated the JavaScript scrollspy tracker to resolve target IDs dynamically.

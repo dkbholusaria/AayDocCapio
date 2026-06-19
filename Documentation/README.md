@@ -8,7 +8,7 @@ Built with **PyQt6** + **Playwright**. Runs on Windows, macOS, and Linux/WSL.
 
 ## What's New in 1.6.4
 
-- **Interactive User Manual with Left Sidebar & Top Navbar** — Reconstructed the full 13-section User Manual in `ui/user_manual.py`, featuring 34 base64-encoded application screenshots, custom scrollspy navigation, and a simplified top navbar containing a 'Contact us' link to `deepak.bholusaria.com`.
+- **Expanded Interactive User Manual** — Upgraded the integrated HTML user manual to feature 37 nested navigation sub-sections in a left sidebar with robust scrollspy tracking, rebranded "Client Vault" to "Managing Clients" (with nested bulk import/export guidelines), and added step-by-step guides for SMTP email setup, bulk downloads, and software auto-update procedures.
 - **Last Download Time Column** — Added a dedicated column in the main client table to display the timestamp of the last successful download, persisted in the vault (`tax_vault.json`).
 - **Non-existent PAN Fast-Fail** — Detects non-registered/invalid PAN errors immediately on the ITD portal and aborts the task with a clean warning instead of waiting for a timeout.
 
@@ -50,7 +50,7 @@ On macOS you can also run `bash scripts/setup.sh` once and then double-click
 |---|---|
 | Form 26AS | PDF + TXT download for all selected clients |
 | AIS / TIS | Request generation + download once ready |
-| Client vault | Encrypted credentials (AES-256 via Fernet) |
+| Managing Clients | Encrypted credentials (AES-256 via Fernet) |
 | Bulk import | Excel / CSV template with Name, PAN, DOB, Password |
 | Assessment Year management | Toggle years on/off, add custom AY/TY entries |
 | Download history | Last status and folder per client per AY, shown in table |
