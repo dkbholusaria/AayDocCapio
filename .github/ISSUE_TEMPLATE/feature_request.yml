@@ -43,5 +43,5 @@ body:
     attributes:
       label: Privacy check
       options:
-        - label: I confirm this submission does not contain personal data as defined under the Digital Personal Data Protection Act, 2023, including PANs, passwords, taxpayer records, or any other confidential information.
+        - label: I am submitting this request voluntarily and confirm this submission does not contain personal data as defined under the Digital Personal Data Protection Act, 2023, including PANs, passwords, taxpayer records, or any other confidential information.
           required: true
