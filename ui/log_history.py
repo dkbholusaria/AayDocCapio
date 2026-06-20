@@ -161,7 +161,7 @@ class LogHistoryDialog(QDialog):
     @staticmethod
     def _make_table(entries: list, t) -> QTableWidget:
         tbl = QTableWidget(len(entries), 2)
-        tbl.setHorizontalHeaderLabels(["Date & Time", "Last Download Status"])
+        tbl.setHorizontalHeaderLabels(["Date & Time", "Status"])
         tbl.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         tbl.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         tbl.verticalHeader().setVisible(False)
@@ -177,8 +177,19 @@ class LogHistoryDialog(QDialog):
             ts_item.setForeground(QColor(t.text_muted))
             tbl.setItem(row, 0, ts_item)
 
-            status_item = QTableWidgetItem(entry.get("status", ""))
-            status_item.setForeground(QColor(t.text_primary))
+            status = entry.get("status", "")
+            status_item = QTableWidgetItem(status)
+            is_light = getattr(t, "name", "").lower() == "light"
+            if status.startswith("[Email]"):
+                status_item.setForeground(QColor(t.accent))
+            elif status.startswith("✅"):
+                status_item.setForeground(QColor("#15803D" if is_light else "#4ADE80"))
+            elif status.startswith("❌"):
+                status_item.setForeground(QColor("#B91C1C" if is_light else "#F87171"))
+            elif status.startswith("⚠"):
+                status_item.setForeground(QColor("#92400E" if is_light else "#FCD34D"))
+            else:
+                status_item.setForeground(QColor(t.text_primary))
             tbl.setItem(row, 1, status_item)
 
         tbl.resizeRowsToContents()

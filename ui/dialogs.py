@@ -9,11 +9,11 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import (
     QFont, QColor, QPixmap, QPainter, QBrush, QPen,
-    QTextCharFormat,
+    QTextCharFormat, QIcon,
 )
 
 from ui._theme import _t
-from ui.helpers import _btn, _lbl, _status_style, _UI_FONT
+from ui.helpers import _btn, _lbl, _status_style, _UI_FONT, _icon_path
 from config import _open_path, _log_open
 from themes import MONO_FONT_NAME as _MONO_FONT
 
@@ -699,7 +699,7 @@ class SmtpSettingsDialog(QDialog):
         self._selected_preset: str | None = None
         self._test_result.connect(self._on_test_result)
         self.setWindowTitle("Email Settings")
-        self.setMinimumSize(843, 560)
+        self.setMinimumSize(1020, 620)
         self.setModal(True)
         self.setWindowFlags(
             Qt.WindowType.Dialog |
@@ -792,10 +792,11 @@ class SmtpSettingsDialog(QDialog):
         tab.setStyleSheet(
             f"QTabWidget::pane{{border:1px solid {t.border};border-top:none;}}"
             f"QTabBar::tab{{background:{t.bg_table_alt};color:{t.text_muted};"
-            f"padding:8px 18px;border:1px solid {t.border};border-bottom:none;"
-            f"border-radius:6px 6px 0 0;margin-right:2px;}}"
-            f"QTabBar::tab:selected{{background:{t.bg_window};color:{t.text_primary};font-weight:600;}}"
-            f"QTabBar::tab:hover{{background:{t.bg_input};}}"
+            f"padding:8px 20px;border:1px solid {t.border};border-bottom:none;"
+            f"border-radius:6px 6px 0 0;margin-right:2px;font-size:12px;}}"
+            f"QTabBar::tab:selected{{background:{t.accent};color:white;"
+            f"border-color:{t.accent};font-weight:600;}}"
+            f"QTabBar::tab:hover:!selected{{background:{t.bg_input};}}"
         )
         outer.addWidget(tab, stretch=1)
 
@@ -811,21 +812,20 @@ class SmtpSettingsDialog(QDialog):
         tab1_main.setContentsMargins(16, 16, 16, 16)
         tab1_main.setSpacing(0)
         tab1_scroll.setWidget(tab1_content)
-        tab.addTab(tab1_scroll, "SMTP / Sender")
+        # ── Tab 1 — Templates ─────────────────────────────────────────────────
+        tab2_widget = QWidget()
+        tab2_widget.setStyleSheet(f"QWidget{{background:{t.bg_window};}}")
+        tab2_outer = QHBoxLayout(tab2_widget)
+        tab2_outer.setContentsMargins(0, 0, 0, 0)
+        tab2_outer.setSpacing(0)
+        _tpl_icon_p = _icon_path("menu_template.png")
+        _tpl_icon = QIcon(QPixmap(_tpl_icon_p).scaled(
+            16, 16, Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation)) if _tpl_icon_p else QIcon()
+        tab.addTab(tab2_widget, _tpl_icon, "Templates")
 
-        # ── Tab 2 — Email Template ────────────────────────────────────────────
-        tab2_scroll = QScrollArea()
-        tab2_scroll.setWidgetResizable(True)
-        tab2_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        tab2_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        tab2_scroll.setStyleSheet(_scroll_ss)
-        tab2_content = QWidget()
-        tab2_content.setStyleSheet(f"QWidget{{background:{t.bg_window};}}")
-        tab2_main = QVBoxLayout(tab2_content)
-        tab2_main.setContentsMargins(16, 16, 16, 16)
-        tab2_main.setSpacing(0)
-        tab2_scroll.setWidget(tab2_content)
-        tab.addTab(tab2_scroll, "Email Template")
+        # ── Tab 2 — SMTP / Sender ─────────────────────────────────────────────
+        tab.addTab(tab1_scroll, "SMTP / Sender")
 
         def _flbl(text):
             l = QLabel(text)
@@ -953,6 +953,14 @@ class SmtpSettingsDialog(QDialog):
         from_bcc_row.addLayout(bcc_col, stretch=1)
 
         tab1_main.addLayout(from_bcc_row)
+        tab1_main.addSpacing(14)
+
+        tab1_main.addWidget(_flbl("Firm Name  (used in {firm_name} placeholder)"))
+        tab1_main.addSpacing(3)
+        self._firm = QLineEdit(cfg.get("firm_name", ""))
+        self._firm.setPlaceholderText("AI Learrning Guru")
+        self._firm.setFixedHeight(34)
+        tab1_main.addWidget(self._firm)
         tab1_main.addStretch()
 
         # ─────────────────────────────────────────────────────────────────────
@@ -976,44 +984,123 @@ class SmtpSettingsDialog(QDialog):
             f"selection-background-color:{t.accent};}}"
         )
 
-        # Firm Name (moved from Tab 1 — belongs with template placeholders)
-        tab2_main.addWidget(_flbl("Firm Name  (used in {firm_name} placeholder)"))
-        self._firm = QLineEdit(cfg.get("firm_name", ""))
-        self._firm.setPlaceholderText("AI Learrning Guru")
-        self._firm.setFixedHeight(34)
-        tab2_main.addWidget(self._firm)
-        tab2_main.addSpacing(20)
+        # ── Left panel — template list ────────────────────────────────────────
+        left_panel = QWidget()
+        left_panel.setFixedWidth(190)
+        left_panel.setStyleSheet(
+            f"QWidget{{background:{t.bg_panel};border-right:1px solid {t.border};}}")
+        left_v = QVBoxLayout(left_panel)
+        left_v.setContentsMargins(10, 12, 10, 10)
+        left_v.setSpacing(6)
 
-        # Subject line + chips
-        self._subj = QLineEdit(cfg.get("email_subject_tpl", ""))
-        self._subj.setFixedHeight(34)
+        left_v.addWidget(_lbl("Templates", 12, bold=True))
+        left_v.addSpacing(4)
 
+        from PyQt6.QtWidgets import QListWidget, QListWidgetItem
+        self._tpl_list = QListWidget()
+        self._tpl_list.setStyleSheet(
+            f"QListWidget{{background:{t.bg_panel};border:none;outline:none;font-size:12px;}}"
+            f"QListWidget::item{{padding:8px 10px;border-radius:5px;color:{t.text_primary};}}"
+            f"QListWidget::item:selected{{background:{t.accent};color:white;}}"
+            f"QListWidget::item:hover:!selected{{background:{t.bg_table_alt};}}"
+        )
+        self._tpl_list.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked)
+        self._tpl_list.itemChanged.connect(self._on_tpl_renamed)
+        self._tpl_list.currentRowChanged.connect(self._on_tpl_select)
+        left_v.addWidget(self._tpl_list, stretch=1)
+
+        hint_lbl = QLabel("Double-click to rename")
+        hint_lbl.setStyleSheet(f"color:{t.text_muted};font-size:10px;background:transparent;")
+        left_v.addWidget(hint_lbl)
+
+        self._tpl_default_btn = _btn("★ Set as Default", "outline", height=28)
+        self._tpl_default_btn.clicked.connect(self._tpl_set_default)
+        left_v.addWidget(self._tpl_default_btn)
+
+        btn_row = QHBoxLayout(); btn_row.setSpacing(6)
+        self._tpl_add_btn = _btn("+ New", "outline", height=28, icon="btn_add_list.png")
+        self._tpl_add_btn.clicked.connect(self._tpl_add)
+        self._tpl_del_btn = _btn("Delete", "danger", height=28, icon="btn_delete.png")
+        self._tpl_del_btn.clicked.connect(self._tpl_delete)
+        btn_row.addWidget(self._tpl_add_btn)
+        btn_row.addWidget(self._tpl_del_btn)
+        left_v.addLayout(btn_row)
+
+        tab2_outer.addWidget(left_panel)
+
+        # ── Right panel — header + editor ─────────────────────────────────────
+        right_container = QWidget()
+        right_container.setStyleSheet(f"QWidget{{background:{t.bg_window};}}")
+        right_container_v = QVBoxLayout(right_container)
+        right_container_v.setContentsMargins(0, 0, 0, 0)
+        right_container_v.setSpacing(0)
+
+        # Header strip showing current template name + default badge
+        self._tpl_header = QWidget()
+        self._tpl_header.setStyleSheet(
+            f"QWidget{{background:{t.bg_table_alt};border-bottom:1px solid {t.border};}}")
+        _hdr_lay = QHBoxLayout(self._tpl_header)
+        _hdr_lay.setContentsMargins(16, 10, 16, 10)
+        self._tpl_header_lbl = QLabel("")
+        self._tpl_header_lbl.setStyleSheet(
+            f"font-size:13px;font-weight:bold;color:{t.text_primary};background:transparent;")
+        self._tpl_default_lbl = QLabel("Default")
+        self._tpl_default_lbl.setStyleSheet(
+            f"font-size:10px;color:{t.accent};background:transparent;"
+            f"border:1px solid {t.accent};border-radius:4px;padding:1px 6px;")
+        self._tpl_default_lbl.hide()
+        _hdr_lay.addWidget(self._tpl_header_lbl)
+        _hdr_lay.addSpacing(8)
+        _hdr_lay.addWidget(self._tpl_default_lbl)
+        _hdr_lay.addStretch()
+        right_container_v.addWidget(self._tpl_header)
+
+        right_scroll = QScrollArea()
+        right_scroll.setWidgetResizable(True)
+        right_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        right_scroll.setStyleSheet(_scroll_ss)
+        right_content = QWidget()
+        right_content.setStyleSheet(f"QWidget{{background:{t.bg_window};}}")
+        right_v = QVBoxLayout(right_content)
+        right_v.setContentsMargins(16, 14, 16, 14)
+        right_v.setSpacing(0)
+        right_scroll.setWidget(right_content)
+        right_container_v.addWidget(right_scroll, stretch=1)
+        tab2_outer.addWidget(right_container, stretch=1)
+
+        # Template name — stored internally, edited via list item directly
+        self._tpl_name = QLineEdit()
+        self._tpl_name.hide()
+
+        # Subject
         subj_lbl_row = QHBoxLayout(); subj_lbl_row.setSpacing(6)
         subj_lbl_row.addWidget(_flbl("Subject"))
         subj_lbl_row.addStretch()
         for ph in ["{client_name}", "{ay}", "{firm_name}"]:
             pb = QPushButton(ph)
-            pb.setFixedHeight(26)
+            pb.setFixedHeight(22)
             pb.setCursor(Qt.CursorShape.PointingHandCursor)
             pb.setStyleSheet(_ph_chip_ss)
             pb.clicked.connect(lambda _, p=ph: self._subj.insert(p))
             subj_lbl_row.addWidget(pb)
-        tab2_main.addLayout(subj_lbl_row)
-        tab2_main.addSpacing(2)
-        tab2_main.addWidget(self._subj)
-        tab2_main.addSpacing(12)
+        right_v.addLayout(subj_lbl_row)
+        right_v.addSpacing(3)
+        self._subj = QLineEdit()
+        self._subj.setFixedHeight(34)
+        right_v.addWidget(self._subj)
+        right_v.addSpacing(14)
 
-        # Body — rich-text editor
-        tab2_main.addWidget(_flbl("Body"))
-        tab2_main.addSpacing(4)
+        # Body
+        right_v.addWidget(_flbl("Body"))
+        right_v.addSpacing(4)
 
         _fmt_btn_ss = (
             f"QPushButton{{background:{t.bg_table_alt};color:{t.text_primary};"
             f"border:1px solid {t.border};border-radius:5px;"
             f"font-size:12px;padding:0 8px;min-width:28px;height:28px;}}"
             f"QPushButton:hover{{background:{t.bg_input};border-color:{t.accent};}}"
-            f"QPushButton:checked{{background:{t.accent};color:#fff;"
-            f"border-color:{t.accent};}}"
+            f"QPushButton:checked{{background:{t.accent};color:#fff;border-color:{t.accent};}}"
         )
 
         def _fmt_toggle(label: str, prop: str) -> QPushButton:
@@ -1035,9 +1122,7 @@ class SmtpSettingsDialog(QDialog):
             btn.toggled.connect(_apply)
             return btn
 
-        # Single row: font family | size | B I U | placeholder chips
         fmt_bar = QHBoxLayout(); fmt_bar.setSpacing(6)
-
         self._font_combo = QFontComboBox()
         self._font_combo.setEditable(False)
         self._font_combo.setFixedHeight(26)
@@ -1078,7 +1163,6 @@ class SmtpSettingsDialog(QDialog):
         fmt_bar.addWidget(self._fmt_bold)
         fmt_bar.addWidget(self._fmt_italic)
         fmt_bar.addWidget(self._fmt_underline)
-
         fmt_bar.addSpacing(6)
         for ph in ["{client_name}", "{pan}", "{ay}", "{firm_name}", "{documents}"]:
             pb = QPushButton(ph)
@@ -1088,25 +1172,64 @@ class SmtpSettingsDialog(QDialog):
             pb.clicked.connect(lambda _, p=ph: self._body.insertPlainText(p))
             fmt_bar.addWidget(pb)
         fmt_bar.addStretch()
-        tab2_main.addLayout(fmt_bar)
-        tab2_main.addSpacing(4)
+        right_v.addLayout(fmt_bar)
+        right_v.addSpacing(4)
 
         self._body = QTextEdit()
         self._body.setAcceptRichText(True)
-        raw_body = cfg.get("email_body_tpl", "")
-        if raw_body.lstrip().startswith("<"):
-            self._body.setHtml(raw_body)
-        else:
-            self._body.setHtml(
-                "<p style='margin:0;white-space:pre-wrap'>"
-                + raw_body.replace("&", "&amp;").replace("<", "&lt;")
-                          .replace("\n", "<br>")
-                + "</p>"
-            )
-        self._body.setMinimumHeight(200)
+        self._body.setMinimumHeight(160)
         self._body.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._body.currentCharFormatChanged.connect(self._sync_fmt_buttons)
-        tab2_main.addWidget(self._body, stretch=1)
+        right_v.addWidget(self._body, stretch=1)
+        right_v.addSpacing(14)
+
+        # Document type checkboxes
+        right_v.addWidget(_flbl("Attach these document types"))
+        right_v.addSpacing(6)
+        _cb_ss = (
+            f"QCheckBox{{color:{t.text_primary};font-size:12px;spacing:6px;}}"
+            f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {t.border};"
+            f"border-radius:3px;background:{t.bg_checkbox};}}"
+            f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};}}"
+        )
+        self._doc_cbs = {}
+        docs_grid = QHBoxLayout(); docs_grid.setSpacing(20)
+        for label, key in [
+            ("26AS PDF",   "26as_pdf"),
+            ("26AS Excel", "26as_xlsx"),
+            ("AIS PDF",    "ais_pdf"),
+            ("AIS Excel",  "ais_xlsx"),
+            ("TIS",        "tis_pdf"),
+        ]:
+            cb = QCheckBox(label)
+            cb.setChecked(True)
+            cb.setStyleSheet(_cb_ss)
+            self._doc_cbs[key] = cb
+            docs_grid.addWidget(cb)
+        docs_grid.addStretch()
+        right_v.addLayout(docs_grid)
+
+        # Load templates into list
+        self._templates = self._vault.get_email_templates()
+        self._loading_tpl = False
+        for tpl in self._templates:
+            item = QListWidgetItem(tpl["name"])
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+            self._tpl_list.addItem(item)
+
+        # Select active template
+        active_name = self._vault.get_active_template_name()
+        for i, tpl in enumerate(self._templates):
+            if tpl["name"] == active_name:
+                self._tpl_list.setCurrentRow(i)
+                break
+        else:
+            if self._templates:
+                self._tpl_list.setCurrentRow(0)
+
+        # Update delete button state and header
+        self._tpl_del_btn.setEnabled(len(self._templates) > 1)
+        self._refresh_tpl_header()
 
         # Auto-highlight tile if saved host matches a known preset
         saved_host = cfg.get("smtp_host", "")
@@ -1133,13 +1256,33 @@ class SmtpSettingsDialog(QDialog):
         footer_lay.addStretch()
         cancel_btn = _btn("Cancel", "secondary", height=36, icon="btn_cancel.png")
         cancel_btn.clicked.connect(self.reject)
-        save_btn = _btn("Save", "primary", height=36, icon="btn_save.png")
-        save_btn.clicked.connect(self._save)
+        self._ctx_save_btn = _btn("Save SMTP Settings", "outline", height=36, icon="btn_save.png")
+        save_close_btn = _btn("Save && Close", "primary", height=36, icon="btn_save_close.png")
+        save_close_btn.clicked.connect(self._save)
         footer_lay.addWidget(cancel_btn)
-        footer_lay.addWidget(save_btn)
+        footer_lay.addWidget(self._ctx_save_btn)
+        footer_lay.addWidget(save_close_btn)
+
+        def _on_tab_changed(i):
+            try:
+                self._ctx_save_btn.clicked.disconnect()
+            except (RuntimeError, TypeError):
+                pass
+            if i == 0:
+                self._ctx_save_btn.setText("Save Templates")
+                self._ctx_save_btn.clicked.connect(self._save_templates_only)
+            else:
+                self._ctx_save_btn.setText("Save SMTP Settings")
+                self._ctx_save_btn.clicked.connect(self._save_smtp_only)
+
+        tab.currentChanged.connect(_on_tab_changed)
+        _on_tab_changed(0)   # initialise for Templates tab
         outer.addWidget(footer_widget)
 
-        self.resize(843, 680)
+        self.resize(1100, 720)
+        # Open on SMTP tab if not yet configured, else Templates
+        if not cfg.get("smtp_host"):
+            tab.setCurrentIndex(1)
         from PyQt6.QtCore import QTimer
         QTimer.singleShot(0, lambda: tab1_scroll.verticalScrollBar().setValue(0))
 
@@ -1260,22 +1403,205 @@ class SmtpSettingsDialog(QDialog):
             self._size_combo.setCurrentText(str(int(sz)))
             self._size_combo.blockSignals(False)
 
+    # ── template list interactions ────────────────────────────────────────────
+
+    def _current_tpl_dict(self) -> dict:
+        """Read the right-panel editor into a template dict."""
+        row = self._tpl_list.currentRow()
+        item = self._tpl_list.item(row)
+        name = item.text().strip() if item else "Untitled"
+        return {
+            "name":    name or "Untitled",
+            "subject": self._subj.text().strip(),
+            "body":    self._body.toHtml(),
+            "docs":    {k: cb.isChecked() for k, cb in self._doc_cbs.items()},
+        }
+
+    def _on_tpl_renamed(self, item):
+        """Sync list item rename back into self._templates."""
+        row = self._tpl_list.row(item)
+        if 0 <= row < len(self._templates):
+            self._templates[row]["name"] = item.text().strip() or "Untitled"
+
+    def _flush_current_tpl(self):
+        """Save right-panel edits back into self._templates at the current row."""
+        row = self._tpl_list.currentRow()
+        if row < 0 or row >= len(self._templates):
+            return
+        self._templates[row] = self._current_tpl_dict()
+        self._tpl_list.item(row).setText(self._templates[row]["name"])
+
+    def _load_tpl_into_editor(self, tpl: dict):
+        """Populate right-panel fields from a template dict."""
+        self._loading_tpl = True
+        self._subj.setText(tpl.get("subject", ""))
+        raw_body = tpl.get("body", "")
+        if raw_body.lstrip().startswith("<"):
+            self._body.setHtml(raw_body)
+        else:
+            self._body.setPlainText(raw_body)
+        docs = tpl.get("docs", {})
+        for key, cb in self._doc_cbs.items():
+            cb.setChecked(docs.get(key, True))
+        self._loading_tpl = False
+
+    def _on_tpl_select(self, row: int):
+        if self._loading_tpl or row < 0 or row >= len(self._templates):
+            return
+        self._load_tpl_into_editor(self._templates[row])
+        self._tpl_del_btn.setEnabled(len(self._templates) > 1)
+        self._refresh_tpl_header()
+
+    def _refresh_tpl_header(self):
+        row = self._tpl_list.currentRow()
+        if row < 0 or row >= len(self._templates):
+            return
+        name = self._templates[row]["name"]
+        active_name = self._vault.get_active_template_name()
+        self._tpl_header_lbl.setText(name)
+        is_default = (name == active_name)
+        self._tpl_default_lbl.setVisible(is_default)
+        self._tpl_default_btn.setEnabled(not is_default)
+
+    def _tpl_set_default(self):
+        self._flush_current_tpl()
+        row = self._tpl_list.currentRow()
+        if row < 0 or row >= len(self._templates):
+            return
+        self._vault.set_active_template(self._templates[row]["name"])
+        self._refresh_tpl_header()
+
+    def _tpl_add(self):
+        self._flush_current_tpl()
+
+        # Ask: blank or copy from existing?
+        dlg = QDialog(self)
+        dlg.setWindowTitle("New Template")
+        dlg.setFixedWidth(360)
+        dlg.setModal(True)
+        t = _t()
+        dlg.setStyleSheet(f"QDialog{{background:{t.bg_window};}}"
+                          f"QLabel{{color:{t.text_primary};background:transparent;}}"
+                          f"QRadioButton{{color:{t.text_primary};font-size:12px;spacing:6px;}}"
+                          f"QRadioButton::indicator{{width:14px;height:14px;border:1.5px solid {t.border};"
+                          f"border-radius:7px;background:{t.bg_checkbox};}}"
+                          f"QRadioButton::indicator:checked{{background:{t.accent};border-color:{t.accent};}}"
+                          f"QComboBox{{border:1px solid {t.border};border-radius:5px;padding:4px 8px;"
+                          f"font-size:12px;background:{t.bg_input};color:{t.text_primary};}}"
+                          f"QComboBox::drop-down{{border:none;width:18px;}}"
+                          f"QComboBox QAbstractItemView{{background:{t.bg_input};color:{t.text_primary};"
+                          f"selection-background-color:{t.accent};}}")
+        v = QVBoxLayout(dlg)
+        v.setContentsMargins(20, 16, 20, 16)
+        v.setSpacing(10)
+        v.addWidget(_lbl("Create new template from:", 12, bold=True))
+
+        rb_blank = QRadioButton("Start blank")
+        rb_blank.setChecked(True)
+        rb_copy  = QRadioButton("Copy from existing template:")
+        v.addWidget(rb_blank)
+
+        copy_row = QHBoxLayout()
+        copy_row.addWidget(rb_copy)
+        copy_combo = QComboBox()
+        for tpl in self._templates:
+            copy_combo.addItem(tpl["name"])
+        copy_combo.setEnabled(False)
+        rb_blank.toggled.connect(lambda checked: copy_combo.setEnabled(not checked))
+        copy_row.addWidget(copy_combo, stretch=1)
+        v.addLayout(copy_row)
+
+        v.addSpacing(4)
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        cancel_btn = _btn("Cancel", "secondary", height=32)
+        cancel_btn.clicked.connect(dlg.reject)
+        ok_btn = _btn("Create", "primary", height=32)
+        ok_btn.clicked.connect(dlg.accept)
+        btn_row.addWidget(cancel_btn)
+        btn_row.addWidget(ok_btn)
+        v.addLayout(btn_row)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        if rb_copy.isChecked():
+            src_name = copy_combo.currentText()
+            src = next((t for t in self._templates if t["name"] == src_name), None)
+            new_tpl = {
+                "name":    f"Copy of {src_name}",
+                "subject": src.get("subject", "") if src else "",
+                "body":    src.get("body", "") if src else "",
+                "docs":    dict(src.get("docs", {})) if src else {k: True for k in self._doc_cbs},
+            }
+        else:
+            new_tpl = {
+                "name":    "New Template",
+                "subject": "",
+                "body":    "",
+                "docs":    {k: True for k in self._doc_cbs},
+            }
+
+        self._templates.append(new_tpl)
+        from PyQt6.QtWidgets import QListWidgetItem
+        item = QListWidgetItem(new_tpl["name"])
+        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+        self._tpl_list.addItem(item)
+        new_row = len(self._templates) - 1
+        self._tpl_list.setCurrentRow(new_row)
+        self._tpl_list.editItem(self._tpl_list.item(new_row))
+        self._tpl_del_btn.setEnabled(True)
+
+    def _tpl_delete(self):
+        row = self._tpl_list.currentRow()
+        if row < 0 or len(self._templates) <= 1:
+            return
+        self._templates.pop(row)
+        self._tpl_list.takeItem(row)
+        new_row = min(row, len(self._templates) - 1)
+        self._tpl_list.setCurrentRow(new_row)
+        self._tpl_del_btn.setEnabled(len(self._templates) > 1)
+
+    def _save_smtp_only(self):
+        """Save SMTP/Sender settings without closing."""
+        cfg = self._collect()
+        if not cfg["smtp_host"]:
+            QMessageBox.warning(self, "Missing Field", "Please enter an SMTP server address.")
+            return
+        if not cfg["smtp_user"]:
+            QMessageBox.warning(self, "Missing Field", "Please enter a username / email.")
+            return
+        self._vault.save_email_settings(cfg)
+        QMessageBox.information(self, "Saved", "SMTP settings saved.")
+
+    def _save_templates_only(self):
+        """Flush and persist templates without closing the dialog."""
+        self._flush_current_tpl()
+        names = [t["name"] for t in self._templates]
+        if len(names) != len(set(names)):
+            QMessageBox.warning(self, "Duplicate Template Name",
+                                "Each template must have a unique name.")
+            return
+        self._vault.save_email_templates(self._templates)
+        row = self._tpl_list.currentRow()
+        if 0 <= row < len(self._templates):
+            self._vault.set_active_template(self._templates[row]["name"])
+        QMessageBox.information(self, "Saved", "Templates saved successfully.")
+
     # ── collect / save / test ─────────────────────────────────────────────────
 
     def _collect(self) -> dict:
         enc = self._enc.currentText()
         return {
-            "smtp_host":         self._host.text().strip(),
-            "smtp_port":         str(self._port.value()),
-            "smtp_user":         self._user.text().strip(),
-            "smtp_from":         self._from.text().strip(),
-            "smtp_password":     self._pwd.text(),
-            "smtp_encryption":   enc,
-            "smtp_use_tls":      enc == "STARTTLS",   # keep legacy field in sync
-            "firm_name":         self._firm.text().strip(),
-            "bcc_addresses":     self._bcc.text().strip(),
-            "email_subject_tpl": self._subj.text().strip(),
-            "email_body_tpl":    self._body.toHtml(),
+            "smtp_host":       self._host.text().strip(),
+            "smtp_port":       str(self._port.value()),
+            "smtp_user":       self._user.text().strip(),
+            "smtp_from":       self._from.text().strip(),
+            "smtp_password":   self._pwd.text(),
+            "smtp_encryption": enc,
+            "smtp_use_tls":    enc == "STARTTLS",
+            "firm_name":       self._firm.text().strip(),
+            "bcc_addresses":   self._bcc.text().strip(),
         }
 
     def _save(self):
@@ -1286,7 +1612,24 @@ class SmtpSettingsDialog(QDialog):
         if not cfg["smtp_user"]:
             QMessageBox.warning(self, "Missing Field", "Please enter a username / email.")
             return
+        # Flush current template editor into list
+        self._flush_current_tpl()
+        # Validate template names are unique and non-empty
+        names = [t["name"] for t in self._templates]
+        if len(names) != len(set(names)):
+            QMessageBox.warning(self, "Duplicate Template Name",
+                                "Each template must have a unique name.")
+            return
+        # Save SMTP settings
+        # Also sync active template's subject/body into legacy keys for emailer compat
+        active = self._templates[self._tpl_list.currentRow()] if self._templates else {}
+        cfg["email_subject_tpl"] = active.get("subject", "")
+        cfg["email_body_tpl"]    = active.get("body", "")
         self._vault.save_email_settings(cfg)
+        self._vault.save_email_templates(self._templates)
+        active_name = active.get("name", "")
+        if active_name:
+            self._vault.set_active_template(active_name)
         self.accept()
 
     def _send_test(self):
@@ -1325,6 +1668,7 @@ class SmtpSettingsDialog(QDialog):
             QMessageBox.critical(self, "Send Failed", message)
 
     def _show_help(self):
+        from ui.smtp_help import _write_smtp_help_html
         import webbrowser
         path = _write_smtp_help_html()
         webbrowser.open("file:///" + path.replace(os.sep, "/"))
@@ -1339,14 +1683,6 @@ class SmtpSettingsDialog(QDialog):
             return
         EmailLogDialog(self, path).exec()
 
-
-# ── Email Help — browser page (hived off to ui/smtp_help.py) ─────────────────
-from ui.smtp_help import _smtp_help_page_html, _write_smtp_help_html  # noqa: F401, E402
-
-
-
-# ── User Manual HTML (hived off to ui/user_manual.py) ───────────────────────
-from ui.user_manual import _user_manual_page_html, _write_user_manual_html  # noqa: F401, E402
 
 
 # ── Email Log Dialog ──────────────────────────────────────────────────────────
@@ -1463,6 +1799,7 @@ class MailDocsDialog(QDialog):
         self._clients = []          # list of dicts from emailer.scan_for_clients
         self._sending = False
         self._client_status = {}    # pan → status string (✅ Sent / ❌ Failed / ⏳ …)
+        self._scan_summary = ""     # base text from last scan
 
         self.setWindowTitle("Mail Docs to Clients")
         self.setMinimumSize(900, 560)
@@ -1503,52 +1840,104 @@ class MailDocsDialog(QDialog):
             f"&nbsp;&nbsp;AY: <span style='color:{t.accent}'>{self._ay_label}</span>")
         hint.setStyleSheet(f"font-size:11px;color:{t.text_muted};background:transparent;")
         main.addWidget(hint)
+        # ── Template / Folder / Filter — unified form rows ────────────────────
+        from PyQt6.QtWidgets import QFormLayout
+        _ROW_H = 30
+        _lbl_ss  = f"font-size:11px;color:{t.text_muted};background:transparent;"
+        _field_ss = (
+            f"border:1px solid {t.border};border-radius:5px;padding:0 8px;"
+            f"font-size:11px;background:{t.bg_input};color:{t.text_primary};"
+        )
+        _combo_ss = (
+            f"QComboBox{{border:1px solid {t.border};border-radius:5px;padding:0 8px;"
+            f"font-size:11px;background:{t.bg_input};color:{t.text_primary};}}"
+            f"QComboBox::drop-down{{border:none;width:18px;}}"
+            f"QComboBox QAbstractItemView{{background:{t.bg_input};color:{t.text_primary};"
+            f"selection-background-color:{t.accent};}}"
+        )
+        _btn_ss_outline = (
+            f"QPushButton{{background:transparent;color:{t.text_primary};"
+            f"border:1px solid {t.border};border-radius:5px;padding:0 8px;"
+            f"font-size:11px;font-weight:600;}}"
+            f"QPushButton:hover{{background:{t.bg_table_alt};}}"
+        )
+        _btn_ss_primary = (
+            f"QPushButton{{background:{t.accent};color:white;border:none;"
+            f"border-radius:5px;padding:0 8px;font-size:11px;font-weight:600;}}"
+            f"QPushButton:hover{{background:{t.accent_hover};}}"
+            f"QPushButton:disabled{{background:{t.border};color:{t.text_muted};}}"
+        )
 
-        # ── Folder picker bar ─────────────────────────────────────────────────
-        folder_row = QHBoxLayout(); folder_row.setSpacing(6)
-        folder_lbl = QLabel("Folder:")
-        folder_lbl.setStyleSheet(f"font-size:12px;color:{t.text_muted};background:transparent;")
-        folder_lbl.setFixedWidth(52)
-        folder_row.addWidget(folder_lbl)
+        form = QFormLayout()
+        form.setSpacing(8)
+        form.setContentsMargins(0, 0, 0, 0)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
 
+        def _form_lbl(text):
+            l = QLabel(text)
+            l.setFixedHeight(_ROW_H)
+            l.setStyleSheet(_lbl_ss)
+            return l
+
+        # Template row
+        self._tpl_combo = QComboBox()
+        self._tpl_combo.setFixedHeight(_ROW_H)
+        self._tpl_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self._tpl_combo.setStyleSheet(_combo_ss)
+        templates = self._vault.get_email_templates()
+        active_name = self._vault.get_active_template_name()
+        for tpl in templates:
+            self._tpl_combo.addItem(tpl["name"])
+        idx = next((i for i, t_ in enumerate(templates) if t_["name"] == active_name), 0)
+        self._tpl_combo.setCurrentIndex(idx)
+        form.addRow(_form_lbl("Template:"), self._tpl_combo)
+
+        # Folder row
+        folder_widget = QWidget()
+        folder_widget.setStyleSheet("QWidget{background:transparent;}")
+        folder_h = QHBoxLayout(folder_widget)
+        folder_h.setContentsMargins(0, 0, 0, 0)
+        folder_h.setSpacing(6)
         self._folder_edit = QLineEdit()
+        self._folder_edit.setFixedHeight(_ROW_H)
         self._folder_edit.setPlaceholderText("Browse to the folder containing client sub-folders…")
-        self._folder_edit.setFixedHeight(32)
-        # Pre-fill with the saved output directory; browse only changes this field
+        self._folder_edit.setStyleSheet(f"QLineEdit{{{_field_ss}}}QLineEdit:focus{{border-color:{t.border_focus};}}")
         default_dir = self._vault.get_setting("download_root_dir", "")
         if default_dir and os.path.isdir(default_dir):
             self._folder_edit.setText(default_dir)
-        folder_row.addWidget(self._folder_edit, stretch=1)
+        folder_h.addWidget(self._folder_edit, stretch=1)
+        def _small_icon(name):
+            p = _icon_path(name)
+            if not p:
+                return QIcon()
+            return QIcon(QPixmap(p).scaled(16, 16, Qt.AspectRatioMode.KeepAspectRatio,
+                                           Qt.TransformationMode.SmoothTransformation))
 
-        browse_btn = _btn("Browse…", "outline", height=32, icon="btn_browse_folder.png")
-        browse_btn.setFixedWidth(90)
+        browse_btn = QPushButton("Browse…")
+        browse_btn.setIcon(_small_icon("btn_browse_folder.png"))
+        browse_btn.setFixedSize(90, _ROW_H)
+        browse_btn.setStyleSheet(_btn_ss_outline)
         browse_btn.clicked.connect(self._browse)
-        folder_row.addWidget(browse_btn)
-
-        self._scan_btn = _btn("Scan Folder", "primary", height=32, icon="btn_scan.png")
-        self._scan_btn.setFixedWidth(110)
+        folder_h.addWidget(browse_btn)
+        self._scan_btn = QPushButton("Scan Folder")
+        self._scan_btn.setIcon(_small_icon("btn_scan.png"))
+        self._scan_btn.setFixedSize(110, _ROW_H)
+        self._scan_btn.setStyleSheet(_btn_ss_primary)
         self._scan_btn.clicked.connect(self._scan)
-        folder_row.addWidget(self._scan_btn)
+        folder_h.addWidget(self._scan_btn)
+        form.addRow(_form_lbl("Folder:"), folder_widget)
 
-        main.addLayout(folder_row)
-
-        # ── Filter bar ────────────────────────────────────────────────────────
-        filter_row = QHBoxLayout(); filter_row.setSpacing(8)
-        filter_lbl = QLabel("Filter:")
-        filter_lbl.setStyleSheet(f"font-size:11px;color:{t.text_muted};background:transparent;")
+        # Filter row
         self._filter_edit = QLineEdit()
+        self._filter_edit.setFixedHeight(_ROW_H)
         self._filter_edit.setPlaceholderText("Search by name, PAN or email…")
-        self._filter_edit.setFixedHeight(30)
+        self._filter_edit.setStyleSheet(f"QLineEdit{{{_field_ss}}}QLineEdit:focus{{border-color:{t.border_focus};}}")
         self._filter_edit.setClearButtonEnabled(True)
-        self._filter_edit.setStyleSheet(
-            f"QLineEdit{{border:1px solid {t.border};border-radius:6px;padding:4px 10px;"
-            f"font-size:11px;background:{t.bg_input};color:{t.text_primary};}}"
-            f"QLineEdit:focus{{border-color:{t.border_focus};}}")
         self._filter_edit.textChanged.connect(self._apply_filter)
-        filter_row.addWidget(filter_lbl)
-        filter_row.addWidget(self._filter_edit, stretch=1)
-        main.addLayout(filter_row)
-        main.addSpacing(4)
+        form.addRow(_form_lbl("Filter:"), self._filter_edit)
+
+        main.addLayout(form)
 
         # ── Table ─────────────────────────────────────────────────────────────
         self._table = QTableWidget(0, 6)
@@ -1626,6 +2015,23 @@ class MailDocsDialog(QDialog):
 
     def _open_email_settings(self):
         SmtpSettingsDialog(self, self._vault).exec()
+        self._refresh_tpl_combo()
+
+    def _refresh_tpl_combo(self):
+        templates = self._vault.get_email_templates()
+        active_name = self._vault.get_active_template_name()
+        current = self._tpl_combo.currentText()
+        self._tpl_combo.blockSignals(True)
+        self._tpl_combo.clear()
+        for tpl in templates:
+            self._tpl_combo.addItem(tpl["name"])
+        # Restore previous selection if still exists, else use active
+        names = [t["name"] for t in templates]
+        if current in names:
+            self._tpl_combo.setCurrentText(current)
+        elif active_name in names:
+            self._tpl_combo.setCurrentText(active_name)
+        self._tpl_combo.blockSignals(False)
 
     # ── folder browse ─────────────────────────────────────────────────────────
 
@@ -1664,9 +2070,17 @@ class MailDocsDialog(QDialog):
             self._send_btn.setEnabled(False)
         else:
             n_files = sum(1 for c in self._clients if c["attachments"])
-            self._status_lbl.setText(
-                f"Found {n} client(s) — {n_files} with files for {self._ay_label}.")
+            self._scan_summary = f"Found {n} client(s) — {n_files} with files for {self._ay_label}."
+            self._update_status_label()
             self._send_btn.setEnabled(True)
+
+    def _update_status_label(self):
+        selected_n = sum(1 for chk in self._checkboxes.values() if chk.isChecked())
+        base = getattr(self, "_scan_summary", "")
+        if base:
+            self._status_lbl.setText(f"{base}  ·  {selected_n} selected")
+        else:
+            self._status_lbl.setText(f"{selected_n} selected")
 
     def _apply_filter(self, text: str):
         q = text.strip().lower()
@@ -1690,7 +2104,8 @@ class MailDocsDialog(QDialog):
             self._table.setRowHeight(row, 38)
 
             pan = client["pan"]
-            has_files = bool(client["attachments"])
+            has_files = bool(client["attachments"])  # used for Files column display
+            can_select = True  # always allow selection; doc filtering happens at send time
 
             # Checkbox cell
             row_bg = t.bg_table_alt if row % 2 else t.bg_table
@@ -1702,7 +2117,7 @@ class MailDocsDialog(QDialog):
             chk_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
             chk = QCheckBox()
             chk.setChecked(checked_pans is not None and pan in checked_pans)
-            chk.setEnabled(has_files)
+            chk.setEnabled(can_select)
             chk.setStyleSheet(
                 f"QCheckBox{{background:transparent;}}"
                 f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {t.border};"
@@ -1712,6 +2127,7 @@ class MailDocsDialog(QDialog):
             chk_layout.addWidget(chk)
             self._table.setCellWidget(row, self._COL_CHK, chk_widget)
             self._checkboxes[pan] = chk
+            chk.stateChanged.connect(self._update_status_label)
 
             # Name
             name_item = QTableWidgetItem(client["name"])
@@ -1864,9 +2280,34 @@ class MailDocsDialog(QDialog):
                                 "Go to Settings → Email Settings.")
             return
 
+        # Load selected template — use its subject, body and doc filter
+        all_templates = self._vault.get_email_templates()
+        tpl_name = self._tpl_combo.currentText()
+        active_tpl = next((t for t in all_templates if t["name"] == tpl_name),
+                          all_templates[0] if all_templates else None)
+        if active_tpl:
+            self._vault.set_active_template(active_tpl["name"])
+            cfg["email_subject_tpl"] = active_tpl.get("subject", cfg.get("email_subject_tpl", ""))
+            cfg["email_body_tpl"]    = active_tpl.get("body",    cfg.get("email_body_tpl", ""))
+            doc_filter = active_tpl.get("docs", {})
+        else:
+            doc_filter = {}
+
+        def _keep(path: str) -> bool:
+            if not doc_filter:
+                return True
+            n = os.path.basename(path).upper()
+            if "-26AS-" in n and n.endswith(".PDF"):  return doc_filter.get("26as_pdf",  True)
+            if "-26AS-" in n and n.endswith(".XLSX"): return doc_filter.get("26as_xlsx", True)
+            if "-AIS-"  in n and n.endswith(".PDF"):  return doc_filter.get("ais_pdf",   True)
+            if "-AIS-"  in n and n.endswith(".XLSX"): return doc_filter.get("ais_xlsx",  True)
+            if "-TIS-"  in n and n.endswith(".PDF"):  return doc_filter.get("tis_pdf",   True)
+            return True
+
         # Collect selected clients and validate emails
         selected = []
         missing_email = []
+        skipped_no_docs = []   # (name, pan) of clients skipped due to no matching docs
         for i, client in enumerate(self._clients):
             pan = client["pan"]
             chk = self._checkboxes.get(pan)
@@ -1880,8 +2321,12 @@ class MailDocsDialog(QDialog):
                     "background:#FEF2F2;color:#B91C1C;font-size:11px;padding:0 4px;}")
                 continue
             cc = self._cc_edits[pan].text().strip()
+            attachments = [a for a in client["attachments"] if _keep(a)]
+            if not attachments:
+                skipped_no_docs.append((client["name"], pan))
+                continue
             selected.append({**client, "email": email, "cc": cc,
-                             "ay_label": self._ay_label})
+                             "ay_label": self._ay_label, "attachments": attachments})
 
         if missing_email:
             QMessageBox.warning(self, "Missing Email",
@@ -1889,8 +2334,21 @@ class MailDocsDialog(QDialog):
                                 "\n".join(f"  • {n}" for n in missing_email))
             return
 
-        if not selected:
+        if not selected and not skipped_no_docs:
             QMessageBox.information(self, "Nothing Selected", "No clients selected to email.")
+            return
+
+        if not selected:
+            # All checked clients had no matching docs — mark rows and bail
+            t = _t()
+            for name, pan in skipped_no_docs:
+                row = self._pan_to_row(pan)
+                if row >= 0:
+                    item = QTableWidgetItem("❌ Docs not found")
+                    item.setForeground(QColor("#EF4444"))
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
+                    self._table.setItem(row, self._COL_FILES, item)
+            self._status_lbl.setText("No matching documents found for the selected template.")
             return
 
         # Save any inline-typed emails back to vault
@@ -1898,12 +2356,7 @@ class MailDocsDialog(QDialog):
             self._vault.update_assessee_email(client["pan"], client["email"], client.get("cc", ""))
 
         # Confirm
-        n = len(selected)
-        reply = QMessageBox.question(
-            self, "Confirm Send",
-            f"Send emails to {n} client{'s' if n > 1 else ''}?\n\n" +
-            "\n".join(f"  • {c['name']} <{c['email']}>" for c in selected[:10]) +
-            ("\n  …" if n > 10 else ""),
+        reply = QMessageBox.question(self, "Confirm Send", "Send emails to selected clients?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
         if reply != QMessageBox.StandardButton.Yes:
             return
@@ -1914,8 +2367,18 @@ class MailDocsDialog(QDialog):
         self._send_btn.setText("Sending…")
         self._scan_btn.setEnabled(False)
 
-        # Mark rows as pending
         t = _t()
+
+        # Mark skipped clients with inline error status
+        for name, pan in skipped_no_docs:
+            row = self._pan_to_row(pan)
+            if row >= 0:
+                item = QTableWidgetItem("❌ Docs not found")
+                item.setForeground(QColor("#EF4444"))
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
+                self._table.setItem(row, self._COL_FILES, item)
+
+        # Mark rows as pending
         for client in selected:
             pan = client["pan"]
             row = self._pan_to_row(pan)
@@ -1926,6 +2389,33 @@ class MailDocsDialog(QDialog):
                 self._table.setItem(row, self._COL_FILES, item)
 
         # Run send in background thread
+        from ui.log_history import LogStore
+        _log_store = LogStore()
+        _pan_to_ay   = {c["pan"]: c.get("ay_label", self._ay_label) for c in selected}
+        def _doc_label(path: str) -> str:
+            n = os.path.basename(path).upper()
+            if "-26AS-" in n and n.endswith(".PDF"):  return "26AS PDF"
+            if "-26AS-" in n and n.endswith(".XLSX"): return "26AS Excel"
+            if "-AIS-"  in n and n.endswith(".PDF"):  return "AIS PDF"
+            if "-AIS-"  in n and n.endswith(".XLSX"): return "AIS Excel"
+            if "-TIS-"  in n and n.endswith(".PDF"):  return "TIS"
+            return os.path.basename(path)
+
+        _pan_to_docs = {
+            c["pan"]: ", ".join(_doc_label(f) for f in c.get("attachments", []))
+            for c in selected
+        }
+
+        def _on_progress(pan, status):
+            self._status_signal.emit(pan, status)
+            if status == "✅ Sent":
+                try:
+                    docs = _pan_to_docs.get(pan, "")
+                    _log_store.record(pan, _pan_to_ay.get(pan, self._ay_label),
+                                      f"[Email] {docs}" if docs else "[Email] Sent")
+                except Exception:
+                    pass
+
         def _worker():
             from automation.emailer import send_batch
             send_batch(
@@ -1933,7 +2423,7 @@ class MailDocsDialog(QDialog):
                 subject_tpl=cfg.get("email_subject_tpl", "Your Tax Documents — {ay}"),
                 body_tpl=cfg.get("email_body_tpl", "Dear {client_name},\n\nPlease find attached your documents for {ay}.\n\nRegards,\n{firm_name}"),
                 bcc_addresses=cfg.get("bcc_addresses", ""),
-                progress_cb=lambda pan, status: self._status_signal.emit(pan, status),
+                progress_cb=_on_progress,
             )
             self._status_signal.emit("__done__", "")
 

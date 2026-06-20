@@ -483,3 +483,55 @@ class VaultManager:
             # Blank password clears the stored encrypted value
             s["smtp_password_enc"] = ""
         self._save_raw(raw_data)
+
+    _ALL_DOCS = ["26as_pdf", "26as_xlsx", "ais_pdf", "ais_xlsx", "tis_pdf"]
+
+    def _make_legacy_template(self, cfg: dict) -> dict:
+        return {
+            "name":    "Legacy Template",
+            "subject": cfg.get("email_subject_tpl", self._EMAIL_DEFAULTS["email_subject_tpl"]),
+            "body":    cfg.get("email_body_tpl",    self._EMAIL_DEFAULTS["email_body_tpl"]),
+            "docs":    {k: True for k in self._ALL_DOCS},
+        }
+
+    def get_email_templates(self) -> list:
+        """Return list of template dicts. Auto-creates 'Legacy Template' from existing settings if none exist."""
+        raw_data = self._get_raw()
+        s = raw_data.get("settings", {})
+        templates = s.get("email_templates")
+        if not templates:
+            # First run — migrate existing subject/body into Legacy Template
+            cfg = self.get_email_settings()
+            templates = [self._make_legacy_template(cfg)]
+            s = raw_data.setdefault("settings", {})
+            s["email_templates"]  = templates
+            s["active_template"]  = "Legacy Template"
+            self._save_raw(raw_data)
+        return templates
+
+    def save_email_templates(self, templates: list):
+        raw_data = self._get_raw()
+        raw_data.setdefault("settings", {})["email_templates"] = templates
+        self._save_raw(raw_data)
+
+    def get_active_template_name(self) -> str:
+        s = self._get_raw().get("settings", {})
+        templates = s.get("email_templates", [])
+        name = s.get("active_template", "")
+        # Fall back to first template if stored name no longer exists
+        if templates and not any(t["name"] == name for t in templates):
+            name = templates[0]["name"]
+        return name
+
+    def set_active_template(self, name: str):
+        raw_data = self._get_raw()
+        raw_data.setdefault("settings", {})["active_template"] = name
+        self._save_raw(raw_data)
+
+    def get_active_template(self) -> dict | None:
+        templates = self.get_email_templates()
+        name = self.get_active_template_name()
+        for t in templates:
+            if t["name"] == name:
+                return t
+        return templates[0] if templates else None
