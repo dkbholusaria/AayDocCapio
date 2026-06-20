@@ -979,7 +979,7 @@ class SmtpSettingsDialog(QDialog):
         # Firm Name (moved from Tab 1 — belongs with template placeholders)
         tab2_main.addWidget(_flbl("Firm Name  (used in {firm_name} placeholder)"))
         self._firm = QLineEdit(cfg.get("firm_name", ""))
-        self._firm.setPlaceholderText("Bholusaria & Associates")
+        self._firm.setPlaceholderText("AI Learrning Guru")
         self._firm.setFixedHeight(34)
         tab2_main.addWidget(self._firm)
         tab2_main.addSpacing(20)
@@ -1606,6 +1606,10 @@ class MailDocsDialog(QDialog):
         self._sel_none_btn.clicked.connect(self._select_none)
         footer.addWidget(self._sel_none_btn)
 
+        email_settings_btn = _btn("Email Settings", "outline", height=32, icon="icon_email.png")
+        email_settings_btn.clicked.connect(self._open_email_settings)
+        footer.addWidget(email_settings_btn)
+
         footer.addStretch()
 
         self._send_btn = _btn("Send to Selected", "success", height=34, icon="btn_send.png")
@@ -1619,6 +1623,9 @@ class MailDocsDialog(QDialog):
         footer.addWidget(self._close_btn)
 
         main.addLayout(footer)
+
+    def _open_email_settings(self):
+        SmtpSettingsDialog(self, self._vault).exec()
 
     # ── folder browse ─────────────────────────────────────────────────────────
 

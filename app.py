@@ -33,6 +33,7 @@ from ui._theme import _t, _active_theme
 from ui.helpers import _btn, _lbl, _shadow, _status_style, _STATUS_FG, _UI_FONT
 from ui.widgets import StyledComboBox
 from ui.dialogs import ManageYearsDialog, BatchProgressDialog
+from ui.log_history import LogHistoryDialog, LogStore
 from automation.errors import _friendly_error
 
 sys.path.insert(0, _bundled_dir())
@@ -202,6 +203,7 @@ class AayDocCapioApp(QMainWindow):
 
         self.vault = VaultManager(
             vault_path=os.path.join(_app_dir(), "tax_vault.json"))
+        self.log_store = LogStore()
         self.selected_ids = set()
         self.editing_id = None
         self.is_running = False
@@ -485,11 +487,11 @@ class AayDocCapioApp(QMainWindow):
                 f"QToolButton:disabled{{background:{t.border};color:{t.text_muted};}}")
             if hasattr(self.btn_run, "menu") and self.btn_run.menu():
                 self.btn_run.menu().setStyleSheet(
-                    f"QMenu{{background:{t.bg_menu};border:1px solid {t.border};"
+                    f"QMenu{{background:{t.bg_menu};border:1.5px solid {t.border_menu};"
                     f"border-radius:8px;padding:4px 0;}}"
                     f"QMenu::item{{padding:8px 18px;font-size:13px;color:{t.text_primary};}}"
                     f"QMenu::item:selected{{background:{t.accent};color:{t.accent_text};}}"
-                    f"QMenu::separator{{height:1px;background:{t.border};margin:4px 0;}}")
+                    f"QMenu::separator{{height:1px;background:{t.border_menu};margin:4px 0;}}")
 
         # ── CLIENTS caption + selected count label ────────────────────────────
         if hasattr(self, "_lbl_clients_cap"):
@@ -1104,10 +1106,10 @@ class AayDocCapioApp(QMainWindow):
             _mt = _t()
             menu = QMenu(self)
             menu.setStyleSheet(
-                f"QMenu {{ background:{_mt.bg_menu}; border:1px solid {_mt.border}; border-radius:6px; padding:4px 0; }}"
+                f"QMenu {{ background:{_mt.bg_menu}; border:1.5px solid {_mt.border_menu}; border-radius:6px; padding:4px 0; }}"
                 f"QMenu::item {{ padding:8px 20px; font-size:12px; color:{_mt.text_primary}; }}"
                 f"QMenu::item:selected {{ background:{_mt.accent}; color:{_mt.accent_text}; }}"
-                f"QMenu::separator {{ height:1px; background:{_mt.border}; margin:3px 0; }}"
+                f"QMenu::separator {{ height:1px; background:{_mt.border_menu}; margin:3px 0; }}"
             )
             def _cicon(f):
                 p = os.path.join(_bundled_dir(), "resources", "icons", f)
@@ -1117,12 +1119,14 @@ class AayDocCapioApp(QMainWindow):
             menu.addSeparator()
             menu.addAction(_cicon("icon_delete.png"), "Delete Client", lambda id_=a_id: self.delete_assessee(id_))
             menu.addSeparator()
-            act_log = menu.addAction(_cicon("btn_scan.png"), "View Log")  # F-05 placeholder
-            act_log.setEnabled(False)
-            # Show menu at the cell's bottom-left corner
-            rect = self.client_table.visualItemRect(item)
-            pos  = self.client_table.viewport().mapToGlobal(rect.bottomLeft())
-            menu.exec(pos)
+            act_log = menu.addAction(_cicon("btn_scan.png"), "View Log")
+            act_log.triggered.connect(lambda checked=False, _a=a: self._show_log_history(_a))
+            # Right-align menu: top-right of menu anchored to bottom-right of … cell
+            from PyQt6.QtCore import QPoint
+            rect    = self.client_table.visualItemRect(item)
+            cell_br = self.client_table.viewport().mapToGlobal(rect.bottomRight())
+            menu_w  = menu.sizeHint().width()
+            menu.exec(QPoint(cell_br.x() - menu_w, cell_br.y()))
             return
 
         if col in (self._TC_CHK, self._TC_PATH):
@@ -1236,10 +1240,10 @@ class AayDocCapioApp(QMainWindow):
         run_menu = QMenu(self.btn_run)
         _rm = _t()
         run_menu.setStyleSheet(
-            f"QMenu{{ background:{_rm.bg_menu}; border:1px solid {_rm.border}; border-radius:8px; padding:4px 0; }}"
+            f"QMenu{{ background:{_rm.bg_menu}; border:1.5px solid {_rm.border_menu}; border-radius:8px; padding:4px 0; }}"
             f"QMenu::item{{ padding:8px 18px; font-size:13px; color:{_rm.text_primary}; }}"
             f"QMenu::item:selected{{ background:{_rm.accent}; color:{_rm.accent_text}; }}"
-            f"QMenu::separator{{ height:1px; background:{_rm.border}; margin:4px 0; }}"
+            f"QMenu::separator{{ height:1px; background:{_rm.border_menu}; margin:4px 0; }}"
         )
 
         act_26as = QAction("▶  Download 26AS", self)
@@ -1713,7 +1717,7 @@ class AayDocCapioApp(QMainWindow):
         # ── PAN ───────────────────────────────────────────────────────────────
         vl.addWidget(_field_label("PAN Number"))
         fields["pan"] = QLineEdit()
-        fields["pan"].setPlaceholderText("e.g. AEKPB0205L")
+        fields["pan"].setPlaceholderText("e.g. ABCDE1234F")
         fields["pan"].setFixedHeight(34)
         fields["pan"].setMaxLength(10)
         fields["pan"].setValidator(
@@ -1839,7 +1843,7 @@ class AayDocCapioApp(QMainWindow):
                 f"QSpinBox{{color:{t.text_primary};background:{t.bg_input};"
                 f"border:1px solid {t.border};border-radius:4px;padding:2px 6px;}}"
                 f"QSpinBox::up-button,QSpinBox::down-button{{background:transparent;border:none;}}"
-                f"QMenu{{background:{t.bg_menu};color:{t.text_primary};border:1px solid {t.border};}}"
+                f"QMenu{{background:{t.bg_menu};color:{t.text_primary};border:1.5px solid {t.border_menu};}}"
                 f"QMenu::item:selected{{background:{t.accent};color:{t.accent_text};}}"
                 f"QHeaderView::section{{background:{t.bg_header};color:{t.text_muted};"
                 f"border:none;font-size:11px;font-weight:600;padding:4px 0;}}"
@@ -2001,6 +2005,12 @@ class AayDocCapioApp(QMainWindow):
         from ui.dialogs import MailDocsDialog
         ay_label = self.ay_combo.currentText() if hasattr(self, "ay_combo") else ""
         MailDocsDialog(self, self.vault, ay_label).exec()
+
+    def _show_log_history(self, a: dict):
+        history  = self.log_store.get(a.get("pan", ""))
+        ay_label = self.ay_combo.currentText() if hasattr(self, "ay_combo") else ""
+        LogHistoryDialog(self, name=a.get("name", ""), pan=a.get("pan", ""),
+                         history=history, active_ay=ay_label).exec()
 
     def delete_assessee(self, assessee_id):
         if QMessageBox.question(self, "Confirm Delete",
@@ -2753,7 +2763,8 @@ class AayDocCapioApp(QMainWindow):
         self._last_errors = {}
         self._batch_26as_txts = []
 
-        _client_out = {}   # pan → out path, populated below
+        _client_out      = {}   # pan → out path, populated below
+        _last_terminal   = {}   # pan → last terminal status text this run
 
         def set_status(pan, text):
             """Update progress dialog and persist terminal status to vault."""
@@ -2761,6 +2772,7 @@ class AayDocCapioApp(QMainWindow):
                 self._progress_dialog.set_status(pan, text)
             terminal = ("✅", "❌", "🕐", "⏹", "⬜", "⚠")
             if ay_label and any(text.startswith(p) for p in terminal):
+                _last_terminal[pan] = text
                 try:
                     self.vault.record_download(
                         pan, ay_label, text, _client_out.get(pan, ""))
@@ -2896,6 +2908,14 @@ class AayDocCapioApp(QMainWindow):
                     if page:
                         try: await logout_itd(page, self.log)
                         except Exception: pass
+
+                # Append the final status (whatever the main grid now shows) to log history
+                if ay_label and pan in _last_terminal:
+                    try:
+                        self.log_store.record(pan, ay_label, _last_terminal.pop(pan))
+                    except Exception:
+                        pass
+
                 await asyncio.sleep(3)
 
         finally:

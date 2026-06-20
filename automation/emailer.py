@@ -39,7 +39,7 @@ def log_session_start():
 def log_session_end():
     _divider("SESSION ENDED")
 
-# Regex to extract PAN from folder names like "AEKPB0205L-Deepak Bholusaria"
+# Regex to extract PAN from folder names like "ABCDE1234F-Client Name"
 _PAN_RE = re.compile(r'^([A-Z]{5}[0-9]{4}[A-Z])-')
 
 # Maps AY label → AY folder name prefix, e.g.:
