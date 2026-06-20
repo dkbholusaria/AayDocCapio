@@ -11,10 +11,11 @@ AayDocCapio is a PyQt6 desktop app for Indian CAs and tax professionals. It auto
 Follow these steps in order — no step is optional:
 
 1. **Open a GitHub issue** — before anything else, create a GitHub issue for the task (`gh issue create`). Use the appropriate label (`bug`, `enhancement`) and priority (`P1`/`P2`/`P3`). Record the issue number.
+   - Every issue body must mention the creation/report date in `YYYY-MM-DD` format.
 2. **Plan** — prepare an implementation plan, save it as a `.md` file in the untracked `Plans/` subfolder, and get user approval before writing any code.
 3. **Implement** — build the feature or fix following the approved plan.
 4. **Update documentation** — update `Documentation/ISSUES_BACKLOG.md` and any other relevant files in `Documentation/` to reflect the completed work.
-5. **Close the issue** — close the GitHub issue (`gh issue close <number>`) once the implementation is done and verified.
+5. **Close the issue** — before closing any GitHub issue, add a closing comment that states what changed, the verification performed, and the commit SHA or PR reference when available. Then close the GitHub issue (`gh issue close <number>`) once the implementation is done and verified.
 
 ### General guidelines
 *   **Concise Responses:** Avoid long conversational padding.
@@ -534,4 +535,3 @@ Download workers run in a `QThread`. Update UI only via Qt signals — never cal
 Refer to `Documentation/ISSUES_BACKLOG.md` for the canonical tracker. Key active priorities:
 *   **B-02 & B-06 (PDF/TXT ZIP Unlock):** Expand DOB formats used for password attempts when unlocking files.
 *   **F-10 (Large 26AS Direct Downloads):** Implement automated logins to `tdscpc.gov.in` to poll on-demand 26AS requests.
-
