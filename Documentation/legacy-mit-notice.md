@@ -1,3 +1,13 @@
+Legacy MIT License Notice
+
+This MIT License notice applies only to AayDocCapio releases and commits up to
+and including the `old-license-mit` tag, which points to commit `23924ef`.
+Changes after that tag are distributed under the GNU Affero General Public
+License v3.0 or later. Existing MIT license grants for earlier copies are not
+revoked.
+
+---
+
 MIT License
 
 Copyright (c) 2026 Deepak Bhholusaria

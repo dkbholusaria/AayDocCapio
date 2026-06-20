@@ -107,7 +107,7 @@ later (`AGPL-3.0-or-later`) for changes and distributions after the
 `old-license-mit` tag. See [../LICENSE](../LICENSE).
 
 Releases and commits up to and including `old-license-mit` remain available
-under the MIT License. See [../LICENSE-MIT](../LICENSE-MIT).
+under the MIT License. See [legacy MIT notice](legacy-mit-notice.md).
 
 New source files should include `Copyright (C) 2026 Deepak Bholusaria` and
 `SPDX-License-Identifier: AGPL-3.0-or-later` near the top of the file.
