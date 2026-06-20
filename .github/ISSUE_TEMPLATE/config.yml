@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: AayDocCapio documentation
+    url: https://download.aaydoccapio.com/
+    about: Check the user guide and download page before opening an issue.
