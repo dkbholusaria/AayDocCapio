@@ -45,3 +45,8 @@ Thumbs.db
 
 # Dynamic assets
 checkmark.png
+
+# AIS JSON documentation files (contain sensitive schema/PII data; not for version control)
+Documentation/AIS_JSON_Schema.xlsx
+Documentation/AIS_JSON_Tree.html
+Documentation/AIS_JSON_Structure.md
