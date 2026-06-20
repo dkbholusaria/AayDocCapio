@@ -59,6 +59,132 @@ except Exception as _import_err:
 
 
 
+# ── Client Picker Dialog ──────────────────────────────────────────────────────
+class _ClientPickerDialog(QDialog):
+    """Reusable popup for selecting one or more clients before Edit / Delete.
+
+    mode='edit'   — single-select (checking one auto-unchecks others)
+    mode='delete' — multi-select
+    """
+
+    def __init__(self, parent, clients, mode):
+        super().__init__(parent)
+        self._mode    = mode
+        self._clients = clients          # list of {id, name, pan}
+        self._checks  = []               # (id, QCheckBox) pairs
+
+        t = _t()
+        self.setWindowTitle("Select Client to Edit" if mode == "edit"
+                            else "Select Client(s) to Delete")
+        self.setMinimumWidth(420)
+        self.setMinimumHeight(380)
+        self.setStyleSheet(
+            f"QDialog{{background:{t.bg_window};}}"
+            f"QLabel{{background:transparent;border:none;color:{t.text_primary};font-size:12px;}}"
+            f"QLineEdit{{border:1px solid {t.border};border-radius:6px;padding:5px 10px;"
+            f"font-size:12px;background:{t.bg_input};color:{t.text_primary};}}"
+            f"QScrollArea{{border:none;background:transparent;}}"
+            f"QWidget#listArea{{background:{t.bg_table};}}"
+        )
+
+        vl = QVBoxLayout(self)
+        vl.setContentsMargins(20, 18, 20, 16)
+        vl.setSpacing(10)
+
+        # Sub-title
+        sub = "Select one client to edit:" if mode == "edit" else "Select one or more clients to delete:"
+        sub_lbl = QLabel(sub)
+        sub_lbl.setStyleSheet(f"color:{t.text_muted};font-size:11px;background:transparent;border:none;")
+        vl.addWidget(sub_lbl)
+
+        # Search box
+        self._search = QLineEdit()
+        self._search.setPlaceholderText("Search by name or PAN…")
+        self._search.setClearButtonEnabled(True)
+        self._search.textChanged.connect(self._on_search)
+        vl.addWidget(self._search)
+
+        # Scrollable checkbox list
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        list_widget = QWidget()
+        list_widget.setObjectName("listArea")
+        list_widget.setStyleSheet(f"background:{t.bg_table};")
+        self._list_layout = QVBoxLayout(list_widget)
+        self._list_layout.setContentsMargins(8, 6, 8, 6)
+        self._list_layout.setSpacing(2)
+
+        chk_style = (
+            f"QCheckBox{{font-size:12px;color:{t.text_primary};background:transparent;spacing:8px;}}"
+            f"QCheckBox::indicator{{width:14px;height:14px;border:1.5px solid {t.border};"
+            f"border-radius:3px;background:{t.bg_checkbox};}}"
+            f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};}}"
+        )
+
+        for c in clients:
+            cb = QCheckBox(f"{c['name']}   —   {c['pan']}")
+            cb.setStyleSheet(chk_style)
+            cb.stateChanged.connect(self._on_check_changed)
+            self._checks.append((c["id"], cb))
+            self._list_layout.addWidget(cb)
+
+        self._list_layout.addStretch()
+        scroll.setWidget(list_widget)
+        vl.addWidget(scroll, 1)
+
+        # Footer buttons
+        self._ok_label = "Edit" if mode == "edit" else "Delete"
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setFixedHeight(32)
+        cancel_btn.setStyleSheet(
+            f"QPushButton{{background:transparent;color:{t.text_muted};border:1px solid {t.border};"
+            f"border-radius:6px;padding:0 18px;font-size:12px;}}"
+            f"QPushButton:hover{{color:{t.text_primary};border-color:{t.text_muted};}}")
+        cancel_btn.clicked.connect(self.reject)
+        btn_row.addWidget(cancel_btn)
+        btn_row.addSpacing(8)
+        self._ok_btn = QPushButton(self._ok_label)
+        self._ok_btn.setFixedHeight(32)
+        self._ok_btn.setEnabled(False)
+        ok_color = "#DC2626" if mode == "delete" else t.accent
+        ok_hover  = "#B91C1C" if mode == "delete" else t.accent_hover
+        self._ok_btn.setStyleSheet(
+            f"QPushButton{{background:{ok_color};color:#FFFFFF;border:none;"
+            f"border-radius:6px;padding:0 18px;font-size:12px;font-weight:600;}}"
+            f"QPushButton:hover{{background:{ok_hover};}}"
+            f"QPushButton:disabled{{background:{t.border};color:{t.text_muted};}}")
+        self._ok_btn.clicked.connect(self.accept)
+        btn_row.addWidget(self._ok_btn)
+        vl.addLayout(btn_row)
+
+    def _on_search(self, text):
+        q = text.strip().lower()
+        for c, cb in zip(self._clients, [cb for _, cb in self._checks]):
+            match = not q or q in c["name"].lower() or q in c["pan"].lower()
+            cb.setVisible(match)
+            if not match:
+                cb.setChecked(False)
+
+    def _on_check_changed(self, _state):
+        if self._mode == "edit":
+            # Enforce single-select: uncheck all others
+            sender = self.sender()
+            if sender and sender.isChecked():
+                for _, cb in self._checks:
+                    if cb is not sender:
+                        cb.blockSignals(True)
+                        cb.setChecked(False)
+                        cb.blockSignals(False)
+        n = sum(1 for _, cb in self._checks if cb.isChecked())
+        self._ok_btn.setEnabled(n == 1 if self._mode == "edit" else n >= 1)
+
+    @property
+    def selected_ids(self):
+        return [id_ for id_, cb in self._checks if cb.isChecked()]
+
+
 # ── Main Window ───────────────────────────────────────────────────────────────
 class AayDocCapioApp(QMainWindow):
     _log_signal = pyqtSignal(str)
@@ -159,11 +285,18 @@ class AayDocCapioApp(QMainWindow):
             p = os.path.join(_bundled_dir(), "resources", "icons", f)
             return QIcon(QPixmap(p).scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio,
                          Qt.TransformationMode.SmoothTransformation)) if os.path.isfile(p) else QIcon()
-        act_add  = QAction(_micon("menu_add_client.png"), "Add New Client",           self); act_add.triggered.connect(self._open_add_client)
-        act_imp  = QAction(_micon("menu_import.png"),     "Import from CSV / Excel",  self); act_imp.triggered.connect(self.bulk_import)
-        act_exp  = QAction(_micon("menu_export.png"),     "Export Client Data",       self); act_exp.triggered.connect(self.export_data)
-        act_tpl  = QAction(_micon("menu_template.png"),   "Download Import Template", self); act_tpl.triggered.connect(self.generate_template)
+        act_add      = QAction(_micon("menu_add_client.png"), "Add New Client",           self); act_add.triggered.connect(self._open_add_client)
+        act_edit_cl  = QAction(_micon("icon_edit.png"),       "Edit Client\u2026",        self); act_edit_cl.triggered.connect(self._pick_and_edit_client)
+        act_del_cl   = QAction(_micon("icon_delete.png"),     "Delete Client(s)\u2026",   self); act_del_cl.triggered.connect(self._pick_and_delete_clients)
+        act_imp      = QAction(_micon("menu_import.png"),     "Import from CSV / Excel",  self); act_imp.triggered.connect(self.bulk_import)
+        act_exp      = QAction(_micon("menu_export.png"),     "Export Client Data",       self); act_exp.triggered.connect(self.export_data)
+        act_tpl      = QAction(_micon("menu_template.png"),   "Download Import Template", self); act_tpl.triggered.connect(self.generate_template)
+        self._act_edit_cl = act_edit_cl
+        self._act_del_cl  = act_del_cl
         cm_menu.addAction(act_add)
+        cm_menu.addSeparator()
+        cm_menu.addAction(act_edit_cl)
+        cm_menu.addAction(act_del_cl)
         cm_menu.addSeparator()
         cm_menu.addAction(act_imp)
         cm_menu.addAction(act_exp)
@@ -951,6 +1084,9 @@ class AayDocCapioApp(QMainWindow):
             menu.addAction(_cicon("icon_edit.png"),   "Edit Client",   lambda av=a:     self._open_edit_client(av))
             menu.addSeparator()
             menu.addAction(_cicon("icon_delete.png"), "Delete Client", lambda id_=a_id: self.delete_assessee(id_))
+            menu.addSeparator()
+            act_log = menu.addAction(_cicon("btn_scan.png"), "View Log")  # F-05 placeholder
+            act_log.setEnabled(False)
             # Show menu at the cell's bottom-left corner
             rect = self.client_table.visualItemRect(item)
             pos  = self.client_table.viewport().mapToGlobal(rect.bottomLeft())
@@ -1027,11 +1163,7 @@ class AayDocCapioApp(QMainWindow):
 
         hl.addStretch()
 
-        self.btn_delete_sel = _btn("Delete Selected", "danger", height=34, min_width=130, icon="btn_delete.png")
-        self.btn_delete_sel.setEnabled(False)
-        self.btn_delete_sel.clicked.connect(self.delete_selected)
-        hl.addWidget(self.btn_delete_sel)
-        hl.addSpacing(8)
+
 
         # ── Email Docs button ─────────────────────────────────────────────────
         self.btn_email_docs = _btn("Email Docs", "secondary", height=34, icon="btn_send.png")
@@ -1452,8 +1584,7 @@ class AayDocCapioApp(QMainWindow):
             self.header_cb.blockSignals(True)
             self.header_cb.setChecked(total > 0 and n == total)
             self.header_cb.blockSignals(False)
-        if hasattr(self, "btn_delete_sel"):
-            self.btn_delete_sel.setEnabled(len(self.selected_ids) > 0)
+
 
     # ── Form Operations ───────────────────────────────────────────────────────
 
@@ -1464,6 +1595,50 @@ class AayDocCapioApp(QMainWindow):
 
     def _open_edit_client(self, a):
         self._client_dialog(a)
+
+    def _pick_and_edit_client(self):
+        """Client Master → Edit Client… — picker popup then edit dialog."""
+        clients = [{"id": a["id"], "name": a["name"], "pan": a["pan"]}
+                   for a in self.vault.get_all_assessees()]
+        if not clients:
+            QMessageBox.information(self, "No Clients", "No clients in vault.")
+            return
+        dlg = _ClientPickerDialog(self, clients, mode="edit")
+        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.selected_ids:
+            a_id = dlg.selected_ids[0]
+            for row in range(self.client_table.rowCount()):
+                item = self.client_table.item(row, self._TC_NAME)
+                if item and item.data(Qt.ItemDataRole.UserRole) == a_id:
+                    acts_item = self.client_table.item(row, self._TC_ACTS)
+                    if acts_item:
+                        a = acts_item.data(Qt.ItemDataRole.UserRole + 1)
+                        if a:
+                            self._open_edit_client(a)
+                    break
+
+    def _pick_and_delete_clients(self):
+        """Client Master → Delete Client(s)… — picker popup then confirmed delete."""
+        all_clients = self.vault.get_all_assessees()
+        clients = [{"id": a["id"], "name": a["name"], "pan": a["pan"]}
+                   for a in all_clients]
+        if not clients:
+            QMessageBox.information(self, "No Clients", "No clients in vault.")
+            return
+        dlg = _ClientPickerDialog(self, clients, mode="delete")
+        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.selected_ids:
+            ids   = set(dlg.selected_ids)
+            names = [a["name"] for a in all_clients if a["id"] in ids]
+            msg   = f"Permanently delete {len(ids)} client(s)?\n\n" + "\n".join(f"\u2022 {n}" for n in names)
+            if QMessageBox.question(
+                    self, "Confirm Delete", msg,
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+               ) == QMessageBox.StandardButton.Yes:
+                for a_id in ids:
+                    self.vault.delete_assessee(a_id)
+                    self.selected_ids.discard(a_id)
+                self.refresh_grid()
+                self._update_selection_label()
+
 
     def _client_dialog(self, a=None):
         editing = a is not None
@@ -2073,7 +2248,10 @@ class AayDocCapioApp(QMainWindow):
     # ── Automation ────────────────────────────────────────────────────────────
 
     def _lock_ui(self, lock: bool):
-        widgets = [self.ay_combo, self.btn_delete_sel, self.btn_run, self.chk_headless]
+        widgets = [self.ay_combo, self.btn_run, self.chk_headless]
+        for _act in (getattr(self, "_act_edit_cl", None), getattr(self, "_act_del_cl", None)):
+            if _act:
+                _act.setEnabled(not lock)
         if hasattr(self, "header_cb"):
             widgets.append(self.header_cb)
         for w in widgets:
