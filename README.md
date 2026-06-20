@@ -100,3 +100,17 @@ assessment_years.json    — AY/TY list (editable via Settings → Manage Years)
 - Python 3.11+
 - Google Chrome (for AIS/TIS; Chromium suffices for 26AS)
 - See `requirements.txt` for Python packages
+
+---
+
+## License
+
+AayDocCapio is licensed under the GNU Affero General Public License v3.0 or
+later (`AGPL-3.0-or-later`) for changes and distributions after the
+`old-license-mit` tag. See [LICENSE](LICENSE).
+
+Releases and commits up to and including `old-license-mit` remain available
+under the MIT License. See [LICENSE-MIT](LICENSE-MIT).
+
+New source files should include `Copyright (C) 2026 Deepak Bholusaria` and
+`SPDX-License-Identifier: AGPL-3.0-or-later` near the top of the file.
