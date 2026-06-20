@@ -6,7 +6,13 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting a problem. Do not include passwords, client PANs, or other private taxpayer data.
+        ![AayDocCapio](https://download.aaydoccapio.com/AayDoc_FullLogo.png)
+
+        # Bug Report
+
+        Use this form to report something that is not working in AayDocCapio.
+
+        Maintainer follow-up questions, if any, will be asked publicly in this GitHub issue thread. Do not post passwords, PANs, taxpayer records, or other sensitive information. If private discussion is required, use the official support/contact channel instead of posting confidential details here.
   - type: input
     id: version
     attributes:
