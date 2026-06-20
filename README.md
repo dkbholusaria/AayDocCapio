@@ -103,6 +103,13 @@ assessment_years.json    — AY/TY list (editable via Settings → Manage Years)
 
 ---
 
+## Support
+
+Use **Help -> Report Bug / Request Feature...** inside the app to open a
+structured GitHub form for bug reports or feature requests.
+
+---
+
 ## License
 
 AayDocCapio is licensed under the GNU Affero General Public License v3.0 or

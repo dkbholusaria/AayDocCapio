@@ -5,6 +5,7 @@ Run:  python3 app.py
 from version import __version__ as APP_VERSION
 
 import sys, os, json, asyncio, threading, datetime, time, subprocess, logging
+from urllib.parse import urlencode
 
 # Force XCB (X11) backend on Linux/WSL2 — must be set before Qt initialises.
 # WSLg sets WAYLAND_DISPLAY which Qt6 prefers; unsetting it prevents the
@@ -350,6 +351,10 @@ class AayDocCapioApp(QMainWindow):
         smtp_help_action.triggered.connect(self._open_smtp_help)
         help_menu.addAction(smtp_help_action)
         help_menu.addSeparator()
+        act_feedback = QAction(_micon("btn_view_log.png"), "Report Bug / Request Feature…", self)
+        act_feedback.triggered.connect(self._open_feedback_picker)
+        help_menu.addAction(act_feedback)
+        help_menu.addSeparator()
         act_update = QAction(_micon("menu_about.png"), "Check for Updates…", self)
         act_update.triggered.connect(lambda: self._check_for_update(manual=True))
         help_menu.addAction(act_update)
@@ -551,6 +556,33 @@ class AayDocCapioApp(QMainWindow):
         from ui.smtp_help import _write_smtp_help_html
         path = _write_smtp_help_html()
         webbrowser.open("file:///" + path.replace(os.sep, "/"))
+
+    def _open_feedback_picker(self):
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Report Bug / Request Feature")
+        msg.setIcon(QMessageBox.Icon.Question)
+        msg.setText("What would you like to send?")
+        msg.setInformativeText(
+            "AayDocCapio will open GitHub in your browser with a structured form. "
+            "Review the details before submitting, and do not paste passwords or client PANs."
+        )
+        bug_btn = msg.addButton("Report Bug", QMessageBox.ButtonRole.AcceptRole)
+        feature_btn = msg.addButton("Request Feature", QMessageBox.ButtonRole.ActionRole)
+        msg.addButton(QMessageBox.StandardButton.Cancel)
+        msg.exec()
+
+        clicked = msg.clickedButton()
+        if clicked == bug_btn:
+            self._open_github_issue("bug_report.yml", "[Bug] ")
+        elif clicked == feature_btn:
+            self._open_github_issue("feature_request.yml", "[Feature] ")
+
+    def _open_github_issue(self, template_name: str, title_prefix: str):
+        query = urlencode({
+            "template": template_name,
+            "title": title_prefix,
+        })
+        QDesktopServices.openUrl(QUrl(f"https://github.com/dkbholusaria/AayDocCapio/issues/new?{query}"))
 
     def _show_about(self):
         import webbrowser

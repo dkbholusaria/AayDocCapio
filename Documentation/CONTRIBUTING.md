@@ -2,12 +2,17 @@
 
 ## Reporting issues
 
-Please open a GitHub Issue with:
+From the app, use **Help -> Report Bug / Request Feature...** to open the
+right GitHub form in your browser.
+
+You can also open a GitHub Issue manually with:
 
 - Steps to reproduce
 - Expected vs actual behaviour
 - Python version and OS
 - Relevant log output (copy from the live log console via the **Copy** button — logs contain no credentials)
+
+Do not include passwords, client PANs, or private taxpayer data in issues.
 
 ## Development setup
 
