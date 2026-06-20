@@ -1,17 +1,17 @@
 # AayDocCapio
 
-**v1.7.2** — A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click — and now **emailing those documents directly to clients**.
+**v1.7.6** — A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click — and now **emailing those documents directly to clients**.
 
 Built with **PyQt6** + **Playwright**. Runs on Windows, macOS, and Linux/WSL.
 
 ---
 
-## What's New in 1.7.2
+## What's New in 1.7.6
 
-- **Auto Update Workflow** — AayDocCapio can now surface newer releases from inside the app, reducing manual version checks.
-- **Integrated Help Manual** — Added a structured in-app help manual covering downloads, client management, settings, SMTP/email setup, and update guidance.
-- **26AS Excel Fixes** — Minor 26AS Excel generation fixes improve summary/detail accuracy and audit-trail polish.
-- **AIS Excel Workbook Polish** — AIS extraction, General Info, Summary links/subtotals, Capital Market grouping, and workbook metadata have all been tightened for review-ready output.
+- **Run History** — right-click any client to view the last 20 download and email events per AY, colour-coded by outcome.
+- **Named Email Templates** — create multiple templates each with its own subject, body and document type selection; pick the template when sending from Mail Docs.
+- **Inline doc-not-found status** — clients with no matching documents for the selected template show an inline status instead of a blocking error dialog.
+- **Email Settings redesign** — Templates tab comes first; SMTP tab opens automatically for first-time users.
 
 See the full [CHANGELOG](CHANGELOG.md) for details.
 
