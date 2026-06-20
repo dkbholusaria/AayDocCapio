@@ -827,14 +827,15 @@ class AayDocCapioApp(QMainWindow):
     _TC_PAN    = 2
     _TC_DOB    = 3
     _TC_STATUS = 4
-    _TC_PATH   = 5
-    _TC_ACTS   = 6
+    _TC_TS     = 5   # Last Download Time
+    _TC_PATH   = 6
+    _TC_ACTS   = 7
 
     def _mk_client_table(self):
-        self.client_table = QTableWidget(0, 7)
+        self.client_table = QTableWidget(0, 8)
         self.client_table.setHorizontalHeaderLabels([
             "", "Name  ⇅", "PAN  ⇅", "Date of Birth",
-            "Last Download Status", "Last Saved Location", ""
+            "Last Download Status", "Last Download Time", "Last Saved Location", ""
         ])
 
         _tbl = _t()
@@ -863,11 +864,12 @@ class AayDocCapioApp(QMainWindow):
         )
 
         for col, align in [
-            (self._TC_NAME,   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+            (self._TC_NAME,   Qt.AlignmentFlag.AlignCenter),
             (self._TC_PAN,    Qt.AlignmentFlag.AlignCenter),
             (self._TC_DOB,    Qt.AlignmentFlag.AlignCenter),
-            (self._TC_STATUS, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
-            (self._TC_PATH,   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
+            (self._TC_STATUS, Qt.AlignmentFlag.AlignCenter),
+            (self._TC_TS,     Qt.AlignmentFlag.AlignCenter),
+            (self._TC_PATH,   Qt.AlignmentFlag.AlignCenter),
             (self._TC_ACTS,   Qt.AlignmentFlag.AlignCenter),
         ]:
             item = self.client_table.horizontalHeaderItem(col)
@@ -878,6 +880,7 @@ class AayDocCapioApp(QMainWindow):
         self.client_table.setColumnWidth(self._TC_PAN,   130)
         self.client_table.setColumnWidth(self._TC_DOB,   120)
         self.client_table.setColumnWidth(self._TC_STATUS, 170)
+        self.client_table.setColumnWidth(self._TC_TS,    155)
         self.client_table.setColumnWidth(self._TC_ACTS,   52)
 
         header = self.client_table.horizontalHeader()
@@ -886,6 +889,7 @@ class AayDocCapioApp(QMainWindow):
         header.setSectionResizeMode(self._TC_PAN,    QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(self._TC_DOB,    QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(self._TC_STATUS, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(self._TC_TS,     QHeaderView.ResizeMode.Interactive)
         header.setSectionResizeMode(self._TC_PATH,   QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(self._TC_ACTS,   QHeaderView.ResizeMode.Interactive)
 
@@ -1347,7 +1351,14 @@ class AayDocCapioApp(QMainWindow):
                 status_item.setForeground(QColor("#64748B"))
             self.client_table.setItem(i, self._TC_STATUS, status_item)
 
-            # Col 5: Last Saved Location (hyperlink QLabel)
+            # Col 5: Last Download Time
+            ts_text = hist.get("ts", "")
+            ts_item = QTableWidgetItem(ts_text if ts_text else "—")
+            ts_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            ts_item.setForeground(QColor("#64748B"))
+            self.client_table.setItem(i, self._TC_TS, ts_item)
+
+            # Col 6: Last Saved Location (hyperlink QLabel)
             saved_path = hist.get("path", "")
             path_lbl = QLabel()
             path_lbl.setContentsMargins(6, 0, 6, 0)
