@@ -216,5 +216,5 @@ python app.py
 ## Known limitations (not test failures)
 
 - AIS JSON download is not implemented (CAPTCHA-gated) — F-08 in backlog.
-- Large 26AS (TRACES shows "on-demand" message) cannot be downloaded automatically — B-07 in backlog.
+- Large 26AS (TRACES shows "on-demand" message) is detected and reported with TRACES-direct instructions per D-11; full TRACES-direct automation remains out of scope for v1.x.
 - Accounts with 2FA cannot be automated — expected behaviour per E-02.

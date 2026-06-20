@@ -102,7 +102,7 @@ Not automatically. When AIS data is too large, the ITD portal cannot generate th
 
 For assessees with very large Form 26AS data, TRACES does not serve the file through the ITD portal. You must log directly into `tdscpc.gov.in` and place a download request there.
 
-This is tracked as bug B-07. An automated TRACES-direct flow is planned for a future release.
+This condition is handled by requirement D-11: the app detects it, stops that client's 26AS run cleanly, and shows TRACES-direct instructions. A fully automated TRACES-direct request flow remains out of scope for v1.x.
 
 ---
 

@@ -186,6 +186,6 @@ A local, encrypted desktop app that:
 ## 7. Out-of-Scope for v1.x
 
 - AIS JSON download (CAPTCHA-gated for most accounts; large-file JSON is a future enhancement — see F-08 in backlog)
-- TRACES-direct login flow for large 26AS files (tracked as B-07)
+- Full TRACES-direct login/request automation for large 26AS files; detection and user instructions are covered by D-11
 - Multi-user / multi-vault support
 - Scheduling / unattended automation
