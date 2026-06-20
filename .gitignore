@@ -54,3 +54,8 @@ checkmark.png
 # Plans subfolder (untracked)
 Plans/
 
+
+# AIS JSON documentation files (contain sensitive schema/PII data; not for version control)
+Documentation/AIS_JSON_Schema.xlsx
+Documentation/AIS_JSON_Tree.html
+Documentation/AIS_JSON_Structure.md
