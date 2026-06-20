@@ -2,6 +2,30 @@
 
 All notable changes to AayDocCapio are documented here.
 
+## [1.7.6] — 2026-06-20
+
+### New Features
+
+#### Run History (F-13)
+- **View Log** — right-click any client to see the last 20 download statuses per Assessment Year, with timestamps and colour-coded results (green/red/amber)
+- **Email events in log** — successful email sends recorded in run history showing which document types were mailed
+
+#### Named Email Templates (F-17)
+- **Multiple templates** — create named email templates each with its own subject, body and document type selection (26AS PDF, 26AS Excel, AIS PDF, AIS Excel, TIS)
+- **Template picker in Mail Docs** — choose which template to use when sending; doc filtering applied automatically at send time
+- **Set as Default** — mark any template as default; Mail Docs pre-selects it on open
+- **Copy from existing** — new templates can be created by copying an existing one
+- **Legacy migration** — existing subject/body auto-migrated to "Legacy Template" on first run
+
+### Improvements
+- **Email Settings redesign** — Templates tab now comes first; SMTP tab opens automatically for first-time users
+- **Inline doc-not-found status** — clients with no matching documents for the selected template show "Docs not found" inline instead of a blocking dialog
+- **Selected count in status bar** — Mail Docs status bar shows how many clients are currently selected
+- **Menu border visibility** — menus now have a distinct border in both light and dark themes
+- **Form alignment in Mail Docs** — Template / Folder / Filter rows now pixel-aligned using QFormLayout
+
+---
+
 ## [1.7.2] — 2026-06-19
 
 ### New Features
