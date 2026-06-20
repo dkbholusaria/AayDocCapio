@@ -57,6 +57,7 @@ class ThemeColors:
     # Borders
     border:       str   # default border colour
     border_focus: str   # focused input border
+    border_menu:  str   # popup menu border (stronger in light theme for visibility)
     grid:         str   # table grid lines
 
     # Accent / interactive
@@ -101,6 +102,7 @@ THEMES: dict[str, ThemeColors] = {
 
         border          = "#E2E8F0",
         border_focus    = "#3B82F6",
+        border_menu     = "#94A3B8",
         grid            = "#E2E8F0",
 
         accent          = "#2563EB",
@@ -138,6 +140,7 @@ THEMES: dict[str, ThemeColors] = {
 
         border          = "#1E3A5F",
         border_focus    = "#3B82F6",
+        border_menu     = "#2E5A8E",
         grid            = "#1E3A5F",
 
         accent          = "#2563EB",
@@ -251,14 +254,14 @@ QToolTip {{
 
 QMenu {{
     background: {t.bg_menu};
-    border: 1px solid {t.border};
+    border: 1.5px solid {t.border_menu};
     border-radius: 6px;
     padding: 4px 0;
     icon-size: 20px;
 }}
 QMenu::item {{ padding: 7px 20px 7px 12px; color: {t.text_primary}; }}
 QMenu::item:selected {{ background: {t.accent}; color: {t.accent_text}; }}
-QMenu::separator {{ height: 1px; background: {t.border}; margin: 4px 0; }}
+QMenu::separator {{ height: 1px; background: {t.border_menu}; margin: 4px 0; }}
 QMenu::icon {{ padding-left: 6px; }}
 
 QMenuBar {{

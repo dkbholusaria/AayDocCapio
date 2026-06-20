@@ -10,22 +10,24 @@ AayDocCapio is a PyQt6 desktop app for Indian CAs and tax professionals. It auto
 
 Follow these steps in order — no step is optional:
 
-1. **Open a GitHub issue** — before anything else, create a GitHub issue for the task (`gh issue create`). Use the appropriate label (`bug`, `enhancement`) and priority (`P1`/`P2`/`P3`). Record the issue number.
+1. **Open a GitHub issue** — before anything else, create a GitHub issue for the task (`gh issue create`). Use the appropriate label (`bug`, `enhancement`,'Feature') and priority (`P1`/`P2`/`P3`). Record the issue number.
    - Every issue body must mention the creation/report date in `YYYY-MM-DD` format.
-2. **Plan** — prepare an implementation plan, save it as a `.md` file in the untracked `Plans/` subfolder, and get user approval before writing any code.
+2. **Plan** — prepare an implementation plan, save it as a `.md` file in the untracked `PlansofThisProject/` subfolder, and get user approval before writing any code.
+   - Plan filenames must start with the issue number prefix: `F-<n>_<description>.md`, `B-<n>_<description>.md`, etc. (e.g. `F-13_last_20_log_history.md`).
 3. **Implement** — build the feature or fix following the approved plan.
 4. **Update documentation** — update `Documentation/ISSUES_BACKLOG.md` and any other relevant files in `Documentation/` to reflect the completed work.
 5. **Close the issue** — before closing any GitHub issue, add a closing comment that states what changed, the verification performed, and the commit SHA or PR reference when available. Then close the GitHub issue (`gh issue close <number>`) once the implementation is done and verified.
 
 ### General guidelines
-*   **Concise Responses:** Avoid long conversational padding.
-*   **No Trailing Summaries:** Do not append summary sections at the end of responses.
-*   **No Emojis:** Do not use emojis in responses unless explicitly requested.
-*   **Proactive Execution:** Proactively run test/verification commands to ensure correctness.
-*   **Active Python Path:** Always use the explicit `.venv/bin/python` interpreter.
-*   **Adding Packages:** Verify the project dependency manager first (default to `venv + pip` and update `requirements.txt` via `pip freeze > requirements.txt`).
-*   **Compact Context:** Compact the context from time to time by summarizing findings or archiving logs to save tokens.
 
+- **Concise Responses:** Avoid long conversational padding.
+
+- **No Trailing Summaries:** Do not append summary sections at the end of responses.
+- **No Emojis:** Do not use emojis in responses unless explicitly requested.
+- **Proactive Execution:** Proactively run test/verification commands to ensure correctness.
+- **Active Python Path:** Always use the explicit `.venv/bin/python` interpreter.
+- **Adding Packages:** Verify the project dependency manager first (default to `venv + pip` and update `requirements.txt` via `pip freeze > requirements.txt`).
+- **Compact Context:** Compact the context from time to time by summarizing findings or archiving logs to save tokens.
 
 ---
 
@@ -69,13 +71,13 @@ AayDocCapio/
 
 ## Key Architecture Decisions
 
-*   **PyQt6** for UI — `QTableWidget` for client grid, `QDialog` for modals, stylesheet-based theming. Do not switch to tkinter or CustomTkinter.
-*   **Playwright async** for browser automation — each client gets an isolated `BrowserContext`. Never share contexts between clients.
-*   **Real Google Chrome** (`channel="chrome"`) is required for AIS/TIS downloads. Bundled Chromium silently fails on the AIS portal. 26AS works with either.
-*   **Fixed viewport 1600×900** — the ITD portal layout breaks at narrower sizes.
-*   **`asyncio.run()` in a background `QThread`** — keeps the Qt event loop alive during downloads. Never call Qt widgets from the worker thread; use signals.
-*   **`selected_ids` set** is the source of truth for client selection state. Checkbox visual state and count label must always be derived from this set, never the other way around.
-*   **Theme detection** — use `getattr(_t(), "name", "").lower() != "light"` to check for dark mode. `_t()` returns the active `ThemeColors` instance.
+- **PyQt6** for UI — `QTableWidget` for client grid, `QDialog` for modals, stylesheet-based theming. Do not switch to tkinter or CustomTkinter.
+- **Playwright async** for browser automation — each client gets an isolated `BrowserContext`. Never share contexts between clients.
+- **Real Google Chrome** (`channel="chrome"`) is required for AIS/TIS downloads. Bundled Chromium silently fails on the AIS portal. 26AS works with either.
+- **Fixed viewport 1600×900** — the ITD portal layout breaks at narrower sizes.
+- **`asyncio.run()` in a background `QThread`** — keeps the Qt event loop alive during downloads. Never call Qt widgets from the worker thread; use signals.
+- **`selected_ids` set** is the source of truth for client selection state. Checkbox visual state and count label must always be derived from this set, never the other way around.
+- **Theme detection** — use `getattr(_t(), "name", "").lower() != "light"` to check for dark mode. `_t()` returns the active `ThemeColors` instance.
 
 ---
 
@@ -84,17 +86,19 @@ AayDocCapio/
 ### Two phases
 
 **Phase 1 — `run_request_ais()` in `downloader_ais_tis.py`**
-*   Opens the AIS portal, selects the FY, clicks "Request PDF"
-*   If AIS is ready instantly → downloads it, unlocks it
-*   Also downloads TIS immediately (TIS is always available at request time)
-*   Ends by calling `status_callback(combined_status_label(ais_outcome, tis_outcome))`
-*   Returns the `ais_outcome` dict with `ais_outcome["tis"] = tis_outcome`
+
+- Opens the AIS portal, selects the FY, clicks "Request PDF"
+- If AIS is ready instantly → downloads it, unlocks it
+- Also downloads TIS immediately (TIS is always available at request time)
+- Ends by calling `status_callback(combined_status_label(ais_outcome, tis_outcome))`
+- Returns the `ais_outcome` dict with `ais_outcome["tis"] = tis_outcome`
 
 **Phase 2 — `run_download_ais_tis()` in `downloader_ais_tis.py`**
-*   Used when Phase 1 queued AIS for generation ("Activity History" mode)
-*   Fetches AIS PDF from the Activity History section
-*   Ends by calling `status_callback(combined_status_label(ais_outcome, tis_outcome))`
-*   Returns `{"ais": ais_outcome, "tis": tis_outcome}`
+
+- Used when Phase 1 queued AIS for generation ("Activity History" mode)
+- Fetches AIS PDF from the Activity History section
+- Ends by calling `status_callback(combined_status_label(ais_outcome, tis_outcome))`
+- Returns `{"ais": ais_outcome, "tis": tis_outcome}`
 
 ### Outcome dict pattern
 
@@ -122,6 +126,7 @@ def combined_status_label(ais_o, tis_o):
 ### Critical detection order in AIS polling loop
 
 When polling the modal for AIS status, check in this exact order:
+
 1. `"don't have any|do not have any"` → `_outcome("no_data")` — MUST be first
 2. `"too large|unable to generate as pdf"` → `_outcome("too_large")` — but NOT `"ais utility"` (that string is always present in modal)
 3. `"reference id|activity history|submitted successfully"` → `_outcome("requested")`
@@ -133,6 +138,7 @@ When polling the modal for AIS status, check in this exact order:
 There are TWO distinct `set_status` functions in `app.py` — don't confuse them:
 
 ### Local `set_status(pan, text)` — inside the batch runner
+
 ```python
 def set_status(pan, text):
     if self._progress_dialog:
@@ -149,13 +155,15 @@ def set_status(pan, text):
 ## PDF Unlock
 
 **Password format (ITD convention):**
-*   AIS / TIS: `lowercase_pan + DDMMYYYY` e.g. `aekpb0205l12121976`
-*   Form 26AS: `DDMMYYYY` (DOB only, no PAN)
+
+- AIS / TIS: `lowercase_pan + DDMMYYYY` e.g. `aekpb0205l12121976`
+- Form 26AS: `DDMMYYYY` (DOB only, no PAN)
 
 **9 candidates tried** (`pdf_unlocker.py`):
 3 DOB formats × 3 PAN variants:
-*   DOB formats: `DDMMYYYY`, `DDMMYY`, `DD/MM/YYYY`
-*   PAN variants: lowercase PAN + DOB, DOB only, UPPERCASE PAN + DOB
+
+- DOB formats: `DDMMYYYY`, `DDMMYY`, `DD/MM/YYYY`
+- PAN variants: lowercase PAN + DOB, DOB only, UPPERCASE PAN + DOB
 
 ---
 
@@ -164,6 +172,7 @@ def set_status(pan, text):
 `vault.py` — AES-128 Fernet encryption, stored in `tax_vault.json`.
 
 Key methods:
+
 ```python
 vault.get_clients()                          # → list of {pan, name, password, dob, ...}
 vault.save_client(pan, name, pwd, dob)       # add/update
@@ -182,6 +191,7 @@ __version__ = "1.6.3"   # ← only file to edit when bumping
 ```
 
 To bump version:
+
 ```bash
 bash scripts/bump.sh patch    # X.Y.Z → X.Y.(Z+1)
 bash scripts/bump.sh minor    # X.Y.Z → X.(Y+1).0
@@ -195,12 +205,15 @@ bash scripts/bump.sh 1.7.0    # exact version
 > **Trigger phrase:** When the user says something like "let's bump the version", "time to release", "bump to X.Y.Z", or "new release", follow this checklist in full. No steps are optional.
 
 ### Step 1 — Bump `version.py`
+
 ```bash
 bash scripts/bump.sh X.Y.Z    # sets exact version, e.g. bash scripts/bump.sh 1.7.0
 ```
+
 This is the single source of truth. Build scripts (`setup_and_build.ps1`, `release.sh`) pick it up automatically.
 
 ### Step 2 — Update `CHANGELOG.md` and `Documentation/CHANGELOG.md`
+
 Prepend a new release block above the previous `[X.Y.Z]` entry in **both files**:
 
 ```markdown
@@ -222,18 +235,23 @@ Prepend a new release block above the previous `[X.Y.Z]` entry in **both files**
 Ask the user what bullet points to include, or auto-generate based on the feature description they provide. Always include the consolidation/consolidated sheet note if the JSON-to-Excel converter was changed.
 
 ### Step 3 — Update `README.md` and `Documentation/README.md`
+
 In **both files**:
+
 - Version badge on line 3: `**vOLD**` → `**vNEW**`
 - Section heading: `## What's New in OLD` → `## What's New in NEW`
 - Replace the What's New body with a concise summary of the new release (matching CHANGELOG bullets, shorter form)
 
 ### Step 4 — Update `docs/index.html`
+
 Two sub-tasks:
 
 **A. Version bump** — replace ALL occurrences of the old version string and date:
+
 ```bash
 sed -i 's/vOLD/vNEW/g; s/OLD.VERSION/NEW.VERSION/g; s/DD Mon YYYY/DD Mon YYYY/g' docs/index.html
 ```
+
 Then verify with: `grep -n "OLD" docs/index.html`
 
 Locations to check: release badge, all download hrefs (`.exe`, `.msi`, macOS `.zip`), `<h2>` in What's New, installer filename references in prose (upgrade notice, install instructions, SmartScreen walkthrough).
@@ -241,6 +259,7 @@ Locations to check: release badge, all download hrefs (`.exe`, `.msi`, macOS `.z
 **B. What's New section** — replace the entire `<div class="change-list">` block inside `<section id="whats-new">` with new `<div class="change-item">` entries matching the new release features.
 
 **C. New feature card (if applicable)** — if a new user-facing capability was added, add a `<div class="card">` to the Features section (`<div class="cards">`, ~line 968). Follow the existing card pattern:
+
 ```html
 <div class="card">
   <span class="card-icon">EMOJI</span>
@@ -250,12 +269,15 @@ Locations to check: release badge, all download hrefs (`.exe`, `.msi`, macOS `.z
 ```
 
 ### Step 5 — Update `pyproject.toml`
+
 ```
 version = "OLD"  →  version = "NEW"
 ```
+
 This file is not used in the active build pipeline but must stay consistent.
 
 ### Step 6 — Verify
+
 ```bash
 # Should return zero matches (CHANGELOG historical entries and AGENT.md example are expected)
 grep -r "OLD_VERSION" --include="*.py" --include="*.md" --include="*.html" --include="*.toml" .
@@ -274,6 +296,7 @@ git push origin refs/heads/release/vX.Y.Z:refs/heads/release/vX.Y.Z
 Branch naming convention: `release/vX.Y.Z` (e.g. `release/v1.6.3`). Always use the full ref push form to avoid ambiguity with tags of the same name.
 
 ### Step 8 — Build & Release
+
 ```bash
 # Build Windows installers (run from PowerShell on Windows machine):
 powershell -ExecutionPolicy Bypass -File "\\wsl.localhost\Ubuntu-24.04\home\deepak\projects\AayDocCapio\scripts\setup_and_build.ps1"
@@ -282,6 +305,7 @@ bash scripts/release.sh
 ```
 
 ### Files NOT touched during a version bump
+
 - `scripts/bump.sh`, `scripts/release.sh`, `scripts/setup_and_build.ps1` — read `version.py` dynamically
 - `scripts/installer.iss`, `scripts/installer.wxs` — version injected at build time via template variables
 - `AGENT.md` example version strings — illustrative only, update manually only when keeping docs current
@@ -434,6 +458,7 @@ python app.py
 ```
 
 ### Windows (run from source)
+
 ```powershell
 python -m venv .venv
 .venv\Scripts\activate
@@ -510,28 +535,30 @@ Download workers run in a `QThread`. Update UI only via Qt signals — never cal
 ## Session Memory & Lessons Learned
 
 ### Capital Market Consolidated Sheet
-*   **Blueprint Structure:** The revised `⭐ Capital Market (All)` sheet contains exactly 30 columns (shifted left to start at Column A, removing the blueprint's margin space column A). The freeze pane is set to lock headers (top 2 rows) and the first 11 columns (up to `Security Class` Column K).
-*   **Cell-by-Cell Linkage:** Raw data columns are linked directly to individual SFT sheets using Excel formulas (e.g. `='SFT-17-LES(M) (Eq Sale)'!B12`). Column mapping is dynamically resolved for depository (SFT-17), RTA (SFT-18), and off-market (SFT-17-LES(OC)) sheets.
-*   **Grandfathering & Gain Formulas (Excel-driven):**
-    *   `Assets Eligible for GrandFathering` (Col U): `=IF(AND(ISNUMBER(SEARCH("Long", L{xr})), OR(K{xr}="Listed Equity Share", K{xr}="Unit of Equity Oriented Mutual Fund", K{xr}="Unit of Business Trust", AND(K{xr}="Other Units", S{xr}>0))), "Yes - Eligible", IF(ISNUMBER(SEARCH("Short", L{xr})), "No - Short term Asset", "No - Ineligible Asset"))`
-    *   `Effective FMV` (Col V): `=IF(U{xr}="Yes - Eligible", T{xr}, 0)`
-    *   `Adj. FMV` (Col W): `=MIN(O{xr}, V{xr})`
-    *   `Adj. Cost of Acquisition` (Col X): `=MAX(Q{xr}, W{xr})`
-    *   `Capital Gain (w/o Indexation)` (Col Y): `=O{xr}-X{xr}`
-    *   `Capital Gain (w/ Indexation)` (Col Z): `=O{xr}-R{xr}`
-    *   `STCG` (Col AA): `=IF(ISNUMBER(SEARCH("Short", L{xr})), Y{xr}, 0)`
-    *   `LTCG w/o Indexation` (Col AB): `=IF(ISNUMBER(SEARCH("Long", L{xr})), Y{xr}, 0)`
-    *   `LTCG with Indexation` (Col AC): `=IF(ISNUMBER(SEARCH("Long", L{xr})), Z{xr}, 0)`
-*   **Defined Names:** Register workbook-scoped defined names pointing to entire columns for formula validation: `CostWoIndex` ($Q:$Q), `CostWIndex` ($R:$R), `EligibleAssetForGF` ($U:$U), `AdjustedFMV` ($W:$W), `AdjustedCostWoIndex` ($X:$X), `CapitalGainWoIndex` ($Y:$Y), `CapitalGainWIndex` ($Z:$Z), `STCG` ($AA:$AA), `LTCGWoIndex` ($AB:$AB), and `LTCGWIndex` ($AC:$AC).
-*   **Gains Visual Treatment:** Long-term gain rows are highlighted using a soft blue background (`#f0f4ff` for standard cells, `#e6f2ff` for formulas) to distinguish them from short-term transactions.
-*   **Subtotal & Grand Total Formulas:** SFT group subtotal rows use standard `=SUM` formulas. The Grand Total row directly sums these subtotal cells rather than summing ranges to avoid double-counting.
-*   **Plain-English Explanation Sheet ("ReadMe - Capital Gains"):** A guide sheet in the grey general theme (`#808080`) containing columns: `Column`, `Field Name`, `Plain English Explanation`, and `Tax Reference`. Explains all grandfathering/indexation columns in non-formula language for client transparency. Explicitly documents the post-23-Jul-2024 budget rule (abolition of indexation and flat 12.5% LTCG rate). Includes a prominent legal disclaimer block styled in soft red (`#F2DCDB`) stating that the calculations are informational, provided on a best-efforts basis, and do not constitute professional tax advice.
 
+- **Blueprint Structure:** The revised `⭐ Capital Market (All)` sheet contains exactly 30 columns (shifted left to start at Column A, removing the blueprint's margin space column A). The freeze pane is set to lock headers (top 2 rows) and the first 11 columns (up to `Security Class` Column K).
 
+- **Cell-by-Cell Linkage:** Raw data columns are linked directly to individual SFT sheets using Excel formulas (e.g. `='SFT-17-LES(M) (Eq Sale)'!B12`). Column mapping is dynamically resolved for depository (SFT-17), RTA (SFT-18), and off-market (SFT-17-LES(OC)) sheets.
+- **Grandfathering & Gain Formulas (Excel-driven):**
+  - `Assets Eligible for GrandFathering` (Col U): `=IF(AND(ISNUMBER(SEARCH("Long", L{xr})), OR(K{xr}="Listed Equity Share", K{xr}="Unit of Equity Oriented Mutual Fund", K{xr}="Unit of Business Trust", AND(K{xr}="Other Units", S{xr}>0))), "Yes - Eligible", IF(ISNUMBER(SEARCH("Short", L{xr})), "No - Short term Asset", "No - Ineligible Asset"))`
+  - `Effective FMV` (Col V): `=IF(U{xr}="Yes - Eligible", T{xr}, 0)`
+  - `Adj. FMV` (Col W): `=MIN(O{xr}, V{xr})`
+  - `Adj. Cost of Acquisition` (Col X): `=MAX(Q{xr}, W{xr})`
+  - `Capital Gain (w/o Indexation)` (Col Y): `=O{xr}-X{xr}`
+  - `Capital Gain (w/ Indexation)` (Col Z): `=O{xr}-R{xr}`
+  - `STCG` (Col AA): `=IF(ISNUMBER(SEARCH("Short", L{xr})), Y{xr}, 0)`
+  - `LTCG w/o Indexation` (Col AB): `=IF(ISNUMBER(SEARCH("Long", L{xr})), Y{xr}, 0)`
+  - `LTCG with Indexation` (Col AC): `=IF(ISNUMBER(SEARCH("Long", L{xr})), Z{xr}, 0)`
+- **Defined Names:** Register workbook-scoped defined names pointing to entire columns for formula validation: `CostWoIndex` ($Q:$Q), `CostWIndex` ($R:$R), `EligibleAssetForGF` ($U:$U), `AdjustedFMV` ($W:$W), `AdjustedCostWoIndex` ($X:$X), `CapitalGainWoIndex` ($Y:$Y), `CapitalGainWIndex` ($Z:$Z), `STCG` ($AA:$AA), `LTCGWoIndex` ($AB:$AB), and `LTCGWIndex` ($AC:$AC).
+- **Gains Visual Treatment:** Long-term gain rows are highlighted using a soft blue background (`#f0f4ff` for standard cells, `#e6f2ff` for formulas) to distinguish them from short-term transactions.
+- **Subtotal & Grand Total Formulas:** SFT group subtotal rows use standard `=SUM` formulas. The Grand Total row directly sums these subtotal cells rather than summing ranges to avoid double-counting.
+- **Plain-English Explanation Sheet ("ReadMe - Capital Gains"):** A guide sheet in the grey general theme (`#808080`) containing columns: `Column`, `Field Name`, `Plain English Explanation`, and `Tax Reference`. Explains all grandfathering/indexation columns in non-formula language for client transparency. Explicitly documents the post-23-Jul-2024 budget rule (abolition of indexation and flat 12.5% LTCG rate). Includes a prominent legal disclaimer block styled in soft red (`#F2DCDB`) stating that the calculations are informational, provided on a best-efforts basis, and do not constitute professional tax advice.
 
 ---
 
 ## Key Pending Updates & Open Issues
+
 Refer to `Documentation/ISSUES_BACKLOG.md` for the canonical tracker. Key active priorities:
-*   **B-02 & B-06 (PDF/TXT ZIP Unlock):** Expand DOB formats used for password attempts when unlocking files.
-*   **F-10 (Large 26AS Direct Downloads):** Implement automated logins to `tdscpc.gov.in` to poll on-demand 26AS requests.
+
+- **B-02 & B-06 (PDF/TXT ZIP Unlock):** Expand DOB formats used for password attempts when unlocking files.
+- **F-10 (Large 26AS Direct Downloads):** Implement automated logins to `tdscpc.gov.in` to poll on-demand 26AS requests.

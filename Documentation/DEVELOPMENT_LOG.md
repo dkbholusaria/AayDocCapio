@@ -281,7 +281,7 @@ For genuinely large files that queue instead of downloading instantly:
 `step(msg, page=None)` that emits numbered, URL-tagged progress lines, e.g.:
 
 [AIS-OPEN] (6) Clicking a#AIS  |  url: https://eportal.incometax.gov.in/...
-[AIS-DL]   (5) Download saved: AEKPB0205L-AIS-2025_26.pdf
+[AIS-DL]   (5) Download saved: ABCDE1234F-AIS-2025_26.pdf
 
 Comprehensive step logs are deliberately **kept permanently** across login, 26AS,
 and AIS/TIS — they make any future portal change trivially diagnosable.
