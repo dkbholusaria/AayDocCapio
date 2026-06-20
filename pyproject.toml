@@ -3,7 +3,7 @@ project_name = "AayDocCapio"
 bundle = "com.aaydoccapio"
 version = "1.7.2"
 url = "https://download.aaydoccapio.com/"
-license = "Proprietary"
+license = "AGPL-3.0-or-later"
 author = "Deepak Bholusaria"
 author_email = "deepak@bholusaria.com"
 
