@@ -1275,6 +1275,24 @@ def _write_user_manual_html() -> str:
     else:
         _base = _bundled_dir()
 
+    def _b64_resized(rel: str, size: int) -> str:
+        p = os.path.join(_base, rel)
+        if not os.path.isfile(p):
+            p = os.path.join(_bundled_dir(), rel)
+        if not os.path.isfile(p):
+            return ""
+        try:
+            from PIL import Image
+            import io
+            img = Image.open(p).convert("RGBA")
+            img.thumbnail((size, size), Image.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            data = _b64mod.b64encode(buf.getvalue()).decode()
+            return f"data:image/png;base64,{data}"
+        except Exception:
+            return _b64(rel)
+
     def _b64(rel: str) -> str:
         p = os.path.join(_base, rel)
         if not os.path.isfile(p):
@@ -1290,7 +1308,7 @@ def _write_user_manual_html() -> str:
 
     screenshots_dir = "Documentation/screenshots"
     img_uris = {
-        "app_icon":                                _b64("resources/app_icon.png"),
+        "app_icon":                                _b64_resized("resources/app_icon.png", 64),
         "ADC_26ASBatch":                           _b64(f"{screenshots_dir}/ADC_26ASBatch.png"),
         "ADC_Aboutus":                             _b64(f"{screenshots_dir}/ADC_Aboutus.png"),
         "ADC_AddNewClient":                        _b64(f"{screenshots_dir}/ADC_AddNewClient.png"),
