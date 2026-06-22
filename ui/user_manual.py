@@ -389,7 +389,10 @@ def _user_manual_page_html(img_uris: dict) -> str:
 
 <!-- NAV -->
 <nav>
-  <span class="nav-brand">AayDoc <span style="color:#B88924;">Capio</span>™</span>
+  <span class="nav-brand" style="display:flex;align-items:center;gap:10px;">
+    {'<img src="' + img_uris.get("app_icon","") + '" style="width:28px;height:28px;border-radius:6px;flex-shrink:0;" alt=""/>' if img_uris.get("app_icon") else ""}
+    AayDoc <span style="color:#B88924;">Capio</span>™
+  </span>
   <div class="nav-links">
     <a href="https://deepak.bholusaria.com" target="_blank" rel="noopener">Contact us</a>
   </div>
@@ -398,7 +401,10 @@ def _user_manual_page_html(img_uris: dict) -> str:
 <!-- HERO -->
 <div class="hero">
   <div class="hero-badge">📖 Complete User Guide & Manual</div>
-  <h1 id="hero-title">AayDocCapio Help Center</h1>
+  <h1 id="hero-title" style="display:flex;align-items:center;justify-content:center;gap:14px;">
+    {'<img src="' + img_uris.get("app_icon","") + '" style="width:52px;height:52px;border-radius:12px;flex-shrink:0;" alt=""/>' if img_uris.get("app_icon") else ""}
+    AayDocCapio Help Center
+  </h1>
   <p>Your comprehensive self-service guide for automated bulk retrieval of tax documents from the ITD portal.</p>
 </div>
 
@@ -1272,6 +1278,7 @@ def _write_user_manual_html() -> str:
 
     screenshots_dir = "Documentation/screenshots"
     img_uris = {
+        "app_icon":                                _b64("resources/app_icon.png"),
         "ADC_26ASBatch":                           _b64(f"{screenshots_dir}/ADC_26ASBatch.png"),
         "ADC_Aboutus":                             _b64(f"{screenshots_dir}/ADC_Aboutus.png"),
         "ADC_AddNewClient":                        _b64(f"{screenshots_dir}/ADC_AddNewClient.png"),
