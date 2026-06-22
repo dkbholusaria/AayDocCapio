@@ -1,6 +1,9 @@
 # Vault — contains encrypted credentials, never commit
 tax_vault.json
 
+# Runtime log history — user data, never commit
+log_history.json
+
 # Internal planning — not for public repo
 Documentation/ISSUES_BACKLOG.md
 

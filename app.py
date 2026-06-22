@@ -3098,6 +3098,13 @@ def _fatal(msg: str):
 
 
 if __name__ == "__main__":
+    # Suppress harmless "unclosed transport" ResourceWarning noise on Windows
+    # caused by asyncio ProactorEventLoop GC during shutdown.
+    if sys.platform == "win32":
+        import warnings
+        warnings.filterwarnings("ignore", category=ResourceWarning,
+                                message=".*unclosed transport.*")
+
     # Called by Inno Setup [Run] step to pre-install Chromium silently
     if "--install-browsers" in sys.argv:
         from automation.browser import _install_chromium
