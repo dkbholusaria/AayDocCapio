@@ -1203,6 +1203,7 @@ def _user_manual_page_html(img_uris: dict) -> str:
     const navBrand = document.querySelector('.nav-brand');
     const targets = document.querySelectorAll('.content-area [id]');
     const navItems = document.querySelectorAll('.sidebar-nav-item');
+    const _navLogoHtml = '{('<img src="' + img_uris.get("app_icon","") + '" style="width:28px;height:28px;border-radius:6px;flex-shrink:0;vertical-align:middle;margin-right:8px;" alt=""/>') if img_uris.get("app_icon") else ""}';
 
     function updateActiveNavItem() {{
       let currentId = '';
@@ -1241,13 +1242,9 @@ def _user_manual_page_html(img_uris: dict) -> str:
       if (heroTitle && navBrand) {{
         const rect = heroTitle.getBoundingClientRect();
         if (rect.bottom <= 0) {{
-          if (navBrand.innerHTML !== 'AayDocCapio Help Center') {{
-            navBrand.innerHTML = 'AayDocCapio Help Center';
-          }}
+          navBrand.innerHTML = _navLogoHtml + 'AayDocCapio Help Center';
         }} else {{
-          if (navBrand.innerHTML !== 'AayDoc <span style="color:#B88924;">Capio</span>™') {{
-            navBrand.innerHTML = 'AayDoc <span style="color:#B88924;">Capio</span>™';
-          }}
+          navBrand.innerHTML = _navLogoHtml + 'AayDoc <span style="color:#B88924;">Capio</span>™';
         }}
       }}
     }}
