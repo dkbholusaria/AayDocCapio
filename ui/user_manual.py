@@ -1266,8 +1266,20 @@ def _write_user_manual_html() -> str:
     import base64 as _b64mod, tempfile
     from config import _bundled_dir
 
+    # Resolve base directory — works in source, PyInstaller and Nuitka
+    import sys as _sys
+    if getattr(_sys, "frozen", False):
+        _base = _sys._MEIPASS
+    elif getattr(_sys, "__compiled__", False) or os.path.isfile(os.path.join(os.path.dirname(_sys.executable), "resources", "app_icon.png")):
+        _base = os.path.dirname(_sys.executable)
+    else:
+        _base = _bundled_dir()
+
     def _b64(rel: str) -> str:
-        p = os.path.join(_bundled_dir(), rel)
+        p = os.path.join(_base, rel)
+        if not os.path.isfile(p):
+            # fallback to _bundled_dir in case _base was wrong
+            p = os.path.join(_bundled_dir(), rel)
         if not os.path.isfile(p):
             return ""
         with open(p, "rb") as f:
