@@ -896,16 +896,7 @@ async def run_download_ais_tis(itd_page: Page, fiscal_year: str, download_dir: s
                 log("[Warning] TIS download failed.")
 
         if dl_ais:
-            fy_str = fiscal_year.replace("-", "_")
-            prefix = f"{pan}-" if pan else ""
-            ais_file = os.path.join(download_dir, f"{prefix}AIS-{fy_str}.pdf")
-
-            if os.path.exists(ais_file):
-                log(f"[AIS] AIS PDF already present: "
-                    f"{os.path.basename(ais_file)} — skipping Activity History.")
-                ais_outcome = _outcome("already_present")
-            else:
-                ais_outcome = await download_ais_from_activity_history(
+            ais_outcome = await download_ais_from_activity_history(
                     portal, fiscal_year, download_dir, log,
                     pan=pan, dob=dob, ref_id=ais_ref_id,
                     should_continue=should_continue, status_cb=status_callback)
