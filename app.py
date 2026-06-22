@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (
     QMessageBox, QTextEdit, QDialog, QRadioButton, QSplitter, QSizePolicy,
     QGraphicsDropShadowEffect, QListView, QStyledItemDelegate, QTableWidget,
     QTableWidgetItem, QHeaderView, QAbstractItemView, QToolButton, QMenu,
-    QProgressBar, QCalendarWidget,
+    QProgressBar, QCalendarWidget, QSystemTrayIcon,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, pyqtSlot, QTimer, QMetaObject, Q_ARG, QModelIndex, QUrl
 from PyQt6.QtGui import QFont, QTextCursor, QColor, QRegularExpressionValidator, QPalette, QAction, QIcon, QPixmap, QDesktopServices
@@ -308,6 +308,7 @@ class AayDocCapioApp(QMainWindow):
         self.refresh_grid()
         # Apply saved theme after UI is built
         QTimer.singleShot(0, lambda: self._apply_theme(self._current_theme))
+        self._setup_tray()
 
         client_count = len(self.vault.get_all_assessees())
         self.log(f"[System] AayDocCapio v{APP_VERSION} started — {client_count} client(s) in vault.")
@@ -318,10 +319,95 @@ class AayDocCapioApp(QMainWindow):
         # Check for app updates 3s after startup
         QTimer.singleShot(3000, self._check_for_update)
 
+    # ── System Tray ───────────────────────────────────────────────────────────
+
+    def _setup_tray(self):
+        """Create a persistent system-tray icon (always present, used during batch)."""
+        # Prefer .ico on Windows — it contains all sizes (16/24/32/48…256px) for
+        # pixel-perfect rendering at every DPI. Fall back to PNG on other platforms.
+        res = os.path.join(_bundled_dir(), "resources")
+        ico = os.path.join(res, "app_icon.ico")
+        png = os.path.join(res, "app_icon.png")
+        icon_path = ico if (sys.platform == "win32" and os.path.isfile(ico)) else png
+        tray_icon = QIcon(icon_path) if os.path.isfile(icon_path) else self.windowIcon()
+
+        self._tray = QSystemTrayIcon(tray_icon, self)
+        self._tray.setToolTip("AayDocCapio")
+
+        menu = QMenu()
+        self._tray_restore_act = QAction("Restore", self)
+        self._tray_restore_act.triggered.connect(self._tray_restore)
+        self._tray_send_act = QAction("Send to Tray", self)
+        self._tray_send_act.triggered.connect(self._tray_to_system_manual)
+        self._tray_send_act.setVisible(False)
+        self._tray_stop_act = QAction("Stop Batch", self)
+        self._tray_stop_act.triggered.connect(self.stop_automation)
+        self._tray_stop_act.setEnabled(False)
+        quit_act = QAction("Quit", self)
+        quit_act.triggered.connect(QApplication.instance().quit)
+        menu.addAction(self._tray_restore_act)
+        menu.addAction(self._tray_send_act)
+        menu.addAction(self._tray_stop_act)
+        menu.addSeparator()
+        menu.addAction(quit_act)
+        self._tray.setContextMenu(menu)
+
+        self._tray.activated.connect(self._on_tray_activated)
+        # Don't show() the tray icon until we actually send to tray
+
+    def _tray_to_system(self, n_clients: int):
+        """Auto-hide to tray at batch start (called with client count)."""
+        self._tray.setToolTip(f"AayDocCapio — Running ({n_clients} client(s)…)")
+        self._tray_stop_act.setEnabled(True)
+        self._tray_send_act.setVisible(False)  # hidden while already in tray
+        self._tray.show()
+        if self._progress_dialog:
+            self._progress_dialog.hide()
+        self.hide()
+        self._tray_show_hint()
+
+    def _tray_to_system_manual(self):
+        """Send to tray on demand (from progress dialog button or tray menu)."""
+        n = len(self._progress_dialog._targets) if self._progress_dialog else 0
+        self._tray.setToolTip(f"AayDocCapio — Running ({n} client(s)…)")
+        self._tray_stop_act.setEnabled(True)
+        self._tray_send_act.setVisible(False)  # hidden while already in tray
+        self._tray.show()
+        if self._progress_dialog:
+            self._progress_dialog.hide()
+        self.hide()
+        self._tray_show_hint()
+
+    def _tray_show_hint(self):
+        """Show a Windows toast every time the app hides to tray."""
+        notify_windows(
+            "AayDocCapio is running in the background",
+            "Click the tray icon to restore the window, or right-click for options.")
+
+    def _tray_restore(self):
+        """Restore main window and progress dialog from tray."""
+        self._tray.hide()
+        self._tray_send_act.setVisible(self.is_running)
+        self.show()
+        self.showNormal()
+        self.activateWindow()
+        self.raise_()
+        if self._progress_dialog:
+            self._progress_dialog.show()
+            self._progress_dialog.raise_()
+            self._progress_dialog.activateWindow()
+
+    def _on_tray_activated(self, reason):
+        if reason in (QSystemTrayIcon.ActivationReason.Trigger,
+                      QSystemTrayIcon.ActivationReason.DoubleClick):
+            self._tray_restore()
+
     def closeEvent(self, event):
         self.log("[System] AayDocCapio closed.")
         from automation.emailer import log_session_end
         log_session_end()
+        if hasattr(self, "_tray"):
+            self._tray.hide()
         super().closeEvent(event)
 
     # ── Build UI ──────────────────────────────────────────────────────────────
@@ -372,7 +458,8 @@ class AayDocCapioApp(QMainWindow):
         _icons = {"light": "☀", "dark": "🌙"}
         for theme_key, theme_colors in THEMES.items():
             icon = _icons.get(theme_key, "●")
-            act = QAction(f"{icon}  {theme_colors.name}", self, checkable=True)
+            act = QAction(f"{icon}  {theme_colors.name}", self)
+            act.setCheckable(True)
             act.triggered.connect(lambda _, k=theme_key: self._apply_theme(k))
             setattr(self, f"_theme_{theme_key}_act", act)
             appear_menu.addAction(act)
@@ -655,7 +742,7 @@ class AayDocCapioApp(QMainWindow):
         icon_lbl = QLabel()
         icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
         if os.path.exists(icon_path):
-            icon_lbl.setPixmap(QPixmap(icon_path).scaled(52, 52, Qt.AspectRatioMode.KeepAspectRatio,
+            icon_lbl.setPixmap(QPixmap(icon_path).scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio,
                                                           Qt.TransformationMode.SmoothTransformation))
         logo_row.addWidget(icon_lbl)
         name_col = QVBoxLayout(); name_col.setSpacing(2)
@@ -769,7 +856,7 @@ class AayDocCapioApp(QMainWindow):
 
     def _mk_header(self):
         hdr = QFrame()
-        hdr.setFixedHeight(80)
+        hdr.setFixedHeight(110)
         hdr.setObjectName("header")
         self._hdr_frame = hdr
         hl = QHBoxLayout(hdr)
@@ -781,7 +868,7 @@ class AayDocCapioApp(QMainWindow):
         icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
         if os.path.exists(icon_path):
             icon_label.setPixmap(
-                QPixmap(icon_path).scaled(62, 62, Qt.AspectRatioMode.KeepAspectRatio,
+                QPixmap(icon_path).scaled(106, 106, Qt.AspectRatioMode.KeepAspectRatio,
                                           Qt.TransformationMode.SmoothTransformation)
             )
         hl.addWidget(icon_label)
@@ -1246,11 +1333,12 @@ class AayDocCapioApp(QMainWindow):
         hl.addWidget(self.chk_headless)
 
         _auto_min_saved = self.vault.get_setting("auto_minimise", False) if hasattr(self, "vault") else False
-        self.chk_auto_minimise = QCheckBox("Auto-minimise when download starts")
+        self.chk_auto_minimise = QCheckBox("Send to system tray when download starts")
         self.chk_auto_minimise.setChecked(bool(_auto_min_saved))
         self.chk_auto_minimise.setToolTip(
-            "Minimise the app to the taskbar when a batch download begins.\n"
-            "A Windows notification will appear when the run completes.")
+            "Hide the app to the system tray when a batch download begins.\n"
+            "Click the tray icon or right-click → Restore to bring it back.\n"
+            "The app restores automatically when the batch finishes.")
         self.chk_auto_minimise.setStyleSheet(self.chk_headless.styleSheet())
         self.chk_auto_minimise.stateChanged.connect(
             lambda v: self.vault.update_setting("auto_minimise", bool(v)))
@@ -2415,9 +2503,13 @@ class AayDocCapioApp(QMainWindow):
         # Show progress dialog (on main thread via signal)
         self._show_progress_signal.emit(targets, mode, year_tag, output_dir)
 
-        # F-35: auto-minimise if setting enabled
+        # Enable "Send to Tray" in tray menu while batch is running
+        if hasattr(self, "_tray_send_act"):
+            self._tray_send_act.setVisible(True)
+
+        # F-35: send to system tray if auto-minimise enabled
         if getattr(self, "chk_auto_minimise", None) and self.chk_auto_minimise.isChecked():
-            QTimer.singleShot(500, self.showMinimized)
+            QTimer.singleShot(800, lambda: self._tray_to_system(len(targets)))
 
         threading.Thread(
             target=self._run_wrapper,
@@ -2429,11 +2521,9 @@ class AayDocCapioApp(QMainWindow):
         self._progress_dialog = BatchProgressDialog(
             targets, mode, ay=ay, stop_callback=self.stop_automation,
             resume_callback=self.resume_batch, skip_callback=self.skip_client,
+            tray_callback=self._tray_to_system_manual,
             output_dir=output_dir, parent=self)
-        # Window-modal: blocks the parent window (so it can't be clicked behind
-        # the dialog) but still allows the worker thread's Qt-signal updates.
-        # We use show() rather than exec() so the event loop keeps processing
-        # the live status signals.
+        # Window-modal: blocks the parent window but allows live signal updates.
         self._progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
         self._progress_dialog.show()
         self._progress_dialog.raise_()
@@ -2538,8 +2628,19 @@ class AayDocCapioApp(QMainWindow):
         self.log("[System] Engine Idle.")
         # Refresh grid so Last Download Status / Last Saved Location columns update
         QTimer.singleShot(200, self.refresh_grid)
-        # F-35: Windows notification on completion
-        if not self._batch_aborted:
+        # F-35: restore from tray if we were hidden there, and show tray balloon
+        if hasattr(self, "_tray") and self._tray.isVisible():
+            mode_label = {"26as": "26AS", "request_ais": "AIS Request", "ais_tis": "AIS/TIS"}.get(
+                self._last_mode, "Batch")
+            notify_windows("AayDocCapio — Download Complete",
+                           f"{mode_label} batch finished. Click the tray icon to restore.")
+            self._tray_stop_act.setEnabled(False)
+            self._tray_send_act.setVisible(False)
+            self._tray.setToolTip("AayDocCapio — Batch complete")
+            # Auto-restore after balloon (small delay so user sees the notification)
+            QTimer.singleShot(3000, self._tray_restore)
+        # F-35: Windows native toast — only when NOT using tray (tray has its own balloon)
+        if not self._batch_aborted and not (hasattr(self, "_tray") and self._tray.isVisible()):
             mode_label = {"26as": "26AS", "request_ais": "AIS Request", "ais_tis": "AIS/TIS"}.get(
                 self._last_mode, "Batch")
             notify_windows("AayDocCapio — Download Complete",
@@ -2914,13 +3015,18 @@ class AayDocCapioApp(QMainWindow):
                     # ── Login ────────────────────────────────────────────────────
                     set_status(pan, "⏳ Logging in to ITD...")
                     page = await login_itd(pan, target.get("password"), self.log, context,
-                                           is_running=lambda: self.is_running)
+                                           is_running=lambda: self.is_running and not self._skip_current)
                     set_status(pan, "⏳ Logged in to ITD")
 
                     # ── Skip check ───────────────────────────────────────────────
                     if self._skip_current:
-                        set_status(pan, "⬜ Skipped")
-                        await logout_itd(page, self.log)
+                        # Update progress dialog only — do NOT persist to vault or log history
+                        if self._progress_dialog:
+                            self._progress_dialog.set_status(pan, "⬜ Skipped")
+                        self.log(f"[Skip] {pan[:3]}XXXXXXX skipped by user.")
+                        if page:
+                            try: await logout_itd(page, self.log)
+                            except Exception: pass
                         page = None
                         await asyncio.sleep(1)
                         continue
@@ -3011,7 +3117,13 @@ class AayDocCapioApp(QMainWindow):
                         # Permanent failure or already retried
                         self._ais_results[pan] = "failed"
                         self._last_errors[pan] = str(e)
-                        set_status(pan, f"❌ Failed — {_friendly_error(str(e))}")
+                        friendly = _friendly_error(str(e))
+                        if self._batch_aborted or friendly == "Stopped by user":
+                            # Batch was stopped — do NOT overwrite last saved status in vault
+                            if self._progress_dialog:
+                                self._progress_dialog.set_status(pan, f"⏹ Stopped")
+                        else:
+                            set_status(pan, f"❌ Failed — {friendly}")
                         if page:
                             try: await logout_itd(page, self.log)
                             except Exception: pass

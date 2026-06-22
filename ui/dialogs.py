@@ -54,8 +54,25 @@ class ManageYearsDialog(QDialog):
         main.setContentsMargins(20, 16, 20, 16)
         main.setSpacing(8)
 
-        main.addWidget(_lbl("Manage Assessment / Tax Years", 13, bold=True))
-        main.addWidget(_lbl("Toggle enabled/disabled or add new years.", 10, color=t.text_muted))
+        # Header: logo left, title+subtitle stacked right
+        from config import _bundled_dir
+        hdr_row = QHBoxLayout()
+        hdr_row.setSpacing(12)
+        hdr_row.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        _icon_lbl = QLabel()
+        _icon_lbl.setStyleSheet("background:transparent;")
+        _ip = os.path.join(_bundled_dir(), "resources", "app_icon.png")
+        if os.path.isfile(_ip):
+            _icon_lbl.setPixmap(QPixmap(_ip).scaled(48, 48, Qt.AspectRatioMode.KeepAspectRatio,
+                                                     Qt.TransformationMode.SmoothTransformation))
+        hdr_row.addWidget(_icon_lbl)
+        txt_col = QVBoxLayout()
+        txt_col.setSpacing(2)
+        txt_col.addWidget(_lbl("Manage Assessment / Tax Years", 13, bold=True))
+        txt_col.addWidget(_lbl("Toggle enabled/disabled or add new years.", 10, color=t.text_muted))
+        hdr_row.addLayout(txt_col)
+        hdr_row.addStretch()
+        main.addLayout(hdr_row)
         main.addWidget(_lbl("Existing Entries", 11, bold=True, color=t.text_muted))
 
         scroll = QScrollArea()
@@ -192,11 +209,12 @@ class BatchProgressDialog(QDialog):
 
     def __init__(self, targets: list, mode: str, ay: str = "",
                  stop_callback=None, resume_callback=None, skip_callback=None,
-                 output_dir: str = "", parent=None):
+                 tray_callback=None, output_dir: str = "", parent=None):
         super().__init__(parent)
         self._stop_callback   = stop_callback
         self._resume_callback = resume_callback
         self._skip_callback   = skip_callback
+        self._tray_callback   = tray_callback
         self._output_dir      = output_dir
         self._mode            = mode
         self._ay              = ay
@@ -345,7 +363,7 @@ class BatchProgressDialog(QDialog):
         self._open_folder_btn.clicked.connect(self._open_output_dir)
         footer.addWidget(self._open_folder_btn)
 
-        self._report_btn = QPushButton("⬇  Download Report")
+        self._report_btn = QPushButton("📂  Open Report")
         self._report_btn.setFixedHeight(32)
         self._report_btn.setEnabled(False)
         self._report_btn.setStyleSheet(
@@ -353,7 +371,8 @@ class BatchProgressDialog(QDialog):
             f"border-radius:6px;font-size:12px;padding:0 12px;}}"
             f"QPushButton:enabled:hover{{background:{_bt.bg_input};}}"
             f"QPushButton:disabled{{color:{_bt.text_muted};border-color:{_bt.border};}}")
-        self._report_btn.clicked.connect(self._export_report)
+        self._report_btn.clicked.connect(self._open_last_report)
+        self._last_report_path = ""
         footer.addWidget(self._report_btn)
 
         self._skip_btn = QPushButton("⏭  Skip")
@@ -367,6 +386,19 @@ class BatchProgressDialog(QDialog):
             f"QPushButton:disabled{{color:{_bt.text_muted};border-color:{_bt.border};}}")
         self._skip_btn.clicked.connect(self._on_skip_clicked)
         footer.addWidget(self._skip_btn)
+
+        self._tray_btn = QPushButton("⬇  Tray")
+        self._tray_btn.setFixedHeight(32)
+        self._tray_btn.setMinimumWidth(80)
+        self._tray_btn.setToolTip("Hide to system tray — click the tray icon to restore")
+        self._tray_btn.setStyleSheet(
+            f"QPushButton{{background:{_bt.bg_table_alt};color:{_bt.text_primary};border:1px solid {_bt.border};"
+            f"border-radius:6px;font-size:12px;font-weight:600;padding:0 12px;}}"
+            f"QPushButton:hover{{background:{_bt.bg_input};}}"
+            f"QPushButton:disabled{{color:{_bt.text_muted};border-color:{_bt.border};}}")
+        self._tray_btn.setVisible(bool(self._tray_callback))
+        self._tray_btn.clicked.connect(self._on_tray_clicked)
+        footer.addWidget(self._tray_btn)
 
         self._stop_btn = QPushButton("⏹  Stop")
         self._stop_btn.setFixedHeight(32)
@@ -492,6 +524,10 @@ class BatchProgressDialog(QDialog):
         self._skip_btn.setEnabled(False)
         self._skip_btn.setText("⏭  Skipping...")
 
+    def _on_tray_clicked(self):
+        if self._tray_callback:
+            self._tray_callback()
+
     def _on_stop_clicked(self):
         if self._stop_callback:
             self._stop_callback()
@@ -602,6 +638,7 @@ class BatchProgressDialog(QDialog):
                     if pan in self._rows_data:
                         self._rows_data[pan]["status"] = "⏹ Stopped"
         self._skip_btn.setVisible(False)
+        self._tray_btn.setVisible(False)
         self._stop_btn.setVisible(False)
         self._resume_btn.setVisible(aborted)
         self._close_btn.setEnabled(True)
@@ -613,17 +650,25 @@ class BatchProgressDialog(QDialog):
         # F-37: auto-save report to output folder
         self._auto_save_report()
 
+    def _open_last_report(self):
+        if self._last_report_path and os.path.exists(self._last_report_path):
+            _open_path(self._last_report_path)
+        else:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.information(self, "No Report", "No report has been generated yet.")
+
     def _auto_save_report(self):
-        """F-37: silently save a timestamped report to the output folder after every run."""
-        if not self._output_dir or not os.path.isdir(self._output_dir):
-            return
+        """F-37: silently save a timestamped report to _app_dir()/BatchReports/ after every run."""
         try:
+            from config import _app_dir
+            reports_dir = os.path.join(_app_dir(), "BatchReports")
+            os.makedirs(reports_dir, exist_ok=True)
             import openpyxl, re as _re
             from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
             from openpyxl.utils import get_column_letter
             timestamp    = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             report_name  = f"BatchReport_{self._ay.replace(' ', '_')}_{timestamp}.xlsx"
-            path         = os.path.join(self._output_dir, report_name)
+            path         = os.path.join(reports_dir, report_name)
             hdr_fill  = PatternFill("solid", fgColor="0F172A")
             hdr_font  = Font(bold=True, color="FFFFFF", size=11)
             link_font = Font(color="2563EB", underline="single", size=10)
@@ -669,6 +714,7 @@ class BatchProgressDialog(QDialog):
                 ws.row_dimensions[row_num].height = 18
             ws.freeze_panes = "A2"
             wb.save(path)
+            self._last_report_path = path
         except Exception:
             pass   # Never crash the UI due to report saving
 
@@ -678,6 +724,7 @@ class BatchProgressDialog(QDialog):
         self._skip_btn.setText("⏭  Skip")
         self._skip_btn.setEnabled(True)
         self._skip_btn.setVisible(True)
+        self._tray_btn.setVisible(bool(self._tray_callback))
         self._stop_btn.setText("⏹  Stop")
         self._stop_btn.setEnabled(True)
         self._stop_btn.setVisible(True)
@@ -794,6 +841,170 @@ _HOST_TO_PRESET = {p["host"]: p["name"] for p in _SMTP_PRESETS if p["host"]}
 
 # Pixmap cache — built once per process, reused across dialog opens
 _TILE_PIXMAP_CACHE: dict[str, QPixmap] = {}
+
+
+# ── Selective Export / Import Dialogs ────────────────────────────────────────
+
+class _SelectiveExportDialog(QDialog):
+    """Choose what to include in an email-settings export."""
+
+    def __init__(self, parent, tpl_names: list[str]):
+        super().__init__(parent)
+        self.setWindowTitle("Export Email Settings")
+        self.setModal(True)
+        self.setMinimumWidth(380)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        lay = QVBoxLayout(self)
+        lay.setSpacing(10)
+        lay.setContentsMargins(20, 16, 20, 16)
+
+        lay.addWidget(_lbl("Select what to export:", bold=True))
+
+        # SMTP section
+        self._chk_smtp = QCheckBox("SMTP / Sender Settings")
+        self._chk_smtp.setChecked(True)
+        lay.addWidget(self._chk_smtp)
+
+        # Templates section
+        self._chk_tpls = QCheckBox("Email Templates")
+        self._chk_tpls.setChecked(True)
+        lay.addWidget(self._chk_tpls)
+
+        # Template list — always visible, disabled when checkbox unchecked
+        from PyQt6.QtWidgets import QListWidget, QListWidgetItem
+        self._tpl_list = QListWidget()
+        self._tpl_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
+        for name in tpl_names:
+            item = QListWidgetItem(name)
+            self._tpl_list.addItem(item)
+            item.setSelected(True)
+        self._tpl_list.setFixedHeight(min(max(len(tpl_names), 2), 8) * 28 + 4)
+        lay.addWidget(self._tpl_list)
+
+        def _toggle_tpl_list(enabled: bool):
+            self._tpl_list.setEnabled(enabled)
+            if enabled:
+                for i in range(self._tpl_list.count()):
+                    self._tpl_list.item(i).setSelected(True)
+            else:
+                self._tpl_list.clearSelection()
+        self._chk_tpls.toggled.connect(_toggle_tpl_list)
+
+        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
+        lay.addWidget(sep)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+        cancel = _btn("Cancel", "outline", height=34)
+        cancel.clicked.connect(self.reject)
+        ok = _btn("Export", "primary", height=34)
+        ok.clicked.connect(self._on_ok)
+        btn_row.addWidget(cancel)
+        btn_row.addStretch()
+        btn_row.addWidget(ok)
+        lay.addLayout(btn_row)
+        self.adjustSize()
+
+    def _on_ok(self):
+        if not self._chk_smtp.isChecked() and not self._chk_tpls.isChecked():
+            QMessageBox.warning(self, "Nothing Selected", "Please select at least one item to export.")
+            return
+        if self._chk_tpls.isChecked() and not self._tpl_list.selectedItems():
+            QMessageBox.warning(self, "No Templates", "Please select at least one template.")
+            return
+        self.accept()
+
+    def result_choices(self) -> tuple[bool, bool, set[str]]:
+        include_smtp = self._chk_smtp.isChecked()
+        include_tpls = self._chk_tpls.isChecked()
+        selected = {item.text() for item in self._tpl_list.selectedItems()}
+        return include_smtp, include_tpls, selected
+
+
+class _SelectiveImportDialog(QDialog):
+    """Choose what to apply from an email-settings import file."""
+
+    def __init__(self, parent, has_smtp: bool, tpl_names: list[str]):
+        super().__init__(parent)
+        self.setWindowTitle("Import Email Settings")
+        self.setModal(True)
+        self.setMinimumWidth(380)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        lay = QVBoxLayout(self)
+        lay.setSpacing(10)
+        lay.setContentsMargins(20, 16, 20, 16)
+
+        lay.addWidget(_lbl("Select what to import:", bold=True))
+
+        self._chk_smtp = QCheckBox("SMTP / Sender Settings")
+        self._chk_smtp.setChecked(has_smtp)
+        self._chk_smtp.setEnabled(has_smtp)
+        if not has_smtp:
+            self._chk_smtp.setText("SMTP / Sender Settings (not in file)")
+        lay.addWidget(self._chk_smtp)
+
+        has_tpls = bool(tpl_names)
+        self._chk_tpls = QCheckBox("Email Templates")
+        self._chk_tpls.setChecked(has_tpls)
+        self._chk_tpls.setEnabled(has_tpls)
+        if not has_tpls:
+            self._chk_tpls.setText("Email Templates (not in file)")
+        lay.addWidget(self._chk_tpls)
+
+        from PyQt6.QtWidgets import QListWidget, QListWidgetItem
+        self._tpl_list = QListWidget()
+        self._tpl_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
+        for name in tpl_names:
+            item = QListWidgetItem(name)
+            self._tpl_list.addItem(item)
+            item.setSelected(True)
+        self._tpl_list.setFixedHeight(min(max(len(tpl_names), 2), 8) * 28 + 4)
+        self._tpl_list.setEnabled(has_tpls)
+        lay.addWidget(self._tpl_list)
+
+        if has_tpls:
+            def _toggle_tpl_list(enabled: bool):
+                self._tpl_list.setEnabled(enabled)
+                if enabled:
+                    for i in range(self._tpl_list.count()):
+                        self._tpl_list.item(i).setSelected(True)
+                else:
+                    self._tpl_list.clearSelection()
+            self._chk_tpls.toggled.connect(_toggle_tpl_list)
+
+        note = _lbl("Existing templates with the same name will be overwritten.")
+        note.setWordWrap(True)
+        lay.addWidget(note)
+
+        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
+        lay.addWidget(sep)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+        cancel = _btn("Cancel", "outline", height=34)
+        cancel.clicked.connect(self.reject)
+        ok = _btn("Import", "primary", height=34)
+        ok.clicked.connect(self._on_ok)
+        btn_row.addWidget(cancel)
+        btn_row.addStretch()
+        btn_row.addWidget(ok)
+        lay.addLayout(btn_row)
+        self.adjustSize()
+
+    def _on_ok(self):
+        if not self._chk_smtp.isChecked() and not self._chk_tpls.isChecked():
+            QMessageBox.warning(self, "Nothing Selected", "Please select at least one item to import.")
+            return
+        if self._chk_tpls.isChecked() and self._tpl_list.isEnabled() and not self._tpl_list.selectedItems():
+            QMessageBox.warning(self, "No Templates", "Please select at least one template.")
+            return
+        self.accept()
+
+    def result_choices(self) -> tuple[bool, bool, set[str]]:
+        import_smtp = self._chk_smtp.isChecked()
+        import_tpls = self._chk_tpls.isChecked()
+        selected = {item.text() for item in self._tpl_list.selectedItems()}
+        return import_smtp, import_tpls, selected
 
 
 # ── SMTP Settings Dialog ──────────────────────────────────────────────────────
@@ -1373,14 +1584,20 @@ class SmtpSettingsDialog(QDialog):
         log_btn.clicked.connect(self._open_log)
         footer_lay.addWidget(log_btn)
         footer_lay.addStretch()
-        cancel_btn = _btn("Cancel", "secondary", height=36, icon="btn_cancel.png")
-        cancel_btn.clicked.connect(self.reject)
         self._ctx_save_btn = _btn("Save SMTP Settings", "outline", height=36, icon="btn_save.png")
-        save_close_btn = _btn("Save && Close", "primary", height=36, icon="btn_save_close.png")
-        save_close_btn.clicked.connect(self._save)
-        footer_lay.addWidget(cancel_btn)
         footer_lay.addWidget(self._ctx_save_btn)
-        footer_lay.addWidget(save_close_btn)
+        self._save_close_btn = _btn("Cancel", "secondary", height=36, icon="btn_cancel.png")
+        self._save_close_btn.clicked.connect(self._on_save_close_clicked)
+        footer_lay.addWidget(self._save_close_btn)
+
+        # Wire all fields to mark dirty (switches button to Save & Close)
+        for field in (self._host, self._user, self._pwd, self._from, self._bcc, self._firm):
+            field.textChanged.connect(self._mark_dirty)
+        self._port.valueChanged.connect(self._mark_dirty)
+        self._enc.currentIndexChanged.connect(self._mark_dirty)
+        self._tpl_list.itemChanged.connect(self._mark_dirty)
+        self._subj.textChanged.connect(self._mark_dirty)
+        self._body.textChanged.connect(self._mark_dirty)
 
         def _on_tab_changed(i):
             try:
@@ -1682,11 +1899,38 @@ class SmtpSettingsDialog(QDialog):
         self._tpl_del_btn.setEnabled(len(self._templates) > 1)
 
     def _export_settings(self):
-        """Export SMTP settings + templates to a JSON file (password excluded)."""
-        cfg = self._collect()
-        cfg.pop("smtp_password", None)   # never export password
-        templates = list(self._templates)
-        data = {"smtp": cfg, "templates": templates, "active_template": self._vault.get_active_template_name()}
+        """Export SMTP settings and/or selected templates to a JSON file."""
+        tpl_names = [t["name"] for t in self._templates]
+        dlg = _SelectiveExportDialog(self, tpl_names)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        include_smtp, include_tpls, selected_tpls = dlg.result_choices()
+
+        data: dict = {}
+
+        if include_smtp:
+            cfg = self._collect()
+            raw_pwd = cfg.pop("smtp_password", "") or ""
+            if raw_pwd:
+                try:
+                    from cryptography.fernet import Fernet
+                    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+                    from cryptography.hazmat.primitives import hashes
+                    from base64 import urlsafe_b64encode
+                    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=b"AayDocCapio-export-v1", iterations=100000)
+                    key = urlsafe_b64encode(kdf.derive(b"AayDocCapio-portable-export-key"))
+                    cfg["smtp_password_exported"] = Fernet(key).encrypt(raw_pwd.encode()).decode()
+                except Exception:
+                    pass
+            data["smtp"] = cfg
+
+        if include_tpls:
+            tpls_to_export = [t for t in self._templates if t["name"] in selected_tpls]
+            data["templates"] = tpls_to_export
+            active = self._vault.get_active_template_name()
+            if active in selected_tpls:
+                data["active_template"] = active
+
         path, _ = QFileDialog.getSaveFileName(
             self, "Export Email Settings", "AayDocCapio_EmailSettings.json",
             "JSON Files (*.json)")
@@ -1695,13 +1939,12 @@ class SmtpSettingsDialog(QDialog):
         try:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
-            QMessageBox.information(self, "Exported",
-                f"Settings exported successfully.\n\nNote: Password is not exported for security.")
+            QMessageBox.information(self, "Exported", "Settings exported successfully.")
         except Exception as e:
             QMessageBox.warning(self, "Export Failed", str(e))
 
     def _import_settings(self):
-        """Import SMTP settings + templates from a JSON file."""
+        """Import SMTP settings and/or templates from a JSON file (selective)."""
         path, _ = QFileDialog.getOpenFileName(
             self, "Import Email Settings", "", "JSON Files (*.json)")
         if not path:
@@ -1713,45 +1956,87 @@ class SmtpSettingsDialog(QDialog):
             QMessageBox.warning(self, "Import Failed", f"Could not read file:\n{e}")
             return
 
-        reply = QMessageBox.question(self, "Confirm Import",
-            "This will overwrite your current SMTP settings and templates.\n\nProceed?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
-        if reply != QMessageBox.StandardButton.Yes:
+        has_smtp = bool(data.get("smtp"))
+        file_tpls = data.get("templates", [])
+        file_tpl_names = [t["name"] for t in file_tpls]
+
+        dlg = _SelectiveImportDialog(self, has_smtp, file_tpl_names)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return
+        import_smtp, import_tpls, selected_tpls = dlg.result_choices()
 
-        smtp = data.get("smtp", {})
-        # Populate SMTP fields
-        if smtp.get("smtp_host"): self._host.setText(smtp["smtp_host"])
-        if smtp.get("smtp_port"): self._port.setValue(int(smtp["smtp_port"]))
-        if smtp.get("smtp_user"): self._user.setText(smtp["smtp_user"])
-        if smtp.get("smtp_from"): self._from.setText(smtp["smtp_from"])
-        if smtp.get("bcc_addresses"): self._bcc.setText(smtp["bcc_addresses"])
-        if smtp.get("firm_name"): self._firm.setText(smtp["firm_name"])
-        enc = smtp.get("smtp_encryption", "")
-        if enc:
-            idx = self._enc.findText(enc)
-            if idx >= 0: self._enc.setCurrentIndex(idx)
+        if import_smtp and has_smtp:
+            smtp = data["smtp"]
+            if smtp.get("smtp_host"): self._host.setText(smtp["smtp_host"])
+            if smtp.get("smtp_port"): self._port.setValue(int(smtp["smtp_port"]))
+            if smtp.get("smtp_user"): self._user.setText(smtp["smtp_user"])
+            if smtp.get("smtp_from"): self._from.setText(smtp["smtp_from"])
+            if smtp.get("bcc_addresses"): self._bcc.setText(smtp["bcc_addresses"])
+            if smtp.get("firm_name"): self._firm.setText(smtp["firm_name"])
+            enc = smtp.get("smtp_encryption", "")
+            if enc:
+                idx = self._enc.findText(enc)
+                if idx >= 0: self._enc.setCurrentIndex(idx)
+            if smtp.get("smtp_password_exported"):
+                try:
+                    from cryptography.fernet import Fernet
+                    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+                    from cryptography.hazmat.primitives import hashes
+                    from base64 import urlsafe_b64encode
+                    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=b"AayDocCapio-export-v1", iterations=100000)
+                    key = urlsafe_b64encode(kdf.derive(b"AayDocCapio-portable-export-key"))
+                    pwd = Fernet(key).decrypt(smtp["smtp_password_exported"].encode()).decode()
+                    self._pwd.setText(pwd)
+                except Exception:
+                    pass
 
-        # Import templates
-        imported_tpls = data.get("templates", [])
-        if imported_tpls:
+        if import_tpls and file_tpls:
             from PyQt6.QtWidgets import QListWidgetItem
-            self._templates = imported_tpls
+            tpls_to_import = [t for t in file_tpls if t["name"] in selected_tpls]
+            existing_names = {t["name"] for t in self._templates}
+            for tpl in tpls_to_import:
+                if tpl["name"] in existing_names:
+                    # overwrite existing template with same name
+                    for i, et in enumerate(self._templates):
+                        if et["name"] == tpl["name"]:
+                            self._templates[i] = tpl
+                            break
+                else:
+                    self._templates.append(tpl)
             self._tpl_list.clear()
             for tpl in self._templates:
                 item = QListWidgetItem(tpl["name"])
                 item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
                 self._tpl_list.addItem(item)
             active = data.get("active_template", "")
+            matched = False
             for i, tpl in enumerate(self._templates):
                 if tpl["name"] == active:
                     self._tpl_list.setCurrentRow(i)
+                    matched = True
                     break
-            else:
+            if not matched:
                 self._tpl_list.setCurrentRow(0)
 
         QMessageBox.information(self, "Imported",
-            "Settings imported. Please enter your password manually, then click Save.")
+            "Settings imported successfully. Please verify and click Save.")
+
+    def _mark_dirty(self):
+        """Switch the Cancel button to Save & Close once any change is made."""
+        self._save_close_btn.setText("Save && Close")
+        self._save_close_btn.setProperty("style_variant", "primary")
+        # Re-apply stylesheet via _btn helper logic — simplest is to swap icon/style directly
+        t = _t()
+        self._save_close_btn.setStyleSheet(
+            f"QPushButton{{background:{t.accent};color:#FFFFFF;border:none;"
+            f"border-radius:8px;font-size:13px;font-weight:600;padding:0 18px;}}"
+            f"QPushButton:hover{{background:{t.accent_hover};}}")
+
+    def _on_save_close_clicked(self):
+        if self._save_close_btn.text() == "Cancel":
+            self.reject()
+        else:
+            self._save()
 
     def _save_smtp_only(self):
         """Save SMTP/Sender settings without closing."""
