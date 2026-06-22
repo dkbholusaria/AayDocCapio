@@ -1199,6 +1199,7 @@ class AayDocCapioApp(QMainWindow):
         self._current_sort_order = Qt.SortOrder.AscendingOrder
 
         self.client_table.cellClicked.connect(self._on_cell_clicked)
+        self.client_table.cellDoubleClicked.connect(self._on_cell_double_clicked)
         self.client_table.setMouseTracking(True)
         self.client_table.viewport().setMouseTracking(True)
         self.client_table.cellEntered.connect(self._on_cell_entered)
@@ -1223,6 +1224,28 @@ class AayDocCapioApp(QMainWindow):
         cb_x = x + (w - 18) // 2
         cb_y = (h - 18) // 2
         self.header_cb.move(cb_x, cb_y)
+
+    def _on_cell_double_clicked(self, row, col):
+        if col == self._TC_STATUS:
+            item = self.client_table.item(row, self._TC_STATUS)
+            if not item:
+                return
+            full_text = item.toolTip() or item.text()
+            if not full_text:
+                return
+            name_item = self.client_table.item(row, self._TC_NAME)
+            name = name_item.text() if name_item else ""
+            mb = QMessageBox(self)
+            mb.setWindowTitle("Last Download Status")
+            mb.setText(f"<b>{name}</b>" if name else "Status Detail")
+            mb.setInformativeText(full_text)
+            mb.setStandardButtons(QMessageBox.StandardButton.Ok)
+            # Force a minimum width via a hidden spacer in the grid layout
+            from PyQt6.QtWidgets import QSpacerItem, QSizePolicy
+            spacer = QSpacerItem(420, 0, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
+            layout = mb.layout()
+            layout.addItem(spacer, layout.rowCount(), 0, 1, layout.columnCount())
+            mb.exec()
 
     def _on_cell_clicked(self, row, col):
         if hasattr(self, "ay_combo") and self.ay_combo._popup_was_open:

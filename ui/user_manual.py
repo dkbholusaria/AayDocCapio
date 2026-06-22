@@ -433,7 +433,6 @@ def _user_manual_page_html(img_uris: dict) -> str:
         <a href="#bulk-ais-download" class="sidebar-nav-item sub-item">4.3. Bulk AIS Download</a>
         <a href="#menu-options-download" class="sidebar-nav-item sub-item">4.4. Menu Options to Click</a>
         <a href="#status-indicators" class="sidebar-nav-item sub-item">4.5. Status Icons & Controls</a>
-        <a href="#run-history" class="sidebar-nav-item sub-item">4.6. Run History</a>
       </div>
       
       <div class="sidebar-group">
@@ -482,8 +481,10 @@ def _user_manual_page_html(img_uris: dict) -> str:
       </div>
       
       <div class="sidebar-group">
-        <a href="#app-updates" class="sidebar-nav-item">11. Software Updates</a>
-        <a href="#inbuilt-auto-update" class="sidebar-nav-item sub-item">11.1. Inbuilt Auto-Update</a>
+        <a href="#miscellaneous" class="sidebar-nav-item">11. Miscellaneous</a>
+        <a href="#run-history" class="sidebar-nav-item sub-item">11.1. Run History</a>
+        <a href="#app-updates" class="sidebar-nav-item sub-item">11.2. Software Updates</a>
+        <a href="#inbuilt-auto-update" class="sidebar-nav-item sub-sub-item">11.2.1. Inbuilt Auto-Update</a>
       </div>
       
       <div class="sidebar-group">
@@ -699,28 +700,6 @@ def _user_manual_page_html(img_uris: dict) -> str:
             + tip_box("You can stop a long-running batch at any time. Clicking the Stop button finishes the active client and safely skips the rest.")
           )}
           {_img("ADC_StatusBasedFilters", "Filtering client list based on download status", "Status Filters")}
-        <div id="run-history" style="scroll-margin-top: 90px; margin-top: 24px;">
-          {section_card(
-            h3("4.6. Run History") +
-            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
-            f'AayDocCapio keeps a per-client log of the last 20 download results for each Assessment Year. '
-            f'This lets you quickly check when a client was last downloaded and what the outcome was — without opening the output folder.</p>'
-            + steps_html([
-              'Right-click any client row on the main screen.',
-              'Select <strong>View Log</strong> from the context menu.',
-              'The Run History dialog shows a table with <em>Date &amp; Time</em> and <em>Status</em> columns.',
-              'Double-click any row to see the full status message in a detail popup.',
-            ])
-            + f'<p style="color:#1A2233;font-size:0.92rem;margin-top:12px;margin-bottom:6px;"><strong>Status colour guide:</strong></p>'
-            + bullets_html([
-              '<span style="color:#16A34A;font-weight:600;">Green</span> — Successful download (✅)',
-              '<span style="color:#DC2626;font-weight:600;">Red</span> — Failed (❌)',
-              '<span style="color:#B45309;font-weight:600;">Amber</span> — Partial / warning (⚠)',
-              '<span style="color:#2563EB;font-weight:600;">Blue</span> — Email sent entry ([Email])',
-            ])
-            + tip_box("Email delivery events are also recorded in Run History when a document is successfully emailed to the client.")
-          )}
-        </div>
       </div>
     </section>
 
@@ -1075,14 +1054,39 @@ def _user_manual_page_html(img_uris: dict) -> str:
     </section>
 
     <!-- SECTION 11: Software Updates -->
-    <section id="app-updates">
+    <section id="miscellaneous">
       <div class="wrap">
         <div class="section-label">Section 11</div>
-        <h2>Software Updates</h2>
+        <h2>Miscellaneous</h2>
 
-        <div id="inbuilt-auto-update" style="scroll-margin-top: 90px; margin-top: 12px;">
+        <div id="run-history" style="scroll-margin-top: 90px; margin-top: 12px;">
           {section_card(
-            h3("11.1. Inbuilt Update Checker") +
+            h3("11.1. Run History") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'AayDocCapio keeps a per-client log of the last 20 download results for each Assessment Year. '
+            f'This lets you quickly check when a client was last downloaded and what the outcome was — without opening the output folder.</p>'
+            + steps_html([
+              'Right-click any client row on the main screen.',
+              'Select <strong>View Log</strong> from the context menu.',
+              'The Run History dialog shows a table with <em>Date &amp; Time</em> and <em>Status</em> columns.',
+              'Double-click any row to see the full status message in a detail popup.',
+            ])
+            + f'<p style="color:#1A2233;font-size:0.92rem;margin-top:12px;margin-bottom:6px;"><strong>Status colour guide:</strong></p>'
+            + bullets_html([
+              '<span style="color:#16A34A;font-weight:600;">Green</span> — Successful download (✅)',
+              '<span style="color:#DC2626;font-weight:600;">Red</span> — Failed (❌)',
+              '<span style="color:#B45309;font-weight:600;">Amber</span> — Partial / warning (⚠)',
+              '<span style="color:#2563EB;font-weight:600;">Blue</span> — Email sent entry ([Email])',
+            ])
+            + tip_box("Email delivery events are also recorded in Run History when a document is successfully emailed to the client. Double-clicking a status row on the main client grid also shows the full status text.")
+          )}
+        </div>
+
+        <div id="app-updates" style="scroll-margin-top: 90px; margin-top: 24px;">
+          <h3 style="font-family:'Plus Jakarta Sans',sans-serif;font-size:1.1rem;font-weight:700;color:#09152A;margin:0 0 12px;">11.2. Software Updates</h3>
+        <div id="inbuilt-auto-update" style="scroll-margin-top: 90px; margin-top: 4px;">
+          {section_card(
+            h3("11.2.1. Inbuilt Update Checker") +
             f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
             f'AayDocCapio features an **inbuilt update checker** to ensure you are notified when new releases '
             f'are made available for compatibility with the ITD portal:</p>'
@@ -1096,6 +1100,7 @@ def _user_manual_page_html(img_uris: dict) -> str:
           )}
           {_img("ADC_AutoUpdateBlinkingMessage", "Blinking update notification displayed under version details on the main dashboard", "Blinking update notification")}
           {_img("ADC_UpdateAvailable", "Update notification dialog shown on manual check (Help → Check for Updates)", "Update Available Dialog")}
+        </div>
         </div>
       </div>
     </section>
