@@ -169,9 +169,17 @@ class BrowserManager:
         proxy = _get_system_proxy()
         if proxy and log_callback:
             log_callback(f"[Browser] System proxy detected: {proxy['server']}")
+        args = list(self._LAUNCH_ARGS)
+        if headless:
+            # Force modern headless mode and suppress any leaked window on ARM64
+            args += [
+                "--headless=new",
+                "--disable-gpu",
+                "--window-position=-10000,-10000",
+            ]
         launch_kwargs = dict(
             headless=headless,
-            args=self._LAUNCH_ARGS,
+            args=args,
             ignore_default_args=self._IGNORE_DEFAULT_ARGS,
         )
         if proxy:

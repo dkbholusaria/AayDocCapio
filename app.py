@@ -65,39 +65,55 @@ except Exception as _import_err:
 class _ClientPickerDialog(QDialog):
     """Reusable popup for selecting one or more clients before Edit / Delete.
 
-    mode='edit'   — single-select (checking one auto-unchecks others)
-    mode='delete' — multi-select
+    mode='edit'   — single-select
+    mode='delete' — multi-select with table layout and selected count
     """
 
     def __init__(self, parent, clients, mode):
         super().__init__(parent)
         self._mode    = mode
         self._clients = clients          # list of {id, name, pan}
-        self._checks  = []               # (id, QCheckBox) pairs
 
         t = _t()
         self.setWindowTitle("Select Client to Edit" if mode == "edit"
                             else "Select Client(s) to Delete")
-        self.setMinimumWidth(420)
-        self.setMinimumHeight(380)
+        self.setMinimumWidth(560)
+        self.setMinimumHeight(460)
+        self.resize(620, 520)
+        self.setSizeGripEnabled(True)
         self.setStyleSheet(
             f"QDialog{{background:{t.bg_window};}}"
             f"QLabel{{background:transparent;border:none;color:{t.text_primary};font-size:12px;}}"
             f"QLineEdit{{border:1px solid {t.border};border-radius:6px;padding:5px 10px;"
             f"font-size:12px;background:{t.bg_input};color:{t.text_primary};}}"
-            f"QScrollArea{{border:none;background:transparent;}}"
-            f"QWidget#listArea{{background:{t.bg_table};}}"
+            f"QTableWidget{{border:1px solid {t.border};border-radius:6px;"
+            f"background:{t.bg_table};gridline-color:{t.grid};outline:0;}}"
+            f"QTableWidget::item{{padding:4px 8px;border:none;}}"
+            f"QTableWidget::item:selected{{background:{t.accent};color:white;}}"
+            f"QHeaderView::section{{background:{t.bg_header};color:{t.text_muted};"
+            f"border:none;border-right:1px solid {t.border};"
+            f"border-bottom:1px solid {t.border};font-weight:bold;"
+            f"font-size:11px;height:30px;padding:0 8px;}}"
+            f"QCheckBox::indicator{{width:14px;height:14px;border:1.5px solid {t.border};"
+            f"border-radius:3px;background:{t.bg_checkbox};}}"
+            f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};}}"
         )
 
         vl = QVBoxLayout(self)
-        vl.setContentsMargins(20, 18, 20, 16)
-        vl.setSpacing(10)
+        vl.setContentsMargins(16, 14, 16, 14)
+        vl.setSpacing(8)
 
-        # Sub-title
-        sub = "Select one client to edit:" if mode == "edit" else "Select one or more clients to delete:"
+        # Header row: subtitle + selected count
+        hdr_row = QHBoxLayout()
+        sub = "Select one client to edit:" if mode == "edit" else "Select clients to delete:"
         sub_lbl = QLabel(sub)
-        sub_lbl.setStyleSheet(f"color:{t.text_muted};font-size:11px;background:transparent;border:none;")
-        vl.addWidget(sub_lbl)
+        sub_lbl.setStyleSheet(f"color:{t.text_muted};font-size:11px;")
+        hdr_row.addWidget(sub_lbl)
+        hdr_row.addStretch()
+        self._count_lbl = QLabel("")
+        self._count_lbl.setStyleSheet(f"color:{t.accent};font-size:11px;font-weight:bold;")
+        hdr_row.addWidget(self._count_lbl)
+        vl.addLayout(hdr_row)
 
         # Search box
         self._search = QLineEdit()
@@ -106,72 +122,101 @@ class _ClientPickerDialog(QDialog):
         self._search.textChanged.connect(self._on_search)
         vl.addWidget(self._search)
 
-        # Scrollable checkbox list
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        list_widget = QWidget()
-        list_widget.setObjectName("listArea")
-        list_widget.setStyleSheet(f"background:{t.bg_table};")
-        self._list_layout = QVBoxLayout(list_widget)
-        self._list_layout.setContentsMargins(8, 6, 8, 6)
-        self._list_layout.setSpacing(2)
+        # Table
+        self._table = QTableWidget(len(clients), 3)
+        self._table.setHorizontalHeaderLabels(["", "Name", "PAN"])
+        hdr = self._table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        hdr.setStretchLastSection(True)
+        hdr.setSectionsClickable(True)
+        self._table.setSortingEnabled(True)
+        self._table.setColumnWidth(0, 36)
+        self._table.setColumnWidth(1, 280)
+        self._table.setColumnWidth(2, 120)
+        self._table.verticalHeader().setVisible(False)
+        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self._table.setAlternatingRowColors(True)
+        self._table.setStyleSheet(
+            f"QTableWidget{{alternate-background-color:{t.bg_table_alt};}}")
 
-        chk_style = (
-            f"QCheckBox{{font-size:12px;color:{t.text_primary};background:transparent;spacing:8px;}}"
-            f"QCheckBox::indicator{{width:14px;height:14px;border:1.5px solid {t.border};"
-            f"border-radius:3px;background:{t.bg_checkbox};}}"
-            f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};}}"
-        )
+        self._checks = []   # (client_id, QCheckBox)
+        for row, c in enumerate(clients):
+            self._table.setRowHeight(row, 34)
 
-        for c in clients:
-            cb = QCheckBox(f"{c['name']}   —   {c['pan']}")
-            cb.setStyleSheet(chk_style)
+            cb_widget = QWidget()
+            cb_widget.setStyleSheet("background:transparent;")
+            cb_lay = QHBoxLayout(cb_widget)
+            cb_lay.setContentsMargins(0, 0, 0, 0)
+            cb_lay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            cb = QCheckBox()
             cb.stateChanged.connect(self._on_check_changed)
+            cb_lay.addWidget(cb)
+            self._table.setCellWidget(row, 0, cb_widget)
             self._checks.append((c["id"], cb))
-            self._list_layout.addWidget(cb)
 
-        self._list_layout.addStretch()
-        scroll.setWidget(list_widget)
-        vl.addWidget(scroll, 1)
+            name_item = QTableWidgetItem(c["name"])
+            name_item.setForeground(QColor(t.text_primary))
+            self._table.setItem(row, 1, name_item)
 
-        # Footer buttons
-        self._ok_label = "Edit" if mode == "edit" else "Delete"
+            pan_item = QTableWidgetItem(c["pan"])
+            pan_item.setForeground(QColor(t.text_muted))
+            pan_item.setFont(QFont(_MONO_FONT, 10))
+            pan_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
+            self._table.setItem(row, 2, pan_item)
+
+        # Click on row toggles checkbox
+        self._table.cellClicked.connect(self._on_cell_clicked)
+        vl.addWidget(self._table, stretch=1)
+
+        # Footer
+        from ui.helpers import _btn as _hbtn
         btn_row = QHBoxLayout()
+        if mode == "delete":
+            sel_all_btn = _hbtn("Select All", "outline", height=30, icon="btn_select_all.png")
+            sel_all_btn.clicked.connect(self._select_all)
+            btn_row.addWidget(sel_all_btn)
+            sel_none_btn = _hbtn("Select None", "outline", height=30, icon="btn_select_none.png")
+            sel_none_btn.clicked.connect(self._select_none)
+            btn_row.addWidget(sel_none_btn)
         btn_row.addStretch()
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setFixedHeight(32)
-        cancel_btn.setStyleSheet(
-            f"QPushButton{{background:transparent;color:{t.text_muted};border:1px solid {t.border};"
-            f"border-radius:6px;padding:0 18px;font-size:12px;}}"
-            f"QPushButton:hover{{color:{t.text_primary};border-color:{t.text_muted};}}")
+        cancel_btn = _hbtn("Cancel", "secondary", height=32, icon="btn_cancel.png")
         cancel_btn.clicked.connect(self.reject)
         btn_row.addWidget(cancel_btn)
         btn_row.addSpacing(8)
-        self._ok_btn = QPushButton(self._ok_label)
-        self._ok_btn.setFixedHeight(32)
+        ok_style = "delete" if mode == "delete" else "primary"
+        ok_icon  = "btn_delete.png" if mode == "delete" else "icon_edit.png"
+        self._ok_btn = _hbtn("Edit" if mode == "edit" else "Delete", ok_style, height=32, icon=ok_icon)
         self._ok_btn.setEnabled(False)
-        ok_color = "#DC2626" if mode == "delete" else t.accent
-        ok_hover  = "#B91C1C" if mode == "delete" else t.accent_hover
-        self._ok_btn.setStyleSheet(
-            f"QPushButton{{background:{ok_color};color:#FFFFFF;border:none;"
-            f"border-radius:6px;padding:0 18px;font-size:12px;font-weight:600;}}"
-            f"QPushButton:hover{{background:{ok_hover};}}"
-            f"QPushButton:disabled{{background:{t.border};color:{t.text_muted};}}")
         self._ok_btn.clicked.connect(self.accept)
         btn_row.addWidget(self._ok_btn)
         vl.addLayout(btn_row)
 
+    def _on_cell_clicked(self, row, col):
+        _, cb = self._checks[row]
+        cb.setChecked(not cb.isChecked())
+
+    def _select_all(self):
+        for row, (_, cb) in enumerate(self._checks):
+            if not self._table.isRowHidden(row):
+                cb.setChecked(True)
+
+    def _select_none(self):
+        for _, cb in self._checks:
+            cb.setChecked(False)
+
     def _on_search(self, text):
         q = text.strip().lower()
-        for c, cb in zip(self._clients, [cb for _, cb in self._checks]):
+        for row, (c, (_, cb)) in enumerate(zip(self._clients, self._checks)):
             match = not q or q in c["name"].lower() or q in c["pan"].lower()
-            cb.setVisible(match)
+            self._table.setRowHidden(row, not match)
             if not match:
                 cb.setChecked(False)
 
     def _on_check_changed(self, _state):
         if self._mode == "edit":
-            # Enforce single-select: uncheck all others
             sender = self.sender()
             if sender and sender.isChecked():
                 for _, cb in self._checks:
@@ -181,6 +226,8 @@ class _ClientPickerDialog(QDialog):
                         cb.blockSignals(False)
         n = sum(1 for _, cb in self._checks if cb.isChecked())
         self._ok_btn.setEnabled(n == 1 if self._mode == "edit" else n >= 1)
+        if self._mode == "delete":
+            self._count_lbl.setText(f"{n} selected" if n else "")
 
     @property
     def selected_ids(self):
@@ -1672,8 +1719,10 @@ class AayDocCapioApp(QMainWindow):
                 for a_id in ids:
                     self.vault.delete_assessee(a_id)
                     self.selected_ids.discard(a_id)
+                    self._checkbox_map.pop(a_id, None)
                 self.refresh_grid()
-                self._update_selection_label()
+                self._update_count()
+                self.log(f"[Vault] {len(ids)} client(s) deleted.")
 
 
     def _client_dialog(self, a=None):
@@ -2765,6 +2814,15 @@ class AayDocCapioApp(QMainWindow):
 
         _client_out      = {}   # pan → out path, populated below
         _last_terminal   = {}   # pan → last terminal status text this run
+        _retried:  dict  = {}   # pan → True if already retried once
+        _retry_queue     = []   # targets queued for one retry after main loop
+
+        def _is_transient(err: str) -> bool:
+            e = err.lower()
+            return any(x in e for x in [
+                "timeout", "assessmentyear", "could not find asses",
+                "ais failed", "tis failed", "navigation", "net::",
+            ])
 
         def set_status(pan, text):
             """Update progress dialog and persist terminal status to vault."""
@@ -2901,13 +2959,23 @@ class AayDocCapioApp(QMainWindow):
                 except Exception as e:
                     pan_masked = pan[:3] + "XXXXXXX" if pan and len(pan) >= 3 else "UNKNOWN"
                     self.log(f"[Error] {pan_masked}: {e}")
-                    # Record the failure so the summary dialog/counts reflect it.
-                    self._ais_results[pan] = "failed"
-                    self._last_errors[pan] = str(e)
-                    set_status(pan, f"❌ Failed — {_friendly_error(str(e))}")
-                    if page:
-                        try: await logout_itd(page, self.log)
-                        except Exception: pass
+                    if _is_transient(str(e)) and not _retried.get(pan) and self.is_running:
+                        # Transient error — logout cleanly and queue for one retry
+                        _retried[pan] = True
+                        self.log(f"[Retry] Transient error detected — will retry {pan_masked} after batch.")
+                        set_status(pan, f"🕐 Queued for retry — {_friendly_error(str(e))}")
+                        if page:
+                            try: await logout_itd(page, self.log)
+                            except Exception: pass
+                        _retry_queue.append(target)
+                    else:
+                        # Permanent failure or already retried
+                        self._ais_results[pan] = "failed"
+                        self._last_errors[pan] = str(e)
+                        set_status(pan, f"❌ Failed — {_friendly_error(str(e))}")
+                        if page:
+                            try: await logout_itd(page, self.log)
+                            except Exception: pass
 
                 # Append the final status (whatever the main grid now shows) to log history
                 if ay_label and pan in _last_terminal:
@@ -2917,6 +2985,72 @@ class AayDocCapioApp(QMainWindow):
                         pass
 
                 await asyncio.sleep(3)
+
+            # ── Retry pass — one attempt per transient-failed client ──────────
+            if _retry_queue and self.is_running:
+                self.log(f"[Retry] Retrying {len(_retry_queue)} client(s) that had transient errors...")
+                for target in _retry_queue:
+                    if not self.is_running:
+                        break
+                    pan  = target.get("pan", "")
+                    name = target.get("name", "")
+                    dob  = target.get("dob", "")
+                    pan_masked = pan[:3] + "XXXXXXX" if pan and len(pan) >= 3 else "UNKNOWN"
+                    self.log("──────────────────────────────────────────────────")
+                    self.log(f"[Retry] {name}")
+                    page = None
+                    try:
+                        set_status(pan, "⏳ Logging in to ITD (retry)...")
+                        page = await login_itd(pan, target.get("password"), self.log, context,
+                                               is_running=lambda: self.is_running)
+                        out = _client_out.get(pan, os.path.join(
+                            root_dir,
+                            "".join(c if c.isalnum() or c in " _-" else "" for c in name),
+                            f"AY_{ay.replace('-','_')}"))
+
+                        if mode == "26as" and self.is_running:
+                            set_status(pan, "⏳ Downloading 26AS (retry)...")
+                            ok, err_msg, txt_path = await download_26as(
+                                page, ay, out, self.log, pan=pan, dob=dob)
+                            if ok:
+                                set_status(pan, f"⚠ Excel convert failed" if err_msg else "✅ 26AS Downloaded")
+                            else:
+                                set_status(pan, f"❌ Failed — {err_msg}")
+                        elif mode == "request_ais" and self.is_running:
+                            await self._ensure_dashboard(page)
+                            result = await run_request_ais(
+                                page, fy, out, self.log, pan=pan, dob=dob,
+                                status_callback=lambda t, _p=pan: set_status(_p, t))
+                            self._ais_results[pan] = (
+                                "instant" if result.get("status") == "downloaded"
+                                else "queued" if result.get("status") == "requested"
+                                else "failed")
+                        elif mode == "ais_tis" and self.is_running:
+                            await self._ensure_dashboard(page)
+                            await run_download_ais_tis(
+                                page, fy, out, self.log, pan=pan, dob=dob,
+                                dl_ais=True, dl_tis=False,
+                                should_continue=lambda: self.is_running,
+                                status_callback=lambda t, _p=pan: set_status(_p, t))
+
+                        if self.is_running:
+                            await logout_itd(page, self.log)
+                        self.log(f"[Retry] {pan_masked} done.")
+                    except Exception as e:
+                        self.log(f"[Retry Error] {pan_masked}: {e}")
+                        self._ais_results[pan] = "failed"
+                        self._last_errors[pan] = str(e)
+                        set_status(pan, f"❌ Failed — {_friendly_error(str(e))}")
+                        if page:
+                            try: await logout_itd(page, self.log)
+                            except Exception: pass
+
+                    if ay_label and pan in _last_terminal:
+                        try:
+                            self.log_store.record(pan, ay_label, _last_terminal.pop(pan))
+                        except Exception:
+                            pass
+                    await asyncio.sleep(3)
 
         finally:
             await browser_manager.close()

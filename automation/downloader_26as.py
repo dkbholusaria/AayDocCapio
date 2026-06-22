@@ -158,7 +158,16 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
         ay_frame = await _find_frame(traces_page, "select#AssessmentYearDropDown", timeout=30000)
         if not ay_frame:
             raise Exception("Could not find AssessmentYearDropDown on TRACES view26AS page.")
-        await ay_frame.locator("select#AssessmentYearDropDown").first.select_option(label=assessment_year)
+        for _ay_attempt in range(3):
+            try:
+                await ay_frame.locator("select#AssessmentYearDropDown").first.select_option(
+                    label=assessment_year, timeout=10000)
+                break
+            except Exception:
+                if _ay_attempt == 2:
+                    raise
+                log_callback(f"[26AS] AY selection failed, retrying ({_ay_attempt + 1}/3)...")
+                await asyncio.sleep(2)
         # onchange fires updatePart() which enables btnSubmit — give JS a moment
         await asyncio.sleep(1)
 

@@ -221,7 +221,10 @@ class BatchProgressDialog(QDialog):
         _bt = _t()
         self.setStyleSheet(f"QDialog{{background:{_bt.bg_window};}}")
 
-        self._pan_to_row = {}
+        self._pan_to_row   = {}
+        self._counted_pans: set = set()   # B-07: track which PANs already incremented done count
+        self._done_count   = 0
+        self._total        = len(targets)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 14, 16, 12)
@@ -387,8 +390,6 @@ class BatchProgressDialog(QDialog):
 
         layout.addLayout(footer)
 
-        self._done_count = 0
-        self._total      = len(targets)
         self._rows_data  = {}
 
         for tgt in targets:
@@ -397,8 +398,27 @@ class BatchProgressDialog(QDialog):
 
         self._update_signal.connect(self._on_update)
         self._path_signal.connect(self._on_path_update)
+        self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
 
     # ── internal helpers ──────────────────────────────────────────────────────
+
+    def _on_row_double_clicked(self, row: int, _col: int):
+        """Show full status text for the double-clicked row."""
+        status_item = self._table.item(row, self._COL_STATUS)
+        name_item   = self._table.item(row, self._COL_NAME)
+        if not status_item:
+            return
+        status = status_item.text()
+        name   = name_item.text() if name_item else ""
+        # Find timestamp from rows_data
+        pan_item = self._table.item(row, self._COL_PAN)
+        pan = pan_item.text() if pan_item else ""
+        ts  = self._rows_data.get(pan, {}).get("ts", "")
+        msg = f"{name}  ({pan})\n"
+        if ts:
+            msg += f"{ts}\n"
+        msg += f"\n{status}"
+        QMessageBox.information(self, "Status Detail", msg)
 
     def _open_output_dir(self):
         _log_open(f"[OpenFolder] Button clicked: {self._output_dir!r}")
@@ -426,11 +446,13 @@ class BatchProgressDialog(QDialog):
         if pan in self._rows_data:
             self._rows_data[pan]["status"] = status
             self._rows_data[pan]["ts"] = datetime.datetime.now().strftime("%d-%b-%Y %H:%M:%S")
-        terminal = ("✅", "❌", "🕐", "⬜", "⏹")
+        terminal = ("✅", "❌", "🕐", "⬜", "⏹", "⚠")
         if any(status.startswith(p) for p in terminal):
-            self._done_count += 1
-            self._progress_bar.setValue(self._done_count)
-            self._progress_bar.setFormat(f"{self._done_count} / {self._total} done")
+            if pan not in self._counted_pans:
+                self._counted_pans.add(pan)
+                self._done_count += 1
+                self._progress_bar.setValue(self._done_count)
+                self._progress_bar.setFormat(f"{self._done_count} / {self._total} done")
         if self._done_count >= self._total:
             self._close_btn.setEnabled(True)
             self._report_btn.setEnabled(True)
