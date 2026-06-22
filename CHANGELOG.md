@@ -2,6 +2,38 @@
 
 All notable changes to AayDocCapio are documented here.
 
+## [1.8.1] — 2026-06-22
+
+### New Features
+
+#### System Tray (F-35)
+- **Hide to Tray** — app hides entirely to Windows system tray when a batch download starts (configurable); no taskbar entry while running in background
+- **Tray menu** — right-click tray icon for Restore, Send to Tray, Stop Batch, Quit
+- **WinRT toast notifications** — Windows native balloon with app icon on hide and on batch completion
+- **Send to Tray button** — progress dialog has a ⬇ Tray button to hide manually mid-batch
+- **Auto-restore** — app restores from tray when user clicks tray icon or after batch completes
+
+#### Named Email Templates (F-17 enhancements)
+- **Per-template document selection** — each template independently controls which documents (26AS PDF, 26AS Excel, AIS PDF, AIS Excel, TIS PDF) are attached
+- **Selective export/import** — choose SMTP settings, individual templates, or both when exporting; SMTP password exported encrypted (portable Fernet)
+- **Dynamic Save button** — Cancel button switches to Save & Close only when changes are detected
+
+### Improvements
+- **App logo refreshed** — new 1024×1024 RGBA PNG and ICO with full DPI size set (16, 20, 24, 32, 48, 64, 96, 128, 256px)
+- **Header logo enlarged** — 106×106px in main header; logo also added to Manage Assessment Years dialog
+- **Help Manual updated** — new sections for Run History (11.1), System Tray (10.4), Email Templates (9.4), Export/Import Settings (9.5); logo in hero and sticky nav
+- **Tooltips themed** — QToolTip follows light/dark theme (cream tint in light, dark navy in dark)
+- **Button order** — Email Settings footer: Cancel left, Save Templates + Save & Close right
+- **Screenshots bundled** — Help Manual screenshots now included in compiled .exe/.msi build
+- **Main grid status double-click** — double-click Last Download Status column to see full text popup
+
+### Bug Fixes
+- **Stopped batch preserves status** — stopping a batch no longer overwrites the last saved download status in the vault
+- **Send to Tray menu** — hidden when app is already in tray; shown only when app is visible and batch is running
+- **QAction checkable** — fixed `checkable=True` constructor kwarg error in theme menu actions
+
+---
+
 ## [1.7.6] — 2026-06-20
 
 ### New Features

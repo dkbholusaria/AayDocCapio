@@ -2,6 +2,36 @@
 
 All notable changes to AayDocCapio are documented here.
 
+## [1.8.1] — 2026-06-22
+
+### New Features
+
+#### System Tray (F-35)
+- **Hide to Tray** — app hides entirely to Windows system tray when a batch download starts (configurable); no taskbar entry while running in background
+- **Tray menu** — right-click tray icon for Restore, Send to Tray, Stop Batch, Quit
+- **WinRT toast notifications** — Windows native balloon with app icon on hide and on batch completion
+- **Send to Tray button** — progress dialog has a ⬇ Tray button to hide manually mid-batch
+
+#### Named Email Templates (F-17 enhancements)
+- **Per-template document selection** — each template independently controls which documents are attached
+- **Selective export/import** — choose SMTP settings, individual templates, or both; SMTP password exported encrypted
+- **Dynamic Save button** — Cancel switches to Save & Close only when changes are detected
+
+### Improvements
+- **App logo refreshed** — new 1024×1024 RGBA PNG and ICO with full DPI size set
+- **Header logo enlarged** — 106×106px in main header; logo added to Manage Assessment Years dialog
+- **Help Manual updated** — new sections for Run History (11.1), System Tray (10.4), Email Templates (9.4), Export/Import (9.5); logo in hero and sticky nav
+- **Tooltips themed** — QToolTip follows light/dark theme
+- **Screenshots bundled** — Help Manual screenshots now included in compiled .exe/.msi build
+- **Main grid status double-click** — double-click Last Download Status column to see full text popup
+
+### Bug Fixes
+- **Stopped batch preserves status** — stopping a batch no longer overwrites the last saved download status in the vault
+- **Send to Tray menu** — hidden when app is already in tray
+- **QAction checkable** — fixed constructor kwarg error in theme menu actions
+
+---
+
 ## [1.7.6] — 2026-06-20
 
 ### New Features

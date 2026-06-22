@@ -1,17 +1,20 @@
 # AayDocCapio
 
-**v1.7.6** — A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click — and now **emailing those documents directly to clients**.
+**v1.8.1** — A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click — and now **emailing those documents directly to clients**.
 
 Built with **PyQt6** + **Playwright**. Runs on Windows, macOS, and Linux/WSL.
 
 ---
 
-## What's New in 1.7.6
+## What's New in 1.8.1
 
-- **Run History** — right-click any client to view the last 20 download and email events per AY, colour-coded by outcome.
-- **Named Email Templates** — create multiple templates each with its own subject, body and document type selection; pick the template when sending from Mail Docs.
-- **Inline doc-not-found status** — clients with no matching documents for the selected template show an inline status instead of a blocking error dialog.
-- **Email Settings redesign** — Templates tab comes first; SMTP tab opens automatically for first-time users.
+- **System Tray** — app hides entirely to the Windows system tray during a batch run; WinRT toast notifications with app icon on hide and completion; tray menu for Restore, Stop Batch, Quit.
+- **Selective Email Settings Export/Import** — choose SMTP settings and/or individual templates to export; SMTP password exported encrypted and portable across machines.
+- **Dynamic Save button** — Cancel in Email Settings switches to Save & Close only when changes are detected.
+- **App logo refreshed** — new high-resolution icon with full DPI size set (16–256px); enlarged in header and added to Manage Assessment Years dialog and Help Manual.
+- **Themed tooltips** — QToolTip adapts to light/dark theme.
+- **Help Manual updated** — new sections for System Tray, Email Templates, Export/Import, Run History; logo in hero and sticky nav; screenshots now bundled in compiled build.
+- **Stopped batch preserves status** — stopping no longer overwrites the last saved download status in the vault.
 
 See the full [CHANGELOG](CHANGELOG.md) for details.
 
