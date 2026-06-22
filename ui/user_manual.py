@@ -433,6 +433,7 @@ def _user_manual_page_html(img_uris: dict) -> str:
         <a href="#bulk-ais-download" class="sidebar-nav-item sub-item">4.3. Bulk AIS Download</a>
         <a href="#menu-options-download" class="sidebar-nav-item sub-item">4.4. Menu Options to Click</a>
         <a href="#status-indicators" class="sidebar-nav-item sub-item">4.5. Status Icons & Controls</a>
+        <a href="#run-history" class="sidebar-nav-item sub-item">4.6. Run History</a>
       </div>
       
       <div class="sidebar-group">
@@ -468,6 +469,8 @@ def _user_manual_page_html(img_uris: dict) -> str:
         <a href="#yahoo-icloud-setup-ref" class="sidebar-nav-item sub-sub-item">9.2.3. Yahoo & iCloud</a>
         <a href="#custom-exchange-ref" class="sidebar-nav-item sub-sub-item">9.2.4. Custom & Exchange</a>
         <a href="#automated-mailing" class="sidebar-nav-item sub-item">9.3. Mailing Documents</a>
+        <a href="#email-templates" class="sidebar-nav-item sub-item">9.4. Email Templates</a>
+        <a href="#export-import-settings" class="sidebar-nav-item sub-item">9.5. Export / Import Settings</a>
       </div>
       
       <div class="sidebar-group">
@@ -475,6 +478,7 @@ def _user_manual_page_html(img_uris: dict) -> str:
         <a href="#settings-folder" class="sidebar-nav-item sub-item">10.1. Download Folder Path</a>
         <a href="#settings-ay" class="sidebar-nav-item sub-item">10.2. Manage Assessment Years</a>
         <a href="#settings-appearance" class="sidebar-nav-item sub-item">10.3. Appearance & Themes</a>
+        <a href="#settings-tray" class="sidebar-nav-item sub-item">10.4. System Tray & Background</a>
       </div>
       
       <div class="sidebar-group">
@@ -695,6 +699,27 @@ def _user_manual_page_html(img_uris: dict) -> str:
             + tip_box("You can stop a long-running batch at any time. Clicking the Stop button finishes the active client and safely skips the rest.")
           )}
           {_img("ADC_StatusBasedFilters", "Filtering client list based on download status", "Status Filters")}
+        <div id="run-history" style="scroll-margin-top: 90px; margin-top: 24px;">
+          {section_card(
+            h3("4.6. Run History") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'AayDocCapio keeps a per-client log of the last 20 download results for each Assessment Year. '
+            f'This lets you quickly check when a client was last downloaded and what the outcome was — without opening the output folder.</p>'
+            + steps_html([
+              'Right-click any client row on the main screen.',
+              'Select <strong>View Log</strong> from the context menu.',
+              'The Run History dialog shows a table with <em>Date &amp; Time</em> and <em>Status</em> columns.',
+              'Double-click any row to see the full status message in a detail popup.',
+            ])
+            + f'<p style="color:#1A2233;font-size:0.92rem;margin-top:12px;margin-bottom:6px;"><strong>Status colour guide:</strong></p>'
+            + bullets_html([
+              '<span style="color:#16A34A;font-weight:600;">Green</span> — Successful download (✅)',
+              '<span style="color:#DC2626;font-weight:600;">Red</span> — Failed (❌)',
+              '<span style="color:#B45309;font-weight:600;">Amber</span> — Partial / warning (⚠)',
+              '<span style="color:#2563EB;font-weight:600;">Blue</span> — Email sent entry ([Email])',
+            ])
+            + tip_box("Email delivery events are also recorded in Run History when a document is successfully emailed to the client.")
+          )}
         </div>
       </div>
     </section>
@@ -937,8 +962,49 @@ def _user_manual_page_html(img_uris: dict) -> str:
           )}
           {_img("ADC_EmailTemplateEditor", "Customizing email templates and subject lines", "Email Template Editor")}
           {_img("ADC_SendingBulMailstoClientsConfirmation", "Verification list prior to sending client emails", "Bulk email confirmation")}
+          {_img("ADC_SendingBulMailstoClientsConfirmation", "Verification list prior to sending client emails", "Bulk email confirmation")}
           {_img("ADC_SendingBulMailstoClientsSuccess", "Bulk email delivery report", "Bulk email success status")}
           {_img("ADC_SampleMailSenttoClient", "Sample delivery layout received by client", "Sample email received")}
+        </div>
+
+        <div id="email-templates" style="scroll-margin-top: 90px; margin-top: 24px;">
+          {section_card(
+            h3("9.4. Named Email Templates") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'You can create multiple named email templates — each with its own subject line, body, '
+            f'and document type selection. For example, one template for 26AS-only clients and another for full AIS/TIS clients.</p>'
+            + steps_html([
+              'Go to <strong>Settings → Email Settings</strong> and switch to the <strong>Templates</strong> tab.',
+              'Click <strong>+ Add Template</strong> to create a new template. Double-click a name in the list to rename it.',
+              'Edit the <strong>Subject</strong> and <strong>Body</strong> fields. Use placeholders such as '
+              '{badge("{client_name}")}, {badge("{pan}")}, {badge("{ay}")}, {badge("{firm_name}")}, {badge("{documents}")}.',
+              'Check the document types to include for this template (26AS PDF, 26AS Excel, AIS PDF, AIS Excel, TIS PDF).',
+              'Click <strong>Save Templates</strong> or <strong>Save &amp; Close</strong>.',
+              'When sending mail, select your template from the <strong>Template</strong> dropdown in the Mail Docs dialog. '
+              'Only the documents checked in that template will be attached.',
+            ])
+            + warn_box("Each template has its own document selection. If a document type is unchecked in the template, it will not be attached even if the file exists in the output folder.")
+            + tip_box("The template marked as default (first in list) is pre-selected when you open Mail Docs. You can change the active template from the dropdown at any time.")
+          )}
+          {_img("ADC_EmailSMTPSettingsDialog", "Email Settings — Templates tab", "Email Templates")}
+        </div>
+
+        <div id="export-import-settings" style="scroll-margin-top: 90px; margin-top: 24px;">
+          {section_card(
+            h3("9.5. Export &amp; Import Email Settings") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'You can export your SMTP settings and email templates to a JSON file and import them on another machine. '
+            f'This is useful when setting up AayDocCapio on a new computer or sharing templates across a team.</p>'
+            + steps_html([
+              'Go to <strong>Settings → Email Settings</strong>.',
+              'Click <strong>Export Settings</strong> in the footer. Choose whether to include SMTP settings, templates, or both. '
+              'For templates, select individual templates to export.',
+              'Save the file. The SMTP password is exported in encrypted form and can only be decrypted by AayDocCapio.',
+              'On another machine, click <strong>Import Settings</strong>, select the file, and choose what to apply. '
+              'Existing templates with the same name will be overwritten.',
+            ])
+            + tip_box("The export file is portable — it can be moved between machines. The password is encrypted so it is safe to share via email or a shared drive.")
+          )}
         </div>
       </div>
     </section>
@@ -985,6 +1051,25 @@ def _user_manual_page_html(img_uris: dict) -> str:
             f'Theme preference is saved locally and applies instantly on next application launch.</p>'
           )}
           {_img("ADC_SettingsMenu", "Global settings categories dropdown", "Settings Menu")}
+        </div>
+
+        <div id="settings-tray" style="scroll-margin-top: 90px; margin-top: 24px;">
+          {section_card(
+            h3("10.4. System Tray &amp; Background Running") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'AayDocCapio can hide itself entirely to the Windows system tray during a batch download, '
+            f'freeing up your taskbar and screen space while the run continues in the background.</p>'
+            + steps_html([
+              'Tick <strong>Send to system tray when download starts</strong> in the settings bar on the main screen.',
+              'Start a batch download. After a moment, the app and progress window disappear from the taskbar.',
+              'A Windows notification confirms the app is running in the background.',
+              'Find the AayDocCapio icon in the system tray (bottom-right corner of the taskbar).',
+              'Click the tray icon to restore the app, or right-click for options: <strong>Restore</strong>, <strong>Send to Tray</strong>, <strong>Stop Batch</strong>, <strong>Quit</strong>.',
+              'When the batch finishes, a completion notification appears. The app stays in the tray until you click Restore.',
+            ])
+            + tip_box("You can also send the app to tray manually at any time during a running batch by clicking the ⬇ Tray button in the progress dialog, or via right-click → Send to Tray on the tray icon.")
+            + warn_box("If you quit from the tray menu while a batch is running, the batch will be aborted. Use Stop Batch first if you want to cleanly abort.")
+          )}
         </div>
       </div>
     </section>
