@@ -58,6 +58,7 @@ class ThemeColors:
     border:       str   # default border colour
     border_focus: str   # focused input border
     border_menu:  str   # popup menu border (stronger in light theme for visibility)
+    bg_tooltip:   str   # tooltip background
     grid:         str   # table grid lines
 
     # Accent / interactive
@@ -103,6 +104,7 @@ THEMES: dict[str, ThemeColors] = {
         border          = "#E2E8F0",
         border_focus    = "#3B82F6",
         border_menu     = "#94A3B8",
+        bg_tooltip      = "#FFFDE7",
         grid            = "#E2E8F0",
 
         accent          = "#2563EB",
@@ -141,6 +143,7 @@ THEMES: dict[str, ThemeColors] = {
         border          = "#1E3A5F",
         border_focus    = "#3B82F6",
         border_menu     = "#2E5A8E",
+        bg_tooltip      = "#0F2040",
         grid            = "#1E3A5F",
 
         accent          = "#2563EB",
@@ -246,8 +249,8 @@ QTextEdit {{
 }}
 
 QToolTip {{
-    background-color: #FFFDE7; color: #1E293B;
-    border: 1px solid #CBD5E1; border-radius: 4px;
+    background-color: {t.bg_tooltip}; color: {t.text_primary};
+    border: 1px solid {t.border_menu}; border-radius: 4px;
     padding: 5px 9px; font-size: 11px;
     opacity: 255;
 }}
