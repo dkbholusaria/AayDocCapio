@@ -191,11 +191,12 @@ class BatchProgressDialog(QDialog):
     _COL_PATH   = 3
 
     def __init__(self, targets: list, mode: str, ay: str = "",
-                 stop_callback=None, resume_callback=None,
+                 stop_callback=None, resume_callback=None, skip_callback=None,
                  output_dir: str = "", parent=None):
         super().__init__(parent)
         self._stop_callback   = stop_callback
         self._resume_callback = resume_callback
+        self._skip_callback   = skip_callback
         self._output_dir      = output_dir
         self._mode            = mode
         self._ay              = ay
@@ -355,6 +356,18 @@ class BatchProgressDialog(QDialog):
         self._report_btn.clicked.connect(self._export_report)
         footer.addWidget(self._report_btn)
 
+        self._skip_btn = QPushButton("⏭  Skip")
+        self._skip_btn.setFixedHeight(32)
+        self._skip_btn.setMinimumWidth(80)
+        self._skip_btn.setToolTip("Skip the currently-downloading client and move to the next")
+        self._skip_btn.setStyleSheet(
+            f"QPushButton{{background:{_bt.bg_table_alt};color:{_bt.text_primary};border:1px solid {_bt.border};"
+            f"border-radius:6px;font-size:12px;font-weight:600;padding:0 12px;}}"
+            f"QPushButton:hover{{background:{_bt.bg_input};}}"
+            f"QPushButton:disabled{{color:{_bt.text_muted};border-color:{_bt.border};}}")
+        self._skip_btn.clicked.connect(self._on_skip_clicked)
+        footer.addWidget(self._skip_btn)
+
         self._stop_btn = QPushButton("⏹  Stop")
         self._stop_btn.setFixedHeight(32)
         self._stop_btn.setMinimumWidth(90)
@@ -473,6 +486,12 @@ class BatchProgressDialog(QDialog):
             lbl.setToolTip(folder)
             lbl.setStyleSheet("font-size:11px;padding:0 8px;background:transparent;")
 
+    def _on_skip_clicked(self):
+        if self._skip_callback:
+            self._skip_callback()
+        self._skip_btn.setEnabled(False)
+        self._skip_btn.setText("⏭  Skipping...")
+
     def _on_stop_clicked(self):
         if self._stop_callback:
             self._stop_callback()
@@ -582,6 +601,7 @@ class BatchProgressDialog(QDialog):
                     self._set_status_item(row, "⏹ Stopped")
                     if pan in self._rows_data:
                         self._rows_data[pan]["status"] = "⏹ Stopped"
+        self._skip_btn.setVisible(False)
         self._stop_btn.setVisible(False)
         self._resume_btn.setVisible(aborted)
         self._close_btn.setEnabled(True)
@@ -590,16 +610,85 @@ class BatchProgressDialog(QDialog):
         self._progress_bar.setValue(n)
         label = "Stopped" if aborted else "All done"
         self._progress_bar.setFormat(f"{label} — {n} / {self._total} processed")
+        # F-37: auto-save report to output folder
+        self._auto_save_report()
+
+    def _auto_save_report(self):
+        """F-37: silently save a timestamped report to the output folder after every run."""
+        if not self._output_dir or not os.path.isdir(self._output_dir):
+            return
+        try:
+            import openpyxl, re as _re
+            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+            from openpyxl.utils import get_column_letter
+            timestamp    = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            report_name  = f"BatchReport_{self._ay.replace(' ', '_')}_{timestamp}.xlsx"
+            path         = os.path.join(self._output_dir, report_name)
+            hdr_fill  = PatternFill("solid", fgColor="0F172A")
+            hdr_font  = Font(bold=True, color="FFFFFF", size=11)
+            link_font = Font(color="2563EB", underline="single", size=10)
+            body_font = Font(size=10)
+            center    = Alignment(horizontal="center", vertical="center")
+            left      = Alignment(horizontal="left",   vertical="center", wrap_text=False)
+            thin      = Side(style="thin", color="CBD5E1")
+            border    = Border(left=thin, right=thin, top=thin, bottom=thin)
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "Download Report"
+            headers    = ["#", "Client Name", "Save Folder", "Status", "Timestamp"]
+            col_widths = [5, 30, 60, 40, 22]
+            for col_idx, (h, w) in enumerate(zip(headers, col_widths), start=1):
+                cell = ws.cell(row=1, column=col_idx, value=h)
+                cell.font = hdr_font; cell.fill = hdr_fill
+                cell.alignment = center; cell.border = border
+                ws.column_dimensions[get_column_letter(col_idx)].width = w
+            ws.row_dimensions[1].height = 22
+            for seq, tgt in enumerate(self._targets, start=1):
+                pan     = tgt.get("pan", "")
+                data    = self._rows_data.get(pan, {})
+                row_num = seq + 1
+                folder  = data.get("path", "")
+                status  = data.get("status", "—")
+                name    = data.get("name", tgt.get("name", ""))
+                row_ts  = data.get("ts", "")
+                ws.cell(row=row_num, column=1, value=seq).alignment = center
+                ws.cell(row=row_num, column=2, value=name).alignment = left
+                if folder and os.path.exists(folder):
+                    cell = ws.cell(row=row_num, column=3, value=folder)
+                    cell.hyperlink = folder; cell.font = link_font; cell.alignment = left
+                else:
+                    ws.cell(row=row_num, column=3, value=folder or "—").alignment = left
+                status_clean = _re.sub(r'[^\x00-\x7F✅❌🕐⬜⏹⏳]+', '', status).strip()
+                ws.cell(row=row_num, column=4, value=status_clean).alignment = left
+                ws.cell(row=row_num, column=5, value=row_ts or "—").alignment = center
+                for col_idx in range(1, 6):
+                    cell = ws.cell(row=row_num, column=col_idx)
+                    cell.border = border
+                    if not cell.font or cell.font == Font():
+                        cell.font = body_font
+                ws.row_dimensions[row_num].height = 18
+            ws.freeze_panes = "A2"
+            wb.save(path)
+        except Exception:
+            pass   # Never crash the UI due to report saving
 
     def batch_resumed(self):
         """Reset UI back to running state after Resume is clicked."""
         self._resume_btn.setVisible(False)
+        self._skip_btn.setText("⏭  Skip")
+        self._skip_btn.setEnabled(True)
+        self._skip_btn.setVisible(True)
         self._stop_btn.setText("⏹  Stop")
         self._stop_btn.setEnabled(True)
         self._stop_btn.setVisible(True)
         self._close_btn.setEnabled(False)
         self._report_btn.setEnabled(False)
         self._progress_bar.setFormat(f"{self._done_count} / {self._total} done")
+
+    def client_started(self):
+        """Re-enable the Skip button when a new client begins downloading."""
+        self._skip_btn.setText("⏭  Skip")
+        self._skip_btn.setEnabled(True)
 
     def _on_resume_clicked(self):
         remaining = []
@@ -1273,6 +1362,14 @@ class SmtpSettingsDialog(QDialog):
         self._test_btn.clicked.connect(self._send_test)
         footer_lay.addWidget(self._test_btn)
         log_btn = _btn("View Log", "outline", height=36, icon="btn_view_log.png")
+        export_btn = _btn("Export Settings", "outline", height=36, icon="menu_export.png")
+        export_btn.setToolTip("Export SMTP settings and templates to a JSON file")
+        export_btn.clicked.connect(self._export_settings)
+        footer_lay.addWidget(export_btn)
+        import_btn = _btn("Import Settings", "outline", height=36, icon="menu_import.png")
+        import_btn.setToolTip("Import SMTP settings and templates from a JSON file")
+        import_btn.clicked.connect(self._import_settings)
+        footer_lay.addWidget(import_btn)
         log_btn.clicked.connect(self._open_log)
         footer_lay.addWidget(log_btn)
         footer_lay.addStretch()
@@ -1583,6 +1680,78 @@ class SmtpSettingsDialog(QDialog):
         new_row = min(row, len(self._templates) - 1)
         self._tpl_list.setCurrentRow(new_row)
         self._tpl_del_btn.setEnabled(len(self._templates) > 1)
+
+    def _export_settings(self):
+        """Export SMTP settings + templates to a JSON file (password excluded)."""
+        cfg = self._collect()
+        cfg.pop("smtp_password", None)   # never export password
+        templates = list(self._templates)
+        data = {"smtp": cfg, "templates": templates, "active_template": self._vault.get_active_template_name()}
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Email Settings", "AayDocCapio_EmailSettings.json",
+            "JSON Files (*.json)")
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            QMessageBox.information(self, "Exported",
+                f"Settings exported successfully.\n\nNote: Password is not exported for security.")
+        except Exception as e:
+            QMessageBox.warning(self, "Export Failed", str(e))
+
+    def _import_settings(self):
+        """Import SMTP settings + templates from a JSON file."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import Email Settings", "", "JSON Files (*.json)")
+        if not path:
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            QMessageBox.warning(self, "Import Failed", f"Could not read file:\n{e}")
+            return
+
+        reply = QMessageBox.question(self, "Confirm Import",
+            "This will overwrite your current SMTP settings and templates.\n\nProceed?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        smtp = data.get("smtp", {})
+        # Populate SMTP fields
+        if smtp.get("smtp_host"): self._host.setText(smtp["smtp_host"])
+        if smtp.get("smtp_port"): self._port.setValue(int(smtp["smtp_port"]))
+        if smtp.get("smtp_user"): self._user.setText(smtp["smtp_user"])
+        if smtp.get("smtp_from"): self._from.setText(smtp["smtp_from"])
+        if smtp.get("bcc_addresses"): self._bcc.setText(smtp["bcc_addresses"])
+        if smtp.get("firm_name"): self._firm.setText(smtp["firm_name"])
+        enc = smtp.get("smtp_encryption", "")
+        if enc:
+            idx = self._enc.findText(enc)
+            if idx >= 0: self._enc.setCurrentIndex(idx)
+
+        # Import templates
+        imported_tpls = data.get("templates", [])
+        if imported_tpls:
+            from PyQt6.QtWidgets import QListWidgetItem
+            self._templates = imported_tpls
+            self._tpl_list.clear()
+            for tpl in self._templates:
+                item = QListWidgetItem(tpl["name"])
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+                self._tpl_list.addItem(item)
+            active = data.get("active_template", "")
+            for i, tpl in enumerate(self._templates):
+                if tpl["name"] == active:
+                    self._tpl_list.setCurrentRow(i)
+                    break
+            else:
+                self._tpl_list.setCurrentRow(0)
+
+        QMessageBox.information(self, "Imported",
+            "Settings imported. Please enter your password manually, then click Save.")
 
     def _save_smtp_only(self):
         """Save SMTP/Sender settings without closing."""
