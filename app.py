@@ -28,7 +28,7 @@ from PyQt6.QtGui import QFont, QTextCursor, QColor, QRegularExpressionValidator,
 from PyQt6.QtCore import QRegularExpression
 
 from config import _app_dir, _default_download_dir, _bundled_dir
-from utils import get_timestamp
+from utils import get_timestamp, notify_windows
 from ui._theme import _t, _active_theme
 from ui.helpers import _btn, _lbl, _shadow, _status_style, _STATUS_FG, _UI_FONT
 from ui.widgets import StyledComboBox
@@ -276,6 +276,7 @@ class AayDocCapioApp(QMainWindow):
         self._batch_loop = None           # asyncio event loop for the running batch
         self._batch_task = None           # asyncio Task for the running batch
         self._batch_aborted = False       # True if user clicked Stop
+        self._skip_current  = False       # True when user clicks Skip for current client
         self._last_batch_params = None    # (ay, fy, root_dir, mode) for resume
 
         self._log_signal.connect(self._append_log)
@@ -905,7 +906,7 @@ class AayDocCapioApp(QMainWindow):
         filter_row.setContentsMargins(0, 0, 0, 0)
 
         self.search_box = QLineEdit()
-        self.search_box.setPlaceholderText("🔍  Search by name or PAN...")
+        self.search_box.setPlaceholderText("🔍  Search by name, PAN or status...")
         self.search_box.setFixedHeight(28)
         self.search_box.setClearButtonEnabled(True)
         self.search_box.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
@@ -1092,10 +1093,10 @@ class AayDocCapioApp(QMainWindow):
 
         self.client_table.setColumnWidth(self._TC_CHK,    45)
         self.client_table.setColumnWidth(self._TC_PAN,   130)
-        self.client_table.setColumnWidth(self._TC_DOB,   120)
         self.client_table.setColumnWidth(self._TC_STATUS, 170)
         self.client_table.setColumnWidth(self._TC_TS,    155)
         self.client_table.setColumnWidth(self._TC_ACTS,   52)
+        self.client_table.setColumnHidden(self._TC_DOB, True)   # F-39: DOB is PII, hidden
 
         header = self.client_table.horizontalHeader()
         header.setSectionResizeMode(self._TC_CHK,    QHeaderView.ResizeMode.Interactive)
@@ -1243,6 +1244,17 @@ class AayDocCapioApp(QMainWindow):
             f"border-radius:3px;background:{_ck.bg_checkbox};}}"
             f"QCheckBox::indicator:checked{{background:{_ck.accent};border-color:{_ck.accent};}}")
         hl.addWidget(self.chk_headless)
+
+        _auto_min_saved = self.vault.get_setting("auto_minimise", False) if hasattr(self, "vault") else False
+        self.chk_auto_minimise = QCheckBox("Auto-minimise when download starts")
+        self.chk_auto_minimise.setChecked(bool(_auto_min_saved))
+        self.chk_auto_minimise.setToolTip(
+            "Minimise the app to the taskbar when a batch download begins.\n"
+            "A Windows notification will appear when the run completes.")
+        self.chk_auto_minimise.setStyleSheet(self.chk_headless.styleSheet())
+        self.chk_auto_minimise.stateChanged.connect(
+            lambda v: self.vault.update_setting("auto_minimise", bool(v)))
+        hl.addWidget(self.chk_auto_minimise)
 
         hl.addStretch()
 
@@ -1443,9 +1455,11 @@ class AayDocCapioApp(QMainWindow):
             status_item = self.client_table.item(row_idx, self._TC_STATUS)
             if not name_item or not pan_item:
                 continue
+            st_text = status_item.text().lower() if status_item else ""
             text_match = (not q
                           or q in name_item.text().lower()
-                          or q in pan_item.text().lower())
+                          or q in pan_item.text().lower()
+                          or q in st_text)
             if status_prefixes is None:
                 status_match = True
             else:
@@ -2401,6 +2415,10 @@ class AayDocCapioApp(QMainWindow):
         # Show progress dialog (on main thread via signal)
         self._show_progress_signal.emit(targets, mode, year_tag, output_dir)
 
+        # F-35: auto-minimise if setting enabled
+        if getattr(self, "chk_auto_minimise", None) and self.chk_auto_minimise.isChecked():
+            QTimer.singleShot(500, self.showMinimized)
+
         threading.Thread(
             target=self._run_wrapper,
             args=(targets, ay, fy, output_dir, mode, ay_label),
@@ -2410,7 +2428,7 @@ class AayDocCapioApp(QMainWindow):
         """Called on main thread to create and show the progress dialog."""
         self._progress_dialog = BatchProgressDialog(
             targets, mode, ay=ay, stop_callback=self.stop_automation,
-            resume_callback=self.resume_batch,
+            resume_callback=self.resume_batch, skip_callback=self.skip_client,
             output_dir=output_dir, parent=self)
         # Window-modal: blocks the parent window (so it can't be clicked behind
         # the dialog) but still allows the worker thread's Qt-signal updates.
@@ -2420,6 +2438,10 @@ class AayDocCapioApp(QMainWindow):
         self._progress_dialog.show()
         self._progress_dialog.raise_()
         self._progress_dialog.activateWindow()
+
+    def skip_client(self):
+        """Signal the batch runner to skip the currently-downloading client."""
+        self._skip_current = True
 
     def stop_automation(self):
         if not self.is_running:
@@ -2516,6 +2538,12 @@ class AayDocCapioApp(QMainWindow):
         self.log("[System] Engine Idle.")
         # Refresh grid so Last Download Status / Last Saved Location columns update
         QTimer.singleShot(200, self.refresh_grid)
+        # F-35: Windows notification on completion
+        if not self._batch_aborted:
+            mode_label = {"26as": "26AS", "request_ais": "AIS Request", "ais_tis": "AIS/TIS"}.get(
+                self._last_mode, "Batch")
+            notify_windows("AayDocCapio — Download Complete",
+                           f"{mode_label} batch run finished. Click to open the app.")
 
         mode = self._last_mode
 
@@ -2867,6 +2895,9 @@ class AayDocCapioApp(QMainWindow):
                 pan  = target.get("pan", "")
                 name = target.get("name", "")
                 dob  = target.get("dob", "")
+                self._skip_current = False   # reset skip flag for each new client
+                if self._progress_dialog:
+                    self._progress_dialog.client_started()
                 self.log("──────────────────────────────────────────────────")
                 self.log(f"[{i+1}/{len(targets)}] {name}")
 
@@ -2885,6 +2916,14 @@ class AayDocCapioApp(QMainWindow):
                     page = await login_itd(pan, target.get("password"), self.log, context,
                                            is_running=lambda: self.is_running)
                     set_status(pan, "⏳ Logged in to ITD")
+
+                    # ── Skip check ───────────────────────────────────────────────
+                    if self._skip_current:
+                        set_status(pan, "⬜ Skipped")
+                        await logout_itd(page, self.log)
+                        page = None
+                        await asyncio.sleep(1)
+                        continue
 
                     # ── 26AS ─────────────────────────────────────────────────────
                     if mode == "26as" and self.is_running:
