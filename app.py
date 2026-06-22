@@ -4,7 +4,7 @@ Run:  python3 app.py
 """
 from version import __version__ as APP_VERSION
 
-import sys, os, json, asyncio, threading, datetime, time, subprocess, logging
+import sys, os, json, asyncio, threading, datetime, logging
 from urllib.parse import urlencode
 
 # Force XCB (X11) backend on Linux/WSL2 — must be set before Qt initialises.
@@ -16,21 +16,20 @@ if sys.platform != "win32":
 from themes import THEMES, ThemeColors, build_stylesheet, get_theme, MONO_FONT_NAME as _MONO_FONT
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton,
-    QLineEdit, QCheckBox, QComboBox, QFileDialog, QScrollArea,
-    QTabWidget, QHBoxLayout, QVBoxLayout, QGridLayout,
-    QMessageBox, QTextEdit, QDialog, QRadioButton, QSplitter, QSizePolicy,
-    QGraphicsDropShadowEffect, QListView, QStyledItemDelegate, QTableWidget,
-    QTableWidgetItem, QHeaderView, QAbstractItemView, QToolButton, QMenu,
-    QProgressBar, QCalendarWidget, QSystemTrayIcon,
+    QLineEdit, QCheckBox, QComboBox, QFileDialog,
+    QHBoxLayout, QVBoxLayout,
+    QMessageBox, QTextEdit, QDialog, QSizePolicy,
+    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
+    QToolButton, QMenu, QCalendarWidget, QSystemTrayIcon,
 )
-from PyQt6.QtCore import Qt, pyqtSignal, pyqtSlot, QTimer, QMetaObject, Q_ARG, QModelIndex, QUrl
+from PyQt6.QtCore import Qt, pyqtSignal, pyqtSlot, QTimer, QMetaObject, Q_ARG, QUrl
 from PyQt6.QtGui import QFont, QTextCursor, QColor, QRegularExpressionValidator, QPalette, QAction, QIcon, QPixmap, QDesktopServices
 from PyQt6.QtCore import QRegularExpression
 
 from config import _app_dir, _default_download_dir, _bundled_dir
 from utils import get_timestamp, notify_windows
-from ui._theme import _t, _active_theme
-from ui.helpers import _btn, _lbl, _shadow, _status_style, _STATUS_FG, _UI_FONT
+from ui._theme import _t
+from ui.helpers import _btn, _lbl, _shadow
 from ui.widgets import StyledComboBox
 from ui.dialogs import ManageYearsDialog, BatchProgressDialog
 from ui.log_history import LogHistoryDialog, LogStore
@@ -634,7 +633,6 @@ class AayDocCapioApp(QMainWindow):
                 f"color:{t.text_muted};font-size:10px;font-weight:700;"
                 f"letter-spacing:0.8px;background:transparent;")
         if hasattr(self, "lbl_selected"):
-            cur = self.lbl_selected.text()
             self.lbl_selected.setStyleSheet(
                 f"color:{t.accent};font-size:11px;font-weight:bold;background:transparent;")
 
@@ -2638,7 +2636,6 @@ class AayDocCapioApp(QMainWindow):
             self._tray_send_act.setVisible(False)
             self._tray.setToolTip("AayDocCapio — Batch complete")
             # Auto-restore after balloon (small delay so user sees the notification)
-            QTimer.singleShot(3000, self._tray_restore)
         # F-35: Windows native toast — only when NOT using tray (tray has its own balloon)
         if not self._batch_aborted and not (hasattr(self, "_tray") and self._tray.isVisible()):
             mode_label = {"26as": "26AS", "request_ais": "AIS Request", "ais_tis": "AIS/TIS"}.get(
