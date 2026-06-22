@@ -186,6 +186,7 @@ if (Test-Path "dist\app.dist")  { Remove-Item -Recurse -Force "dist\app.dist";  
     --output-filename=AayDocCapio.exe `
     --include-data-file=assessment_years.json=assessment_years.json `
     --include-data-dir=resources=resources `
+    --include-data-dir=Documentation/screenshots=Documentation/screenshots `
     --include-package=automation `
     --include-module=vault `
     --enable-plugin=pyqt6 `
