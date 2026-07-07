@@ -82,7 +82,7 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
         await asyncio.sleep(1.0)
         log_callback("[26AS] Clicking View Form 26AS — waiting for TRACES to load...")
         await update_browser_status(page, "26AS: Opening TRACES portal...")
-        view_26as = page.locator("//*[text()='View Form 26AS']").first
+        view_26as = page.locator("//*[contains(text(),'View Form 26AS')]").first
         await view_26as.wait_for(state="visible", timeout=30000)
 
         # TRACES may open in a new tab or navigate in the same tab

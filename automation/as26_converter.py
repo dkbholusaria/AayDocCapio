@@ -12,15 +12,20 @@ from datetime import datetime
 # ── Part metadata ──────────────────────────────────────────────────────────────
 
 PART_META = {
-    "I":    {"title": "TDS — Salary / Professional / Interest / VDA",             "credit": True},
-    "II":   {"title": "TDS on Interest (15G/15H — No TDS Deducted)",              "credit": True},
-    "III":  {"title": "TDS on Winnings / Benefits / VDA (Tax Paid Before Release)","credit": True},
-    "IV":   {"title": "TDS u/s 194IA/IB/M/S (Seller of Property / VDA)",          "credit": True},
-    "V":    {"title": "26QE — Seller of Virtual Digital Asset",                    "credit": True},
-    "VI":   {"title": "TCS — Tax Collected at Source",                             "credit": True},
-    "VII":  {"title": "Refunds Paid",                                              "credit": False},
-    "VIII": {"title": "TDS u/s 194IA/IB/M/S (Buyer of Property / VDA)",           "credit": False},
-    "IX":   {"title": "26QE — Buyer of Virtual Digital Asset",                     "credit": False},
+    # Form 26AS (IT Act 1961)
+    "I":    {"title": "TDS — Salary / Professional / Interest / VDA",              "credit": True},
+    "II":   {"title": "TDS on Interest (15G/15H — No TDS Deducted)",               "credit": True},
+    "III":  {"title": "TDS on Winnings / Benefits / VDA (Tax Paid Before Release)", "credit": True},
+    "IV":   {"title": "TDS u/s 194IA/IB/M/S (Seller of Property / VDA)",           "credit": True},
+    "V":    {"title": "26QE — Seller of Virtual Digital Asset",                     "credit": True},
+    "VI":   {"title": "TCS — Tax Collected at Source",                              "credit": True},
+    "VII":  {"title": "Refunds Paid",                                               "credit": False},
+    "VIII": {"title": "TDS u/s 194IA/IB/M/S (Buyer of Property / VDA)",            "credit": False},
+    "IX":   {"title": "26QE — Buyer of Virtual Digital Asset",                      "credit": False},
+    # Form 168 (IT Act 2025) — Parts I-IX reused; X split into X(a)/X(b); XI is new
+    "X_A":  {"title": "TDS/TCS Defaults (Processing of Statements)",                "credit": False},
+    "X_B":  {"title": "Other Demands Raised by AO",                                 "credit": False},
+    "XI":   {"title": "TDS/TCS Credit by AO u/s 398",                               "credit": True},
 }
 
 NON_FINAL_STATUSES = {"U", "M", "O", "P", "Z"}
@@ -47,37 +52,55 @@ def _parse(txt_path: str) -> dict:
 
     lines = [ln.rstrip("\n\r") for ln in raw.splitlines()]
 
-    # ── File header (lines 0-2) ────────────────────────────────────────────
-    header_keys   = [c.strip() for c in lines[2].split("^") if c.strip()]
-    header_values = [c.strip() for c in lines[3].split("^")] if len(lines) > 3 else []
-    # Drop leading empty from values (line starts with content, no leading ^)
-    # but preserve internal empties so positional zip aligns correctly
+    # ── File header ────────────────────────────────────────────────────────
+    # Form 26AS: line 0 blank, line 1 title, line 2 keys, line 3 values
+    # Form 168:  line 0 title (^Form 168/...^), line 1 keys, line 2 values
+    # Detect by checking whether line 0 starts with "^Form 168"
+    if lines[0].startswith("^Form 168") or lines[0].startswith("^FORM 168"):
+        header_keys   = [c.strip() for c in lines[1].split("^") if c.strip()]
+        header_values = [c.strip() for c in lines[2].split("^")] if len(lines) > 2 else []
+        parts_start   = 3
+    else:
+        header_keys   = [c.strip() for c in lines[2].split("^") if c.strip()]
+        header_values = [c.strip() for c in lines[3].split("^")] if len(lines) > 3 else []
+        parts_start   = 4
     header = dict(zip(header_keys, header_values))
 
     # ── Split into Part blocks ─────────────────────────────────────────────
-    part_re = re.compile(r"^\^PART-([IVX]+)\s*[-–]", re.IGNORECASE)
+    # Form 26AS uses:  ^PART-I –   ^PART-II –   ^PART-III –  etc.
+    # Form 168 uses:   ^PART I -   ^PART-II     ^PART III-   ^PART X (a)-  ^PART XI -
+    # Regex captures the roman numeral; sub-parts like X(a)/X(b) are captured as "X_A"/"X_B"
+    part_re = re.compile(
+        r"^\^PART[-\s]*(X\s*\(([ab])\)|([IVX]+))\s*[-–(\s]",
+        re.IGNORECASE,
+    )
     no_txn_re = re.compile(r"No Transactions Present", re.IGNORECASE)
 
     parts = {}
     current_part = None
     current_lines = []
 
-    for ln in lines[4:]:
+    for ln in lines[parts_start:]:
         m = part_re.match(ln)
         if m:
             if current_part:
                 parts[current_part] = current_lines
-            current_part = m.group(1).upper()
+            if m.group(2):
+                # Sub-part: X(a) or X(b)
+                current_part = f"X_{m.group(2).upper()}"
+            else:
+                current_part = m.group(3).upper()
             current_lines = []
         elif current_part:
             current_lines.append(ln)
 
-    if current_part and current_part != "X":
+    if current_part:
         parts[current_part] = current_lines
 
     # ── Parse each Part ────────────────────────────────────────────────────
     parsed_parts = {}
     for roman, plines in parts.items():
+        # Skip legacy X (undivided) — Form 168 uses X_A / X_B
         if roman == "X":
             continue
         # Check empty
@@ -905,24 +928,34 @@ def _build_html(parsed: dict, row_ids: dict, report_ts: str = "") -> str:
     pan  = header.get("Permanent Account Number (PAN)", "")
     name = header.get("Name of Assessee", "")
     fy   = header.get("Financial Year", "")
-    ay   = header.get("Assessment Year", "")
+    ay   = header.get("Assessment Year", "") or header.get("Tax Year", "")
+
+    is_168       = bool(header.get("Tax Year"))
+    form_label   = "Form 168" if is_168 else "Form 26AS"
+    year_prefix  = "TY" if is_168 else "AY"
+    year_row_lbl = "Tax Year" if is_168 else "Assessment Year"
+    _fy_row      = "" if is_168 else f'<tr class="alt"><td class="label">Financial Year</td><td>{fy}</td></tr>'
     pan_status = header.get("Current Status of PAN", "")
-    addr_parts = [header.get(f"Address Line {i}", "") for i in range(1, 6)]
-    state = header.get("Statecode", "")
-    pin   = header.get("Pin Code", "")
     gen_date   = header.get("File Creation Date", datetime.today().strftime("%d-%m-%Y"))
     if not report_ts:
         report_ts = datetime.now().strftime("%d-%b-%Y %I:%M %p")
 
+    # Form 26AS: address split across Address Line 1-5 + Statecode + Pin Code
+    # Form 168: single "Address of Assessee" field
+    addr_parts = [header.get(f"Address Line {i}", "") for i in range(1, 6)]
+    state = header.get("Statecode", "")
+    pin   = header.get("Pin Code", "")
     addr_html = "<br>".join(a for a in addr_parts if a)
     if state:
         addr_html += f"<br>{state}"
     if pin:
         addr_html += f" — {pin}"
+    if not addr_html:
+        addr_html = header.get("Address of Assessee", "").replace(", ", "<br>")
 
-    # Build tabs
-    active_parts = [r for r in ["I","II","III","IV","V","VI","VII","VIII","IX"]
-                    if r in parts and not parts[r]["empty"]]
+    # Build tabs — include Form 168 sub-parts X_A, X_B, XI alongside Form 26AS parts
+    _all_part_order = ["I","II","III","IV","V","VI","VII","VIII","IX","X_A","X_B","XI"]
+    active_parts = [r for r in _all_part_order if r in parts and not parts[r]["empty"]]
 
     tab_items = [('assessee', '📋 Assessee Details')]
     for roman in active_parts:
@@ -942,7 +975,7 @@ def _build_html(parsed: dict, row_ids: dict, report_ts: str = "") -> str:
 <div id="sheet-assessee" class="sheet active">
   <div class="brand">
     <div><div class="brand-title">AayDoc Capio</div>
-    <div class="brand-sub">Annual Tax Statement — Form 26AS · AY {ay}</div></div>
+    <div class="brand-sub">Annual Tax Statement — {form_label} · {year_prefix} {ay}</div></div>
     <div class="brand-badge">Generated by AayDoc Capio · {report_ts}</div>
   </div>
   <div class="tbl-wrap">
@@ -952,8 +985,8 @@ def _build_html(parsed: dict, row_ids: dict, report_ts: str = "") -> str:
       <tr class="alt"><td class="label">Current Status of PAN</td>
         <td style="color:#1a5c32;font-weight:700">✅ {pan_status}</td></tr>
       <tr><td class="label">Name of Assessee</td><td>{name}</td></tr>
-      <tr class="alt"><td class="label">Financial Year</td><td>{fy}</td></tr>
-      <tr><td class="label">Assessment Year</td><td>{ay}</td></tr>
+      {_fy_row}
+      <tr><td class="label">{year_row_lbl}</td><td>{ay}</td></tr>
       <tr class="alt"><td class="label">Data Updated Till</td><td>{gen_date}</td></tr>
       <tr><td class="label">Report Generated On</td><td>{report_ts}</td></tr>
       <tr class="sec-hdr"><td colspan="2">ADDRESS</td></tr>
@@ -1007,7 +1040,7 @@ def _build_html(parsed: dict, row_ids: dict, report_ts: str = "") -> str:
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Form 26AS — {name} — AY {ay}</title>
+<title>{form_label} — {name} — {year_prefix} {ay}</title>
 <style>{_CSS}</style>
 </head>
 <body>
@@ -1057,9 +1090,14 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
     header = parsed["header"]
     parts  = parsed["parts"]
 
-    ay            = header.get("Assessment Year", "")
+    ay            = header.get("Assessment Year", "") or header.get("Tax Year", "")
     assessee_name = header.get("Name of Assessee", "")
     assessee_pan  = header.get("Permanent Account Number (PAN)", "")
+
+    is_168_xl      = bool(header.get("Tax Year"))
+    form_label_xl  = "Form 168" if is_168_xl else "Form 26AS"
+    year_prefix_xl = "TY" if is_168_xl else "AY"
+    yr_row_lbl_xl  = "Tax Year" if is_168_xl else "Assessment Year"
 
     # xlsxwriter writes directly to a file path — use a temp file then move
     tmp_fd, tmp_path = tempfile.mkstemp(
@@ -1141,7 +1179,7 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
         """Row 0 (xlsxwriter 0-indexed): left title | right branding, navy bg."""
         split = min(3, ncols - 1) if ncols > 1 else 0  # 0-indexed col
         ws.merge_range(0, 0, 0, split,
-                       f"Form 26AS  —  {assessee}  —  AY {ay}", F_BRAND_L)
+                       f"{form_label_xl}  —  {assessee}  —  {year_prefix_xl} {ay}", F_BRAND_L)
         if split + 1 < ncols:
             ws.merge_range(0, split + 1, 0, ncols - 1,
                            f"AayDoc Capio™  ·  {report_ts}  ·  © 2026  ·  CA. Deepak Bhholusaria",
@@ -1224,7 +1262,7 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
     # ── Assessee Details sheet ─────────────────────────────────────────────
     ws_ass = _ws("Assessee Details")
     ws_ass.merge_range(0, 0, 0, 1,
-                       f"Form 26AS  —  {assessee_name}  —  AY {ay}", F_TITLE)
+                       f"{form_label_xl}  —  {assessee_name}  —  {year_prefix_xl} {ay}", F_TITLE)
     ws_ass.set_row(0, 28)
     ws_ass.merge_range(1, 0, 1, 1,
                        "AayDoc Capio™  ·  © 2026  ·  Developed by CA. Deepak Bhholusaria  ·  linkedin.com/in/bhholusaria  ·  deepak@ailearrning.guru",
@@ -1236,18 +1274,19 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
         ("Permanent Account Number (PAN)", "Permanent Account Number (PAN)"),
         ("Current Status of PAN",          "Current Status of PAN"),
         ("Name of Assessee",               "Name of Assessee"),
-        ("Financial Year",                 "Financial Year"),
-        ("Assessment Year",                "Assessment Year"),
+        *([("Financial Year", "Financial Year")] if not is_168_xl else []),
+        (yr_row_lbl_xl,                    "Assessment Year" if not is_168_xl else "Tax Year"),
         ("Data Updated Till",              "File Creation Date"),
         ("Report Generated On",            "__report_ts__"),
         ("ADDRESS", None),
-        ("Address Line 1",  "Address Line 1"),
-        ("Address Line 2",  "Address Line 2"),
-        ("Address Line 3",  "Address Line 3"),
-        ("Address Line 4",  "Address Line 4"),
-        ("Address Line 5",  "Address Line 5"),
-        ("State",           "Statecode"),
-        ("PIN Code",        "Pin Code"),
+        *([("Address Line 1",  "Address Line 1"),
+           ("Address Line 2",  "Address Line 2"),
+           ("Address Line 3",  "Address Line 3"),
+           ("Address Line 4",  "Address Line 4"),
+           ("Address Line 5",  "Address Line 5"),
+           ("State",           "Statecode"),
+           ("PIN Code",        "Pin Code")] if not is_168_xl else [
+           ("Address",         "Address of Assessee")]),
     ]
     r = 2  # 0-indexed
     for label, key in fields_map:
@@ -1691,10 +1730,10 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
 
     # ── File properties ────────────────────────────────────────────────────
     wb.set_properties({
-        "title":    f"Form 26AS — {assessee_name} — AY {ay}",
-        "subject":  f"Annual Tax Statement | PAN: {assessee_pan} | AY: {ay}",
+        "title":    f"{form_label_xl} — {assessee_name} — {year_prefix_xl} {ay}",
+        "subject":  f"Annual Tax Statement | PAN: {assessee_pan} | {year_prefix_xl}: {ay}",
         "author":   "AayDoc Capio",
-        "keywords": f"26AS, TDS, TCS, {assessee_pan}, {ay}",
+        "keywords": f"{'168' if is_168_xl else '26AS'}, TDS, TCS, {assessee_pan}, {ay}",
         "comments": f"Generated by AayDoc Capio on {report_ts}",
     })
 
@@ -1721,7 +1760,7 @@ def convert_26as_txt(txt_path: str, log_callback=None) -> tuple[str, str]:
     report_ts = datetime.now().strftime("%d-%b-%Y %I:%M %p")
 
     # row_ids is filled in during HTML building, then reused for Excel
-    row_ids = {r: {} for r in ["I","II","III","IV","V","VI","VII","VIII","IX"]}
+    row_ids = {r: {} for r in ["I","II","III","IV","V","VI","VII","VIII","IX","X_A","X_B","XI"]}
 
     log(f"[26AS] Building HTML...")
     html = _build_html(parsed, row_ids, report_ts)
@@ -1730,7 +1769,7 @@ def convert_26as_txt(txt_path: str, log_callback=None) -> tuple[str, str]:
     log(f"[26AS] HTML saved: {os.path.basename(html_path)}")
 
     # row_ids now populated with xl_row stubs (0); Excel writer fills xl_row properly
-    row_ids = {r: {} for r in ["I","II","III","IV","V","VI","VII","VIII","IX"]}
+    row_ids = {r: {} for r in ["I","II","III","IV","V","VI","VII","VIII","IX","X_A","X_B","XI"]}
 
     log(f"[26AS] Building Excel workbook...")
     try:

@@ -42,6 +42,7 @@ try:
     from automation.browser import browser_manager
     from automation.auth import login_itd, logout_itd
     from automation.downloader_26as import download_26as
+    from automation.downloader_168 import download_168
     from automation.downloader_ais_tis import run_request_ais, run_download_ais_tis
 except Exception as _import_err:
     import traceback
@@ -1414,8 +1415,10 @@ class AayDocCapioApp(QMainWindow):
             f"QMenu::separator{{ height:1px; background:{_rm.border_menu}; margin:4px 0; }}"
         )
 
-        act_26as = QAction("▶  Download 26AS", self)
-        act_26as.setToolTip("Downloads Form 26AS PDF + TXT for selected clients.")
+        act_26as = QAction("▶  Download 26AS / Form 168", self)
+        act_26as.setToolTip(
+            "Downloads Form 26AS (AY up to 2026-27) or Form 168 (TY 2026-27+)\n"
+            "PDF + Excel/TXT for selected clients.")
         act_26as.triggered.connect(lambda: self.start_automation("26as"))
 
         act_request_ais = QAction("📋  Download / Request TIS & AIS", self)
@@ -2272,15 +2275,16 @@ class AayDocCapioApp(QMainWindow):
             ]
 
     def _resolve_ay_fy(self, label: str):
-        """Returns (ay_or_ty_value, fy_value, year_type) where year_type is 'AY' or 'TY'."""
+        """Returns (ay_or_ty_value, fy_value, year_type, form_type) where year_type is 'AY' or 'TY'."""
         for e in self._ay_entries:
             if e["label"] == label:
                 y = e["year"]
+                ft = e.get("form_type", "26AS")
                 if y.get("AY"):
-                    return y["AY"], y.get("FY"), "AY"
+                    return y["AY"], y.get("FY"), "AY", ft
                 if y.get("TY"):
-                    return y["TY"], y.get("FY"), "TY"
-        return None, None, "AY"
+                    return y["TY"], y.get("FY"), "TY", ft
+        return None, None, "AY", "26AS"
 
     def open_manage_years(self):
         ManageYearsDialog(self, self._ay_json_path(), on_save=self.refresh_ay_combo).exec()
@@ -2494,13 +2498,15 @@ class AayDocCapioApp(QMainWindow):
             QMessageBox.warning(self, "Selection Required",
                 "Please select an Assessment / Tax Year.")
             return
-        ay, fy, year_type = self._resolve_ay_fy(ay_label)
+        ay, fy, year_type, form_type = self._resolve_ay_fy(ay_label)
         if not ay:
             QMessageBox.warning(self, "Invalid", f"Cannot resolve year: {ay_label}")
             return
 
         self.is_running = True
         self._batch_aborted = False
+        self._batch_form_type = form_type
+        self._batch_year_type = year_type
         self._lock_ui(True)
         self.log_box.clear()
 
@@ -3023,7 +3029,8 @@ class AayDocCapioApp(QMainWindow):
                 self.log(f"[{i+1}/{len(targets)}] {name}")
 
                 name_safe = "".join(c if c.isalnum() or c in " _-" else "" for c in name)
-                out = os.path.join(root_dir, f"{pan}-{name_safe}", f"AY_{ay.replace('-','_')}")
+                _yr_prefix = getattr(self, "_batch_year_type", "AY")
+                out = os.path.join(root_dir, f"{pan}-{name_safe}", f"{_yr_prefix}_{ay.replace('-','_')}")
 
                 _client_out[pan] = out
                 # Tell the progress dialog the client's save folder immediately
@@ -3051,30 +3058,53 @@ class AayDocCapioApp(QMainWindow):
                         await asyncio.sleep(1)
                         continue
 
-                    # ── 26AS ─────────────────────────────────────────────────────
+                    # ── 26AS / Form 168 ──────────────────────────────────────────
                     if mode == "26as" and self.is_running:
-                        set_status(pan, "⏳ Downloading 26AS...")
-                        ok, err_msg, txt_path = await download_26as(page, ay, out, self.log, pan=pan, dob=dob)
-                        if ok:
-                            if err_msg:
-                                # PDF saved but TXT failed (bad password / extraction error)
-                                set_status(pan, f"⚠ Partially Completed — {err_msg}")
+                        _form_type = getattr(self, "_batch_form_type", "26AS")
+                        if _form_type == "168":
+                            set_status(pan, "⏳ Downloading Form 168...")
+                            ok, err_msg, txt_path = await download_168(page, ay, out, self.log, pan=pan, dob=dob)
+                            if ok:
+                                if err_msg:
+                                    set_status(pan, f"⚠ Partially Completed — {err_msg}")
+                                else:
+                                    set_status(pan, "✅ Form 168 Downloaded")
+                                if txt_path:
+                                    self._batch_26as_txts.append((pan, txt_path))
+                                    set_status(pan, "⏳ Converting to Excel...")
+                                    try:
+                                        from automation.as26_converter import convert_26as_txt
+                                        self.log(f"[Convert] Converting Form 168 → Excel/HTML for {pan}…")
+                                        convert_26as_txt(txt_path, log_callback=self.log)
+                                        set_status(pan, "✅ Form 168 + Excel + HTML")
+                                    except Exception as _conv_exc:
+                                        self.log(f"[Convert] Warning: conversion failed for {pan}: {_conv_exc}")
+                                        set_status(pan, "⚠ Excel convert failed")
                             else:
-                                set_status(pan, "✅ 26AS Downloaded")
-                            if txt_path:
-                                self._batch_26as_txts.append((pan, txt_path))
-                                # Convert immediately while next client logs in
-                                set_status(pan, "⏳ Converting to Excel...")
-                                try:
-                                    from automation.as26_converter import convert_26as_txt
-                                    self.log(f"[Convert] Converting 26AS → Excel/HTML for {pan}…")
-                                    convert_26as_txt(txt_path, log_callback=self.log)
-                                    set_status(pan, "✅ 26AS + Excel + HTML")
-                                except Exception as _conv_exc:
-                                    self.log(f"[Convert] Warning: conversion failed for {pan}: {_conv_exc}")
-                                    set_status(pan, "⚠ Excel convert failed")
+                                set_status(pan, f"❌ Form 168 Failed — {err_msg}")
                         else:
-                            set_status(pan, f"❌ 26AS Failed — {err_msg}")
+                            set_status(pan, "⏳ Downloading 26AS...")
+                            ok, err_msg, txt_path = await download_26as(page, ay, out, self.log, pan=pan, dob=dob)
+                            if ok:
+                                if err_msg:
+                                    # PDF saved but TXT failed (bad password / extraction error)
+                                    set_status(pan, f"⚠ Partially Completed — {err_msg}")
+                                else:
+                                    set_status(pan, "✅ 26AS Downloaded")
+                                if txt_path:
+                                    self._batch_26as_txts.append((pan, txt_path))
+                                    # Convert immediately while next client logs in
+                                    set_status(pan, "⏳ Converting to Excel...")
+                                    try:
+                                        from automation.as26_converter import convert_26as_txt
+                                        self.log(f"[Convert] Converting 26AS → Excel/HTML for {pan}…")
+                                        convert_26as_txt(txt_path, log_callback=self.log)
+                                        set_status(pan, "✅ 26AS + Excel + HTML")
+                                    except Exception as _conv_exc:
+                                        self.log(f"[Convert] Warning: conversion failed for {pan}: {_conv_exc}")
+                                        set_status(pan, "⚠ Excel convert failed")
+                            else:
+                                set_status(pan, f"❌ 26AS Failed — {err_msg}")
 
                     # ── Request AIS ───────────────────────────────────────────────
                     elif mode == "request_ais" and self.is_running:
@@ -3177,7 +3207,7 @@ class AayDocCapioApp(QMainWindow):
                         out = _client_out.get(pan, os.path.join(
                             root_dir,
                             "".join(c if c.isalnum() or c in " _-" else "" for c in name),
-                            f"AY_{ay.replace('-','_')}"))
+                            f"{getattr(self, '_batch_year_type', 'AY')}_{ay.replace('-','_')}"))
 
                         if mode == "26as" and self.is_running:
                             set_status(pan, "⏳ Downloading 26AS (retry)...")
