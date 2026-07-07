@@ -2,6 +2,19 @@
 
 All notable changes to AayDocCapio are documented here.
 
+## [1.9.0] — 2026-07-07
+
+### New Features
+
+#### Form 168 Support (F-xx)
+- **Form 168 download** — full end-to-end download of Form 168 (Annual Tax Statement under IT Act 2025) from TRACES 2.0 for TY 2026-27 onwards: PDF + ITD native Excel + TXT in one batch run
+- **TY folder naming** — TY 2026-27 documents saved in `TY_2026_27` folder (not `AY_2026_27`)
+- **Form 168 TXT → Excel/HTML conversion** — `as26_converter.py` extended to correctly parse Form 168 TXT format including new Part X(a), X(b), and XI; handles different header line offsets and part-header patterns
+- **Form-aware output labels** — HTML and Excel output correctly shows "Form 168", "TY", and "Tax Year" labels (instead of Form 26AS / AY / Assessment Year) when converting Form 168 files
+- **ITD native Excel preserved** — TRACES 2.0 native Excel saved with `-itd.xlsx` suffix alongside the fully-featured converted Excel
+
+---
+
 ## [1.8.1] — 2026-06-22
 
 ### New Features
