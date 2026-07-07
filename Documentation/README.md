@@ -1,20 +1,17 @@
 # AayDocCapio
 
-**v1.8.1** — A secure, standalone desktop utility for **bulk downloading Form 26AS, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click — and now **emailing those documents directly to clients**.
+**v1.9.0** — A secure, standalone desktop utility for **bulk downloading Form 26AS, Form 168, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click — and now **emailing those documents directly to clients**.
 
 Built with **PyQt6** + **Playwright**. Runs on Windows, macOS, and Linux/WSL.
 
 ---
 
-## What's New in 1.8.1
+## What's New in 1.9.0
 
-- **System Tray** — app hides entirely to the Windows system tray during a batch run; WinRT toast notifications with app icon on hide and completion; tray menu for Restore, Stop Batch, Quit.
-- **Selective Email Settings Export/Import** — choose SMTP settings and/or individual templates to export; SMTP password exported encrypted and portable across machines.
-- **Dynamic Save button** — Cancel in Email Settings switches to Save & Close only when changes are detected.
-- **App logo refreshed** — new high-resolution icon with full DPI size set (16–256px); enlarged in header and added to Manage Assessment Years dialog and Help Manual.
-- **Themed tooltips** — QToolTip adapts to light/dark theme.
-- **Help Manual updated** — new sections for System Tray, Email Templates, Export/Import, Run History; logo in hero and sticky nav; screenshots now bundled in compiled build.
-- **Stopped batch preserves status** — stopping no longer overwrites the last saved download status in the vault.
+- **Form 168 support** — full download of Form 168 (Annual Tax Statement under IT Act 2025) from TRACES 2.0 for TY 2026-27 onwards: PDF + ITD native Excel + TXT in one batch run.
+- **TY folder naming** — TY 2026-27 documents saved in `TY_2026_27` folder.
+- **Form 168 → Excel/HTML converter** — TXT parser extended for Form 168 format: new parts X(a), X(b), XI; correct header line detection; form-aware labels (Form 168 / TY / Tax Year) throughout HTML and Excel output.
+- **ITD native Excel preserved** — TRACES 2.0 native Excel saved with `-itd.xlsx` suffix alongside the converted Excel.
 
 See the full [CHANGELOG](CHANGELOG.md) for details.
 
