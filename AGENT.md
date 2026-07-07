@@ -286,14 +286,15 @@ grep -r "OLD_VERSION" --include="*.py" --include="*.md" --include="*.html" --inc
 python3 -c "from version import __version__; print(__version__)"
 ```
 
-### Step 7 — Create release branch
+### Step 7 — Commit and push to main
+
+Stage all changed files, commit with a descriptive message, and push directly to `main`:
 
 ```bash
-git checkout -b release/vX.Y.Z
-git push origin refs/heads/release/vX.Y.Z:refs/heads/release/vX.Y.Z
+git add <files>
+git commit -m "feat: <description> + vX.Y.Z release"
+git push origin main
 ```
-
-Branch naming convention: `release/vX.Y.Z` (e.g. `release/v1.6.3`). Always use the full ref push form to avoid ambiguity with tags of the same name.
 
 ### Step 8 — Build & Release
 
