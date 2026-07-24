@@ -20,6 +20,7 @@ Follow these steps in order — no step is optional:
 
 ### General guidelines
 
+- **Plain English Only:** When explaining anything to the user (what a bug was, what changed, how something works, status updates), use plain, everyday language — not technical/programming jargon (no "race condition," "synchronous," internal variable/function names, etc.). The user is non-technical. Only use technical terms if the user explicitly asks for the technical explanation. This does not apply to the code itself, commit messages, or code comments — only to what's said to the user in conversation.
 - **Concise Responses:** Avoid long conversational padding.
 
 - **No Trailing Summaries:** Do not append summary sections at the end of responses.
