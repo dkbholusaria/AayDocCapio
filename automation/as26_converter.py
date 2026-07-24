@@ -76,6 +76,20 @@ def _parse(txt_path: str) -> dict:
     )
     no_txn_re = re.compile(r"No Transactions Present", re.IGNORECASE)
 
+    # ── Parse Form 168 Summary block (^Summary for TY^...) ───────────────────
+    summary_168 = {}
+    summary_re = re.compile(r"^\^Summary for TY\^", re.IGNORECASE)
+    for idx, ln in enumerate(lines[parts_start:], start=parts_start):
+        if summary_re.match(ln):
+            skeys = [c.strip() for c in ln.split("^") if c.strip()]
+            if idx + 1 < len(lines):
+                svals = [c.strip().replace("â¹", "").replace("₹", "").strip()
+                         for c in lines[idx + 1].split("^") if lines[idx + 1].strip()]
+                summary_168 = dict(zip(skeys, svals))
+            break
+    if summary_168:
+        header["_summary_168"] = summary_168
+
     parts = {}
     current_part = None
     current_lines = []
@@ -116,12 +130,16 @@ def _parse(txt_path: str) -> dict:
             parsed_parts[roman] = {"empty": True, "rows": [], "col_headers": []}
             continue
 
-        summary_headers = [c.strip() for c in non_blank[0].split("^")]
+        def _norm_col(name: str) -> str:
+            """Normalise rupee symbols and trailing footnote asterisks in column names."""
+            return name.replace("(â¹)", "(Rs.)").replace("(₹)", "(Rs.)").rstrip("*")
+
+        summary_headers = [_norm_col(c.strip()) for c in non_blank[0].split("^")]
         detail_headers  = []
         # detail header = first line that starts with ^ (blank first field)
         for ln in non_blank[1:]:
             if ln.startswith("^"):
-                detail_headers = [c.strip() for c in ln.split("^")]
+                detail_headers = [_norm_col(c.strip()) for c in ln.split("^")]
                 break
 
         rows = []
@@ -154,11 +172,12 @@ def _parse(txt_path: str) -> dict:
                         i += 1
                         break
                     dfields = [c.strip() for c in dl.split("^")]
-                    # skip if it looks like a header (contains "Sr. No." or "Section")
-                    if dfields[0] == "" and dfields[1:2] == ["Sr. No."]:
+                    # skip column-header lines (Sr. No. / S.No. / Section etc.)
+                    if dfields[0] == "" and dfields[1:2] in (["Sr. No."], ["S.No."]):
                         i += 1
                         continue
-                    if dfields[0] == "" and dfields[1].isdigit():
+                    # detail rows: sub-number like "1.1", "1.2", or plain digit
+                    if dfields[0] == "" and re.match(r'^\d+(\.\d+)*$', dfields[1] if len(dfields) > 1 else ""):
                         detail_row = dict(zip(detail_headers, dfields))
                         detail_row["_type"] = "detail"
                         deductor_row["_details"].append(detail_row)
@@ -772,6 +791,32 @@ def _html_part_IX(pdata: dict, row_ids: dict) -> str:
     )
 
 
+def _html_generic_part(pdata: dict) -> str:
+    """Generic table renderer for parts with no custom layout (X_A, X_B, XI, etc.)."""
+    hdrs = [h for h in pdata.get("col_headers", []) if h]
+    if not hdrs:
+        hdrs = [h for h in pdata.get("detail_headers", []) if h]
+    ncols = max(len(hdrs), 1)
+    th = "".join(f"<th>{h}</th>" for h in hdrs)
+    rows_html = []
+    alt = False
+    for row in pdata.get("rows", []):
+        cells = "".join(f"<td>{row.get(h, '')}</td>" for h in hdrs)
+        rows_html.append(f'<tr{"  class=\"alt\"" if alt else ""}>{cells}</tr>')
+        for det in row.get("_details", []):
+            det_cells = "".join(f"<td>{det.get(h, '')}</td>" for h in hdrs)
+            rows_html.append(f'<tr{"  class=\"alt\"" if alt else ""}>{det_cells}</tr>')
+        alt = not alt
+    if not rows_html:
+        rows_html = [f'<tr class="empty-note"><td colspan="{ncols}">No Transactions Present</td></tr>']
+    return (
+        f'<div class="tbl-wrap"><table>'
+        f'<thead><tr>{th}</tr></thead>'
+        f'<tbody>{"".join(rows_html)}</tbody>'
+        f'</table></div>'
+    )
+
+
 def _match_ded(rows, name, tan):
     """Match deductor row by name+TAN/PAN composite key; fall back to name-only when TAN is blank."""
     name_fields = ("Name of Deductor", "Name of Collector", "Name of Buyer", "Name of Deductee")
@@ -1015,6 +1060,9 @@ def _build_html(parsed: dict, row_ids: dict, report_ts: str = "") -> str:
         "VII": lambda pd: _html_part_VII(pd),
         "VIII":lambda pd: _html_part_IV_VIII("VIII", pd, row_ids),
         "IX":  lambda pd: _html_part_IX(pd, row_ids),
+        "X_A": lambda pd: _html_generic_part(pd),
+        "X_B": lambda pd: _html_generic_part(pd),
+        "XI":  lambda pd: _html_generic_part(pd),
     }
     for roman in active_parts:
         pdata   = parts[roman]
@@ -1641,6 +1689,37 @@ def _write_xlsx(parsed: dict, row_ids: dict, xlsx_path: str, report_ts: str = ""
                 _track(w9, 0, name); r += 1
         for ci, h in enumerate(cols9): _track(w9, ci, h)
         _autofit(ws9, w9)
+
+    # ── Generic sheets for Form 168 parts X(a), X(b), XI ─────────────────
+    for _p in ["X_A", "X_B", "XI"]:
+        if _p not in parts or parts[_p]["empty"]:
+            continue
+        _pdata  = parts[_p]
+        _meta   = PART_META.get(_p, {})
+        _ptitle = _meta.get("title", f"Part-{_p}")
+        _cols   = [h for h in _pdata.get("col_headers", []) if h]
+        if not _cols:
+            _cols = [h for h in _pdata.get("detail_headers", []) if h]
+        if not _cols:
+            continue
+        _nc  = len(_cols)
+        _ws  = _ws(f"Part-{_p.replace('_', '(').replace('A', 'a)').replace('B', 'b)')}")
+        _wt  = _col_tracker(_nc)
+        _brand_row(_ws, _nc, assessee=assessee_name)
+        _hdr_row(_ws, _cols, row=1)
+        _ws.freeze_panes(2, 0)
+        _r = 2
+        for _row in _pdata.get("rows", []):
+            for _col_idx, _col in enumerate(_cols):
+                _ws.write(_r, _col_idx, _row.get(_col, ""), F_DEFAULT)
+            _r += 1
+            for _det in _row.get("_details", []):
+                for _col_idx, _col in enumerate(_cols):
+                    _ws.write(_r, _col_idx, _det.get(_col, ""), F_DEFAULT)
+                _r += 1
+        for _ci, _h in enumerate(_cols):
+            _track(_wt, _ci, _h)
+        _autofit(_ws, _wt)
 
     # ── Summary sheet ──────────────────────────────────────────────────────
     sum_cols  = ["Part", "Part Title", "Deductor / Payer / Collector Name", "TAN / PAN",
