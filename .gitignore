@@ -58,6 +58,9 @@ checkmark.png
 Plans/
 PlansofThisProject/
 
+# ICAI CA PRACTO submission drafts (not for version control)
+ICAI_Submission/
+
 
 # AIS JSON documentation files (contain sensitive schema/PII data; not for version control)
 Documentation/AIS_JSON_Schema.xlsx
