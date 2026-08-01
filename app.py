@@ -42,8 +42,8 @@ try:
     from automation.browser import browser_manager
     from automation.auth import login_itd, logout_itd
     from automation.downloader_26as import download_26as
-    from automation.downloader_168 import download_168
     from automation.downloader_ais_tis import run_request_ais, run_download_ais_tis
+    from forms import form_for, form_spec, DEFAULT_FORM
 except Exception as _import_err:
     import traceback
     _msg = (
@@ -2243,15 +2243,50 @@ class AayDocCapioApp(QMainWindow):
 
     def _ay_json_path(self) -> str:
         """
-        Writable path for assessment_years.json next to the exe / script.
-        On first run when frozen, seeds the file from the bundled read-only copy.
+        Writable path for assessment_years.json in the user data dir.
+
+        The bundled copy lists the years shipped with the release; the writable
+        copy holds the user's enable/disable choices and any years they added.
+        Both are merged on every launch so years introduced by a new release
+        show up for existing installs while their edits survive. Seeding only
+        when the file was missing left upgraded installs pinned to the year
+        list from whenever the app first ran.
         """
         writable = os.path.join(_app_dir(), "assessment_years.json")
+        bundled = os.path.join(_bundled_dir(), "assessment_years.json")
+
+        # Running from source: both resolve to the repo file — nothing to merge.
+        if os.path.abspath(writable) == os.path.abspath(bundled):
+            return writable
+
+        try:
+            with open(bundled, "r", encoding="utf-8") as f:
+                bundled_entries = json.load(f)
+        except Exception:
+            return writable
+
         if not os.path.exists(writable):
-            bundled = os.path.join(_bundled_dir(), "assessment_years.json")
-            if os.path.exists(bundled):
+            try:
                 import shutil
                 shutil.copy2(bundled, writable)
+            except Exception:
+                pass
+            return writable
+
+        try:
+            with open(writable, "r", encoding="utf-8") as f:
+                user_entries = json.load(f)
+            known = {e.get("label") for e in user_entries}
+            missing = [e for e in bundled_entries if e.get("label") not in known]
+            if missing:
+                user_entries.extend(missing)
+                with open(writable, "w", encoding="utf-8") as f:
+                    json.dump(user_entries, f, indent=2)
+        except Exception:
+            # Runs during UI construction, before the log widget exists — a bad
+            # merge must never block startup; the user keeps their existing list.
+            pass
+
         return writable
 
     def _load_ay_list(self):
@@ -2275,16 +2310,21 @@ class AayDocCapioApp(QMainWindow):
             ]
 
     def _resolve_ay_fy(self, label: str):
-        """Returns (ay_or_ty_value, fy_value, year_type, form_type) where year_type is 'AY' or 'TY'."""
+        """
+        Returns (ay_or_ty_value, fy_value, year_type, form_type) where year_type
+        is 'AY' or 'TY'. The form is derived from the year type (see forms.py),
+        not read from the year entry, so an installed copy of
+        assessment_years.json written by an older release can't disagree with
+        the code about which form to fetch.
+        """
         for e in self._ay_entries:
             if e["label"] == label:
                 y = e["year"]
-                ft = e.get("form_type", "26AS")
                 if y.get("AY"):
-                    return y["AY"], y.get("FY"), "AY", ft
+                    return y["AY"], y.get("FY"), "AY", form_for("AY", y["AY"])
                 if y.get("TY"):
-                    return y["TY"], y.get("FY"), "TY", ft
-        return None, None, "AY", "26AS"
+                    return y["TY"], y.get("FY"), "TY", form_for("TY", y["TY"])
+        return None, None, "AY", DEFAULT_FORM
 
     def open_manage_years(self):
         ManageYearsDialog(self, self._ay_json_path(), on_save=self.refresh_ay_combo).exec()
@@ -3060,51 +3100,32 @@ class AayDocCapioApp(QMainWindow):
 
                     # ── 26AS / Form 168 ──────────────────────────────────────────
                     if mode == "26as" and self.is_running:
-                        _form_type = getattr(self, "_batch_form_type", "26AS")
-                        if _form_type == "168":
-                            set_status(pan, "⏳ Downloading Form 168...")
-                            ok, err_msg, txt_path = await download_168(page, ay, out, self.log, pan=pan, dob=dob)
-                            if ok:
-                                if err_msg:
-                                    set_status(pan, f"⚠ Partially Completed — {err_msg}")
-                                else:
-                                    set_status(pan, "✅ Form 168 Downloaded")
-                                if txt_path:
-                                    self._batch_26as_txts.append((pan, txt_path))
-                                    set_status(pan, "⏳ Converting to Excel...")
-                                    try:
-                                        from automation.as26_converter import convert_26as_txt
-                                        self.log(f"[Convert] Converting Form 168 → Excel/HTML for {pan}…")
-                                        convert_26as_txt(txt_path, log_callback=self.log)
-                                        set_status(pan, "✅ Form 168 + Excel + HTML")
-                                    except Exception as _conv_exc:
-                                        self.log(f"[Convert] Warning: conversion failed for {pan}: {_conv_exc}")
-                                        set_status(pan, "⚠ Excel convert failed")
+                        _spec = form_spec(getattr(self, "_batch_form_type", DEFAULT_FORM))
+                        _form = _spec["label"]
+                        set_status(pan, f"⏳ Downloading {_form}...")
+                        ok, err_msg, txt_path = await _spec["download"](
+                            page, ay, out, self.log, pan=pan, dob=dob
+                        )
+                        if ok:
+                            if err_msg:
+                                # PDF saved but TXT failed (bad password / extraction error)
+                                set_status(pan, f"⚠ Partially Completed — {err_msg}")
                             else:
-                                set_status(pan, f"❌ Form 168 Failed — {err_msg}")
+                                set_status(pan, f"✅ {_form} Downloaded")
+                            if txt_path:
+                                self._batch_26as_txts.append((pan, txt_path))
+                                # Convert immediately while next client logs in
+                                set_status(pan, "⏳ Converting to Excel...")
+                                try:
+                                    from automation.as26_converter import convert_26as_txt
+                                    self.log(f"[Convert] Converting {_form} → Excel/HTML for {pan}…")
+                                    convert_26as_txt(txt_path, log_callback=self.log)
+                                    set_status(pan, f"✅ {_form} + Excel + HTML")
+                                except Exception as _conv_exc:
+                                    self.log(f"[Convert] Warning: conversion failed for {pan}: {_conv_exc}")
+                                    set_status(pan, "⚠ Excel convert failed")
                         else:
-                            set_status(pan, "⏳ Downloading 26AS...")
-                            ok, err_msg, txt_path = await download_26as(page, ay, out, self.log, pan=pan, dob=dob)
-                            if ok:
-                                if err_msg:
-                                    # PDF saved but TXT failed (bad password / extraction error)
-                                    set_status(pan, f"⚠ Partially Completed — {err_msg}")
-                                else:
-                                    set_status(pan, "✅ 26AS Downloaded")
-                                if txt_path:
-                                    self._batch_26as_txts.append((pan, txt_path))
-                                    # Convert immediately while next client logs in
-                                    set_status(pan, "⏳ Converting to Excel...")
-                                    try:
-                                        from automation.as26_converter import convert_26as_txt
-                                        self.log(f"[Convert] Converting 26AS → Excel/HTML for {pan}…")
-                                        convert_26as_txt(txt_path, log_callback=self.log)
-                                        set_status(pan, "✅ 26AS + Excel + HTML")
-                                    except Exception as _conv_exc:
-                                        self.log(f"[Convert] Warning: conversion failed for {pan}: {_conv_exc}")
-                                        set_status(pan, "⚠ Excel convert failed")
-                            else:
-                                set_status(pan, f"❌ 26AS Failed — {err_msg}")
+                            set_status(pan, f"❌ {_form} Failed — {err_msg}")
 
                     # ── Request AIS ───────────────────────────────────────────────
                     elif mode == "request_ais" and self.is_running:
