@@ -110,13 +110,15 @@ def scan_for_clients(root_dir: str, ay_label: str, vault_assessees: list) -> lis
 
 
 def collect_attachments(ay_folder: str, pan: str) -> list:
-    """Collect 26AS PDF, 26AS Excel, AIS PDF, TIS PDF from ay_folder."""
+    """Collect 26AS PDF/Excel, Form 168 PDF/Excel, AIS PDF/Excel, TIS PDF from ay_folder."""
     if not ay_folder or not os.path.isdir(ay_folder):
         return []
 
     patterns = [
         f"{pan}-26AS-*.pdf",
         f"{pan}-26AS-*.xlsx",
+        f"{pan}-168-*.pdf",
+        f"{pan}-168-*.xlsx",   # matches both the converted Excel and the -itd.xlsx ITD native copy
         f"{pan}-AIS-*.pdf",
         f"{pan}-AIS-*.xlsx",
         f"{pan}-TIS-*.pdf",
@@ -260,6 +262,15 @@ def _doc_list(attachments: list) -> str:
         elif "26AS" in fname and fname.endswith(".XLSX") and "26AS_XLS" not in seen:
             entries.append("Form 26AS — Annual Tax Statement (Excel)")
             seen.add("26AS_XLS")
+        elif "168" in fname and fname.endswith(".PDF") and "168_PDF" not in seen:
+            entries.append("Form 168 — Annual Tax Statement (PDF)")
+            seen.add("168_PDF")
+        elif "168" in fname and fname.endswith("-ITD.XLSX") and "168_ITD_XLS" not in seen:
+            entries.append("Form 168 — ITD Native Excel")
+            seen.add("168_ITD_XLS")
+        elif "168" in fname and fname.endswith(".XLSX") and "168_XLS" not in seen:
+            entries.append("Form 168 — Annual Tax Statement (Excel)")
+            seen.add("168_XLS")
         elif "AIS" in fname and fname.endswith(".PDF") and "AIS_PDF" not in seen:
             entries.append("AIS — Annual Information Statement (PDF)")
             seen.add("AIS_PDF")
