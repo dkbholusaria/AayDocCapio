@@ -2,6 +2,14 @@
 
 All notable changes to AayDocCapio are documented here.
 
+## [1.9.2] — 2026-08-01
+
+### Bug Fixes
+- **Form 168 downloaded as old Form 26AS on some installs** — which form to fetch was read from a `form_type` field written into `assessment_years.json`; an install upgrading from a pre-1.9.0 version kept its original copy of that file forever, so it silently downloaded Form 26AS for TY 2026-27 instead of the new Form 168, saving it into a correctly-named `TY_2026_27` folder. The form is now derived from the year type (AY vs TY) in code, so it can no longer disagree with an older installed file.
+- **New tax years never reached upgraded installs** — the assessment/tax year list file was only ever seeded once on first run and never touched again, so new years or entries added in later releases didn't show up after an upgrade. It's now merged into the user's existing file on every launch, adding anything new while keeping their enabled/disabled choices and any custom years they added.
+
+---
+
 ## [1.9.0] — 2026-07-07
 
 ### New Features
