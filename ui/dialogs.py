@@ -1519,6 +1519,8 @@ class SmtpSettingsDialog(QDialog):
         for label, key in [
             ("26AS PDF",   "26as_pdf"),
             ("26AS Excel", "26as_xlsx"),
+            ("168 PDF",    "168_pdf"),
+            ("168 Excel",  "168_xlsx"),
             ("AIS PDF",    "ais_pdf"),
             ("AIS Excel",  "ais_xlsx"),
             ("TIS",        "tis_pdf"),
@@ -2775,6 +2777,8 @@ class MailDocsDialog(QDialog):
             n = os.path.basename(path).upper()
             if "-26AS-" in n and n.endswith(".PDF"):  return doc_filter.get("26as_pdf",  True)
             if "-26AS-" in n and n.endswith(".XLSX"): return doc_filter.get("26as_xlsx", True)
+            if "-168-"  in n and n.endswith(".PDF"):  return doc_filter.get("168_pdf",   True)
+            if "-168-"  in n and n.endswith(".XLSX"): return doc_filter.get("168_xlsx",  True)
             if "-AIS-"  in n and n.endswith(".PDF"):  return doc_filter.get("ais_pdf",   True)
             if "-AIS-"  in n and n.endswith(".XLSX"): return doc_filter.get("ais_xlsx",  True)
             if "-TIS-"  in n and n.endswith(".PDF"):  return doc_filter.get("tis_pdf",   True)
@@ -2872,6 +2876,9 @@ class MailDocsDialog(QDialog):
             n = os.path.basename(path).upper()
             if "-26AS-" in n and n.endswith(".PDF"):  return "26AS PDF"
             if "-26AS-" in n and n.endswith(".XLSX"): return "26AS Excel"
+            if "-168-"  in n and n.endswith("-ITD.XLSX"): return "168 ITD Excel"
+            if "-168-"  in n and n.endswith(".PDF"):  return "168 PDF"
+            if "-168-"  in n and n.endswith(".XLSX"): return "168 Excel"
             if "-AIS-"  in n and n.endswith(".PDF"):  return "AIS PDF"
             if "-AIS-"  in n and n.endswith(".XLSX"): return "AIS Excel"
             if "-TIS-"  in n and n.endswith(".PDF"):  return "TIS"
