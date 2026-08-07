@@ -43,6 +43,7 @@ try:
     from automation.auth import login_itd, logout_itd
     from automation.downloader_26as import download_26as
     from automation.downloader_ais_tis import run_request_ais, run_download_ais_tis
+    from automation.downloader_filed_returns import download_filed_returns
     from forms import form_for, form_spec, DEFAULT_FORM
 except Exception as _import_err:
     import traceback
@@ -1434,10 +1435,22 @@ class AayDocCapioApp(QMainWindow):
             "whose AIS was requested earlier and is now ready.")
         act_dl_ais.triggered.connect(lambda: self.start_automation("ais_tis"))
 
+        # F-56 Phase 1 test wiring — bare-bones menu entry so the new Filed
+        # Returns downloader can be exercised through the app for a live test
+        # run. Not the final F-56 picker UI (that's Phase 3); this only
+        # downloads Form/Receipt/JSON/Intimation for the "all" filing scope.
+        act_filed_returns = QAction("🧾  Download Filed Returns (test)", self)
+        act_filed_returns.setToolTip(
+            "F-56 Phase 1 test action — downloads the ITR Form, Receipt,\n"
+            "JSON, and any Intimation Orders for the selected AY and client(s).")
+        act_filed_returns.triggered.connect(lambda: self.start_automation("filed_returns"))
+
         run_menu.addAction(act_26as)
         run_menu.addSeparator()
         run_menu.addAction(act_request_ais)
         run_menu.addAction(act_dl_ais)
+        run_menu.addSeparator()
+        run_menu.addAction(act_filed_returns)
 
         self.btn_run.setMenu(run_menu)
         self.btn_run.clicked.connect(lambda: self.btn_run.showMenu())
@@ -2558,7 +2571,8 @@ class AayDocCapioApp(QMainWindow):
 
         mode_log = {"26as": "26AS download",
                     "request_ais": "AIS generation requests",
-                    "ais_tis": "AIS/TIS download"}
+                    "ais_tis": "AIS/TIS download",
+                    "filed_returns": "Filed Returns download"}
         self.log(f"[System] Starting {mode_log[mode]} — {len(targets)} client(s) | {ay_label} | Output: {output_dir}")
 
         # Year tag shown in progress dialog — always show both AY/TY and FY
@@ -3164,6 +3178,21 @@ class AayDocCapioApp(QMainWindow):
                             should_continue=lambda: self.is_running,
                             status_callback=lambda t, _p=pan: set_status(_p, t))
                         # combined_status_label already set via status_callback at end of run_download_ais_tis
+
+                    # ── Download Filed Returns (F-56 Phase 1 test wiring) ───────────
+                    elif mode == "filed_returns" and self.is_running:
+                        await self._ensure_dashboard(page)
+                        set_status(pan, "⏳ Downloading Filed Returns...")
+                        fr_ok, fr_msg, fr_saved = await download_filed_returns(
+                            page, ay, out, self.log, pan=pan, dob=dob
+                        )
+                        if fr_ok:
+                            if fr_msg:
+                                set_status(pan, f"⚠ Partially Completed — {fr_msg}")
+                            else:
+                                set_status(pan, f"✅ Filed Returns Downloaded ({len(fr_saved)} file(s))")
+                        else:
+                            set_status(pan, f"❌ Filed Returns Failed — {fr_msg}")
 
                     if self.is_running:
                         await logout_itd(page, self.log)

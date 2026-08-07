@@ -1,6 +1,7 @@
 import os, asyncio, re
 from playwright.async_api import Page
 from automation.downloader import update_browser_status
+from utils import migrate_flat_docs_to_subfolders
 
 
 async def _open_hamburger(page: Page, log_callback):
@@ -282,6 +283,8 @@ async def download_168(
 
         ty_str = tax_year.replace("-", "_")
         prefix = f"{pan}-" if pan else ""
+        migrate_flat_docs_to_subfolders(download_dir, log_callback)
+        download_dir = os.path.join(download_dir, "26AS")
         os.makedirs(download_dir, exist_ok=True)
 
         # ── Select Tax Year (once — persists for all downloads) ──────────────

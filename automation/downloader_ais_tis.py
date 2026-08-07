@@ -4,6 +4,7 @@ import asyncio
 from playwright.async_api import Page
 from automation.downloader import update_browser_status, make_step_logger
 from automation.pdf_unlocker import unlock_pdf
+from utils import migrate_flat_docs_to_subfolders
 
 
 # ── Outcome helpers ───────────────────────────────────────────────────────────
@@ -381,6 +382,8 @@ async def download_tis(portal: Page, fiscal_year: str, download_dir: str,
     """
     if status_cb:
         status_cb("⏳ Downloading TIS PDF…")
+    migrate_flat_docs_to_subfolders(download_dir, log)
+    download_dir = os.path.join(download_dir, "AIS-TIS")
     os.makedirs(download_dir, exist_ok=True)
     fy_str = fiscal_year.replace("-", "_")
     prefix = f"{pan}-" if pan else ""
@@ -442,6 +445,8 @@ async def request_ais(portal: Page, fiscal_year: str, download_dir: str,
         returns {"status": "requested", "ref_id": "..."}
     """
     import re as _re
+    migrate_flat_docs_to_subfolders(download_dir, log)
+    download_dir = os.path.join(download_dir, "AIS-TIS")
     os.makedirs(download_dir, exist_ok=True)
     fy_str = fiscal_year.replace("-", "_")
     prefix = f"{pan}-" if pan else ""
@@ -662,6 +667,8 @@ async def download_ais_from_activity_history(portal: Page, fiscal_year: str,
     `should_continue` (a callable returning False to stop).
     """
     step = make_step_logger(log, "AIS-HIST", status_cb=status_cb)
+    migrate_flat_docs_to_subfolders(download_dir, log)
+    download_dir = os.path.join(download_dir, "AIS-TIS")
     os.makedirs(download_dir, exist_ok=True)
     fy_str = fiscal_year.replace("-", "_")
     prefix = f"{pan}-" if pan else ""
