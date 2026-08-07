@@ -1,6 +1,7 @@
 import os, asyncio, zipfile, shutil, re
 from playwright.async_api import Page, Frame
 from automation.downloader import update_browser_status
+from utils import migrate_flat_docs_to_subfolders
 
 
 async def _find_frame(page: Page, selector: str, timeout: int = 3000) -> Frame | None:
@@ -215,6 +216,8 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
 
         ay_str = assessment_year.replace("-", "_")
         prefix = f"{pan}-" if pan else ""
+        migrate_flat_docs_to_subfolders(download_dir, log_callback)
+        download_dir = os.path.join(download_dir, "26AS")
         os.makedirs(download_dir, exist_ok=True)
 
         # ── PDF download ──────────────────────────────────────────────────────

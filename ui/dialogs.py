@@ -2782,6 +2782,10 @@ class MailDocsDialog(QDialog):
             if "-AIS-"  in n and n.endswith(".PDF"):  return doc_filter.get("ais_pdf",   True)
             if "-AIS-"  in n and n.endswith(".XLSX"): return doc_filter.get("ais_xlsx",  True)
             if "-TIS-"  in n and n.endswith(".PDF"):  return doc_filter.get("tis_pdf",   True)
+            if "-ITR-"  in n and n.endswith("-FORM.PDF"):    return doc_filter.get("itr_form",    True)
+            if "-ITR-"  in n and n.endswith("-RECEIPT.PDF"): return doc_filter.get("itr_receipt", True)
+            if "-ITR-"  in n and n.endswith("-ITR-V.PDF"):   return doc_filter.get("itr_v",        True)
+            if "-INTIMATION-" in n and n.endswith(".PDF"):   return doc_filter.get("intimation",  True)
             return True
 
         # Collect selected clients and validate emails
@@ -2882,6 +2886,10 @@ class MailDocsDialog(QDialog):
             if "-AIS-"  in n and n.endswith(".PDF"):  return "AIS PDF"
             if "-AIS-"  in n and n.endswith(".XLSX"): return "AIS Excel"
             if "-TIS-"  in n and n.endswith(".PDF"):  return "TIS"
+            if "-ITR-"  in n and n.endswith("-FORM.PDF"):    return "ITR Form"
+            if "-ITR-"  in n and n.endswith("-RECEIPT.PDF"): return "ITR Receipt"
+            if "-ITR-"  in n and n.endswith("-ITR-V.PDF"):   return "ITR-V"
+            if "-INTIMATION-" in n and n.endswith(".PDF"):   return "Intimation Order"
             return os.path.basename(path)
 
         _pan_to_docs = {

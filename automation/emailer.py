@@ -9,6 +9,8 @@ from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 
+from utils import migrate_flat_docs_to_subfolders
+
 # ── Email activity log ────────────────────────────────────────────────────────
 # Logs to <app_dir>/email_log.txt — every SMTP attempt with full server dialogue.
 
@@ -110,18 +112,33 @@ def scan_for_clients(root_dir: str, ay_label: str, vault_assessees: list) -> lis
 
 
 def collect_attachments(ay_folder: str, pan: str) -> list:
-    """Collect 26AS PDF/Excel, Form 168 PDF/Excel, AIS PDF/Excel, TIS PDF from ay_folder."""
+    """Collect 26AS PDF/Excel, Form 168 PDF/Excel, AIS PDF/Excel, TIS PDF,
+    ITR Form/Receipt PDF, and Intimation Order PDF from ay_folder.
+
+    Files live in per-document-type subfolders (26AS/, AIS-TIS/, ITR Returns/,
+    Intimation Orders/) rather than flat in ay_folder — migrate any leftover
+    flat files from older versions first, so they're found here too. ITR
+    Returns/Intimation Orders additionally nest one level deeper, per filing
+    (Original-DDMMYYYY/, Revised-DDMMYYYY/, ...), hence the "*" wildcard
+    segment in those patterns. JSON and the ITR-Status Excel summary are
+    intentionally excluded — download-only, never emailed."""
     if not ay_folder or not os.path.isdir(ay_folder):
         return []
 
+    migrate_flat_docs_to_subfolders(ay_folder)
+
     patterns = [
-        f"{pan}-26AS-*.pdf",
-        f"{pan}-26AS-*.xlsx",
-        f"{pan}-168-*.pdf",
-        f"{pan}-168-*.xlsx",   # matches both the converted Excel and the -itd.xlsx ITD native copy
-        f"{pan}-AIS-*.pdf",
-        f"{pan}-AIS-*.xlsx",
-        f"{pan}-TIS-*.pdf",
+        os.path.join("26AS", f"{pan}-26AS-*.pdf"),
+        os.path.join("26AS", f"{pan}-26AS-*.xlsx"),
+        os.path.join("26AS", f"{pan}-168-*.pdf"),
+        os.path.join("26AS", f"{pan}-168-*.xlsx"),   # matches both the converted Excel and the -itd.xlsx ITD native copy
+        os.path.join("AIS-TIS", f"{pan}-AIS-*.pdf"),
+        os.path.join("AIS-TIS", f"{pan}-AIS-*.xlsx"),
+        os.path.join("AIS-TIS", f"{pan}-TIS-*.pdf"),
+        os.path.join("ITR Returns", "*", f"{pan}-ITR-*-Form.pdf"),
+        os.path.join("ITR Returns", "*", f"{pan}-ITR-*-Receipt.pdf"),
+        os.path.join("ITR Returns", "*", f"{pan}-ITR-*-ITR-V.pdf"),
+        os.path.join("Intimation Orders", "*", f"{pan}-Intimation-*.pdf"),
     ]
     found = []
     for pat in patterns:
@@ -280,6 +297,18 @@ def _doc_list(attachments: list) -> str:
         elif "TIS" in fname and "TIS" not in seen:
             entries.append("TIS — Taxpayer Information Summary")
             seen.add("TIS")
+        elif "ITR" in fname and fname.endswith("-FORM.PDF") and "ITR_FORM" not in seen:
+            entries.append("ITR Form")
+            seen.add("ITR_FORM")
+        elif "ITR" in fname and fname.endswith("-RECEIPT.PDF") and "ITR_RECEIPT" not in seen:
+            entries.append("ITR Receipt")
+            seen.add("ITR_RECEIPT")
+        elif "ITR" in fname and fname.endswith("-ITR-V.PDF") and "ITR_V" not in seen:
+            entries.append("ITR-V (Verification Form — return not yet e-verified)")
+            seen.add("ITR_V")
+        elif "INTIMATION" in fname and fname.endswith(".PDF") and "INTIMATION" not in seen:
+            entries.append("Intimation Order")
+            seen.add("INTIMATION")
     if not entries:
         return "<ol><li>Tax documents</li></ol>"
     items = "".join(f"<li>{e}</li>" for e in entries)
