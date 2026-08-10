@@ -10,6 +10,9 @@ Documentation/ISSUES_BACKLOG.md
 # Downloaded client documents — never commit
 outputs/
 
+# Failure diagnostics (screenshots/HTML dumps) — may contain session/session data
+debug/
+
 # Test data, mockups, sample files — never commit
 testdata/
 

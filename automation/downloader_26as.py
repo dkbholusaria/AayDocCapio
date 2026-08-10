@@ -1,6 +1,7 @@
 import os, asyncio, zipfile, shutil, re
 from playwright.async_api import Page, Frame
 from automation.downloader import update_browser_status
+from automation.diagnostics import capture_failure
 from utils import migrate_flat_docs_to_subfolders
 
 
@@ -54,18 +55,24 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
         except Exception:
             pass
             
-        log_callback("[26AS] Hovering over e-File menu...")
-        # Retry the full wait+hover cycle — dashboard Angular nav may take time to
-        # mount even after the overlay clears. Each attempt waits up to 30s for the
-        # element to appear, then tries to hover it.
+        log_callback("[26AS] Opening e-File menu...")
+        # e-File is a stock Angular Material MatMenuTrigger, which opens on
+        # CLICK natively. A live diagnostics capture confirmed .hover() can
+        # "succeed" (mouse moved) without actually opening the menu when
+        # this runs as the second e-File-based handler in a batch — click
+        # is the always-on mechanism and doesn't depend on any custom hover
+        # glue script. See automation/_nav_helpers.py's matching function
+        # for the full writeup. Retry the full wait+click cycle — dashboard
+        # Angular nav may take time to mount even after the overlay clears.
         for _attempt in range(4):
             try:
                 efile = page.locator("//*[normalize-space(.)='e-File']").first
                 await efile.wait_for(state="visible", timeout=30000)
-                await efile.hover(timeout=10000)
+                await efile.click(timeout=10000)
                 break
             except Exception:
                 if _attempt == 3:
+                    await capture_failure(page, log_callback, "26AS_efile_hover_failed")
                     raise
                 log_callback(f"[26AS] e-File menu not ready (attempt {_attempt + 1}/4) — waiting...")
                 # Nudge the page to help Angular finish rendering the nav
@@ -78,7 +85,11 @@ async def download_26as(page: Page, assessment_year: str, download_dir: str, log
         await asyncio.sleep(1.0)
         log_callback("[26AS] Hovering over Income Tax Returns...")
         returns = page.locator("//*[text()='Income Tax Returns']").first
-        await returns.wait_for(state="visible", timeout=30000)
+        try:
+            await returns.wait_for(state="visible", timeout=30000)
+        except Exception:
+            await capture_failure(page, log_callback, "26AS_income_tax_returns_hover_failed")
+            raise
         await returns.hover()
         await asyncio.sleep(1.0)
         log_callback("[26AS] Clicking View Form 26AS — waiting for TRACES to load...")

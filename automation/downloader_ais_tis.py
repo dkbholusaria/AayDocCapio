@@ -663,8 +663,18 @@ async def download_ais_from_activity_history(portal: Page, fiscal_year: str,
 
     The row matches by Reference ID (preferred) or by the FY description
     ("AIS - F.Y. YYYY-YY"). A request shows a Progress icon while generating
-    and a Download link once ready. We poll until ready, abortable via
-    `should_continue` (a callable returning False to stop).
+    and a Download link once ready.
+
+    Checks Activity History exactly ONCE — no polling/waiting. Previously
+    this looped up to 20 times, 30s apart (~10 minutes), which made sense
+    when this was a deliberate standalone action a user triggers ~5 minutes
+    after requesting AIS. It stopped making sense once this could be bundled
+    into a multi-select batch alongside other document types — selecting it
+    would silently block the WHOLE batch for up to 10 minutes on this one
+    doc type. If it's not ready yet, this now returns immediately and the
+    user just re-runs this action later (same "check once, don't block,
+    re-run later" pattern already used for Filed Returns' intimation
+    requests).
     """
     step = make_step_logger(log, "AIS-HIST", status_cb=status_cb)
     migrate_flat_docs_to_subfolders(download_dir, log)
@@ -745,74 +755,50 @@ async def download_ais_from_activity_history(portal: Page, fiscal_year: str,
             f":has(td.mat-column-description:has-text('{fy_desc}'))"
         ).first
 
-    MAX_ATTEMPTS = 20
-    POLL_INTERVAL = 30
+    if _aborted():
+        step("Aborted by user before checking Activity History")
+        return _outcome("aborted")
 
-    for attempt in range(MAX_ATTEMPTS):
-        if _aborted():
-            step("Aborted by user — stopping Activity History wait")
-            return _outcome("aborted")
+    try:
+        row = _row_locator()
+        cnt = await row.count()
+        step(f"Matching AIS rows for '{fy_desc}': {cnt}")
 
-        if attempt > 0:
-            step(f"Waiting for generation — attempt {attempt}/{MAX_ATTEMPTS-1}, {POLL_INTERVAL}s",
-                 status=f"AIS generating on ITD servers… (check {attempt}/{MAX_ATTEMPTS-1})")
-            await update_browser_status(
-                portal, f"AIS: Waiting for generation ({attempt}/{MAX_ATTEMPTS-1})...")
-            for _ in range(POLL_INTERVAL):
-                if _aborted():
-                    step("Aborted by user during wait")
-                    return _outcome("aborted")
-                await asyncio.sleep(1)
-            try:
-                await portal.reload(wait_until="domcontentloaded", timeout=40000)
-                await asyncio.sleep(2)
-            except Exception:
-                pass
+        if cnt == 0:
+            # No row at all → the AIS was never requested for this FY/client.
+            step("No AIS request found for this FY — nothing to download")
+            log(f"[AIS] No AIS request found in Activity History for {fy_desc}.")
+            return _outcome("not_found")
+
+        await row.wait_for(state="visible", timeout=10000)
+        dl_cell = row.locator("td.mat-column-download").first
 
         try:
-            row = _row_locator()
-            cnt = await row.count()
-            step(f"Matching AIS rows for '{fy_desc}': {cnt}")
+            dl_link = dl_cell.locator("a[title='Download file']").first
+            is_ready = await dl_link.is_visible(timeout=500)
+        except Exception:
+            is_ready = False
 
-            if cnt == 0:
-                # No row at all on the FIRST check → the AIS was never requested
-                # for this FY/client. Fail fast with a helpful message rather
-                # than polling 10 minutes for something that will never appear.
-                if attempt == 0:
-                    step("No AIS request found for this FY — nothing to download")
-                    log(f"[AIS] No AIS request found in Activity History for {fy_desc}.")
-                    return _outcome("not_found")
-                continue
+        if is_ready:
+            step("File ready — downloading", status="AIS ready — downloading…")
+            await update_browser_status(portal, "AIS: Downloading from Activity History...")
+            async with portal.expect_download(timeout=60000) as dl_info:
+                await dl_link.click()
+            download = await dl_info.value
+            await download.save_as(ais_file)
+            step(f"Saved: {os.path.basename(ais_file)}")
+            log(f"[Victory] AIS PDF saved: {os.path.basename(ais_file)}")
+            unlock = _unlock_and_warn(ais_file, pan=pan, dob=dob, log=log, label="AIS PDF", status_cb=status_cb)
+            return _outcome("downloaded", unlocked=unlock.get("unlocked"), reason=unlock.get("reason"))
 
-            await row.wait_for(state="visible", timeout=10000)
-            dl_cell = row.locator("td.mat-column-download").first
+        step("Row present but still generating — not waiting, re-run this action later")
+        log(f"[AIS] Still generating on ITD servers for {fy_desc} — re-run "
+            f"'Download Previously Requested AIS' later.")
+        return _outcome("timeout")
 
-            try:
-                dl_link = dl_cell.locator("a[title='Download file']").first
-                is_ready = await dl_link.is_visible(timeout=500)
-            except Exception:
-                is_ready = False
-
-            if is_ready:
-                step("File ready — downloading", status="AIS ready — downloading…")
-                await update_browser_status(portal, "AIS: Downloading from Activity History...")
-                async with portal.expect_download(timeout=60000) as dl_info:
-                    await dl_link.click()
-                download = await dl_info.value
-                await download.save_as(ais_file)
-                step(f"Saved: {os.path.basename(ais_file)}")
-                log(f"[Victory] AIS PDF saved: {os.path.basename(ais_file)}")
-                unlock = _unlock_and_warn(ais_file, pan=pan, dob=dob, log=log, label="AIS PDF", status_cb=status_cb)
-                return _outcome("downloaded", unlocked=unlock.get("unlocked"), reason=unlock.get("reason"))
-
-            step(f"Row present, still generating (attempt {attempt+1})")
-
-        except Exception as e:
-            step(f"Row lookup error (attempt {attempt+1}): {e}")
-
-    step("AIS generation timed out after ~10 minutes")
-    log("[Warning] AIS generation timed out — try again later.")
-    return _outcome("timeout")
+    except Exception as e:
+        step(f"Row lookup error: {e}")
+        return _outcome("failed", reason=str(e)[:80])
 
 
 # ── Top-level entry points (called from app.py) ───────────────────────────────

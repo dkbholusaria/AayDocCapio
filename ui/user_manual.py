@@ -437,8 +437,9 @@ def _user_manual_page_html(img_uris: dict) -> str:
         <a href="#select-clients-year" class="sidebar-nav-item sub-item">4.1. Setup & Select</a>
         <a href="#bulk-26as-download" class="sidebar-nav-item sub-item">4.2. Bulk 26AS Download</a>
         <a href="#bulk-ais-download" class="sidebar-nav-item sub-item">4.3. Bulk AIS Download</a>
-        <a href="#menu-options-download" class="sidebar-nav-item sub-item">4.4. Menu Options to Click</a>
-        <a href="#status-indicators" class="sidebar-nav-item sub-item">4.5. Status Icons & Controls</a>
+        <a href="#download-picker-dialog" class="sidebar-nav-item sub-item">4.4. The Download Picker</a>
+        <a href="#filed-returns-intimation" class="sidebar-nav-item sub-item">4.5. Filed Returns & Intimation</a>
+        <a href="#status-indicators" class="sidebar-nav-item sub-item">4.6. Status Icons & Controls</a>
       </div>
       
       <div class="sidebar-group">
@@ -654,10 +655,12 @@ def _user_manual_page_html(img_uris: dict) -> str:
             f'To download Form 26AS for multiple clients:</p>'
             + steps_html([
               'Select target clients by checking their rows in the table.',
-              'Under the <strong>Documents to Fetch</strong> checklist, ensure that <strong>26AS</strong> is checked.',
-              'Click the primary <strong>Download</strong> button on the toolbar.',
+              'Click the <strong>Download</strong> button on the toolbar to open the Download Picker dialog, '
+              'and make sure <strong>26AS / Form 168</strong> is checked (checked by default).',
+              'Click <strong>Download</strong> in the dialog to launch the batch.',
               'The background automation will sequentially log in to each client\'s account, navigate to the TRACES portal, '
-              'request 26AS in HTML/PDF and TXT format, download, and auto-decrypt the files.'
+              'request 26AS or Form 168 (picked automatically based on the assessment year) in HTML/PDF and TXT format, '
+              'download, and auto-decrypt the files.'
             ])
           )}
           {_img("ADC_26ASBatch", "Running Form 26AS download batch", "Form 26AS Batch Download")}
@@ -670,33 +673,76 @@ def _user_manual_page_html(img_uris: dict) -> str:
             f'To download AIS and TIS documents for multiple clients:</p>'
             + steps_html([
               'Select target clients by checking their rows in the table.',
-              'Under <strong>Documents to Fetch</strong>, check <strong>AIS</strong> and/or <strong>TIS</strong>.',
-              'Click the primary <strong>Download</strong> button on the toolbar.',
-              'The background automation will log in, navigate to the Compliance Portal, download instantly available statements, '
-              'or submit PDF generation requests for queued statements.'
+              'Click the <strong>Download</strong> button on the toolbar to open the Download Picker dialog, '
+              'and check <strong>AIS + TIS</strong>.',
+              'Click <strong>Download</strong> in the dialog to launch the batch. The automation will log in, navigate to the '
+              'Compliance Portal, download instantly available statements, or submit a generation request if AIS is not '
+              'ready yet.',
+              'If AIS was requested earlier and should be ready now, check <strong>Download Previously Requested AIS</strong> '
+              'instead — this only fetches AIS from Activity History without re-requesting or waiting.'
             ])
           )}
           {_img("ADC_AISDownload", "Selecting AIS download options", "AIS Download Screen")}
         </div>
 
-        <div id="menu-options-download" style="scroll-margin-top: 90px; margin-top: 24px;">
+        <div id="download-picker-dialog" style="scroll-margin-top: 90px; margin-top: 24px;">
           {section_card(
-            h3("4.4. Which Menu / Toolbar Options to Click") +
+            h3("4.4. The Download Picker Dialog") +
             f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
-            f'In addition to checking boxes and clicking the main <strong>Download</strong> button, you can trigger specific runs directly via the menus:</p>'
+            f'Clicking the <strong>Download</strong> button on the main toolbar always opens the same dialog, titled '
+            f'<strong>Download Documents</strong>. It replaces the older per-document menu items with a single checklist, '
+            f'so you can combine any documents into one run for the selected clients:</p>'
             + bullets_html([
-              '<strong>Main Toolbar "Download" Dropdown</strong>: Click the dropdown arrow next to the Download button to select '
-              '<strong>Download Form 26AS Only</strong> or <strong>Download / Request TIS & AIS Only</strong>. This overrides '
-              'the dashboard checkboxes and executes only that specific task.',
-              '<strong>Right-Click Context Menu</strong>: Right-click any client row in the table and select <strong>Download Selected Clients...</strong>.'
+              '<strong>26AS / Form 168</strong> — PDF + Excel/TXT, form picked automatically by year (checked by default).',
+              '<strong>AIS + TIS</strong> — requests generation if not ready yet, downloads instantly if it is.',
+              '<strong>Download Previously Requested AIS</strong> — for clients whose AIS was requested earlier and should be ready now.',
+              '<strong>ITR Return + Intimation Orders</strong> — Form, Receipt (or ITR-V), JSON, and any Intimation Orders. '
+              'See the next topic for details.'
             ])
+            + f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin:12px 0;">'
+            f'You can check as many of these as you need — one run will fetch every checked document type for every '
+            f'selected client, one client at a time.</p>'
           )}
-          {_img("ADC_DownloadOptionsMenu", "Checking options and selecting target documents", "Download Options Menu")}
+        </div>
+
+        <div id="filed-returns-intimation" style="scroll-margin-top: 90px; margin-top: 24px;">
+          {section_card(
+            h3("4.5. Filed Returns & Intimation Orders") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'Checking <strong>ITR Return + Intimation Orders</strong> in the Download Picker fetches everything the portal '
+            f'shows under "View Filed Returns" for the selected Assessment Year:</p>'
+            + bullets_html([
+              '<strong>ITR Form</strong> — the full return as filed.',
+              '<strong>Receipt or ITR-V</strong> — a Receipt is downloaded if the return has been e-verified/processed; '
+              'otherwise an ITR-V (verification form) is downloaded instead, since that is the only document the portal '
+              'offers for an unverified return.',
+              '<strong>JSON</strong> — the underlying return data, download-only (not emailed to clients).',
+              '<strong>Intimation Order(s)</strong> — downloaded separately whenever the portal has issued one for that filing.'
+            ])
+            + f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin:12px 0;">'
+            f'Files are saved into per-filing subfolders named '
+            f'{badge("Filing Type-Filing Date-Acknowledgement Number")} (e.g. '
+            f'{badge("Original-24072026-225836430240726")}), under <strong>ITR Returns</strong> and '
+            f'<strong>Intimation Orders</strong> respectively — this keeps an Original filing separate from a later '
+            f'Revised or Rectification filing for the same year.</p>'
+            + h3("Filing Scope: All vs. Latest") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'When the ITR checkbox is checked, a <strong>Filing Scope</strong> panel appears with two options — this '
+            f'controls what happens when a client has filed more than once for the same year (e.g. an Original, followed '
+            f'later by a Revised, Rectification, or Updated return):</p>'
+            + bullets_html([
+              '<strong>All filings for the year</strong> — downloads every filing found for that year, each into its own '
+              'subfolder.',
+              '<strong>Latest filing only</strong> — downloads whichever filing was filed most recently by date, regardless '
+              'of its type (Original, Revised, etc.).'
+            ])
+            + tip_box("The logic is type-agnostic — \"latest\" always means most recent by filing date, so it correctly picks up a later Rectification or Updated return even if an earlier Revised return was filed in between.")
+          )}
         </div>
 
         <div id="status-indicators" style="scroll-margin-top: 90px; margin-top: 24px;">
           {section_card(
-            h3("4.5. Status Indicators and Batch Control") +
+            h3("4.6. Status Indicators and Batch Control") +
             f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
             f'A real-time progress dialog shows per-client status. Refer to the table below for icon meanings:</p>'
             f'<table class="data-table" style="margin-bottom:12px;">'
@@ -704,6 +750,13 @@ def _user_manual_page_html(img_uris: dict) -> str:
             f'<tbody>{status_table_rows}</tbody>'
             f'</table>'
             + tip_box("You can stop a long-running batch at any time. Clicking the Stop button finishes the active client and safely skips the rest.")
+            + f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin:12px 0;">'
+            f'The <strong>Last Download Status</strong> column in the main grid works a little differently once a run covers '
+            f'multiple document types: since one client/year can now have a separate status for 26AS, AIS/TIS, and ITR, the '
+            f'grid cell shows a single glyph summarizing the <em>worst</em> outcome across all of them, in this priority: '
+            f'{badge("❌ Failed")} &gt; {badge("⚠ Partial")} &gt; {badge("🕐 Queued / ⏹ Skipped")} &gt; {badge("⬜ No data")} '
+            f'&gt; {badge("✅ Success")}. Hover over the cell to see a tooltip breaking down the individual status for each '
+            f'document type that was run.</p>'
           )}
           {_img("ADC_StatusBasedFilters", "Filtering client list based on download status", "Status Filters")}
       </div>
@@ -963,7 +1016,8 @@ def _user_manual_page_html(img_uris: dict) -> str:
               'Click <strong>+ Add Template</strong> to create a new template. Double-click a name in the list to rename it.',
               'Edit the <strong>Subject</strong> and <strong>Body</strong> fields. Use placeholders such as '
               '{badge("{client_name}")}, {badge("{pan}")}, {badge("{ay}")}, {badge("{firm_name}")}, {badge("{documents}")}.',
-              'Check the document types to include for this template (26AS PDF, 26AS Excel, AIS PDF, AIS Excel, TIS PDF).',
+              'Check the document types to include for this template — 26AS PDF, 26AS Excel, AIS PDF, AIS Excel, TIS PDF, '
+              'plus ITR Form, ITR Receipt, ITR-V, and Intimation Order for clients whose Filed Returns were downloaded.',
               'Click <strong>Save Templates</strong> or <strong>Save &amp; Close</strong>.',
               'When sending mail, select your template from the <strong>Template</strong> dropdown in the Mail Docs dialog. '
               'Only the documents checked in that template will be attached.',

@@ -2,6 +2,8 @@ import asyncio
 
 from playwright.async_api import Page
 
+from automation.diagnostics import capture_failure
+
 
 async def open_hamburger(page: Page, log_callback, prefix: str = "NAV") -> None:
     """
@@ -33,22 +35,37 @@ async def open_hamburger(page: Page, log_callback, prefix: str = "NAV") -> None:
 
 async def hover_to_income_tax_returns(page: Page, log_callback, prefix: str = "NAV") -> None:
     """
-    Hover e-File then Income Tax Returns on the ITD dashboard nav, leaving the
-    submenu open so the caller can click its own form-specific menu item next
-    (e.g. "View Form 26AS", "View Form 168", "View Filed Returns").
+    Open e-File then hover Income Tax Returns on the ITD dashboard nav,
+    leaving the submenu open so the caller can click its own form-specific
+    menu item next (e.g. "View Form 26AS", "View Form 168", "View Filed
+    Returns").
+
+    The e-File trigger (`<a id="e-File" class="mat-mdc-menu-trigger">`) is a
+    stock Angular Material MatMenuTrigger, whose built-in mechanism opens on
+    CLICK. A live diagnostics capture (automation/diagnostics.py) confirmed
+    that when this ran as the second e-File-based handler in a batch,
+    `.hover()` moved the mouse and "succeeded" per Playwright but the menu
+    panel stayed empty (`<mat-menu><!----></mat-menu>`) — the portal's hover
+    behaviour appears to depend on custom glue script that isn't reliably
+    active a second time in the same tab session. Click is the native,
+    always-on open mechanism and doesn't depend on that glue, so it's used
+    here instead. The nested "Income Tax Returns" submenu below is native
+    Angular Material CDK hover-to-reveal behaviour once the parent menu is
+    genuinely open, and stays hover-based.
     """
-    log_callback(f"[{prefix}] Hovering over e-File menu...")
-    # Retry the full wait+hover cycle — dashboard Angular nav may take time to
+    log_callback(f"[{prefix}] Opening e-File menu...")
+    # Retry the full wait+click cycle — dashboard Angular nav may take time to
     # mount even after the overlay clears. Each attempt waits up to 30s for the
-    # element to appear, then tries to hover it.
+    # element to appear, then tries to click it.
     for _attempt in range(4):
         try:
             efile = page.locator("//*[normalize-space(.)='e-File']").first
             await efile.wait_for(state="visible", timeout=30000)
-            await efile.hover(timeout=10000)
+            await efile.click(timeout=10000)
             break
         except Exception:
             if _attempt == 3:
+                await capture_failure(page, log_callback, f"{prefix}_efile_hover_failed")
                 raise
             log_callback(f"[{prefix}] e-File menu not ready (attempt {_attempt + 1}/4) — waiting...")
             # Nudge the page to help Angular finish rendering the nav
@@ -61,6 +78,10 @@ async def hover_to_income_tax_returns(page: Page, log_callback, prefix: str = "N
     await asyncio.sleep(1.0)
     log_callback(f"[{prefix}] Hovering over Income Tax Returns...")
     returns = page.locator("//*[text()='Income Tax Returns']").first
-    await returns.wait_for(state="visible", timeout=30000)
+    try:
+        await returns.wait_for(state="visible", timeout=30000)
+    except Exception:
+        await capture_failure(page, log_callback, f"{prefix}_income_tax_returns_hover_failed")
+        raise
     await returns.hover()
     await asyncio.sleep(1.0)

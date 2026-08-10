@@ -1,15 +1,17 @@
 # AayDocCapio
 
-**v1.9.2** — A secure, standalone desktop utility for **bulk downloading Form 26AS, Form 168, AIS, and TIS** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click — and now **emailing those documents directly to clients**.
+**v2.0.0** — A secure, standalone desktop utility for **bulk downloading Form 26AS, Form 168, AIS, TIS, and now Filed Returns & Intimation Orders** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click — and **emailing those documents directly to clients**.
 
 Built with **PyQt6** + **Playwright**. Runs on Windows, macOS, and Linux/WSL.
 
 ---
 
-## What's New in 1.9.2
+## What's New in 2.0.0
 
-- **Fixed: Form 168 downloading as old Form 26AS on some installs** — an install upgraded from an earlier version could keep silently fetching the old Form 26AS for TY 2026-27 instead of the new Form 168, saving it into a correctly-named folder that actually held the wrong document. Which form to fetch is now decided by the app itself rather than a setting file that could go stale after an upgrade.
-- **Fixed: new tax years not appearing after an upgrade** — the assessment/tax year list now updates itself with anything new shipped in a release, while keeping any years you've enabled, disabled, or added yourself.
+- **Filed Returns & Intimation Orders download** — download filed ITR Form, Receipt (or ITR-V), JSON, and Intimation Orders straight from the e-Filing portal, with an All-filings vs. Latest-filing-only option.
+- **Unified Download Picker** — one checkbox dialog now replaces the old per-document menu items, so 26AS/Form 168, AIS/TIS, and Filed Returns can all be selected together for a single batch run.
+- **Per-document-type status in the grid** — the status column now summarizes every document type checked for a client/year, with a hover tooltip showing the individual outcome for each.
+- **Mail templates support ITR documents** — email templates can now attach ITR Form, ITR Receipt, ITR-V, and Intimation Order alongside 26AS/AIS/TIS.
 
 See the full [CHANGELOG](CHANGELOG.md) for details.
 

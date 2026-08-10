@@ -1168,19 +1168,19 @@
   <div class="hero-left">
     <div class="eyebrow">
       <div class="eyebrow-dot"></div>
-      Release Notes · AayDocCapio v1.9.2
+      Release Notes · AayDocCapio v2.0.0
     </div>
 
-    <h1>AayDocCapio v1.9.2<br>Release Notes for<br><span class="accent">Form 168<br>Reliability Fix</span></h1>
+    <h1>AayDocCapio v2.0.0<br>Release Notes for<br><span class="accent">Filed Returns<br>&amp; Intimation Orders</span></h1>
 
     <p class="hero-desc">
-      A reliability update ensuring <strong>Form 168</strong> downloads correctly
-      on every install — including ones upgraded from an earlier version — plus
-      the tax year list now keeping itself current after every upgrade.
+      Download filed ITR Form, Receipt, JSON, and Intimation Orders straight from
+      the e-Filing portal — plus a unified Download Picker that runs 26AS, AIS/TIS,
+      and Filed Returns together in a single batch.
     </p>
 
     <div class="hero-cta-row">
-      <a class="btn-primary" href="#download">⬇ Download v1.9.2</a>
+      <a class="btn-primary" href="#download">⬇ Download v2.0.0</a>
       <a class="btn-outline" href="#features">View Key Features</a>
     </div>
 
@@ -1240,8 +1240,8 @@
 
 <!-- Release strip -->
 <div class="release-strip">
-  <span class="release-badge-pill">Latest Release · v1.9.2 · 1 Aug 2026</span>
-  Form 168 reliability fix, and self-updating tax year list
+  <span class="release-badge-pill">Latest Release · v2.0.0 · 10 Aug 2026</span>
+  Filed Returns &amp; Intimation Orders download, and a unified multi-select Download Picker
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════
@@ -1250,21 +1250,27 @@
 <section id="whats-new">
   <div class="section-wrap">
     <div class="section-eyebrow"><div class="eyebrow-dot-sm"></div> Key Updates</div>
-    <h2>What's New In AayDocCapio v1.9.2?</h2>
-    <p class="section-sub">A reliability release — no new features, two fixes that matter if you installed AayDocCapio before Form 168 support shipped.</p>
+    <h2>What's New In AayDocCapio v2.0.0?</h2>
+    <p class="section-sub">A major workflow release — filed returns join 26AS/AIS/TIS as a first-class download, and one picker now runs all of them together.</p>
 
     <div class="feature-grid">
       <div class="feature-card">
         <div class="fc-check">✓</div>
-        <h3>Form 168 Now Always Correct</h3>
-        <p>Installs upgraded from an earlier version could keep silently downloading the old Form 26AS for TY 2026-27 instead of the new Form 168, saved into a correctly-named folder holding the wrong document. Which form to fetch is now decided by the app itself, not a setting file that could go stale after an upgrade.</p>
-        <div class="fc-benefit">Fixes a silent wrong-document bug on upgraded installs</div>
+        <h3>Filed Returns &amp; Intimation Orders</h3>
+        <p>Download the filed ITR Form, Receipt (or ITR-V if not yet e-verified), the underlying JSON, and any Intimation Order — straight from the portal's "View Filed Returns" screen. Choose to fetch every filing for the year (Original, Revised, Rectification, Updated) or just the latest one.</p>
+        <div class="fc-benefit">One more manual portal chore automated end to end</div>
       </div>
       <div class="feature-card">
         <div class="fc-check">✓</div>
-        <h3>Tax Year List Stays Current</h3>
-        <p>The assessment/tax year list now merges in anything new shipped with each release automatically, while keeping any years you've enabled, disabled, or added yourself.</p>
-        <div class="fc-benefit">New years always show up after an upgrade — no manual fix needed</div>
+        <h3>Unified Download Picker</h3>
+        <p>The old per-document menu items are replaced by a single checkbox dialog — 26AS/Form 168, AIS + TIS, and Filed Returns can now be selected together and run in one batch, instead of separate runs per document type.</p>
+        <div class="fc-benefit">Fewer clicks, fewer logins per client</div>
+      </div>
+      <div class="feature-card">
+        <div class="fc-check">✓</div>
+        <h3>Per-Document Status &amp; ITR Mail Templates</h3>
+        <p>The client grid's status column now summarizes every document type checked for a run, with a hover tooltip showing each one individually. Email templates can attach ITR Form, ITR Receipt, ITR-V, and Intimation Order alongside 26AS/AIS/TIS.</p>
+        <div class="fc-benefit">Clear status at a glance, and complete client mailers</div>
       </div>
     </div>
   </div>
@@ -1288,11 +1294,12 @@
       </div>
 
       <div id="tab-downloads" class="tab-panel active">
-        <h3>Bulk Downloads — 26AS, AIS &amp; TIS</h3>
+        <h3>Bulk Downloads — 26AS, AIS, TIS &amp; Filed Returns</h3>
         <p class="tab-desc">Download all documents for all selected clients in one unattended batch. No manual logins, no waiting.</p>
         <div class="tab-bullets">
           <div class="tab-bullet"><div class="tab-check">✓</div><span><strong>Form 26AS</strong> — PDF, TXT, and auto-converted Excel + HTML for every client</span></div>
           <div class="tab-bullet"><div class="tab-check">✓</div><span><strong>AIS &amp; TIS</strong> — PDF download with instant or queued generation; requires Google Chrome</span></div>
+          <div class="tab-bullet"><div class="tab-check">✓</div><span><strong>Filed Returns &amp; Intimation Orders</strong> — ITR Form, Receipt/ITR-V, JSON, and Intimation Orders, with All-filings or Latest-filing-only scope</span></div>
           <div class="tab-bullet"><div class="tab-check">✓</div><span><strong>Auto PDF unlock</strong> — PAN + DOB derived passwords tried automatically; warns on mismatch</span></div>
           <div class="tab-bullet"><div class="tab-check">✓</div><span><strong>Live batch progress</strong> — per-client status, stop control, saved-folder links in a real-time dialog</span></div>
           <div class="tab-bullet"><div class="tab-check">✓</div><span><strong>Encrypted credential vault</strong> — AES-128 Fernet local storage; no cloud sync or telemetry</span></div>
@@ -1401,23 +1408,23 @@
 <section class="alt" id="download">
   <div class="section-wrap">
     <div class="section-eyebrow"><div class="eyebrow-dot-sm"></div> Download</div>
-    <h2>Download AayDocCapio v1.9.2</h2>
+    <h2>Download AayDocCapio v2.0.0</h2>
     <p class="section-sub">Windows 10 / 11 64-bit · macOS Apple Silicon · Requires Google Chrome for AIS/TIS</p>
     <div class="download-grid">
       <div class="download-card">
         <h3>Windows Setup</h3>
         <p>Recommended for most existing Windows users. Use if you previously installed with the .exe setup.</p>
-        <a class="dl-btn dl-btn-primary" href="https://github.com/dkbholusaria/AayDocCapio/releases/download/v1.9.2/AayDocCapio_Setup_v1.9.2.exe">Download .exe<sub>v1.9.2 · Wizard Installer</sub></a>
+        <a class="dl-btn dl-btn-primary" href="https://github.com/dkbholusaria/AayDocCapio/releases/download/v2.0.0/AayDocCapio_Setup_v2.0.0.exe">Download .exe<sub>v2.0.0 · Wizard Installer</sub></a>
       </div>
       <div class="download-card">
         <h3>Windows MSI</h3>
         <p>For new enterprise or IT-managed installs. Uninstall the .exe version first if switching.</p>
-        <a class="dl-btn dl-btn-secondary" href="https://github.com/dkbholusaria/AayDocCapio/releases/download/v1.9.2/AayDocCapio_Setup_v1.9.2.msi">Download .msi<sub>v1.9.2 · Silent / managed install</sub></a>
+        <a class="dl-btn dl-btn-secondary" href="https://github.com/dkbholusaria/AayDocCapio/releases/download/v2.0.0/AayDocCapio_Setup_v2.0.0.msi">Download .msi<sub>v2.0.0 · Silent / managed install</sub></a>
       </div>
       <div class="download-card">
         <h3>macOS App</h3>
         <p>Apple Silicon app bundle packaged as a zip. Open via right-click → Open if Gatekeeper warns.</p>
-        <a class="dl-btn dl-btn-secondary" href="https://github.com/dkbholusaria/AayDocCapio/releases/download/v1.9.2/AayDocCapio-macos-arm64-v1.9.2.zip">Download macOS zip<sub>v1.9.2 · .app bundle</sub></a>
+        <a class="dl-btn dl-btn-secondary" href="https://github.com/dkbholusaria/AayDocCapio/releases/download/v2.0.0/AayDocCapio-macos-arm64-v2.0.0.zip">Download macOS zip<sub>v2.0.0 · .app bundle</sub></a>
       </div>
     </div>
     <div class="av-warning">

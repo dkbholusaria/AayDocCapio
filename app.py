@@ -31,7 +31,7 @@ from utils import get_timestamp, notify_windows
 from ui._theme import _t
 from ui.helpers import _btn, _lbl, _shadow
 from ui.widgets import StyledComboBox
-from ui.dialogs import ManageYearsDialog, BatchProgressDialog
+from ui.dialogs import ManageYearsDialog, BatchProgressDialog, DownloadPickerDialog
 from ui.log_history import LogHistoryDialog, LogStore
 from automation.errors import _friendly_error
 
@@ -41,10 +41,8 @@ try:
     from vault import VaultManager
     from automation.browser import browser_manager
     from automation.auth import login_itd, logout_itd
-    from automation.downloader_26as import download_26as
-    from automation.downloader_ais_tis import run_request_ais, run_download_ais_tis
-    from automation.downloader_filed_returns import download_filed_returns
-    from forms import form_for, form_spec, DEFAULT_FORM
+    from automation.batch_handlers import HANDLERS, DOC_TYPE_LABELS, ordered_doc_types
+    from forms import form_for, DEFAULT_FORM
 except Exception as _import_err:
     import traceback
     _msg = (
@@ -239,7 +237,7 @@ class _ClientPickerDialog(QDialog):
 class AayDocCapioApp(QMainWindow):
     _log_signal = pyqtSignal(str)
     _batch_done_signal = pyqtSignal()
-    _show_progress_signal = pyqtSignal(list, str, str, str)   # (targets, mode, ay, output_dir)
+    _show_progress_signal = pyqtSignal(list, object, str, str)   # (targets, selected_docs: set, ay, output_dir)
 
     def __init__(self):
         super().__init__()
@@ -271,14 +269,14 @@ class AayDocCapioApp(QMainWindow):
                 print(f"Error generating checkmark: {e}")
 
         self._ais_requested_time = None   # datetime when Request AIS last completed
-        self._last_mode = None            # mode of last completed batch
+        self._last_selected_docs = set()  # selected_docs of last completed batch
         self._ais_results = {}            # pan → "instant" | "queued" | "failed" | "skipped"
         self._last_errors = {}            # pan → error message string
         self._batch_loop = None           # asyncio event loop for the running batch
         self._batch_task = None           # asyncio Task for the running batch
         self._batch_aborted = False       # True if user clicked Stop
         self._skip_current  = False       # True when user clicks Skip for current client
-        self._last_batch_params = None    # (ay, fy, root_dir, mode) for resume
+        self._last_batch_params = None    # (ay, fy, root_dir, selected_docs, ay_label) for resume
 
         self._log_signal.connect(self._append_log)
         self._batch_done_signal.connect(self._on_batch_done)
@@ -1379,9 +1377,11 @@ class AayDocCapioApp(QMainWindow):
         hl.addSpacing(8)
 
         # ── Download dropdown (split-style: label + arrow) ────────────────────
+        # F-56 Phase 3: a single "Download" button opens a checkbox picker
+        # (DownloadPickerDialog) instead of a dropdown menu with one action
+        # per document type — lets a user select any combination for one run.
         self.btn_run = QToolButton()
         self.btn_run.setText("  Download")
-        self.btn_run.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
         self.btn_run.setFixedHeight(34)
         self.btn_run.setMinimumWidth(130)
         from ui.helpers import _icon_path
@@ -1400,60 +1400,8 @@ class AayDocCapioApp(QMainWindow):
             "}"
             "QToolButton:hover{ background:#15803D; }"
             "QToolButton:disabled{ background:#D1FAE5; color:#6EE7B7; }"
-            "QToolButton::menu-button{"
-            "  border-left:1px solid rgba(255,255,255,0.35);"
-            "  border-radius:0 8px 8px 0; width:20px;"
-            "}"
-            "QToolButton::menu-arrow{ image:none; }"
         )
-
-        run_menu = QMenu(self.btn_run)
-        _rm = _t()
-        run_menu.setStyleSheet(
-            f"QMenu{{ background:{_rm.bg_menu}; border:1.5px solid {_rm.border_menu}; border-radius:8px; padding:4px 0; }}"
-            f"QMenu::item{{ padding:8px 18px; font-size:13px; color:{_rm.text_primary}; }}"
-            f"QMenu::item:selected{{ background:{_rm.accent}; color:{_rm.accent_text}; }}"
-            f"QMenu::separator{{ height:1px; background:{_rm.border_menu}; margin:4px 0; }}"
-        )
-
-        act_26as = QAction("▶  Download 26AS / Form 168", self)
-        act_26as.setToolTip(
-            "Downloads Form 26AS (AY up to 2026-27) or Form 168 (TY 2026-27+)\n"
-            "PDF + Excel/TXT for selected clients.")
-        act_26as.triggered.connect(lambda: self.start_automation("26as"))
-
-        act_request_ais = QAction("📋  Download / Request TIS & AIS", self)
-        act_request_ais.setToolTip(
-            "Opens AIS portal for each client.\n"
-            "• If AIS is ready — downloads instantly.\n"
-            "• If not ready — places generation request (~5 min on ITD servers).")
-        act_request_ais.triggered.connect(lambda: self.start_automation("request_ais"))
-
-        act_dl_ais = QAction("⬇  Download Previously Requested AIS", self)
-        act_dl_ais.setToolTip(
-            "Fetches AIS PDF from Activity History for clients\n"
-            "whose AIS was requested earlier and is now ready.")
-        act_dl_ais.triggered.connect(lambda: self.start_automation("ais_tis"))
-
-        # F-56 Phase 1 test wiring — bare-bones menu entry so the new Filed
-        # Returns downloader can be exercised through the app for a live test
-        # run. Not the final F-56 picker UI (that's Phase 3); this only
-        # downloads Form/Receipt/JSON/Intimation for the "all" filing scope.
-        act_filed_returns = QAction("🧾  Download Filed Returns (test)", self)
-        act_filed_returns.setToolTip(
-            "F-56 Phase 1 test action — downloads the ITR Form, Receipt,\n"
-            "JSON, and any Intimation Orders for the selected AY and client(s).")
-        act_filed_returns.triggered.connect(lambda: self.start_automation("filed_returns"))
-
-        run_menu.addAction(act_26as)
-        run_menu.addSeparator()
-        run_menu.addAction(act_request_ais)
-        run_menu.addAction(act_dl_ais)
-        run_menu.addSeparator()
-        run_menu.addAction(act_filed_returns)
-
-        self.btn_run.setMenu(run_menu)
-        self.btn_run.clicked.connect(lambda: self.btn_run.showMenu())
+        self.btn_run.clicked.connect(self._open_download_picker)
         hl.addWidget(self.btn_run)
         hl.addSpacing(8)
 
@@ -1631,12 +1579,14 @@ class AayDocCapioApp(QMainWindow):
         if hasattr(self, "header_cb"):
             self.header_cb.setEnabled(True)
             
-        # Load download history for currently selected AY
+        # Load download history for currently selected AY — summarized across
+        # doc types (a batch can now cover several per client/AY), worst
+        # status wins for the glyph shown, full breakdown goes in the tooltip.
         current_ay = self.ay_combo.currentText() if hasattr(self, "ay_combo") else ""
         dl_history = {}
         if current_ay and current_ay != "Select AY/TY":
             try:
-                dl_history = self.vault.get_download_history(current_ay)
+                dl_history = self.vault.get_download_history_summary(current_ay)
             except Exception:
                 pass
 
@@ -1689,12 +1639,23 @@ class AayDocCapioApp(QMainWindow):
             dob_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.client_table.setItem(i, self._TC_DOB, dob_item)
 
-            # Col 4: Last Download Status (from history)
+            # Col 4: Last Download Status (from history) — one glyph summarizing
+            # the worst outcome across doc types, tooltip breaks down each one.
             hist = dl_history.get(pan, {})
             status_text = hist.get("status", "—")
+            breakdown = hist.get("breakdown", [])
             status_item = QTableWidgetItem(status_text)
             status_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            status_item.setToolTip(status_text)
+            if len(breakdown) > 1:
+                _doc_labels = {"26as": "26AS/Form 168", "request_ais": "AIS Request",
+                               "ais_tis": "AIS/TIS", "filed_returns": "Filed Returns",
+                               "legacy": "Download"}
+                tooltip_text = "\n".join(
+                    f"{_doc_labels.get(dt, dt)}: {st}" for dt, st in breakdown
+                )
+            else:
+                tooltip_text = status_text
+            status_item.setToolTip(tooltip_text)
             if status_text.startswith("✅"):
                 status_item.setForeground(QColor("#15803D"))
             elif status_text.startswith("❌"):
@@ -2534,13 +2495,26 @@ class AayDocCapioApp(QMainWindow):
                 if action.menu():
                     action.menu().setEnabled(not lock)
 
-    def start_automation(self, mode: str):
-        """
-        mode: "26as"        — download 26AS only
-              "request_ais" — fire AIS generation request (Phase 1)
-              "ais_tis"     — download AIS (from Activity History) + TIS (Phase 2)
-        """
+    def _open_download_picker(self):
+        """F-56 Phase 3 — the Download button opens a checkbox picker instead
+        of the old dropdown menu; on confirm, kicks off start_automation with
+        whatever combination of document types the user selected."""
         if self.is_running:
+            return
+        dlg = DownloadPickerDialog(self, self.vault)
+        if dlg.exec() == dlg.DialogCode.Accepted:
+            self.start_automation(dlg.selected_docs)
+
+    def start_automation(self, selected_docs):
+        """
+        selected_docs: set/collection of doc-type strings to run, any of
+        "26as", "request_ais", "ais_tis", "filed_returns" — one batch run
+        can now cover several at once (F-56 Phase 2).
+        """
+        selected_docs = set(selected_docs) if not isinstance(selected_docs, set) else selected_docs
+        if self.is_running:
+            return
+        if not selected_docs:
             return
         if not self.selected_ids:
             QMessageBox.warning(self, "Selection Required",
@@ -2560,20 +2534,18 @@ class AayDocCapioApp(QMainWindow):
         self._batch_aborted = False
         self._batch_form_type = form_type
         self._batch_year_type = year_type
+        self._batch_filing_scope = self.vault.get_setting("filed_returns_scope", "all")
         self._lock_ui(True)
         self.log_box.clear()
 
         targets = [a for a in self.assessee_list if a.get("id") in self.selected_ids]
         output_dir = self.dir_lbl.text()
-        self._last_batch_params = (ay, fy, output_dir, mode, ay_label)
+        self._last_batch_params = (ay, fy, output_dir, selected_docs, ay_label)
 
         self.btn_run.setText("⏳ Running...")
 
-        mode_log = {"26as": "26AS download",
-                    "request_ais": "AIS generation requests",
-                    "ais_tis": "AIS/TIS download",
-                    "filed_returns": "Filed Returns download"}
-        self.log(f"[System] Starting {mode_log[mode]} — {len(targets)} client(s) | {ay_label} | Output: {output_dir}")
+        run_label = " + ".join(DOC_TYPE_LABELS.get(d, d) for d in sorted(selected_docs))
+        self.log(f"[System] Starting {run_label} — {len(targets)} client(s) | {ay_label} | Output: {output_dir}")
 
         # Year tag shown in progress dialog — always show both AY/TY and FY
         if fy and fy != ay:
@@ -2582,7 +2554,7 @@ class AayDocCapioApp(QMainWindow):
             year_tag = f"{year_type} {ay}"
 
         # Show progress dialog (on main thread via signal)
-        self._show_progress_signal.emit(targets, mode, year_tag, output_dir)
+        self._show_progress_signal.emit(targets, selected_docs, year_tag, output_dir)
 
         # Enable "Send to Tray" in tray menu while batch is running
         if hasattr(self, "_tray_send_act"):
@@ -2594,13 +2566,13 @@ class AayDocCapioApp(QMainWindow):
 
         threading.Thread(
             target=self._run_wrapper,
-            args=(targets, ay, fy, output_dir, mode, ay_label),
+            args=(targets, ay, fy, output_dir, selected_docs, ay_label),
             daemon=True).start()
 
-    def _show_progress_dialog(self, targets: list, mode: str, ay: str, output_dir: str = ""):
+    def _show_progress_dialog(self, targets: list, selected_docs: set, ay: str, output_dir: str = ""):
         """Called on main thread to create and show the progress dialog."""
         self._progress_dialog = BatchProgressDialog(
-            targets, mode, ay=ay, stop_callback=self.stop_automation,
+            targets, selected_docs, ay=ay, stop_callback=self.stop_automation,
             resume_callback=self.resume_batch, skip_callback=self.skip_client,
             tray_callback=self._tray_to_system_manual,
             output_dir=output_dir, parent=self)
@@ -2644,7 +2616,7 @@ class AayDocCapioApp(QMainWindow):
         """Called from the dialog Resume button — restart batch with unfinished clients."""
         if not self._last_batch_params or not remaining_targets:
             return
-        ay, fy, root_dir, mode, ay_label = self._last_batch_params
+        ay, fy, root_dir, selected_docs, ay_label = self._last_batch_params
         self.is_running = True
         self._batch_aborted = False
         self._lock_ui(True)
@@ -2654,10 +2626,10 @@ class AayDocCapioApp(QMainWindow):
             self._progress_dialog.batch_resumed()
         threading.Thread(
             target=self._run_wrapper,
-            args=(remaining_targets, ay, fy, root_dir, mode, ay_label),
+            args=(remaining_targets, ay, fy, root_dir, selected_docs, ay_label),
             daemon=True).start()
 
-    def _run_wrapper(self, targets, ay, fy, root_dir, mode, ay_label=""):
+    def _run_wrapper(self, targets, ay, fy, root_dir, selected_docs, ay_label=""):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         self._batch_loop = loop
@@ -2686,7 +2658,7 @@ class AayDocCapioApp(QMainWindow):
 
         try:
             self._batch_task = loop.create_task(
-                self._execute_batch(targets, ay, fy, root_dir, mode, ay_label))
+                self._execute_batch(targets, ay, fy, root_dir, selected_docs, ay_label))
             loop.run_until_complete(self._batch_task)
         except asyncio.CancelledError:
             self.log("[System] Batch cancelled.")
@@ -2697,7 +2669,7 @@ class AayDocCapioApp(QMainWindow):
             self._batch_loop = None
             loop.close()
             self.is_running = False
-            self._last_mode = mode
+            self._last_selected_docs = selected_docs
             if self._progress_dialog:
                 self._progress_dialog.batch_finished(aborted=self._batch_aborted)
             self._batch_done_signal.emit()
@@ -2709,30 +2681,27 @@ class AayDocCapioApp(QMainWindow):
         self.log("[System] Engine Idle.")
         # Refresh grid so Last Download Status / Last Saved Location columns update
         QTimer.singleShot(200, self.refresh_grid)
+        selected_docs = self._last_selected_docs
+        run_label = " + ".join(DOC_TYPE_LABELS.get(d, d) for d in sorted(selected_docs)) or "Batch"
+
         # F-35: restore from tray if we were hidden there, and show tray balloon
         if hasattr(self, "_tray") and self._tray.isVisible():
-            mode_label = {"26as": "26AS", "request_ais": "AIS Request", "ais_tis": "AIS/TIS"}.get(
-                self._last_mode, "Batch")
             notify_windows("AayDocCapio — Download Complete",
-                           f"{mode_label} batch finished. Click the tray icon to restore.")
+                           f"{run_label} batch finished. Click the tray icon to restore.")
             self._tray_stop_act.setEnabled(False)
             self._tray_send_act.setVisible(False)
             self._tray.setToolTip("AayDocCapio — Batch complete")
             # Auto-restore after balloon (small delay so user sees the notification)
         # F-35: Windows native toast — only when NOT using tray (tray has its own balloon)
         if not self._batch_aborted and not (hasattr(self, "_tray") and self._tray.isVisible()):
-            mode_label = {"26as": "26AS", "request_ais": "AIS Request", "ais_tis": "AIS/TIS"}.get(
-                self._last_mode, "Batch")
             notify_windows("AayDocCapio — Download Complete",
-                           f"{mode_label} batch run finished. Click to open the app.")
-
-        mode = self._last_mode
+                           f"{run_label} batch run finished. Click to open the app.")
 
         if self._batch_aborted:
             self._ais_results = {}
             return
 
-        if mode == "request_ais":
+        if "request_ais" in selected_docs:
             results = self._ais_results
             n_instant = sum(1 for v in results.values() if v == "instant")
             n_queued  = sum(1 for v in results.values() if v == "queued")
@@ -2789,12 +2758,12 @@ class AayDocCapioApp(QMainWindow):
             msg.setStandardButtons(QMessageBox.StandardButton.Ok)
             msg.exec()
 
-        elif mode == "ais_tis":
+        if "ais_tis" in selected_docs:
             # Hide the status line once download is done
             self.ais_status_bar.setVisible(False)
             self._ais_requested_time = None
 
-        elif mode == "26as" and not self._batch_aborted:
+        if "26as" in selected_docs and not self._batch_aborted:
             pass  # conversion now happens inline per-client in _execute_batch
 
     def _convert_26as_manual(self):
@@ -3015,8 +2984,9 @@ class AayDocCapioApp(QMainWindow):
         if converted:
             self.log(f"[Victory] Auto-converted {converted} 26AS TXT file(s) to Excel + HTML.")
 
-    async def _execute_batch(self, targets, ay, fy, root_dir, mode, ay_label=""):
-        self.log(f"[System] Batch: {len(targets)} client(s) | AY: {ay} | Mode: {mode}")
+    async def _execute_batch(self, targets, ay, fy, root_dir, selected_docs, ay_label=""):
+        selected_docs = set(selected_docs)
+        self.log(f"[System] Batch: {len(targets)} client(s) | AY: {ay} | Docs: {', '.join(sorted(selected_docs))}")
         self._ais_results = {}
         self._last_errors = {}
         self._batch_26as_txts = []
@@ -3033,18 +3003,21 @@ class AayDocCapioApp(QMainWindow):
                 "ais failed", "tis failed", "navigation", "net::",
             ])
 
-        def set_status(pan, text):
-            """Update progress dialog and persist terminal status to vault."""
+        def set_status(pan, text, doc_type=None):
+            """Update progress dialog and persist terminal status to vault,
+            keyed per doc_type so one document type's status can't overwrite
+            another's for the same client/AY within a multi-select batch."""
             if self._progress_dialog:
                 self._progress_dialog.set_status(pan, text)
             terminal = ("✅", "❌", "🕐", "⏹", "⬜", "⚠")
             if ay_label and any(text.startswith(p) for p in terminal):
                 _last_terminal[pan] = text
-                try:
-                    self.vault.record_download(
-                        pan, ay_label, text, _client_out.get(pan, ""))
-                except Exception:
-                    pass
+                if doc_type:
+                    try:
+                        self.vault.record_download(
+                            pan, ay_label, doc_type, text, _client_out.get(pan, ""))
+                    except Exception:
+                        pass
 
         try:
             interactive = not self.chk_headless.isChecked()
@@ -3104,6 +3077,7 @@ class AayDocCapioApp(QMainWindow):
                         # Update progress dialog only — do NOT persist to vault or log history
                         if self._progress_dialog:
                             self._progress_dialog.set_status(pan, "⬜ Skipped")
+                            self._progress_dialog.client_finished(pan)
                         self.log(f"[Skip] {pan[:3]}XXXXXXX skipped by user.")
                         if page:
                             try: await logout_itd(page, self.log)
@@ -3112,87 +3086,36 @@ class AayDocCapioApp(QMainWindow):
                         await asyncio.sleep(1)
                         continue
 
-                    # ── 26AS / Form 168 ──────────────────────────────────────────
-                    if mode == "26as" and self.is_running:
-                        _spec = form_spec(getattr(self, "_batch_form_type", DEFAULT_FORM))
-                        _form = _spec["label"]
-                        set_status(pan, f"⏳ Downloading {_form}...")
-                        ok, err_msg, txt_path = await _spec["download"](
-                            page, ay, out, self.log, pan=pan, dob=dob
-                        )
-                        if ok:
-                            if err_msg:
-                                # PDF saved but TXT failed (bad password / extraction error)
-                                set_status(pan, f"⚠ Partially Completed — {err_msg}")
+                    # ── Selected document types, one client fully before the next ──
+                    # Dispatch order is deterministic (not raw set iteration)
+                    # so Filed Returns always runs before 26AS — see
+                    # ordered_doc_types() docstring for why.
+                    for doc_type in ordered_doc_types(selected_docs):
+                        if not self.is_running:
+                            break
+                        handler = HANDLERS.get(doc_type)
+                        if handler is None:
+                            continue
+                        doc_set_status = (lambda p, t, _dt=doc_type: set_status(p, t, _dt))
+                        result = await handler(
+                            page, pan, dob, ay, fy, out, self.log, doc_set_status,
+                            form_type=getattr(self, "_batch_form_type", DEFAULT_FORM),
+                            filing_scope=getattr(self, "_batch_filing_scope", "all"),
+                            is_running=(lambda: self.is_running),
+                        ) or {}
+
+                        if doc_type == "26as" and result.get("txt_path"):
+                            self._batch_26as_txts.append((pan, result["txt_path"]))
+                        elif doc_type == "request_ais":
+                            ais_status = result.get("ais_status")
+                            if ais_status == "downloaded":
+                                self._ais_results[pan] = "instant"
+                            elif ais_status == "requested":
+                                self._ais_results[pan] = "queued"
+                            elif ais_status == "skipped":
+                                self._ais_results[pan] = "skipped"
                             else:
-                                set_status(pan, f"✅ {_form} Downloaded")
-                            if txt_path:
-                                self._batch_26as_txts.append((pan, txt_path))
-                                # Convert immediately while next client logs in
-                                set_status(pan, "⏳ Converting to Excel...")
-                                try:
-                                    from automation.as26_converter import convert_26as_txt
-                                    self.log(f"[Convert] Converting {_form} → Excel/HTML for {pan}…")
-                                    convert_26as_txt(txt_path, log_callback=self.log)
-                                    set_status(pan, f"✅ {_form} + Excel + HTML")
-                                except Exception as _conv_exc:
-                                    self.log(f"[Convert] Warning: conversion failed for {pan}: {_conv_exc}")
-                                    set_status(pan, "⚠ Excel convert failed")
-                        else:
-                            set_status(pan, f"❌ {_form} Failed — {err_msg}")
-
-                    # ── Request AIS ───────────────────────────────────────────────
-                    elif mode == "request_ais" and self.is_running:
-                        await self._ensure_dashboard(page)
-                        set_status(pan, "⏳ Opening AIS portal...")
-                        result = await run_request_ais(
-                            page, fy, out, self.log, pan=pan, dob=dob,
-                            status_callback=lambda t, _p=pan: set_status(_p, t))
-                        ais_status = result.get("status")
-
-                        # Track AIS queue state for the "Download AIS" button
-                        if ais_status == "downloaded":
-                            self._ais_results[pan] = "instant"
-                        elif ais_status == "requested":
-                            self._ais_results[pan] = "queued"
-                            ref = result.get("ref_id", "")
-                            if ref:
-                                self.log(f"[AIS] Generation queued — Ref ID: {ref}")
-                        elif ais_status == "skipped":
-                            self._ais_results[pan] = "skipped"
-                        else:
-                            self._ais_results[pan] = "failed"
-                        # combined_status_label already set via status_callback at end of run_request_ais
-
-                    # ── Download AIS/TIS ──────────────────────────────────────────
-                    elif mode == "ais_tis" and self.is_running:
-                        # "Download Previously Requested AIS" — fetch ONLY the AIS PDF
-                        # from Activity History. TIS is not re-downloaded here (it was
-                        # already grabbed during the Request step).
-                        await self._ensure_dashboard(page)
-                        set_status(pan, "⏳ Downloading AIS from Activity History...")
-
-                        dl_result = await run_download_ais_tis(
-                            page, fy, out, self.log, pan=pan, dob=dob,
-                            dl_ais=True, dl_tis=False,
-                            should_continue=lambda: self.is_running,
-                            status_callback=lambda t, _p=pan: set_status(_p, t))
-                        # combined_status_label already set via status_callback at end of run_download_ais_tis
-
-                    # ── Download Filed Returns (F-56 Phase 1 test wiring) ───────────
-                    elif mode == "filed_returns" and self.is_running:
-                        await self._ensure_dashboard(page)
-                        set_status(pan, "⏳ Downloading Filed Returns...")
-                        fr_ok, fr_msg, fr_saved = await download_filed_returns(
-                            page, ay, out, self.log, pan=pan, dob=dob
-                        )
-                        if fr_ok:
-                            if fr_msg:
-                                set_status(pan, f"⚠ Partially Completed — {fr_msg}")
-                            else:
-                                set_status(pan, f"✅ Filed Returns Downloaded ({len(fr_saved)} file(s))")
-                        else:
-                            set_status(pan, f"❌ Filed Returns Failed — {fr_msg}")
+                                self._ais_results[pan] = "failed"
 
                     if self.is_running:
                         await logout_itd(page, self.log)
@@ -3235,6 +3158,15 @@ class AayDocCapioApp(QMainWindow):
                     except Exception:
                         pass
 
+                # This client's turn in the main loop is over — ALL its selected
+                # doc types have now run (success, failure, or queued for retry).
+                # This is the only correct signal that the progress dialog should
+                # count it as done; a multi-select batch produces several
+                # terminal-looking status updates per client along the way (one
+                # per doc type), so those can no longer be used to infer "done".
+                if self._progress_dialog:
+                    self._progress_dialog.client_finished(pan)
+
                 await asyncio.sleep(3)
 
             # ── Retry pass — one attempt per transient-failed client ──────────
@@ -3259,30 +3191,28 @@ class AayDocCapioApp(QMainWindow):
                             "".join(c if c.isalnum() or c in " _-" else "" for c in name),
                             f"{getattr(self, '_batch_year_type', 'AY')}_{ay.replace('-','_')}"))
 
-                        if mode == "26as" and self.is_running:
-                            set_status(pan, "⏳ Downloading 26AS (retry)...")
-                            ok, err_msg, txt_path = await download_26as(
-                                page, ay, out, self.log, pan=pan, dob=dob)
-                            if ok:
-                                set_status(pan, f"⚠ Excel convert failed" if err_msg else "✅ 26AS Downloaded")
-                            else:
-                                set_status(pan, f"❌ Failed — {err_msg}")
-                        elif mode == "request_ais" and self.is_running:
-                            await self._ensure_dashboard(page)
-                            result = await run_request_ais(
-                                page, fy, out, self.log, pan=pan, dob=dob,
-                                status_callback=lambda t, _p=pan: set_status(_p, t))
-                            self._ais_results[pan] = (
-                                "instant" if result.get("status") == "downloaded"
-                                else "queued" if result.get("status") == "requested"
-                                else "failed")
-                        elif mode == "ais_tis" and self.is_running:
-                            await self._ensure_dashboard(page)
-                            await run_download_ais_tis(
-                                page, fy, out, self.log, pan=pan, dob=dob,
-                                dl_ais=True, dl_tis=False,
-                                should_continue=lambda: self.is_running,
-                                status_callback=lambda t, _p=pan: set_status(_p, t))
+                        for doc_type in ordered_doc_types(selected_docs):
+                            if not self.is_running:
+                                break
+                            handler = HANDLERS.get(doc_type)
+                            if handler is None:
+                                continue
+                            doc_set_status = (lambda p, t, _dt=doc_type: set_status(p, t, _dt))
+                            result = await handler(
+                                page, pan, dob, ay, fy, out, self.log, doc_set_status,
+                                form_type=getattr(self, "_batch_form_type", DEFAULT_FORM),
+                                filing_scope=getattr(self, "_batch_filing_scope", "all"),
+                                is_running=(lambda: self.is_running),
+                            ) or {}
+                            if doc_type == "26as" and result.get("txt_path"):
+                                self._batch_26as_txts.append((pan, result["txt_path"]))
+                            elif doc_type == "request_ais":
+                                ais_status = result.get("ais_status")
+                                self._ais_results[pan] = (
+                                    "instant" if ais_status == "downloaded"
+                                    else "queued" if ais_status == "requested"
+                                    else "skipped" if ais_status == "skipped"
+                                    else "failed")
 
                         if self.is_running:
                             await logout_itd(page, self.log)

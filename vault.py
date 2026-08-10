@@ -259,13 +259,36 @@ class VaultManager:
         self._save_raw(raw_data)
 
     # --- Download History ---
+    # Keyed (pan, ay_label, doc_type) so a batch touching several document
+    # types (e.g. 26AS + Filed Returns) for the same client/AY doesn't have
+    # one call's status silently overwrite another's.
 
-    def record_download(self, pan: str, ay_label: str, status: str, path: str):
-        """Record the last download status + path for a client/AY pair."""
+    # Worst-status-wins ranking for collapsing several doc types into one
+    # grid cell — higher rank displays when multiple doc types disagree.
+    _STATUS_RANK = {"❌": 4, "⚠": 3, "🕐": 2, "⏹": 2, "⬜": 1, "✅": 0}
+
+    @staticmethod
+    def _status_rank(status: str) -> int:
+        for prefix, rank in VaultManager._STATUS_RANK.items():
+            if status.startswith(prefix):
+                return rank
+        return 0
+
+    def record_download(self, pan: str, ay_label: str, doc_type: str, status: str, path: str):
+        """Record the last download status + path for a client/AY/doc_type triple."""
         raw_data = self._get_raw()
         pan = pan.strip().upper()
         hist = raw_data.setdefault("download_history", {})
-        hist.setdefault(pan, {})[ay_label] = {
+        ay_map = hist.setdefault(pan, {})
+        existing = ay_map.get(ay_label)
+        # Backward compatibility: older versions stored the leaf directly as
+        # {"status", "path", "ts"} with no doc_type axis. Migrate any such
+        # entry in place to {"legacy": <old leaf>} before adding doc_type,
+        # so old data is re-homed rather than lost.
+        if isinstance(existing, dict) and "status" in existing:
+            ay_map[ay_label] = {"legacy": existing}
+        doc_map = ay_map.setdefault(ay_label, {})
+        doc_map[doc_type] = {
             "status": status,
             "path": path,
             "ts": datetime.datetime.now().strftime("%d-%b-%Y %H:%M:%S"),
@@ -273,14 +296,40 @@ class VaultManager:
         self._save_raw(raw_data)
 
     def get_download_history(self, ay_label: str) -> dict:
-        """Return {pan: {"status":..., "path":..., "ts":...}} for the given AY label."""
+        """Return {pan: {doc_type: {"status":..., "path":..., "ts":...}}} for the given AY label."""
         raw_data = self._get_raw()
         hist = raw_data.get("download_history", {})
         result = {}
         for pan, ay_map in hist.items():
-            if ay_label in ay_map:
-                result[pan] = ay_map[ay_label]
+            entry = ay_map.get(ay_label)
+            if entry is None:
+                continue
+            # Backward compat for reads of never-migrated old-shape entries.
+            if "status" in entry:
+                entry = {"legacy": entry}
+            result[pan] = entry
         return result
+
+    def get_download_history_summary(self, ay_label: str) -> dict:
+        """Return {pan: {"status": <worst doc_type's status text>, "ts": ..., "path": ...,
+        "breakdown": [(doc_type, status_text), ...]}} — collapses multiple
+        doc types into one display-ready summary per client for the grid."""
+        history = self.get_download_history(ay_label)
+        summary = {}
+        for pan, doc_map in history.items():
+            if not doc_map:
+                continue
+            breakdown = sorted(doc_map.items(), key=lambda kv: kv[0])
+            worst_doc_type, worst_entry = max(
+                doc_map.items(), key=lambda kv: self._status_rank(kv[1].get("status", ""))
+            )
+            summary[pan] = {
+                "status": worst_entry.get("status", ""),
+                "ts": worst_entry.get("ts", ""),
+                "path": worst_entry.get("path", ""),
+                "breakdown": [(dt, e.get("status", "")) for dt, e in breakdown],
+            }
+        return summary
 
     # --- Bulk Import / Export ---
 
@@ -484,7 +533,8 @@ class VaultManager:
             s["smtp_password_enc"] = ""
         self._save_raw(raw_data)
 
-    _ALL_DOCS = ["26as_pdf", "26as_xlsx", "ais_pdf", "ais_xlsx", "tis_pdf"]
+    _ALL_DOCS = ["26as_pdf", "26as_xlsx", "168_pdf", "168_xlsx", "ais_pdf", "ais_xlsx", "tis_pdf",
+                 "itr_form", "itr_receipt", "itr_v", "intimation"]
 
     def _make_legacy_template(self, cfg: dict) -> dict:
         return {

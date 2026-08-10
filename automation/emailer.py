@@ -10,6 +10,7 @@ from email.mime.base import MIMEBase
 from email import encoders
 
 from utils import migrate_flat_docs_to_subfolders
+from automation.doc_types import DOC_TYPES, match_doc_type
 
 # ── Email activity log ────────────────────────────────────────────────────────
 # Logs to <app_dir>/email_log.txt — every SMTP attempt with full server dialogue.
@@ -127,19 +128,22 @@ def collect_attachments(ay_folder: str, pan: str) -> list:
 
     migrate_flat_docs_to_subfolders(ay_folder)
 
-    patterns = [
-        os.path.join("26AS", f"{pan}-26AS-*.pdf"),
-        os.path.join("26AS", f"{pan}-26AS-*.xlsx"),
-        os.path.join("26AS", f"{pan}-168-*.pdf"),
-        os.path.join("26AS", f"{pan}-168-*.xlsx"),   # matches both the converted Excel and the -itd.xlsx ITD native copy
-        os.path.join("AIS-TIS", f"{pan}-AIS-*.pdf"),
-        os.path.join("AIS-TIS", f"{pan}-AIS-*.xlsx"),
-        os.path.join("AIS-TIS", f"{pan}-TIS-*.pdf"),
-        os.path.join("ITR Returns", "*", f"{pan}-ITR-*-Form.pdf"),
-        os.path.join("ITR Returns", "*", f"{pan}-ITR-*-Receipt.pdf"),
-        os.path.join("ITR Returns", "*", f"{pan}-ITR-*-ITR-V.pdf"),
-        os.path.join("Intimation Orders", "*", f"{pan}-Intimation-*.pdf"),
-    ]
+    # Built from automation/doc_types.py (the single source of truth also
+    # used by _doc_list()/MailDocsDialog) rather than a hand-maintained list
+    # here — deduplicated since e.g. 168's ITD-native and converted Excel
+    # share one glob pattern but two separate label entries.
+    seen_patterns = set()
+    patterns = []
+    for entry in DOC_TYPES:
+        if not entry["emailable"]:
+            continue
+        glob_pat = os.path.join(entry["subfolder"], "*", f"{pan}{entry['glob_suffix']}") \
+            if entry["nested"] else os.path.join(entry["subfolder"], f"{pan}{entry['glob_suffix']}")
+        if glob_pat in seen_patterns:
+            continue
+        seen_patterns.add(glob_pat)
+        patterns.append(glob_pat)
+
     found = []
     for pat in patterns:
         matches = glob.glob(os.path.join(ay_folder, pat))
@@ -273,42 +277,10 @@ def _doc_list(attachments: list) -> str:
     entries = []
     for path in attachments:
         fname = os.path.basename(path).upper()
-        if "26AS" in fname and fname.endswith(".PDF") and "26AS_PDF" not in seen:
-            entries.append("Form 26AS — Annual Tax Statement (PDF)")
-            seen.add("26AS_PDF")
-        elif "26AS" in fname and fname.endswith(".XLSX") and "26AS_XLS" not in seen:
-            entries.append("Form 26AS — Annual Tax Statement (Excel)")
-            seen.add("26AS_XLS")
-        elif "168" in fname and fname.endswith(".PDF") and "168_PDF" not in seen:
-            entries.append("Form 168 — Annual Tax Statement (PDF)")
-            seen.add("168_PDF")
-        elif "168" in fname and fname.endswith("-ITD.XLSX") and "168_ITD_XLS" not in seen:
-            entries.append("Form 168 — ITD Native Excel")
-            seen.add("168_ITD_XLS")
-        elif "168" in fname and fname.endswith(".XLSX") and "168_XLS" not in seen:
-            entries.append("Form 168 — Annual Tax Statement (Excel)")
-            seen.add("168_XLS")
-        elif "AIS" in fname and fname.endswith(".PDF") and "AIS_PDF" not in seen:
-            entries.append("AIS — Annual Information Statement (PDF)")
-            seen.add("AIS_PDF")
-        elif "AIS" in fname and fname.endswith(".XLSX") and "AIS_XLS" not in seen:
-            entries.append("AIS — Annual Information Statement (Excel)")
-            seen.add("AIS_XLS")
-        elif "TIS" in fname and "TIS" not in seen:
-            entries.append("TIS — Taxpayer Information Summary")
-            seen.add("TIS")
-        elif "ITR" in fname and fname.endswith("-FORM.PDF") and "ITR_FORM" not in seen:
-            entries.append("ITR Form")
-            seen.add("ITR_FORM")
-        elif "ITR" in fname and fname.endswith("-RECEIPT.PDF") and "ITR_RECEIPT" not in seen:
-            entries.append("ITR Receipt")
-            seen.add("ITR_RECEIPT")
-        elif "ITR" in fname and fname.endswith("-ITR-V.PDF") and "ITR_V" not in seen:
-            entries.append("ITR-V (Verification Form — return not yet e-verified)")
-            seen.add("ITR_V")
-        elif "INTIMATION" in fname and fname.endswith(".PDF") and "INTIMATION" not in seen:
-            entries.append("Intimation Order")
-            seen.add("INTIMATION")
+        entry = match_doc_type(fname)
+        if entry and entry["key"] not in seen:
+            entries.append(entry["label"])
+            seen.add(entry["key"])
     if not entries:
         return "<ol><li>Tax documents</li></ol>"
     items = "".join(f"<li>{e}</li>" for e in entries)

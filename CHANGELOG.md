@@ -2,6 +2,30 @@
 
 All notable changes to AayDocCapio are documented here.
 
+## [2.0.0] — 2026-08-10
+
+### New Features
+
+#### Filed Returns & Intimation Orders Download (F-56)
+- **Filed Returns download** — full end-to-end download of filed ITR Form, Receipt (or ITR-V if not yet e-verified), JSON, and any Intimation Order(s) for a client's Assessment Year, straight from the e-Filing portal's "View Filed Returns" screen
+- **Filing Scope option** — choose **All filings for the year** (downloads every Original/Revised/Rectification/Updated filing found, each in its own subfolder) or **Latest filing only** (downloads whichever was filed most recently by date, regardless of type)
+- **Per-filing subfolders** — files organized as `Filing Type-Filing Date-Acknowledgement Number` under `ITR Returns/` and `Intimation Orders/`, so an Original and a later Revised filing for the same year never collide
+
+#### Unified Download Picker (F-56)
+- **Multi-select batch runs** — the old per-document menu items are replaced by a single **Download** button opening a checkbox picker: 26AS/Form 168, AIS + TIS, Download Previously Requested AIS, and ITR Return + Intimation Orders can now all be selected together and run in one batch, one client at a time
+- **Per-document-type grid status** — the "Last Download Status" column now shows one glyph summarizing the worst outcome across every document type run for a client/year, with a hover tooltip breaking down the individual status per document type
+- **Mail template support for ITR documents** — named email templates can now independently include ITR Form, ITR Receipt, ITR-V, and Intimation Order attachments alongside the existing 26AS/AIS/TIS options
+
+### Improvements
+- **AIS activity-history check no longer blocks** — "Download Previously Requested AIS" now checks once and reports "still generating, try again later" instead of polling for up to 10 minutes
+- **Automatic failure diagnostics** — portal navigation failures now save a screenshot and page snapshot automatically for faster troubleshooting, without needing to reproduce the issue live
+
+### Bug Fixes
+- **Retry queue now covers every selected document type** — a transient failure during a multi-document batch previously could retry only 26AS/AIS and silently skip a failed Filed Returns download; retries now cover whatever was selected
+- **26AS/Form 168 retry used the wrong form** — the retry pass for a failed download always re-tried Form 26AS even for Tax Year 2026-27 clients who needed Form 168; it now picks the correct form the same way the main run does
+
+---
+
 ## [1.9.2] — 2026-08-01
 
 ### Bug Fixes
