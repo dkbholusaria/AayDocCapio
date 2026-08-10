@@ -2,6 +2,30 @@
 
 All notable changes to AayDocCapio are documented here.
 
+## [2.0.0] — 2026-08-10
+
+### New Features
+
+#### Filed Returns & Intimation Orders Download (F-56)
+- **Filed Returns download** — full end-to-end download of filed ITR Form, Receipt (or ITR-V if not yet e-verified), JSON, and any Intimation Order(s) for a client's Assessment Year, straight from the e-Filing portal's "View Filed Returns" screen
+- **Filing Scope option** — choose **All filings for the year** (downloads every Original/Revised/Rectification/Updated filing found, each in its own subfolder) or **Latest filing only** (downloads whichever was filed most recently by date, regardless of type)
+- **Per-filing subfolders** — files organized as `Filing Type-Filing Date-Acknowledgement Number` under `ITR Returns/` and `Intimation Orders/`, so an Original and a later Revised filing for the same year never collide
+
+#### Unified Download Picker (F-56)
+- **Multi-select batch runs** — the old per-document menu items are replaced by a single **Download** button opening a checkbox picker: 26AS/Form 168, AIS + TIS, Download Previously Requested AIS, and ITR Return + Intimation Orders can now all be selected together and run in one batch, one client at a time
+- **Per-document-type grid status** — the "Last Download Status" column now shows one glyph summarizing the worst outcome across every document type run for a client/year, with a hover tooltip breaking down the individual status per document type
+- **Mail template support for ITR documents** — named email templates can now independently include ITR Form, ITR Receipt, ITR-V, and Intimation Order attachments alongside the existing 26AS/AIS/TIS options
+
+### Improvements
+- **AIS activity-history check no longer blocks** — "Download Previously Requested AIS" now checks once and reports "still generating, try again later" instead of polling for up to 10 minutes
+- **Automatic failure diagnostics** — portal navigation failures now save a screenshot and page snapshot automatically for faster troubleshooting, without needing to reproduce the issue live
+
+### Bug Fixes
+- **Retry queue now covers every selected document type** — a transient failure during a multi-document batch previously could retry only 26AS/AIS and silently skip a failed Filed Returns download; retries now cover whatever was selected
+- **26AS/Form 168 retry used the wrong form** — the retry pass for a failed download always re-tried Form 26AS even for Tax Year 2026-27 clients who needed Form 168; it now picks the correct form the same way the main run does
+
+---
+
 ## [1.9.2] — 2026-08-01
 
 ### Bug Fixes
@@ -14,11 +38,11 @@ All notable changes to AayDocCapio are documented here.
 
 ### New Features
 
-#### Form 168 Support
+#### Form 168 Support (F-xx)
 - **Form 168 download** — full end-to-end download of Form 168 (Annual Tax Statement under IT Act 2025) from TRACES 2.0 for TY 2026-27 onwards: PDF + ITD native Excel + TXT in one batch run
 - **TY folder naming** — TY 2026-27 documents saved in `TY_2026_27` folder (not `AY_2026_27`)
-- **Form 168 TXT → Excel/HTML conversion** — converter extended to parse Form 168 TXT format; new parts X(a), X(b), XI; different header line offsets handled automatically
-- **Form-aware labels** — HTML and Excel output shows "Form 168", "TY", "Tax Year" labels for Form 168 files; "Form 26AS", "AY", "Assessment Year" unchanged for existing files
+- **Form 168 TXT → Excel/HTML conversion** — `as26_converter.py` extended to correctly parse Form 168 TXT format including new Part X(a), X(b), and XI; handles different header line offsets and part-header patterns
+- **Form-aware output labels** — HTML and Excel output correctly shows "Form 168", "TY", and "Tax Year" labels (instead of Form 26AS / AY / Assessment Year) when converting Form 168 files
 - **ITD native Excel preserved** — TRACES 2.0 native Excel saved with `-itd.xlsx` suffix alongside the fully-featured converted Excel
 
 ---
@@ -32,24 +56,26 @@ All notable changes to AayDocCapio are documented here.
 - **Tray menu** — right-click tray icon for Restore, Send to Tray, Stop Batch, Quit
 - **WinRT toast notifications** — Windows native balloon with app icon on hide and on batch completion
 - **Send to Tray button** — progress dialog has a ⬇ Tray button to hide manually mid-batch
+- **Auto-restore** — app restores from tray when user clicks tray icon or after batch completes
 
 #### Named Email Templates (F-17 enhancements)
-- **Per-template document selection** — each template independently controls which documents are attached
-- **Selective export/import** — choose SMTP settings, individual templates, or both; SMTP password exported encrypted
-- **Dynamic Save button** — Cancel switches to Save & Close only when changes are detected
+- **Per-template document selection** — each template independently controls which documents (26AS PDF, 26AS Excel, AIS PDF, AIS Excel, TIS PDF) are attached
+- **Selective export/import** — choose SMTP settings, individual templates, or both when exporting; SMTP password exported encrypted (portable Fernet)
+- **Dynamic Save button** — Cancel button switches to Save & Close only when changes are detected
 
 ### Improvements
-- **App logo refreshed** — new 1024×1024 RGBA PNG and ICO with full DPI size set
-- **Header logo enlarged** — 106×106px in main header; logo added to Manage Assessment Years dialog
-- **Help Manual updated** — new sections for Run History (11.1), System Tray (10.4), Email Templates (9.4), Export/Import (9.5); logo in hero and sticky nav
-- **Tooltips themed** — QToolTip follows light/dark theme
+- **App logo refreshed** — new 1024×1024 RGBA PNG and ICO with full DPI size set (16, 20, 24, 32, 48, 64, 96, 128, 256px)
+- **Header logo enlarged** — 106×106px in main header; logo also added to Manage Assessment Years dialog
+- **Help Manual updated** — new sections for Run History (11.1), System Tray (10.4), Email Templates (9.4), Export/Import Settings (9.5); logo in hero and sticky nav
+- **Tooltips themed** — QToolTip follows light/dark theme (cream tint in light, dark navy in dark)
+- **Button order** — Email Settings footer: Cancel left, Save Templates + Save & Close right
 - **Screenshots bundled** — Help Manual screenshots now included in compiled .exe/.msi build
 - **Main grid status double-click** — double-click Last Download Status column to see full text popup
 
 ### Bug Fixes
 - **Stopped batch preserves status** — stopping a batch no longer overwrites the last saved download status in the vault
-- **Send to Tray menu** — hidden when app is already in tray
-- **QAction checkable** — fixed constructor kwarg error in theme menu actions
+- **Send to Tray menu** — hidden when app is already in tray; shown only when app is visible and batch is running
+- **QAction checkable** — fixed `checkable=True` constructor kwarg error in theme menu actions
 
 ---
 
@@ -143,25 +169,50 @@ All notable changes to AayDocCapio are documented here.
 ## [1.5.6] — 2026-06-16
 
 ### New Features
-- **Mail Docs to Clients** — batch email AIS/TIS/26AS files to clients; scan folder, match PANs, select recipients, send in one click with per-row live status
-- **Email provider presets** — Gmail, Outlook.com, Microsoft 365/Office 365, Exchange, Yahoo, iCloud, Custom; one click auto-fills SMTP settings and shows provider-specific help
-- **Rich text email composer** — font, size, Bold/Italic/Underline toolbar, CC/BCC, HTML templates with `{client_name}`, `{pan}`, `{ay}`, `{firm_name}`, `{documents}` placeholders
-- **Numbered document list** — `{documents}` renders as a numbered HTML list of actual attached files (26AS PDF, 26AS Excel, AIS, TIS)
-- **"Powered by AayDocCapio"** footer on every outgoing email
-- **Email Docs + Exit buttons** on main toolbar; "Run" renamed to "Download"
-- **Session dividers** in email activity log; client name logged on every send attempt
+
+#### Email Delivery
+- **Mail Docs to Clients dialog** — scan a download folder, match client PANs, select recipients, and send tax documents in bulk. Accessible via the new **Email Docs** button on the main toolbar or Tools → Mail Docs to Clients
+- **Batch email with live status** — per-row progress: ⏳ Sending → ✅ Sent / ❌ Failed with friendly SMTP error messages
+- **Inline email editing** — type or correct a client's email address directly in the table; saved to vault before sending
+- **Numbered document list** — `{documents}` placeholder in email body renders as a numbered HTML list identifying each attached file by type (Form 26AS PDF, Form 26AS Excel, AIS, TIS)
+- **"Powered by AayDocCapio"** footer appended automatically to every outgoing email with a clickable link to the download page
+- **Session log dividers** — email log now shows `── SESSION STARTED ──` / `── SESSION ENDED ──` separators between app sessions
+- **Client name in email log** — every send attempt logs the client name and PAN for easy audit
+
+#### Email Provider Presets
+One-click SMTP configuration for all major providers — selecting a tile auto-fills host, port, encryption, and shows provider-specific setup help with clickable links:
+
+| Provider | SMTP Host | Port |
+|---|---|---|
+| Gmail | smtp.gmail.com | 587 |
+| Outlook.com / Hotmail | smtp-mail.outlook.com | 587 |
+| Microsoft 365 / Office 365 | smtp.office365.com | 587 |
+| Exchange (on-premise) | configurable | 587 |
+| Yahoo Mail | smtp.mail.yahoo.com | 587 |
+| iCloud Mail | smtp.mail.me.com | 587 |
+| Custom / Other | any | any |
+
+#### Rich Text Email Composer
+- Font family picker, font size, Bold / Italic / Underline toolbar
+- Placeholder chips: `{client_name}`, `{pan}`, `{ay}`, `{firm_name}`, `{documents}`
+- CC and BCC fields; BCC added to SMTP envelope but not email headers
+- Send Test Email button to verify settings before bulk send
 
 ### UI Improvements
-- Mail Docs table: sortable all columns, filter with × clear button, Select All/None respects filter, resizable columns
-- Fluency multicolor icons on all buttons, menus, context menus across the app
-- Premium blue left-bordered help notes with clickable links in Email Settings
-- Dropdown arrow visible in dark theme
+- **Download button** — "Run" renamed to "Download" for clarity
+- **Email Docs button** — quick-launch on main toolbar (no menu navigation)
+- **Exit button** — one-click close on main toolbar with clean session-end logging
+- **Mail Docs table** — sortable on all columns, filter bar with one-click clear (×), Select All/None respects active filter, resizable columns
+- **Fluency multicolor icons** — all buttons, menus, and context menus across the entire app now have icons
+- **Premium help notes** — blue left-bordered info panels with clickable links in Email Settings
+- **Dropdown arrow** — visible in dark theme via CSS triangle fallback
 
 ### Bug Fixes
-- Batch send silent crash on HTML bodies with CSS `{}` braces
-- Mail Docs sorting now moves all row widgets correctly
-- Checkbox backgrounds match table row color (no white flash)
-- Font combo non-editable; Qt font warnings suppressed
+- **Batch send silent crash** — `format_map()` crashed on HTML bodies containing CSS `{}` braces; switched to explicit per-placeholder `.replace()` 
+- **Mail Docs sorting** — sorting now correctly moves checkboxes, email fields, CC fields, and send status together with the row (previously only text items moved)
+- **Checkbox backgrounds** — white flash in Mail Docs table fixed; checkbox container background now matches alternating row color
+- **Font combo editable** — `QFontComboBox` no longer accepts typed input (dropdown-only)
+- **Qt font warnings** — `qt.text.font.db: OpenType support missing` console spam suppressed via `qInstallMessageHandler`
 
 ---
 

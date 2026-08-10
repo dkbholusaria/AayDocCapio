@@ -14,6 +14,7 @@ from PyQt6.QtGui import (
 
 from ui._theme import _t
 from ui.helpers import _btn, _lbl, _status_style, _UI_FONT, _icon_path
+from automation.doc_types import match_doc_type
 from config import _open_path, _log_open
 from themes import MONO_FONT_NAME as _MONO_FONT
 
@@ -201,13 +202,14 @@ class BatchProgressDialog(QDialog):
     _update_signal = pyqtSignal(str, str)
     _path_signal   = pyqtSignal(str, str)
     _resume_signal = pyqtSignal(list)
+    _client_done_signal = pyqtSignal(str)   # pan — ALL selected doc types finished for this client
 
     _COL_NAME   = 0
     _COL_PAN    = 1
     _COL_STATUS = 2
     _COL_PATH   = 3
 
-    def __init__(self, targets: list, mode: str, ay: str = "",
+    def __init__(self, targets: list, selected_docs, ay: str = "",
                  stop_callback=None, resume_callback=None, skip_callback=None,
                  tray_callback=None, output_dir: str = "", parent=None):
         super().__init__(parent)
@@ -216,16 +218,21 @@ class BatchProgressDialog(QDialog):
         self._skip_callback   = skip_callback
         self._tray_callback   = tray_callback
         self._output_dir      = output_dir
-        self._mode            = mode
+        self._selected_docs   = selected_docs
         self._ay              = ay
         self._targets         = targets
         self._pan_to_path     = {}
 
-        mode_label = {
-            "26as":        "Downloading 26AS",
-            "request_ais": "Requesting AIS Generation",
-            "ais_tis":     "Downloading AIS / TIS",
-        }.get(mode, "Batch Run")
+        _doc_labels = {
+            "26as":           "26AS",
+            "request_ais":    "Requesting AIS Generation",
+            "ais_tis":        "AIS / TIS",
+            "filed_returns":  "Filed Returns",
+        }
+        mode_label = " + ".join(
+            _doc_labels.get(d, d) for d in sorted(selected_docs)
+        ) or "Batch Run"
+        mode_label = f"Downloading {mode_label}" if mode_label != "Batch Run" else mode_label
         self._mode_label = mode_label
 
         self.setWindowTitle(f"{mode_label} — Batch Progress")
@@ -443,6 +450,7 @@ class BatchProgressDialog(QDialog):
 
         self._update_signal.connect(self._on_update)
         self._path_signal.connect(self._on_path_update)
+        self._client_done_signal.connect(self._on_client_done)
         self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
 
     # ── internal helpers ──────────────────────────────────────────────────────
@@ -484,6 +492,12 @@ class BatchProgressDialog(QDialog):
         self._table.setItem(row, self._COL_STATUS, item)
 
     def _on_update(self, pan: str, status: str):
+        """Live status text update only — does NOT count the client as done.
+        A multi-select batch runs several doc types per client in sequence,
+        each ending in its own terminal-looking status (e.g. "✅ 26AS
+        Downloaded" while Filed Returns/AIS are still queued for the same
+        client), so "saw a terminal glyph" can no longer mean "this client
+        is finished" — only the explicit client_finished() call means that."""
         row = self._pan_to_row.get(pan)
         if row is None:
             return
@@ -491,13 +505,19 @@ class BatchProgressDialog(QDialog):
         if pan in self._rows_data:
             self._rows_data[pan]["status"] = status
             self._rows_data[pan]["ts"] = datetime.datetime.now().strftime("%d-%b-%Y %H:%M:%S")
-        terminal = ("✅", "❌", "🕐", "⬜", "⏹", "⚠")
-        if any(status.startswith(p) for p in terminal):
-            if pan not in self._counted_pans:
-                self._counted_pans.add(pan)
-                self._done_count += 1
-                self._progress_bar.setValue(self._done_count)
-                self._progress_bar.setFormat(f"{self._done_count} / {self._total} done")
+
+    def client_finished(self, pan: str):
+        """Thread-safe: call once per client, after ALL its selected doc
+        types have finished (success or failure) — the only correct signal
+        that this client's row is truly done."""
+        self._client_done_signal.emit(pan)
+
+    def _on_client_done(self, pan: str):
+        if pan not in self._counted_pans:
+            self._counted_pans.add(pan)
+            self._done_count += 1
+            self._progress_bar.setValue(self._done_count)
+            self._progress_bar.setFormat(f"{self._done_count} / {self._total} done")
         if self._done_count >= self._total:
             self._close_btn.setEnabled(True)
             self._report_btn.setEnabled(True)
@@ -1515,7 +1535,9 @@ class SmtpSettingsDialog(QDialog):
             f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};}}"
         )
         self._doc_cbs = {}
-        docs_grid = QHBoxLayout(); docs_grid.setSpacing(20)
+        docs_rows = QVBoxLayout(); docs_rows.setSpacing(6)
+        docs_row1 = QHBoxLayout(); docs_row1.setSpacing(20)
+        docs_row2 = QHBoxLayout(); docs_row2.setSpacing(20)
         for label, key in [
             ("26AS PDF",   "26as_pdf"),
             ("26AS Excel", "26as_xlsx"),
@@ -1529,9 +1551,23 @@ class SmtpSettingsDialog(QDialog):
             cb.setChecked(True)
             cb.setStyleSheet(_cb_ss)
             self._doc_cbs[key] = cb
-            docs_grid.addWidget(cb)
-        docs_grid.addStretch()
-        right_v.addLayout(docs_grid)
+            docs_row1.addWidget(cb)
+        for label, key in [
+            ("ITR Form",    "itr_form"),
+            ("ITR Receipt", "itr_receipt"),
+            ("ITR-V",       "itr_v"),
+            ("Intimation",  "intimation"),
+        ]:
+            cb = QCheckBox(label)
+            cb.setChecked(True)
+            cb.setStyleSheet(_cb_ss)
+            self._doc_cbs[key] = cb
+            docs_row2.addWidget(cb)
+        docs_row1.addStretch()
+        docs_row2.addStretch()
+        docs_rows.addLayout(docs_row1)
+        docs_rows.addLayout(docs_row2)
+        right_v.addLayout(docs_rows)
 
         # Load templates into list
         self._templates = self._vault.get_email_templates()
@@ -2251,6 +2287,152 @@ class EmailLogDialog(QDialog):
             self._text.clear()
 
 
+# ── Download Picker Dialog (F-56 Phase 3) ─────────────────────────────────────
+
+class DownloadPickerDialog(QDialog):
+    """
+    Replaces the old Run button's dropdown menu — a single checkbox picker
+    lets the user select any combination of document types for one batch
+    run instead of running each mode separately (F-56 Phase 2/3).
+
+    Note: "ITR Return" and "Intimation Orders" are one combined checkbox,
+    not two — automation.downloader_filed_returns.download_filed_returns()
+    always fetches Form/Receipt/JSON and any Intimation Orders together in
+    the same pass per filing, so offering them as independently toggleable
+    would be misleading (unchecking one wouldn't actually skip it).
+    """
+
+    def __init__(self, parent, vault):
+        super().__init__(parent)
+        self._vault = vault
+        self.selected_docs: set = set()
+        self.filing_scope = "all"
+
+        self.setWindowTitle("Download Documents")
+        self.setMinimumWidth(440)
+        self.resize(460, 460)
+        self.setWindowFlags(
+            Qt.WindowType.Dialog |
+            Qt.WindowType.WindowTitleHint |
+            Qt.WindowType.WindowCloseButtonHint)
+        self._build_ui()
+
+    def _build_ui(self):
+        t = _t()
+        self.setStyleSheet(
+            f"QDialog{{background:{t.bg_window};}}"
+            f"QLabel{{color:{t.text_primary};background:transparent;}}"
+            f"QCheckBox{{color:{t.text_primary};background:transparent;"
+            f"font-size:13px;font-weight:600;spacing:9px;}}"
+            f"QCheckBox::indicator{{width:16px;height:16px;border:1.5px solid {t.border};"
+            f"border-radius:4px;background:{t.bg_checkbox};}}"
+            f"QCheckBox::indicator:hover{{border-color:{t.border_focus};}}"
+            f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};}}"
+            f"QRadioButton{{color:{t.text_primary};background:transparent;font-size:12px;spacing:6px;}}"
+            f"QRadioButton::indicator{{width:14px;height:14px;border:1.5px solid {t.border};"
+            f"border-radius:7px;background:{t.bg_checkbox};}}"
+            f"QRadioButton::indicator:checked{{background:{t.accent};border-color:{t.accent};}}"
+        )
+
+        main = QVBoxLayout(self)
+        main.setContentsMargins(22, 20, 22, 16)
+        main.setSpacing(2)
+
+        self._cbs = {}
+
+        def add_option(key: str, label: str, sub: str = "", checked: bool = False):
+            row = QVBoxLayout()
+            row.setSpacing(2)
+            cb = QCheckBox(label)
+            cb.setChecked(checked)
+            self._cbs[key] = cb
+            row.addWidget(cb)
+            if sub:
+                sub_lbl = QLabel(sub)
+                sub_lbl.setStyleSheet(f"font-size:11px;color:{t.text_muted};margin-left:25px;")
+                row.addWidget(sub_lbl)
+            main.addLayout(row)
+            line = QFrame()
+            line.setFrameShape(QFrame.Shape.HLine)
+            line.setStyleSheet(f"color:{t.border};background:{t.border};max-height:1px;")
+            main.addWidget(line)
+            main.addSpacing(4)
+            return cb
+
+        add_option("26as", "26AS / Form 168",
+                    "PDF + Excel/TXT — form picked automatically by year", checked=True)
+        add_option("request_ais", "AIS + TIS",
+                    "Requests generation if not ready yet, downloads instantly if it is")
+        add_option("ais_tis", "Download Previously Requested AIS",
+                    "For clients whose AIS was requested earlier and should be ready now")
+
+        itr_cb = add_option("filed_returns", "ITR Return + Intimation Orders",
+                             "Form, Receipt (or ITR-V), JSON, and any Intimation Orders")
+
+        self._scope_panel = QFrame()
+        self._scope_panel.setStyleSheet(
+            f"QFrame{{background:{t.bg_table_alt};border:1px solid {t.border};"
+            f"border-left:3px solid {t.accent};border-radius:6px;}}"
+        )
+        scope_v = QVBoxLayout(self._scope_panel)
+        scope_v.setContentsMargins(12, 10, 12, 10)
+        scope_v.setSpacing(4)
+        scope_title = QLabel("FILING SCOPE")
+        scope_title.setStyleSheet(f"font-size:10.5px;font-weight:700;color:{t.text_muted};letter-spacing:0.04em;")
+        scope_v.addWidget(scope_title)
+
+        _scope_sub_ss = f"font-size:11px;color:{t.text_muted};margin-left:23px;"
+
+        self._rb_all = QRadioButton("All filings for the year")
+        self._rb_all.setChecked(True)
+        scope_v.addWidget(self._rb_all)
+        all_sub = QLabel("e.g. Original, then a later Revised, Rectification, or Updated return — downloads every one")
+        all_sub.setStyleSheet(_scope_sub_ss)
+        all_sub.setWordWrap(True)
+        scope_v.addWidget(all_sub)
+
+        self._rb_latest = QRadioButton("Latest filing only")
+        scope_v.addWidget(self._rb_latest)
+        latest_sub = QLabel("same example — downloads whichever was filed most recently, by date, regardless of type")
+        latest_sub.setStyleSheet(_scope_sub_ss)
+        latest_sub.setWordWrap(True)
+        scope_v.addWidget(latest_sub)
+
+        main.addWidget(self._scope_panel)
+        main.addSpacing(4)
+
+        saved_scope = self._vault.get_setting("filed_returns_scope", "all")
+        if saved_scope == "latest":
+            self._rb_latest.setChecked(True)
+
+        self._scope_panel.setVisible(itr_cb.isChecked())
+        itr_cb.toggled.connect(self._scope_panel.setVisible)
+
+        main.addStretch()
+
+        footer = QHBoxLayout()
+        footer.addStretch()
+        cancel_btn = _btn("Cancel", "outline", height=32)
+        cancel_btn.clicked.connect(self.reject)
+        download_btn = _btn("Download", "primary", height=32)
+        download_btn.clicked.connect(self._on_download)
+        footer.addWidget(cancel_btn)
+        footer.addWidget(download_btn)
+        main.addLayout(footer)
+
+    def _on_download(self):
+        self.selected_docs = {key for key, cb in self._cbs.items() if cb.isChecked()}
+        if not self.selected_docs:
+            QMessageBox.warning(self, "Nothing Selected", "Please select at least one document type.")
+            return
+        self.filing_scope = "latest" if self._rb_latest.isChecked() else "all"
+        try:
+            self._vault.update_setting("filed_returns_scope", self.filing_scope)
+        except Exception:
+            pass
+        self.accept()
+
+
 # ── Mail Docs to Clients Dialog ───────────────────────────────────────────────
 
 class MailDocsDialog(QDialog):
@@ -2775,17 +2957,9 @@ class MailDocsDialog(QDialog):
             if not doc_filter:
                 return True
             n = os.path.basename(path).upper()
-            if "-26AS-" in n and n.endswith(".PDF"):  return doc_filter.get("26as_pdf",  True)
-            if "-26AS-" in n and n.endswith(".XLSX"): return doc_filter.get("26as_xlsx", True)
-            if "-168-"  in n and n.endswith(".PDF"):  return doc_filter.get("168_pdf",   True)
-            if "-168-"  in n and n.endswith(".XLSX"): return doc_filter.get("168_xlsx",  True)
-            if "-AIS-"  in n and n.endswith(".PDF"):  return doc_filter.get("ais_pdf",   True)
-            if "-AIS-"  in n and n.endswith(".XLSX"): return doc_filter.get("ais_xlsx",  True)
-            if "-TIS-"  in n and n.endswith(".PDF"):  return doc_filter.get("tis_pdf",   True)
-            if "-ITR-"  in n and n.endswith("-FORM.PDF"):    return doc_filter.get("itr_form",    True)
-            if "-ITR-"  in n and n.endswith("-RECEIPT.PDF"): return doc_filter.get("itr_receipt", True)
-            if "-ITR-"  in n and n.endswith("-ITR-V.PDF"):   return doc_filter.get("itr_v",        True)
-            if "-INTIMATION-" in n and n.endswith(".PDF"):   return doc_filter.get("intimation",  True)
+            entry = match_doc_type(n)
+            if entry and entry["template_key"]:
+                return doc_filter.get(entry["template_key"], True)
             return True
 
         # Collect selected clients and validate emails
@@ -2878,19 +3052,8 @@ class MailDocsDialog(QDialog):
         _pan_to_ay   = {c["pan"]: c.get("ay_label", self._ay_label) for c in selected}
         def _doc_label(path: str) -> str:
             n = os.path.basename(path).upper()
-            if "-26AS-" in n and n.endswith(".PDF"):  return "26AS PDF"
-            if "-26AS-" in n and n.endswith(".XLSX"): return "26AS Excel"
-            if "-168-"  in n and n.endswith("-ITD.XLSX"): return "168 ITD Excel"
-            if "-168-"  in n and n.endswith(".PDF"):  return "168 PDF"
-            if "-168-"  in n and n.endswith(".XLSX"): return "168 Excel"
-            if "-AIS-"  in n and n.endswith(".PDF"):  return "AIS PDF"
-            if "-AIS-"  in n and n.endswith(".XLSX"): return "AIS Excel"
-            if "-TIS-"  in n and n.endswith(".PDF"):  return "TIS"
-            if "-ITR-"  in n and n.endswith("-FORM.PDF"):    return "ITR Form"
-            if "-ITR-"  in n and n.endswith("-RECEIPT.PDF"): return "ITR Receipt"
-            if "-ITR-"  in n and n.endswith("-ITR-V.PDF"):   return "ITR-V"
-            if "-INTIMATION-" in n and n.endswith(".PDF"):   return "Intimation Order"
-            return os.path.basename(path)
+            entry = match_doc_type(n)
+            return entry["short_label"] if entry else os.path.basename(path)
 
         _pan_to_docs = {
             c["pan"]: ", ".join(_doc_label(f) for f in c.get("attachments", []))
