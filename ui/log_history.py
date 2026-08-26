@@ -1,4 +1,4 @@
-import os, json, datetime, threading
+import os, json, re, datetime, threading
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QWidget,
@@ -11,6 +11,7 @@ from PyQt6.QtGui import QColor
 from config import _app_dir
 from ui._theme import _t
 from ui.helpers import _btn, _lbl
+from ui.widgets import StyledComboBox
 from themes import MONO_FONT_NAME as _MONO_FONT
 
 
@@ -66,6 +67,12 @@ class LogHistoryDialog(QDialog):
     """
     F-13 — Shows the last 20 download statuses per AY for a given client.
     Opened from the right-click context menu → View Log.
+
+    F-14 (multi-year): a client can now have history for several AYs from
+    a single multi-year batch, so this carries its own year selector
+    (populated from whichever AYs this client actually has history for)
+    instead of being locked to a single `active_ay` picked by whatever
+    happened to be checked in the toolbar combo when the dialog was opened.
     """
 
     def __init__(self, parent, name: str, pan: str, history: dict, active_ay: str = ""):
@@ -73,7 +80,11 @@ class LogHistoryDialog(QDialog):
         self._name      = name
         self._pan       = pan
         self._history   = history
-        self._active_ay = active_ay
+        self._years     = sorted(history.keys(), key=self._year_sort_key)
+        # Prefer whatever the caller suggested (e.g. the toolbar's current
+        # AY) if this client actually has history for it, otherwise fall
+        # back to the most recent year that does.
+        self._active_ay = active_ay if active_ay in history else (self._years[0] if self._years else "")
         self.setWindowTitle(f"Run History — {name} ({pan})")
         self.resize(640, 420)
         self.setMinimumSize(480, 300)
@@ -115,32 +126,29 @@ class LogHistoryDialog(QDialog):
         tb.addWidget(_lbl("Run History", 13, bold=True))
         tb.addSpacing(10)
         tb.addWidget(_lbl(f"{self._name}  ·  {self._pan}", 11, color=t.text_muted))
-        if self._active_ay:
-            tb.addSpacing(6)
-            tb.addWidget(_lbl(f"·  {self._active_ay}", 11, color=t.accent))
         tb.addStretch()
+        if len(self._years) > 1:
+            # Several AYs have history for this client (multi-year batches) —
+            # let the user switch between them instead of only ever seeing
+            # whichever one happened to be checked in the toolbar.
+            self._year_combo = StyledComboBox()
+            self._year_combo.addItems(self._years)
+            self._year_combo.setCurrentText(self._active_ay)
+            self._year_combo.setFixedWidth(200)
+            self._year_combo.currentTextChanged.connect(self._on_year_changed)
+            tb.addWidget(self._year_combo)
+        elif self._active_ay:
+            tb.addWidget(_lbl(self._active_ay, 11, color=t.accent))
         outer.addWidget(title_bar)
 
         # ── Content ───────────────────────────────────────────────────────────
-        content = QWidget()
-        content.setStyleSheet(f"QWidget{{background:{t.bg_window};}}")
-        cv = QVBoxLayout(content)
-        cv.setContentsMargins(16, 12, 16, 8)
-        cv.setSpacing(0)
-
-        entries = list(reversed(self._history.get(self._active_ay, [])))
-        if not entries:
-            msg = "No history yet for this AY." if self._active_ay else "No history yet for this client."
-            empty = QLabel(msg)
-            empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            empty.setStyleSheet(f"color:{t.text_muted};font-size:12px;")
-            cv.addStretch()
-            cv.addWidget(empty, alignment=Qt.AlignmentFlag.AlignCenter)
-            cv.addStretch()
-        else:
-            cv.addWidget(self._make_table(entries, t))
-
-        outer.addWidget(content, stretch=1)
+        self._content = QWidget()
+        self._content.setStyleSheet(f"QWidget{{background:{t.bg_window};}}")
+        self._content_layout = QVBoxLayout(self._content)
+        self._content_layout.setContentsMargins(16, 12, 16, 8)
+        self._content_layout.setSpacing(0)
+        self._populate_content(t)
+        outer.addWidget(self._content, stretch=1)
 
         # ── Footer ────────────────────────────────────────────────────────────
         sep = QFrame()
@@ -157,6 +165,36 @@ class LogHistoryDialog(QDialog):
         close_btn.clicked.connect(self.accept)
         ft.addWidget(close_btn)
         outer.addWidget(footer)
+
+    @staticmethod
+    def _year_sort_key(label: str):
+        """Most-recent-year-first, regardless of AY/TY prefix or FY suffix
+        also appearing in the label — sorts on the first 4-digit year found."""
+        m = re.search(r"\d{4}", label)
+        return -int(m.group()) if m else 0
+
+    def _on_year_changed(self, ay_label: str):
+        self._active_ay = ay_label
+        self._populate_content(_t())
+
+    def _populate_content(self, t):
+        while self._content_layout.count():
+            child = self._content_layout.takeAt(0)
+            w = child.widget()
+            if w:
+                w.deleteLater()
+
+        entries = list(reversed(self._history.get(self._active_ay, [])))
+        if not entries:
+            msg = "No history yet for this AY." if self._active_ay else "No history yet for this client."
+            empty = QLabel(msg)
+            empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty.setStyleSheet(f"color:{t.text_muted};font-size:12px;")
+            self._content_layout.addStretch()
+            self._content_layout.addWidget(empty, alignment=Qt.AlignmentFlag.AlignCenter)
+            self._content_layout.addStretch()
+        else:
+            self._content_layout.addWidget(self._make_table(entries, t))
 
     @staticmethod
     def _make_table(entries: list, t) -> QTableWidget:

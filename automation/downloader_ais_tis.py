@@ -801,53 +801,73 @@ async def download_ais_from_activity_history(portal: Page, fiscal_year: str,
         return _outcome("failed", reason=str(e)[:80])
 
 
-# ── Top-level entry points (called from app.py) ───────────────────────────────
+# ── Top-level entry points (called from app.py via batch_handlers.py) ─────────
+#
+# F-14 (multi-year): both entry points now take a LIST of fiscal years and a
+# `download_dir_for_year(fiscal_year) -> str` callback instead of a single
+# year/folder. The Compliance Portal is opened ONCE per client per doc type
+# (the expensive/fragile part — the same class of navigation cost the e-File
+# hover fixes were about); each year in the list just reselects the FY via
+# `_select_fy()`, which was already idempotent (checks the current dropdown
+# value before acting), so looping it is safe with no extra reset needed.
 
-async def run_request_ais(itd_page: Page, fiscal_year: str, download_dir: str,
+async def run_request_ais(itd_page: Page, fiscal_years: list[str], download_dir_for_year,
                           log, pan: str = "", dob: str = "",
-                          status_callback=None) -> dict:
+                          status_callback=None) -> dict[str, dict]:
     """
-    Phase 1 — Called from 'Request AIS' button.
-    Opens portal, navigates to AIS tab, selects FY, requests AIS PDF generation.
-    Returns result dict from request_ais().
-    status_callback: optional callable(str) to update the Batch Progress UI.
+    Phase 1 — Called from 'Request AIS' button. Opens the Compliance Portal
+    once, then for each fiscal year: selects that FY, requests AIS PDF
+    generation, downloads TIS. Returns {fiscal_year: outcome_dict}, where
+    each outcome_dict has the same shape as before (`.get("status")`, plus a
+    `"tis"` sub-outcome).
     """
     def _status(msg):
         if status_callback:
             status_callback(msg)
 
-    fy_start = int(fiscal_year.split("-")[0]) if "-" in fiscal_year else 0
-    if fy_start < 2021:
-        log(f"[AIS] Skipping — AIS not available before FY 2021-22.")
-        return {"status": "skipped"}
-
+    results: dict[str, dict] = {}
     portal = None
     try:
         portal = await _open_ais_portal(itd_page, log, status_cb=status_callback)
         await _navigate_to_ais_tab(portal, log, status_cb=status_callback)
-        await _select_fy(portal, fiscal_year, log, status_cb=status_callback)
 
-        # AIS PDF (instant download or queued request)
-        ais_outcome = await request_ais(portal, fiscal_year, download_dir, log,
-                                        pan=pan, dob=dob, status_cb=status_callback)
+        for fiscal_year in fiscal_years:
+            fy_start = int(fiscal_year.split("-")[0]) if "-" in fiscal_year else 0
+            if fy_start < 2021:
+                log(f"[AIS] Skipping FY {fiscal_year} — AIS not available before FY 2021-22.")
+                results[fiscal_year] = _outcome("skipped")
+                continue
 
-        _status(_doc_label(ais_outcome, "AIS") + " — fetching TIS…")
+            download_dir = download_dir_for_year(fiscal_year)
+            try:
+                await _select_fy(portal, fiscal_year, log, status_cb=status_callback)
 
-        # TIS PDF — always instant, lives in its own modal.
-        tis_outcome = _outcome("failed")
-        try:
-            tis_outcome = await download_tis(portal, fiscal_year, download_dir, log,
-                                             pan=pan, dob=dob, status_cb=status_callback)
-        except Exception as te:
-            log(f"[TIS] TIS download error: {te}")
+                # AIS PDF (instant download or queued request)
+                ais_outcome = await request_ais(portal, fiscal_year, download_dir, log,
+                                                pan=pan, dob=dob, status_cb=status_callback)
 
-        # Final combined status
-        _status(combined_status_label(ais_outcome, tis_outcome))
+                _status(f"FY {fiscal_year}: " + _doc_label(ais_outcome, "AIS") + " — fetching TIS…")
+
+                # TIS PDF — always instant, lives in its own modal.
+                tis_outcome = _outcome("failed")
+                try:
+                    tis_outcome = await download_tis(portal, fiscal_year, download_dir, log,
+                                                     pan=pan, dob=dob, status_cb=status_callback)
+                except Exception as te:
+                    log(f"[TIS] TIS download error for FY {fiscal_year}: {te}")
+
+                _status(f"FY {fiscal_year}: " + combined_status_label(ais_outcome, tis_outcome))
+                ais_outcome["tis"] = tis_outcome
+                results[fiscal_year] = ais_outcome
+            except Exception as e:
+                log(f"[AIS] Request phase failed for FY {fiscal_year}: {e}")
+                reason_str = str(e).split('\n')[0].strip()
+                if len(reason_str) > 80:
+                    reason_str = reason_str[:77] + "..."
+                results[fiscal_year] = _outcome("failed", reason=reason_str or "Unexpected error")
 
         await portal.close()
-        # Keep backward-compat keys app.py uses, and add tis_outcome
-        ais_outcome["tis"] = tis_outcome
-        return ais_outcome
+        return results
     except Exception as e:
         log(f"[AIS] Request phase failed: {e}")
         reason_str = str(e).split('\n')[0].strip()
@@ -856,53 +876,70 @@ async def run_request_ais(itd_page: Page, fiscal_year: str, download_dir: str,
         if portal:
             try: await portal.close()
             except Exception: pass
-        return _outcome("failed", reason=reason_str or "Unexpected error")
+        # Fill in a failure outcome for any year not yet attempted
+        for fiscal_year in fiscal_years:
+            results.setdefault(fiscal_year, _outcome("failed", reason=reason_str or "Unexpected error"))
+        return results
 
 
-
-async def run_download_ais_tis(itd_page: Page, fiscal_year: str, download_dir: str,
+async def run_download_ais_tis(itd_page: Page, fiscal_years: list[str], download_dir_for_year,
                                log, pan: str = "", dob: str = "",
                                dl_ais: bool = True, dl_tis: bool = True,
-                               ais_ref_id: str = "", should_continue=None,
-                               status_callback=None) -> bool:
+                               ais_ref_ids: dict | None = None, should_continue=None,
+                               status_callback=None) -> dict[str, dict]:
     """
-    Phase 2 — Called from 'Download AIS/TIS' button.
-    Downloads TIS instantly and AIS PDF from Activity History.
+    Phase 2 — Called from 'Download AIS/TIS' button. Opens the Compliance
+    Portal once, then for each fiscal year reselects FY and downloads
+    whatever was requested. `ais_ref_ids` is an optional {fiscal_year: ref_id}
+    map (Reference IDs from a prior request_ais call in the same batch).
+    Returns {fiscal_year: {"ais": outcome, "tis": outcome}}.
     """
-    fy_start = int(fiscal_year.split("-")[0]) if "-" in fiscal_year else 0
-    if fy_start < 2021:
-        log(f"[AIS/TIS] Skipping — not available before FY 2021-22.")
-        return {"ais": _outcome("skipped"), "tis": None}
-
+    ais_ref_ids = ais_ref_ids or {}
+    results: dict[str, dict] = {}
     portal = None
-    ais_outcome = None
-    tis_outcome = None
     try:
         portal = await _open_ais_portal(itd_page, log, status_cb=status_callback)
         await _navigate_to_ais_tab(portal, log, status_cb=status_callback)
-        await _select_fy(portal, fiscal_year, log, status_cb=status_callback)
 
-        if dl_tis:
-            tis_outcome = await download_tis(portal, fiscal_year, download_dir, log,
-                                             pan=pan, dob=dob, status_cb=status_callback)
-            if tis_outcome.get("status") != "downloaded":
-                log("[Warning] TIS download failed.")
+        for fiscal_year in fiscal_years:
+            fy_start = int(fiscal_year.split("-")[0]) if "-" in fiscal_year else 0
+            if fy_start < 2021:
+                log(f"[AIS/TIS] Skipping FY {fiscal_year} — not available before FY 2021-22.")
+                results[fiscal_year] = {"ais": _outcome("skipped"), "tis": None}
+                continue
 
-        if dl_ais:
-            ais_outcome = await download_ais_from_activity_history(
-                    portal, fiscal_year, download_dir, log,
-                    pan=pan, dob=dob, ref_id=ais_ref_id,
-                    should_continue=should_continue, status_cb=status_callback)
+            download_dir = download_dir_for_year(fiscal_year)
+            ais_outcome = None
+            tis_outcome = None
+            try:
+                await _select_fy(portal, fiscal_year, log, status_cb=status_callback)
 
-        # Emit final combined status
-        if status_callback:
-            status_callback(combined_status_label(ais_outcome, tis_outcome))
+                if dl_tis:
+                    tis_outcome = await download_tis(portal, fiscal_year, download_dir, log,
+                                                     pan=pan, dob=dob, status_cb=status_callback)
+                    if tis_outcome.get("status") != "downloaded":
+                        log(f"[Warning] TIS download failed for FY {fiscal_year}.")
+
+                if dl_ais:
+                    ais_outcome = await download_ais_from_activity_history(
+                            portal, fiscal_year, download_dir, log,
+                            pan=pan, dob=dob, ref_id=ais_ref_ids.get(fiscal_year, ""),
+                            should_continue=should_continue, status_cb=status_callback)
+
+                if status_callback:
+                    status_callback(f"FY {fiscal_year}: " + combined_status_label(ais_outcome, tis_outcome))
+                results[fiscal_year] = {"ais": ais_outcome, "tis": tis_outcome}
+            except Exception as e:
+                log(f"[AIS/TIS] Download phase failed for FY {fiscal_year}: {e}")
+                results[fiscal_year] = {"ais": ais_outcome or _outcome("failed"), "tis": tis_outcome}
 
         await portal.close()
-        return {"ais": ais_outcome, "tis": tis_outcome}
+        return results
     except Exception as e:
         log(f"[AIS/TIS] Download phase failed: {e}")
         if portal:
             try: await portal.close()
             except Exception: pass
-        return {"ais": ais_outcome or _outcome("failed"), "tis": tis_outcome}
+        for fiscal_year in fiscal_years:
+            results.setdefault(fiscal_year, {"ais": _outcome("failed"), "tis": None})
+        return results

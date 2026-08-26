@@ -8,7 +8,7 @@ from playwright.async_api import Page
 from automation.downloader import update_browser_status, make_step_logger
 from automation._nav_helpers import open_hamburger, hover_to_income_tax_returns
 from automation.pdf_unlocker import unlock_pdf
-from utils import migrate_flat_docs_to_subfolders
+from utils import migrate_flat_docs_to_subfolders, migrate_itr_filing_subfolder
 
 _FILING_TYPE_MAP = {
     "original": "Original",
@@ -146,7 +146,8 @@ async def _is_return_verified(card, step) -> "bool | None":
     return None
 
 
-async def _apply_ay_filter(filed_returns_page: Page, assessment_year: str, step) -> bool:
+async def _apply_ay_filter(filed_returns_page: Page, assessment_year: str, step,
+                            previous_year: str | None = None) -> bool:
     """Opens the Filter popup and selects assessment_year in the 'Assessment
     Year' multi-select, then applies it — so the list renders only matching
     filings instead of needing a full page-by-page scan. Confirmed: the
@@ -155,7 +156,14 @@ async def _apply_ay_filter(filed_returns_page: Page, assessment_year: str, step)
     <mat-option aria-label="{year} checkbox"> in a floating overlay panel
     (not inside the <mat-select> element itself). Returns True if the filter
     was applied, False if anything about the popup didn't match expectations
-    (caller should fall back to the page-walk scan in that case)."""
+    (caller should fall back to the page-walk scan in that case).
+
+    F-14 (multi-year): `previous_year`, if given, is unchecked before the new
+    year is checked — since this is a multi-select, looping this function
+    across several years without unchecking the prior one would leave every
+    previously-selected year still active as a filter criterion (this was
+    never an issue before, since the page was only ever filtered once per
+    load)."""
     try:
         step("Locating toolbar Filter button (#filterbtn1/#filterbtn3)")
         filter_btn = filed_returns_page.locator("#filterbtn1, #filterbtn3").first
@@ -168,6 +176,24 @@ async def _apply_ay_filter(filed_returns_page: Page, assessment_year: str, step)
         await ay_select.wait_for(state="visible", timeout=10000)
         step("Clicking Assessment Year dropdown to open option panel")
         await ay_select.click()
+
+        if previous_year and previous_year != assessment_year:
+            try:
+                prev_option = filed_returns_page.locator(
+                    f"mat-option[aria-label='{previous_year} checkbox']"
+                ).first
+                if await prev_option.count() > 0:
+                    is_checked = await prev_option.locator(".mat-pseudo-checkbox-checked").count() > 0
+                    if is_checked:
+                        step(f"Unchecking previous year filter: {previous_year}")
+                        await prev_option.click()
+                        await asyncio.sleep(0.3)
+                    else:
+                        step(f"Previous year '{previous_year}' filter option not shown as checked — skipping uncheck")
+                else:
+                    step(f"Previous year '{previous_year}' option not found in panel (may need 'View More') — skipping uncheck")
+            except Exception as e:
+                step(f"Could not uncheck previous year filter option (continuing): {e}")
 
         # Older assessment years (e.g. 2016-17) are NOT rendered in the option
         # panel by default — a "View More" inside the panel itself reveals
@@ -381,6 +407,8 @@ async def _process_card(card, filing_type: str, filing_date_ddmmyyyy: str, ack_n
     warns: list[str] = []
     step(f"Processing card: filing_type={filing_type}, filing_date={filing_date_ddmmyyyy}, ack_no={ack_no}")
 
+    migrate_itr_filing_subfolder(download_dir, filing_type, filing_date_ddmmyyyy, ack_no, step)
+
     filing_subfolder = f"{filing_type}-{filing_date_ddmmyyyy}-{ack_no}" if ack_no else f"{filing_type}-{filing_date_ddmmyyyy}"
     itr_dir = os.path.join(download_dir, "ITR Returns", filing_subfolder)
     intimation_dir = os.path.join(download_dir, "Intimation Orders", filing_subfolder)
@@ -467,15 +495,69 @@ async def _process_card(card, filing_type: str, filing_date_ddmmyyyy: str, ack_n
     return saved, warns
 
 
-async def download_filed_returns(
-    page: Page,
+async def _navigate_to_view_filed_returns(page: Page, log_callback) -> Page:
+    """One-time navigation: e-File > Income Tax Returns > View Filed Returns,
+    landing on the rendered filings list. F-14 (multi-year): this is the
+    expensive/fragile part (the same e-File hover navigation stabilized
+    earlier), so it now runs ONCE per client regardless of how many
+    Assessment Years are requested — callers loop `_download_filed_returns_
+    for_year()` afterward, which only re-applies the (cheap, in-page) AY
+    filter per year."""
+    step = make_step_logger(log_callback, "FILEDRET")
+    await open_hamburger(page, log_callback, prefix="FILEDRET")
+    step("Hamburger menu handled")
+
+    # The ITD portal often leaves a full-screen loading spinner/overlay active
+    # for a few seconds which intercepts pointer events. Wait for it to clear.
+    step("Waiting for .customLoaderBackdrop to hide (if present)")
+    try:
+        await page.locator(".customLoaderBackdrop").wait_for(state="hidden", timeout=30000)
+        step("Loader backdrop hidden")
+    except Exception as e:
+        step(f"No loader backdrop detected or wait failed (continuing): {e}")
+
+    await hover_to_income_tax_returns(page, log_callback, prefix="FILEDRET")
+    step("Hovered e-File > Income Tax Returns")
+
+    step("Locating 'View Filed Returns' menu item")
+    await update_browser_status(page, "Filed Returns: Opening View Filed Returns...")
+    # Confirmed exact menu text: "View Filed Returns", under e-File > Income
+    # Tax Returns. Confirmed this loads in-page (same e-Filing portal SPA
+    # route change) — unlike 26AS/168, it does NOT open a new tab/TRACES.
+    view_filed_returns = page.locator("//*[normalize-space(.)='View Filed Returns']").first
+    await view_filed_returns.wait_for(state="visible", timeout=30000)
+    step("'View Filed Returns' is visible — clicking")
+    await view_filed_returns.click()
+    filed_returns_page = page
+    await filed_returns_page.wait_for_load_state("domcontentloaded", timeout=40000)
+    step("View Filed Returns page DOM content loaded")
+
+    await update_browser_status(filed_returns_page, "Filed Returns: Loading filings...")
+    # Confirmed: "N Filings till date" heading appears once the list has
+    # rendered — wait for it rather than a fixed sleep.
+    step("Waiting for 'Filings till date' heading to render")
+    await filed_returns_page.locator("text=/Filings till date/i").first.wait_for(
+        state="visible", timeout=30000
+    )
+    step("Filings list heading is visible — list has rendered")
+    return filed_returns_page
+
+
+async def _download_filed_returns_for_year(
+    filed_returns_page: Page,
     assessment_year: str,
     download_dir: str,
     log_callback,
     pan: str = "",
     dob: str = "",
     filing_scope: str = "all",
+    previous_year: str | None = None,
 ) -> tuple[bool, str, list[dict]]:
+    """Downloads Filed Returns/Intimation Orders for ONE Assessment Year,
+    assuming `_navigate_to_view_filed_returns()` has already landed on the
+    rendered filings list. `previous_year`, if given, is the last AY this
+    same page was filtered to (used to uncheck it — see `_apply_ay_filter`'s
+    docstring)."""
     step = make_step_logger(log_callback, "FILEDRET")
     try:
         step(f"Starting Filed Returns download — AY={assessment_year}, filing_scope={filing_scope}, pan={'set' if pan else 'blank'}")
@@ -485,50 +567,13 @@ async def download_filed_returns(
         prefix = f"{pan}-" if pan else ""
         migrate_flat_docs_to_subfolders(download_dir, step)
 
-        await open_hamburger(page, log_callback, prefix="FILEDRET")
-        step("Hamburger menu handled")
-
-        # The ITD portal often leaves a full-screen loading spinner/overlay active
-        # for a few seconds which intercepts pointer events. Wait for it to clear.
-        step("Waiting for .customLoaderBackdrop to hide (if present)")
-        try:
-            await page.locator(".customLoaderBackdrop").wait_for(state="hidden", timeout=30000)
-            step("Loader backdrop hidden")
-        except Exception as e:
-            step(f"No loader backdrop detected or wait failed (continuing): {e}")
-
-        await hover_to_income_tax_returns(page, log_callback, prefix="FILEDRET")
-        step("Hovered e-File > Income Tax Returns")
-
-        step("Locating 'View Filed Returns' menu item")
-        await update_browser_status(page, "Filed Returns: Opening View Filed Returns...")
-        # Confirmed exact menu text: "View Filed Returns", under e-File > Income
-        # Tax Returns. Confirmed this loads in-page (same e-Filing portal SPA
-        # route change) — unlike 26AS/168, it does NOT open a new tab/TRACES.
-        view_filed_returns = page.locator("//*[normalize-space(.)='View Filed Returns']").first
-        await view_filed_returns.wait_for(state="visible", timeout=30000)
-        step("'View Filed Returns' is visible — clicking")
-        await view_filed_returns.click()
-        filed_returns_page = page
-        await filed_returns_page.wait_for_load_state("domcontentloaded", timeout=40000)
-        step("View Filed Returns page DOM content loaded")
-
-        await update_browser_status(filed_returns_page, "Filed Returns: Loading filings...")
-        # Confirmed: "N Filings till date" heading appears once the list has
-        # rendered — wait for it rather than a fixed sleep.
-        step("Waiting for 'Filings till date' heading to render")
-        await filed_returns_page.locator("text=/Filings till date/i").first.wait_for(
-            state="visible", timeout=30000
-        )
-        step("Filings list heading is visible — list has rendered")
-
         # Preferred path: filter the list down to just this AY using the
         # confirmed mat-select[formcontrolname='ay'] control — far cheaper
         # than scanning every page. Falls back to the "View More" + page-walk
         # approach if the filter interaction doesn't work as expected (e.g.
         # the apply-button guess inside _apply_ay_filter turns out wrong).
         step("Attempting Assessment Year filter (preferred path)")
-        filtered = await _apply_ay_filter(filed_returns_page, assessment_year, step)
+        filtered = await _apply_ay_filter(filed_returns_page, assessment_year, step, previous_year=previous_year)
         step(f"AY filter {'applied' if filtered else 'NOT applied — using fallback scan'}")
 
         if not filtered:
@@ -738,3 +783,39 @@ async def download_filed_returns(
         else:
             reason = err[:80] if len(err) <= 80 else err[:77] + "..."
         return False, reason, []
+
+
+async def download_filed_returns(
+    page: Page,
+    assessment_years: list[str],
+    download_dir_for_year,
+    log_callback,
+    pan: str = "",
+    dob: str = "",
+    filing_scope: str = "all",
+) -> dict[str, tuple[bool, str, list[dict]]]:
+    """F-14 (multi-year) entry point. Navigates to "View Filed Returns" ONCE,
+    then for each Assessment Year in `assessment_years`: re-applies the AY
+    filter (unchecking whichever year was applied last) and processes that
+    year's filings into `download_dir_for_year(assessment_year)`. Returns
+    {assessment_year: (ok, msg, saved_files)} — same per-year result shape
+    the single-year version used to return directly."""
+    step = make_step_logger(log_callback, "FILEDRET")
+    results: dict[str, tuple[bool, str, list[dict]]] = {}
+    try:
+        filed_returns_page = await _navigate_to_view_filed_returns(page, log_callback)
+    except Exception as e:
+        step(f"[Error] Could not reach View Filed Returns: {e}")
+        for ay in assessment_years:
+            results[ay] = (False, f"Navigation failed: {e}", [])
+        return results
+
+    previous_year: str | None = None
+    for assessment_year in assessment_years:
+        download_dir = download_dir_for_year(assessment_year)
+        results[assessment_year] = await _download_filed_returns_for_year(
+            filed_returns_page, assessment_year, download_dir, log_callback,
+            pan=pan, dob=dob, filing_scope=filing_scope, previous_year=previous_year,
+        )
+        previous_year = assessment_year
+    return results

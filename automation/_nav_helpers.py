@@ -33,6 +33,31 @@ async def open_hamburger(page: Page, log_callback, prefix: str = "NAV") -> None:
             continue
 
 
+async def _click_efile(page: Page, log_callback, prefix: str) -> None:
+    """Open the e-File menu via click (see hover_to_income_tax_returns's
+    docstring for why click, not hover). Retries the wait+click cycle up to
+    4 times — dashboard Angular nav may take time to mount even after the
+    overlay clears."""
+    for _attempt in range(4):
+        try:
+            efile = page.locator("//*[normalize-space(.)='e-File']").first
+            await efile.wait_for(state="visible", timeout=30000)
+            await efile.click(timeout=10000)
+            return
+        except Exception:
+            if _attempt == 3:
+                await capture_failure(page, log_callback, f"{prefix}_efile_hover_failed")
+                raise
+            log_callback(f"[{prefix}] e-File menu not ready (attempt {_attempt + 1}/4) — waiting...")
+            # Nudge the page to help Angular finish rendering the nav
+            try:
+                await page.keyboard.press("Escape")
+                await page.evaluate("window.scrollTo(0, 0)")
+            except Exception:
+                pass
+            await asyncio.sleep(5)
+
+
 async def hover_to_income_tax_returns(page: Page, log_callback, prefix: str = "NAV") -> None:
     """
     Open e-File then hover Income Tax Returns on the ITD dashboard nav,
@@ -52,36 +77,37 @@ async def hover_to_income_tax_returns(page: Page, log_callback, prefix: str = "N
     here instead. The nested "Income Tax Returns" submenu below is native
     Angular Material CDK hover-to-reveal behaviour once the parent menu is
     genuinely open, and stays hover-based.
+
+    A second live diagnostics capture (2026-08-26, solo/first-ever run, no
+    other handler involved) showed the click landing correctly (the e-File
+    element carried `active cdk-mouse-focused` — Angular's own focus-monitor
+    marking a genuine click) yet "Income Tax Returns" still never appeared.
+    Unlike the e-File click above (4 retries), this step previously had a
+    single 30s wait_for and no retry at all — any transient Angular render
+    delay on this one step had no recovery path. It now retries the same
+    way, re-clicking e-File as the nudge between attempts since a submenu
+    that never opened won't appear just by waiting longer.
     """
     log_callback(f"[{prefix}] Opening e-File menu...")
-    # Retry the full wait+click cycle — dashboard Angular nav may take time to
-    # mount even after the overlay clears. Each attempt waits up to 30s for the
-    # element to appear, then tries to click it.
-    for _attempt in range(4):
-        try:
-            efile = page.locator("//*[normalize-space(.)='e-File']").first
-            await efile.wait_for(state="visible", timeout=30000)
-            await efile.click(timeout=10000)
-            break
-        except Exception:
-            if _attempt == 3:
-                await capture_failure(page, log_callback, f"{prefix}_efile_hover_failed")
-                raise
-            log_callback(f"[{prefix}] e-File menu not ready (attempt {_attempt + 1}/4) — waiting...")
-            # Nudge the page to help Angular finish rendering the nav
-            try:
-                await page.keyboard.press("Escape")
-                await page.evaluate("window.scrollTo(0, 0)")
-            except Exception:
-                pass
-            await asyncio.sleep(5)
+    await _click_efile(page, log_callback, prefix)
     await asyncio.sleep(1.0)
     log_callback(f"[{prefix}] Hovering over Income Tax Returns...")
     returns = page.locator("//*[text()='Income Tax Returns']").first
-    try:
-        await returns.wait_for(state="visible", timeout=30000)
-    except Exception:
-        await capture_failure(page, log_callback, f"{prefix}_income_tax_returns_hover_failed")
-        raise
+    for _attempt in range(4):
+        try:
+            await returns.wait_for(state="visible", timeout=15000)
+            break
+        except Exception:
+            if _attempt == 3:
+                await capture_failure(page, log_callback, f"{prefix}_income_tax_returns_hover_failed")
+                raise
+            log_callback(f"[{prefix}] Income Tax Returns not ready (attempt {_attempt + 1}/4) — reopening e-File...")
+            try:
+                await page.keyboard.press("Escape")
+                await asyncio.sleep(1)
+            except Exception:
+                pass
+            await _click_efile(page, log_callback, prefix)
+            await asyncio.sleep(1.0)
     await returns.hover()
     await asyncio.sleep(1.0)

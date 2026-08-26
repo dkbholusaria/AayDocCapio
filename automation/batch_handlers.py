@@ -3,9 +3,26 @@ automation/batch_handlers.py
 =============================
 Per-document-type batch handlers, extracted from app.py's _execute_batch
 dispatch chain. Each handler downloads exactly one document type for one
-already-logged-in client and reports progress via the passed-in callbacks —
-no dependency on the App class, so adding a new document type here doesn't
-grow app.py further.
+already-logged-in client — across every selected year in one call — and
+reports progress via the passed-in callbacks. No dependency on the App
+class, so adding a new document type here doesn't grow app.py further.
+
+F-14 (multi-year): every handler now takes `year_specs` (a list of
+per-year dicts, see below) instead of a single `ay`/`fy`, and an
+`out_for_year(year_type, value) -> str` callable instead of a single `out`
+path. Each handler is responsible for looping its own years internally,
+navigating to its target page/portal ONCE per client and reselecting the
+year via whatever lightweight in-page control that doc type already
+exposes (a dropdown or filter) — not by repeating the full top-level e-File
+navigation once per year. See PlansofThisProject/F-14_multi_year_download.md
+for the full design writeup.
+
+`year_specs` entries: {"ay_label": str, "value": str, "fy": str,
+"year_type": "AY"|"TY", "form_type": "26AS"|"168"}.
+
+`set_status(pan, ay_label, text)` — every status update is now tied to a
+specific year, so the progress dialog (one row per (pan, ay_label) pair)
+and vault history stay correctly attributed.
 
 Every handler shares the same signature (even though each only uses a
 subset of the parameters) so the dispatch loop in app.py can call any of
@@ -34,28 +51,10 @@ _DASHBOARD_HASH = "#/dashboard/fileIncomeTaxReturn"
 
 async def ensure_dashboard(page, log_callback=None):
     """Reset the shared tab back to the base dashboard route before the next
-    e-File-based handler starts its own navigation.
-
-    Root cause, confirmed live: a handler like Filed Returns navigates the
-    shared tab into its own sub-view ("View Filed Returns" — a genuine
-    client-side route change, not a reload) and never returns to the base
-    dashboard route when done. The next handler's e-File hover then runs
-    from inside that sub-view — "e-File" itself is still hoverable (it's a
-    persistent top-nav element), but the "Income Tax Returns" flyout item
-    underneath it does not reliably render from a non-dashboard route,
-    causing the hover timeout — reproduced identically both directions
-    (26AS-then-FiledReturns and FiledReturns-then-26AS).
-
-    Two earlier fix attempts failed for unrelated reasons and are NOT what
-    this does: (1) a full page.reload() logs the session out entirely
-    (confirmed live — even a manual browser refresh does), and (2) opening
-    a fresh tab also fails because the ITD portal keeps its session token in
-    sessionStorage, which isn't shared across tabs (also confirmed live).
-    Neither problem applies here: setting window.location.hash on an
-    Angular hash-routed SPA is a client-side route change only — no HTTP
-    request, no reload, no session loss — so it should get back to the
-    dashboard route without the failure modes above.
-    """
+    e-File-based handler starts its own navigation. See git history for the
+    full investigation — this alone did not fix the "Income Tax Returns"
+    hover timeout (that needed the click-vs-hover fix plus a retry loop),
+    but it's kept as a harmless, cheap reset between handlers."""
     def _log(msg):
         if log_callback:
             log_callback(msg)
@@ -74,89 +73,165 @@ async def ensure_dashboard(page, log_callback=None):
         _log(f"[NAV-RESET] Reset attempt failed (continuing): {e}")
 
 
-async def handle_26as(page, pan, dob, ay, fy, out, log_callback, set_status,
-                       form_type=DEFAULT_FORM, filing_scope="all", is_running=None) -> dict:
-    # Previously unnecessary (26AS always ran alone), but now that several
-    # doc types can run back-to-back on the same tab in one multi-select
-    # batch, 26AS also needs a clean slate if something else ran first.
+async def handle_26as(page, pan, dob, year_specs, out_for_year, log_callback, set_status,
+                       filing_scope="all", is_running=None) -> dict:
+    """26AS (AY years) and Form 168 (TY years) are different destination
+    apps (TRACES 1.0 vs TRACES 2.0) and cannot share one open-once session —
+    so this partitions year_specs by form_type and calls each downloader's
+    multi-year entry point at most once per group (0, 1, or 2 navigations
+    total, never once per year)."""
     await ensure_dashboard(page, log_callback)
-    _spec = form_spec(form_type or DEFAULT_FORM)
-    _form = _spec["label"]
-    set_status(pan, f"⏳ Downloading {_form}...")
-    ok, err_msg, txt_path = await _spec["download"](
-        page, ay, out, log_callback, pan=pan, dob=dob
-    )
-    if not ok:
-        set_status(pan, f"❌ {_form} Failed — {err_msg}")
-        return {"txt_path": None}
 
-    if err_msg:
-        # PDF saved but TXT failed (bad password / extraction error)
-        set_status(pan, f"⚠ Partially Completed — {err_msg}")
-    else:
-        set_status(pan, f"✅ {_form} Downloaded")
+    ay_label_by_value = {s["value"]: s["ay_label"] for s in year_specs}
+    ay_specs = [s for s in year_specs if s.get("form_type", DEFAULT_FORM) != "168"]
+    ty_specs = [s for s in year_specs if s.get("form_type") == "168"]
 
-    if txt_path:
-        # Convert immediately while next client logs in
-        set_status(pan, "⏳ Converting to Excel...")
+    txt_paths = {}   # ay_label -> txt_path (for the 26AS→Excel conversion step)
+    form_labels = {}
+
+    for group_specs, form_code in ((ay_specs, "26AS"), (ty_specs, "168")):
+        if not group_specs:
+            continue
+        _spec = form_spec(form_code)
+        _form = _spec["label"]
+        year_type = group_specs[0]["year_type"]
+        values = [s["value"] for s in group_specs]
+        for s in group_specs:
+            set_status(pan, s["ay_label"], f"⏳ Downloading {_form}...")
+
+        def _out_for_value(value, _yt=year_type):
+            return out_for_year(_yt, value)
+
+        results = await _spec["download"](page, values, _out_for_value, log_callback, pan=pan, dob=dob)
+
+        for value, (ok, err_msg, txt_path) in results.items():
+            ay_label = ay_label_by_value.get(value, value)
+            if not ok:
+                set_status(pan, ay_label, f"❌ {_form} Failed — {err_msg}")
+                continue
+            if err_msg:
+                set_status(pan, ay_label, f"⚠ Partially Completed — {err_msg}")
+            else:
+                set_status(pan, ay_label, f"✅ {_form} Downloaded")
+            if txt_path:
+                txt_paths[ay_label] = txt_path
+                form_labels[ay_label] = _form
+
+    # Convert each year's 26AS/168 TXT to Excel immediately, one at a time.
+    for ay_label, txt_path in txt_paths.items():
+        _form = form_labels.get(ay_label, "26AS")
+        set_status(pan, ay_label, "⏳ Converting to Excel...")
         try:
             from automation.as26_converter import convert_26as_txt
-            log_callback(f"[Convert] Converting {_form} → Excel/HTML for {pan}…")
+            log_callback(f"[Convert] Converting {_form} → Excel/HTML for {pan} ({ay_label})…")
             convert_26as_txt(txt_path, log_callback=log_callback)
-            set_status(pan, f"✅ {_form} + Excel + HTML")
+            set_status(pan, ay_label, f"✅ {_form} + Excel + HTML")
         except Exception as _conv_exc:
-            log_callback(f"[Convert] Warning: conversion failed for {pan}: {_conv_exc}")
-            set_status(pan, "⚠ Excel convert failed")
+            log_callback(f"[Convert] Warning: conversion failed for {pan} ({ay_label}): {_conv_exc}")
+            set_status(pan, ay_label, "⚠ Excel convert failed")
 
-    return {"txt_path": txt_path, "form_label": _form}
+    return {"txt_paths": txt_paths}
 
 
-async def handle_request_ais(page, pan, dob, ay, fy, out, log_callback, set_status,
-                              form_type=DEFAULT_FORM, filing_scope="all", is_running=None) -> dict:
+async def handle_request_ais(page, pan, dob, year_specs, out_for_year, log_callback, set_status,
+                              filing_scope="all", is_running=None) -> dict:
     await ensure_dashboard(page, log_callback)
-    set_status(pan, "⏳ Opening AIS portal...")
-    result = await run_request_ais(
-        page, fy, out, log_callback, pan=pan, dob=dob,
-        status_callback=lambda t, _p=pan: set_status(_p, t))
-    ais_status = result.get("status")
-    ref = result.get("ref_id", "")
-    if ais_status == "requested" and ref:
-        log_callback(f"[AIS] Generation queued — Ref ID: {ref}")
-    # combined_status_label already set via status_callback at end of run_request_ais
-    return {"ais_status": ais_status, "ref_id": ref}
+    fiscal_years = [s["fy"] for s in year_specs]
+    fy_to_ay_label = {s["fy"]: s["ay_label"] for s in year_specs}
+
+    for s in year_specs:
+        set_status(pan, s["ay_label"], "⏳ Opening AIS portal...")
+
+    def _out_for_fy(fy):
+        # AIS/TIS folders are keyed by FY, always under the "AY_"-style
+        # prefix matching whichever year_spec this FY belongs to.
+        spec = next((s for s in year_specs if s["fy"] == fy), None)
+        yt = spec["year_type"] if spec else "AY"
+        value = spec["value"] if spec else fy
+        return out_for_year(yt, value)
+
+    results = await run_request_ais(page, fiscal_years, _out_for_fy, log_callback,
+                                     pan=pan, dob=dob,
+                                     status_callback=lambda t, _p=pan: log_callback(f"[AIS-Request] {t}"))
+    ais_statuses = {}
+    ref_ids = {}
+    for fy, outcome in results.items():
+        ay_label = fy_to_ay_label.get(fy, fy)
+        ais_status = outcome.get("status")
+        ref = outcome.get("ref_id", "")
+        ais_statuses[ay_label] = ais_status
+        if ref:
+            ref_ids[ay_label] = ref
+            log_callback(f"[AIS] Generation queued for {ay_label} — Ref ID: {ref}")
+        tis_outcome = outcome.get("tis")
+        # Reuse the existing combined-label helper for a consistent status string.
+        from automation.downloader_ais_tis import combined_status_label
+        set_status(pan, ay_label, combined_status_label(outcome, tis_outcome))
+
+    return {"ais_statuses": ais_statuses, "ref_ids": ref_ids}
 
 
-async def handle_ais_tis(page, pan, dob, ay, fy, out, log_callback, set_status,
-                          form_type=DEFAULT_FORM, filing_scope="all", is_running=None) -> dict:
+async def handle_ais_tis(page, pan, dob, year_specs, out_for_year, log_callback, set_status,
+                          filing_scope="all", is_running=None) -> dict:
     # "Download Previously Requested AIS" — fetch ONLY the AIS PDF from
     # Activity History. TIS is not re-downloaded here (it was already
     # grabbed during the Request step).
     await ensure_dashboard(page, log_callback)
-    set_status(pan, "⏳ Downloading AIS from Activity History...")
-    await run_download_ais_tis(
-        page, fy, out, log_callback, pan=pan, dob=dob,
+    fiscal_years = [s["fy"] for s in year_specs]
+    fy_to_ay_label = {s["fy"]: s["ay_label"] for s in year_specs}
+
+    for s in year_specs:
+        set_status(pan, s["ay_label"], "⏳ Downloading AIS from Activity History...")
+
+    def _out_for_fy(fy):
+        spec = next((s for s in year_specs if s["fy"] == fy), None)
+        yt = spec["year_type"] if spec else "AY"
+        value = spec["value"] if spec else fy
+        return out_for_year(yt, value)
+
+    results = await run_download_ais_tis(
+        page, fiscal_years, _out_for_fy, log_callback, pan=pan, dob=dob,
         dl_ais=True, dl_tis=False,
         should_continue=(is_running if is_running else (lambda: True)),
-        status_callback=lambda t, _p=pan: set_status(_p, t))
-    # combined_status_label already set via status_callback at end of run_download_ais_tis
+        status_callback=lambda t: log_callback(f"[AIS-Download] {t}"))
+
+    from automation.downloader_ais_tis import combined_status_label
+    for fy, outcome in results.items():
+        ay_label = fy_to_ay_label.get(fy, fy)
+        set_status(pan, ay_label, combined_status_label(outcome.get("ais"), outcome.get("tis")))
     return {}
 
 
-async def handle_filed_returns(page, pan, dob, ay, fy, out, log_callback, set_status,
-                                form_type=DEFAULT_FORM, filing_scope="all", is_running=None) -> dict:
+async def handle_filed_returns(page, pan, dob, year_specs, out_for_year, log_callback, set_status,
+                                filing_scope="all", is_running=None) -> dict:
     await ensure_dashboard(page, log_callback)
-    set_status(pan, "⏳ Downloading Filed Returns...")
-    fr_ok, fr_msg, fr_saved = await download_filed_returns(
-        page, ay, out, log_callback, pan=pan, dob=dob, filing_scope=filing_scope
+    ay_label_by_value = {s["value"]: s["ay_label"] for s in year_specs}
+    values = [s["value"] for s in year_specs]
+
+    for s in year_specs:
+        set_status(pan, s["ay_label"], "⏳ Downloading Filed Returns...")
+
+    def _out_for_value(value):
+        spec = next((s for s in year_specs if s["value"] == value), None)
+        yt = spec["year_type"] if spec else "AY"
+        return out_for_year(yt, value)
+
+    results = await download_filed_returns(
+        page, values, _out_for_value, log_callback, pan=pan, dob=dob, filing_scope=filing_scope
     )
-    if fr_ok:
-        if fr_msg:
-            set_status(pan, f"⚠ Partially Completed — {fr_msg}")
+
+    all_saved = []
+    for value, (fr_ok, fr_msg, fr_saved) in results.items():
+        ay_label = ay_label_by_value.get(value, value)
+        all_saved.extend(fr_saved)
+        if fr_ok:
+            if fr_msg:
+                set_status(pan, ay_label, f"⚠ Partially Completed — {fr_msg}")
+            else:
+                set_status(pan, ay_label, f"✅ Filed Returns Downloaded ({len(fr_saved)} file(s))")
         else:
-            set_status(pan, f"✅ Filed Returns Downloaded ({len(fr_saved)} file(s))")
-    else:
-        set_status(pan, f"❌ Filed Returns Failed — {fr_msg}")
-    return {"saved": fr_saved}
+            set_status(pan, ay_label, f"❌ Filed Returns Failed — {fr_msg}")
+    return {"saved": all_saved}
 
 
 HANDLERS = {
