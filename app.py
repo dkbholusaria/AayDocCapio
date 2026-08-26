@@ -30,7 +30,7 @@ from config import _app_dir, _default_download_dir, _bundled_dir
 from utils import get_timestamp, notify_windows
 from ui._theme import _t
 from ui.helpers import _btn, _lbl, _shadow
-from ui.widgets import StyledComboBox
+from ui.widgets import StyledComboBox, CheckableComboBox
 from ui.dialogs import ManageYearsDialog, BatchProgressDialog, DownloadPickerDialog
 from ui.log_history import LogHistoryDialog, LogStore
 from automation.errors import _friendly_error
@@ -237,7 +237,7 @@ class _ClientPickerDialog(QDialog):
 class AayDocCapioApp(QMainWindow):
     _log_signal = pyqtSignal(str)
     _batch_done_signal = pyqtSignal()
-    _show_progress_signal = pyqtSignal(list, object, str, str)   # (targets, selected_docs: set, ay, output_dir)
+    _show_progress_signal = pyqtSignal(list, object, list, str, str)   # (targets, selected_docs: set, year_specs, output_dir, year_tag)
 
     def __init__(self):
         super().__init__()
@@ -276,7 +276,7 @@ class AayDocCapioApp(QMainWindow):
         self._batch_task = None           # asyncio Task for the running batch
         self._batch_aborted = False       # True if user clicked Stop
         self._skip_current  = False       # True when user clicks Skip for current client
-        self._last_batch_params = None    # (ay, fy, root_dir, selected_docs, ay_label) for resume
+        self._last_batch_params = None    # (year_specs, root_dir, selected_docs) for resume
 
         self._log_signal.connect(self._append_log)
         self._batch_done_signal.connect(self._on_batch_done)
@@ -1043,17 +1043,19 @@ class AayDocCapioApp(QMainWindow):
             d.setStyleSheet(f"background:{_t().border};border:none;")
             return d
 
-        # ── Assessment Year ───────────────────────────────────────────────────
+        # ── Assessment Year (F-14: multi-select, one batch can cover several
+        # years) ────────────────────────────────────────────────────────────
+        # Deliberately NOT restored from a saved setting — starts unchecked
+        # on every launch so a stale multi-year selection from a previous
+        # session can't silently apply to a new run.
         self._ay_entries = self._load_ay_list()
         ay_labels = [e["label"] for e in self._ay_entries if e.get("enabled", True)]
-        saved_ay = self.vault.get_setting("assessment_year", "Select AY/TY")
-        self.ay_combo = StyledComboBox()
-        self.ay_combo.addItem("Select AY/TY")
-        self.ay_combo.addItems(ay_labels)
-        self.ay_combo.setCurrentText(saved_ay if saved_ay in ay_labels else "Select AY/TY")
+        self.ay_combo = CheckableComboBox(placeholder="Select AY/TY")
+        for _label in ay_labels:
+            self.ay_combo.add_item(_label, checked=False)
         self.ay_combo.setFixedWidth(220)
-        self.ay_combo.currentTextChanged.connect(self.save_ay_setting)
-        self.ay_combo.currentTextChanged.connect(lambda _: self.refresh_grid())
+        self.ay_combo.model_.itemChanged.connect(lambda _item: self._log_ay_selection())
+        self.ay_combo.model_.itemChanged.connect(lambda _item: self.refresh_grid())
 
         manage_btn = QPushButton("⚙")
         manage_btn.setFixedSize(24, 24)
@@ -1579,10 +1581,13 @@ class AayDocCapioApp(QMainWindow):
         if hasattr(self, "header_cb"):
             self.header_cb.setEnabled(True)
             
-        # Load download history for currently selected AY — summarized across
+        # Load download history for the first checked AY — summarized across
         # doc types (a batch can now cover several per client/AY), worst
         # status wins for the glyph shown, full breakdown goes in the tooltip.
-        current_ay = self.ay_combo.currentText() if hasattr(self, "ay_combo") else ""
+        # (F-14: the combo can have multiple years checked; the grid preview
+        # only shows one at a time, so it uses whichever is checked first.)
+        _checked_ays = self.ay_combo.checked_labels() if hasattr(self, "ay_combo") else []
+        current_ay = _checked_ays[0] if _checked_ays else ""
         dl_history = {}
         if current_ay and current_ay != "Select AY/TY":
             try:
@@ -2152,12 +2157,16 @@ class AayDocCapioApp(QMainWindow):
 
     def _open_mail_docs(self):
         from ui.dialogs import MailDocsDialog
-        ay_label = self.ay_combo.currentText() if hasattr(self, "ay_combo") else ""
+        # F-14: Mail Docs works against one year at a time — uses whichever
+        # checked year is first if the combo has more than one checked.
+        _checked = self.ay_combo.checked_labels() if hasattr(self, "ay_combo") else []
+        ay_label = _checked[0] if _checked else ""
         MailDocsDialog(self, self.vault, ay_label).exec()
 
     def _show_log_history(self, a: dict):
         history  = self.log_store.get(a.get("pan", ""))
-        ay_label = self.ay_combo.currentText() if hasattr(self, "ay_combo") else ""
+        _checked = self.ay_combo.checked_labels() if hasattr(self, "ay_combo") else []
+        ay_label = _checked[0] if _checked else ""
         LogHistoryDialog(self, name=a.get("name", ""), pan=a.get("pan", ""),
                          history=history, active_ay=ay_label).exec()
 
@@ -2306,19 +2315,18 @@ class AayDocCapioApp(QMainWindow):
     def refresh_ay_combo(self):
         self._ay_entries = self._load_ay_list()
         ay_labels = [e["label"] for e in self._ay_entries if e.get("enabled", True)]
-        current = self.ay_combo.currentText()
+        current = set(self.ay_combo.checked_labels())
         self.ay_combo.blockSignals(True)
-        self.ay_combo.clear()
-        self.ay_combo.addItem("Select AY/TY")
-        self.ay_combo.addItems(ay_labels)
-        self.ay_combo.setCurrentText(current if current in ay_labels else "Select AY/TY")
+        self.ay_combo.clear_items()
+        for _label in ay_labels:
+            self.ay_combo.add_item(_label, checked=(_label in current))
         self.ay_combo.blockSignals(False)
         self.log("[Settings] Assessment Year list refreshed.")
 
-    def save_ay_setting(self, val):
-        if val and val != "Select AY/TY":
-            self.vault.update_setting("assessment_year", val)
-            self.log(f"[Settings] Assessment Year → {val}")
+    def _log_ay_selection(self):
+        labels = self.ay_combo.checked_labels()
+        if labels:
+            self.log(f"[Settings] Assessment Year(s) → {', '.join(labels)}")
 
     # ── Logging ───────────────────────────────────────────────────────────────
 
@@ -2510,6 +2518,12 @@ class AayDocCapioApp(QMainWindow):
         selected_docs: set/collection of doc-type strings to run, any of
         "26as", "request_ais", "ais_tis", "filed_returns" — one batch run
         can now cover several at once (F-56 Phase 2).
+
+        F-14 (multi-year): the AY/TY combo is now a multi-select — every
+        checked year runs for every selected client. `year_specs` (built
+        below) is the single list threaded through the rest of the batch:
+        one dict per checked year, each carrying its own resolved AY/TY
+        value, FY, year type, and form (26AS vs Form 168).
         """
         selected_docs = set(selected_docs) if not isinstance(selected_docs, set) else selected_docs
         if self.is_running:
@@ -2520,41 +2534,47 @@ class AayDocCapioApp(QMainWindow):
             QMessageBox.warning(self, "Selection Required",
                 "Please select at least one client.")
             return
-        ay_label = self.ay_combo.currentText()
-        if not ay_label or ay_label == "Select AY/TY":
+        ay_labels = self.ay_combo.checked_labels()
+        if not ay_labels:
             QMessageBox.warning(self, "Selection Required",
-                "Please select an Assessment / Tax Year.")
+                "Please select at least one Assessment / Tax Year.")
             return
-        ay, fy, year_type, form_type = self._resolve_ay_fy(ay_label)
-        if not ay:
-            QMessageBox.warning(self, "Invalid", f"Cannot resolve year: {ay_label}")
+
+        year_specs = []
+        for ay_label in ay_labels:
+            ay, fy, year_type, form_type = self._resolve_ay_fy(ay_label)
+            if not ay:
+                self.log(f"[Warning] Skipping unresolvable year: {ay_label}")
+                continue
+            year_specs.append({
+                "ay_label": ay_label, "value": ay, "fy": fy,
+                "year_type": year_type, "form_type": form_type,
+            })
+        if not year_specs:
+            QMessageBox.warning(self, "Invalid", "None of the selected years could be resolved.")
             return
 
         self.is_running = True
         self._batch_aborted = False
-        self._batch_form_type = form_type
-        self._batch_year_type = year_type
         self._batch_filing_scope = self.vault.get_setting("filed_returns_scope", "all")
         self._lock_ui(True)
         self.log_box.clear()
 
         targets = [a for a in self.assessee_list if a.get("id") in self.selected_ids]
         output_dir = self.dir_lbl.text()
-        self._last_batch_params = (ay, fy, output_dir, selected_docs, ay_label)
+        self._last_batch_params = (year_specs, output_dir, selected_docs)
 
         self.btn_run.setText("⏳ Running...")
 
         run_label = " + ".join(DOC_TYPE_LABELS.get(d, d) for d in sorted(selected_docs))
-        self.log(f"[System] Starting {run_label} — {len(targets)} client(s) | {ay_label} | Output: {output_dir}")
+        years_desc = ", ".join(ay_labels)
+        self.log(f"[System] Starting {run_label} — {len(targets)} client(s) | Year(s): {years_desc} | Output: {output_dir}")
 
-        # Year tag shown in progress dialog — always show both AY/TY and FY
-        if fy and fy != ay:
-            year_tag = f"{year_type} {ay} (FY {fy})"
-        else:
-            year_tag = f"{year_type} {ay}"
+        # Year tag shown in progress dialog title
+        year_tag = years_desc if len(ay_labels) <= 3 else f"{len(ay_labels)} years"
 
         # Show progress dialog (on main thread via signal)
-        self._show_progress_signal.emit(targets, selected_docs, year_tag, output_dir)
+        self._show_progress_signal.emit(targets, selected_docs, year_specs, output_dir, year_tag)
 
         # Enable "Send to Tray" in tray menu while batch is running
         if hasattr(self, "_tray_send_act"):
@@ -2566,13 +2586,15 @@ class AayDocCapioApp(QMainWindow):
 
         threading.Thread(
             target=self._run_wrapper,
-            args=(targets, ay, fy, output_dir, selected_docs, ay_label),
+            args=(targets, year_specs, output_dir, selected_docs),
             daemon=True).start()
 
-    def _show_progress_dialog(self, targets: list, selected_docs: set, ay: str, output_dir: str = ""):
+    def _show_progress_dialog(self, targets: list, selected_docs: set, year_specs: list,
+                               output_dir: str = "", year_tag: str = ""):
         """Called on main thread to create and show the progress dialog."""
         self._progress_dialog = BatchProgressDialog(
-            targets, selected_docs, ay=ay, stop_callback=self.stop_automation,
+            targets, selected_docs, year_specs=year_specs, ay=year_tag,
+            stop_callback=self.stop_automation,
             resume_callback=self.resume_batch, skip_callback=self.skip_client,
             tray_callback=self._tray_to_system_manual,
             output_dir=output_dir, parent=self)
@@ -2616,7 +2638,7 @@ class AayDocCapioApp(QMainWindow):
         """Called from the dialog Resume button — restart batch with unfinished clients."""
         if not self._last_batch_params or not remaining_targets:
             return
-        ay, fy, root_dir, selected_docs, ay_label = self._last_batch_params
+        year_specs, root_dir, selected_docs = self._last_batch_params
         self.is_running = True
         self._batch_aborted = False
         self._lock_ui(True)
@@ -2626,10 +2648,10 @@ class AayDocCapioApp(QMainWindow):
             self._progress_dialog.batch_resumed()
         threading.Thread(
             target=self._run_wrapper,
-            args=(remaining_targets, ay, fy, root_dir, selected_docs, ay_label),
+            args=(remaining_targets, year_specs, root_dir, selected_docs),
             daemon=True).start()
 
-    def _run_wrapper(self, targets, ay, fy, root_dir, selected_docs, ay_label=""):
+    def _run_wrapper(self, targets, year_specs, root_dir, selected_docs):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         self._batch_loop = loop
@@ -2658,7 +2680,7 @@ class AayDocCapioApp(QMainWindow):
 
         try:
             self._batch_task = loop.create_task(
-                self._execute_batch(targets, ay, fy, root_dir, selected_docs, ay_label))
+                self._execute_batch(targets, year_specs, root_dir, selected_docs))
             loop.run_until_complete(self._batch_task)
         except asyncio.CancelledError:
             self.log("[System] Batch cancelled.")
@@ -2984,15 +3006,16 @@ class AayDocCapioApp(QMainWindow):
         if converted:
             self.log(f"[Victory] Auto-converted {converted} 26AS TXT file(s) to Excel + HTML.")
 
-    async def _execute_batch(self, targets, ay, fy, root_dir, selected_docs, ay_label=""):
+    async def _execute_batch(self, targets, year_specs, root_dir, selected_docs):
         selected_docs = set(selected_docs)
-        self.log(f"[System] Batch: {len(targets)} client(s) | AY: {ay} | Docs: {', '.join(sorted(selected_docs))}")
+        years_desc = ", ".join(s["ay_label"] for s in year_specs)
+        self.log(f"[System] Batch: {len(targets)} client(s) | Year(s): {years_desc} | Docs: {', '.join(sorted(selected_docs))}")
         self._ais_results = {}
         self._last_errors = {}
         self._batch_26as_txts = []
 
-        _client_out      = {}   # pan → out path, populated below
-        _last_terminal   = {}   # pan → last terminal status text this run
+        _client_out      = {}   # (pan, ay_label) → out path, populated below
+        _last_terminal   = {}   # (pan, ay_label) → last terminal status text this run
         _retried:  dict  = {}   # pan → True if already retried once
         _retry_queue     = []   # targets queued for one retry after main loop
 
@@ -3003,19 +3026,21 @@ class AayDocCapioApp(QMainWindow):
                 "ais failed", "tis failed", "navigation", "net::",
             ])
 
-        def set_status(pan, text, doc_type=None):
+        def set_status(pan, ay_label, text, doc_type=None):
             """Update progress dialog and persist terminal status to vault,
-            keyed per doc_type so one document type's status can't overwrite
-            another's for the same client/AY within a multi-select batch."""
+            keyed per (pan, ay_label, doc_type) so one document type's status
+            can't overwrite another's, and one year can't overwrite another's,
+            within a multi-select multi-year batch."""
             if self._progress_dialog:
-                self._progress_dialog.set_status(pan, text)
+                self._progress_dialog.set_status(pan, ay_label, text)
             terminal = ("✅", "❌", "🕐", "⏹", "⬜", "⚠")
             if ay_label and any(text.startswith(p) for p in terminal):
-                _last_terminal[pan] = text
+                key = (pan, ay_label)
+                _last_terminal[key] = text
                 if doc_type:
                     try:
                         self.vault.record_download(
-                            pan, ay_label, doc_type, text, _client_out.get(pan, ""))
+                            pan, ay_label, doc_type, text, _client_out.get(key, ""))
                     except Exception:
                         pass
 
@@ -3056,28 +3081,34 @@ class AayDocCapioApp(QMainWindow):
                 self.log(f"[{i+1}/{len(targets)}] {name}")
 
                 name_safe = "".join(c if c.isalnum() or c in " _-" else "" for c in name)
-                _yr_prefix = getattr(self, "_batch_year_type", "AY")
-                out = os.path.join(root_dir, f"{pan}-{name_safe}", f"{_yr_prefix}_{ay.replace('-','_')}")
 
-                _client_out[pan] = out
-                # Tell the progress dialog the client's save folder immediately
-                if self._progress_dialog:
-                    self._progress_dialog.set_client_path(pan, out)
+                def _out_for_year(year_type, value, _root=root_dir, _pan=pan, _name_safe=name_safe):
+                    return os.path.join(_root, f"{_pan}-{_name_safe}", f"{year_type}_{value.replace('-','_')}")
+
+                # Tell the progress dialog each year's save folder immediately
+                for _spec in year_specs:
+                    _out = _out_for_year(_spec["year_type"], _spec["value"])
+                    _client_out[(pan, _spec["ay_label"])] = _out
+                    if self._progress_dialog:
+                        self._progress_dialog.set_client_path(pan, _spec["ay_label"], _out)
 
                 page = None
                 try:
                     # ── Login ────────────────────────────────────────────────────
-                    set_status(pan, "⏳ Logging in to ITD...")
+                    for _spec in year_specs:
+                        set_status(pan, _spec["ay_label"], "⏳ Logging in to ITD...")
                     page = await login_itd(pan, target.get("password"), self.log, context,
                                            is_running=lambda: self.is_running and not self._skip_current)
-                    set_status(pan, "⏳ Logged in to ITD")
+                    for _spec in year_specs:
+                        set_status(pan, _spec["ay_label"], "⏳ Logged in to ITD")
 
                     # ── Skip check ───────────────────────────────────────────────
                     if self._skip_current:
                         # Update progress dialog only — do NOT persist to vault or log history
                         if self._progress_dialog:
-                            self._progress_dialog.set_status(pan, "⬜ Skipped")
-                            self._progress_dialog.client_finished(pan)
+                            for _spec in year_specs:
+                                self._progress_dialog.set_status(pan, _spec["ay_label"], "⬜ Skipped")
+                                self._progress_dialog.client_finished(pan, _spec["ay_label"])
                         self.log(f"[Skip] {pan[:3]}XXXXXXX skipped by user.")
                         if page:
                             try: await logout_itd(page, self.log)
@@ -3089,33 +3120,36 @@ class AayDocCapioApp(QMainWindow):
                     # ── Selected document types, one client fully before the next ──
                     # Dispatch order is deterministic (not raw set iteration)
                     # so Filed Returns always runs before 26AS — see
-                    # ordered_doc_types() docstring for why.
+                    # ordered_doc_types() docstring for why. Every doc type
+                    # runs once per client and loops all selected years
+                    # internally (F-14: doc-type-by-doc-type across years).
                     for doc_type in ordered_doc_types(selected_docs):
                         if not self.is_running:
                             break
                         handler = HANDLERS.get(doc_type)
                         if handler is None:
                             continue
-                        doc_set_status = (lambda p, t, _dt=doc_type: set_status(p, t, _dt))
+                        doc_set_status = (lambda p, yl, t, _dt=doc_type: set_status(p, yl, t, _dt))
                         result = await handler(
-                            page, pan, dob, ay, fy, out, self.log, doc_set_status,
-                            form_type=getattr(self, "_batch_form_type", DEFAULT_FORM),
+                            page, pan, dob, year_specs, _out_for_year, self.log, doc_set_status,
                             filing_scope=getattr(self, "_batch_filing_scope", "all"),
                             is_running=(lambda: self.is_running),
                         ) or {}
 
-                        if doc_type == "26as" and result.get("txt_path"):
-                            self._batch_26as_txts.append((pan, result["txt_path"]))
+                        if doc_type == "26as":
+                            for _txt_path in (result.get("txt_paths") or {}).values():
+                                self._batch_26as_txts.append((pan, _txt_path))
                         elif doc_type == "request_ais":
-                            ais_status = result.get("ais_status")
-                            if ais_status == "downloaded":
-                                self._ais_results[pan] = "instant"
-                            elif ais_status == "requested":
-                                self._ais_results[pan] = "queued"
-                            elif ais_status == "skipped":
-                                self._ais_results[pan] = "skipped"
-                            else:
-                                self._ais_results[pan] = "failed"
+                            for _ay_lbl, _ais_status in (result.get("ais_statuses") or {}).items():
+                                _key = (pan, _ay_lbl)
+                                if _ais_status == "downloaded":
+                                    self._ais_results[_key] = "instant"
+                                elif _ais_status == "requested":
+                                    self._ais_results[_key] = "queued"
+                                elif _ais_status == "skipped":
+                                    self._ais_results[_key] = "skipped"
+                                else:
+                                    self._ais_results[_key] = "failed"
 
                     if self.is_running:
                         await logout_itd(page, self.log)
@@ -3131,41 +3165,48 @@ class AayDocCapioApp(QMainWindow):
                         # Transient error — logout cleanly and queue for one retry
                         _retried[pan] = True
                         self.log(f"[Retry] Transient error detected — will retry {pan_masked} after batch.")
-                        set_status(pan, f"🕐 Queued for retry — {_friendly_error(str(e))}")
+                        for _spec in year_specs:
+                            set_status(pan, _spec["ay_label"], f"🕐 Queued for retry — {_friendly_error(str(e))}")
                         if page:
                             try: await logout_itd(page, self.log)
                             except Exception: pass
                         _retry_queue.append(target)
                     else:
                         # Permanent failure or already retried
-                        self._ais_results[pan] = "failed"
-                        self._last_errors[pan] = str(e)
                         friendly = _friendly_error(str(e))
-                        if self._batch_aborted or friendly == "Stopped by user":
-                            # Batch was stopped — do NOT overwrite last saved status in vault
-                            if self._progress_dialog:
-                                self._progress_dialog.set_status(pan, f"⏹ Stopped")
-                        else:
-                            set_status(pan, f"❌ Failed — {friendly}")
+                        for _spec in year_specs:
+                            _key = (pan, _spec["ay_label"])
+                            self._ais_results[_key] = "failed"
+                            self._last_errors[_key] = str(e)
+                            if self._batch_aborted or friendly == "Stopped by user":
+                                # Batch was stopped — do NOT overwrite last saved status in vault
+                                if self._progress_dialog:
+                                    self._progress_dialog.set_status(pan, _spec["ay_label"], f"⏹ Stopped")
+                            else:
+                                set_status(pan, _spec["ay_label"], f"❌ Failed — {friendly}")
                         if page:
                             try: await logout_itd(page, self.log)
                             except Exception: pass
 
                 # Append the final status (whatever the main grid now shows) to log history
-                if ay_label and pan in _last_terminal:
-                    try:
-                        self.log_store.record(pan, ay_label, _last_terminal.pop(pan))
-                    except Exception:
-                        pass
+                for _spec in year_specs:
+                    _key = (pan, _spec["ay_label"])
+                    if _key in _last_terminal:
+                        try:
+                            self.log_store.record(pan, _spec["ay_label"], _last_terminal.pop(_key))
+                        except Exception:
+                            pass
 
                 # This client's turn in the main loop is over — ALL its selected
-                # doc types have now run (success, failure, or queued for retry).
-                # This is the only correct signal that the progress dialog should
-                # count it as done; a multi-select batch produces several
-                # terminal-looking status updates per client along the way (one
-                # per doc type), so those can no longer be used to infer "done".
+                # doc types have now run (success, failure, or queued for retry)
+                # for EVERY selected year. This is the only correct signal that
+                # the progress dialog should count each (client, year) row as
+                # done; a multi-select batch produces several terminal-looking
+                # status updates per client along the way (one per doc type per
+                # year), so those can no longer be used to infer "done".
                 if self._progress_dialog:
-                    self._progress_dialog.client_finished(pan)
+                    for _spec in year_specs:
+                        self._progress_dialog.client_finished(pan, _spec["ay_label"])
 
                 await asyncio.sleep(3)
 
@@ -3181,15 +3222,17 @@ class AayDocCapioApp(QMainWindow):
                     pan_masked = pan[:3] + "XXXXXXX" if pan and len(pan) >= 3 else "UNKNOWN"
                     self.log("──────────────────────────────────────────────────")
                     self.log(f"[Retry] {name}")
+                    name_safe = "".join(c if c.isalnum() or c in " _-" else "" for c in name)
+
+                    def _out_for_year(year_type, value, _root=root_dir, _pan=pan, _name_safe=name_safe):
+                        return os.path.join(_root, f"{_pan}-{_name_safe}", f"{year_type}_{value.replace('-','_')}")
+
                     page = None
                     try:
-                        set_status(pan, "⏳ Logging in to ITD (retry)...")
+                        for _spec in year_specs:
+                            set_status(pan, _spec["ay_label"], "⏳ Logging in to ITD (retry)...")
                         page = await login_itd(pan, target.get("password"), self.log, context,
                                                is_running=lambda: self.is_running)
-                        out = _client_out.get(pan, os.path.join(
-                            root_dir,
-                            "".join(c if c.isalnum() or c in " _-" else "" for c in name),
-                            f"{getattr(self, '_batch_year_type', 'AY')}_{ay.replace('-','_')}"))
 
                         for doc_type in ordered_doc_types(selected_docs):
                             if not self.is_running:
@@ -3197,40 +3240,44 @@ class AayDocCapioApp(QMainWindow):
                             handler = HANDLERS.get(doc_type)
                             if handler is None:
                                 continue
-                            doc_set_status = (lambda p, t, _dt=doc_type: set_status(p, t, _dt))
+                            doc_set_status = (lambda p, yl, t, _dt=doc_type: set_status(p, yl, t, _dt))
                             result = await handler(
-                                page, pan, dob, ay, fy, out, self.log, doc_set_status,
-                                form_type=getattr(self, "_batch_form_type", DEFAULT_FORM),
+                                page, pan, dob, year_specs, _out_for_year, self.log, doc_set_status,
                                 filing_scope=getattr(self, "_batch_filing_scope", "all"),
                                 is_running=(lambda: self.is_running),
                             ) or {}
-                            if doc_type == "26as" and result.get("txt_path"):
-                                self._batch_26as_txts.append((pan, result["txt_path"]))
+                            if doc_type == "26as":
+                                for _txt_path in (result.get("txt_paths") or {}).values():
+                                    self._batch_26as_txts.append((pan, _txt_path))
                             elif doc_type == "request_ais":
-                                ais_status = result.get("ais_status")
-                                self._ais_results[pan] = (
-                                    "instant" if ais_status == "downloaded"
-                                    else "queued" if ais_status == "requested"
-                                    else "skipped" if ais_status == "skipped"
-                                    else "failed")
+                                for _ay_lbl, _ais_status in (result.get("ais_statuses") or {}).items():
+                                    self._ais_results[(pan, _ay_lbl)] = (
+                                        "instant" if _ais_status == "downloaded"
+                                        else "queued" if _ais_status == "requested"
+                                        else "skipped" if _ais_status == "skipped"
+                                        else "failed")
 
                         if self.is_running:
                             await logout_itd(page, self.log)
                         self.log(f"[Retry] {pan_masked} done.")
                     except Exception as e:
                         self.log(f"[Retry Error] {pan_masked}: {e}")
-                        self._ais_results[pan] = "failed"
-                        self._last_errors[pan] = str(e)
-                        set_status(pan, f"❌ Failed — {_friendly_error(str(e))}")
+                        for _spec in year_specs:
+                            _key = (pan, _spec["ay_label"])
+                            self._ais_results[_key] = "failed"
+                            self._last_errors[_key] = str(e)
+                            set_status(pan, _spec["ay_label"], f"❌ Failed — {_friendly_error(str(e))}")
                         if page:
                             try: await logout_itd(page, self.log)
                             except Exception: pass
 
-                    if ay_label and pan in _last_terminal:
-                        try:
-                            self.log_store.record(pan, ay_label, _last_terminal.pop(pan))
-                        except Exception:
-                            pass
+                    for _spec in year_specs:
+                        _key = (pan, _spec["ay_label"])
+                        if _key in _last_terminal:
+                            try:
+                                self.log_store.record(pan, _spec["ay_label"], _last_terminal.pop(_key))
+                            except Exception:
+                                pass
                     await asyncio.sleep(3)
 
         finally:

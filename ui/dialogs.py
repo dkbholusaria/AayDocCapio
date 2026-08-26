@@ -198,19 +198,26 @@ class BatchProgressDialog(QDialog):
     Live progress popup shown during any batch run.
     Columns: Name | PAN | Status | Save Path (clickable link)
     Status and path updates arrive from the worker thread via Qt signals.
+
+    F-14 (multi-year): one row per (client, year) pair — every client
+    row is repeated once per selected Assessment/Tax Year, so `year_specs`
+    (list of {"ay_label": ..., ...} dicts, see batch_handlers.py) drives how
+    many rows each client gets. All row-keyed state uses the composite key
+    (pan, ay_label) instead of pan alone.
     """
-    _update_signal = pyqtSignal(str, str)
-    _path_signal   = pyqtSignal(str, str)
+    _update_signal = pyqtSignal(str, str, str)         # pan, ay_label, status
+    _path_signal   = pyqtSignal(str, str, str)         # pan, ay_label, folder
     _resume_signal = pyqtSignal(list)
-    _client_done_signal = pyqtSignal(str)   # pan — ALL selected doc types finished for this client
+    _client_done_signal = pyqtSignal(str, str)   # pan, ay_label — ALL selected doc types finished for this (client, year)
 
     _COL_NAME   = 0
-    _COL_PAN    = 1
-    _COL_STATUS = 2
-    _COL_PATH   = 3
+    _COL_YEAR   = 1
+    _COL_PAN    = 2
+    _COL_STATUS = 3
+    _COL_PATH   = 4
 
-    def __init__(self, targets: list, selected_docs, ay: str = "",
-                 stop_callback=None, resume_callback=None, skip_callback=None,
+    def __init__(self, targets: list, selected_docs, year_specs: list,
+                 ay: str = "", stop_callback=None, resume_callback=None, skip_callback=None,
                  tray_callback=None, output_dir: str = "", parent=None):
         super().__init__(parent)
         self._stop_callback   = stop_callback
@@ -221,7 +228,12 @@ class BatchProgressDialog(QDialog):
         self._selected_docs   = selected_docs
         self._ay              = ay
         self._targets         = targets
-        self._pan_to_path     = {}
+        self._year_specs      = year_specs
+        self._multi_year      = len(year_specs) > 1
+        # Client × Year, client-major order — matches the execution order in
+        # app.py's _execute_batch (all doc types/years for client A, then B).
+        self._client_year_pairs = [(tgt, spec) for tgt in targets for spec in year_specs]
+        self._path_by_key    = {}   # (pan, ay_label) → folder
 
         _doc_labels = {
             "26as":           "26AS",
@@ -237,7 +249,7 @@ class BatchProgressDialog(QDialog):
 
         self.setWindowTitle(f"{mode_label} — Batch Progress")
         self.setMinimumSize(900, 500)
-        self.resize(1060, min(160 + len(targets) * 42, 720))
+        self.resize(1060, min(160 + len(self._client_year_pairs) * 42, 720))
         self.setSizeGripEnabled(True)
         self.setWindowFlags(
             Qt.WindowType.Dialog |
@@ -247,10 +259,10 @@ class BatchProgressDialog(QDialog):
         _bt = _t()
         self.setStyleSheet(f"QDialog{{background:{_bt.bg_window};}}")
 
-        self._pan_to_row   = {}
-        self._counted_pans: set = set()   # B-07: track which PANs already incremented done count
+        self._row_key_to_row = {}   # (pan, ay_label) → row
+        self._counted_keys: set = set()   # (pan, ay_label) already counted toward done
         self._done_count   = 0
-        self._total        = len(targets)
+        self._total        = len(self._client_year_pairs)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 14, 16, 12)
@@ -258,20 +270,26 @@ class BatchProgressDialog(QDialog):
 
         # ── Title bar ─────────────────────────────────────────────────────────
         ay_tag = (f" &nbsp;·&nbsp; <span style='color:{_bt.accent}'>{ay}</span>") if ay else ""
-        title = QLabel(f"<b>{mode_label}</b> — {len(targets)} client(s){ay_tag}")
+        clients_tag = (f"{len(targets)} client(s)" if not self._multi_year
+                       else f"{len(targets)} client(s) × {len(year_specs)} year(s)")
+        title = QLabel(f"<b>{mode_label}</b> — {clients_tag}{ay_tag}")
         title.setStyleSheet(f"font-size:14px; color:{_bt.text_primary}; background:transparent;")
         layout.addWidget(title)
 
         # ── Table ─────────────────────────────────────────────────────────────
-        self._table = QTableWidget(len(targets), 4)
-        self._table.setHorizontalHeaderLabels(["Name", "PAN", "Status", "Save Path"])
+        self._table = QTableWidget(len(self._client_year_pairs), 5)
+        self._table.setHorizontalHeaderLabels(["Name", "Year", "PAN", "Status", "Save Path"])
+        if not self._multi_year:
+            self._table.setColumnHidden(self._COL_YEAR, True)
 
         hdr = self._table.horizontalHeader()
         hdr.setSectionResizeMode(self._COL_NAME,   QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(self._COL_YEAR,   QHeaderView.ResizeMode.Interactive)
         hdr.setSectionResizeMode(self._COL_PAN,    QHeaderView.ResizeMode.Interactive)
         hdr.setSectionResizeMode(self._COL_STATUS, QHeaderView.ResizeMode.Interactive)
         hdr.setSectionResizeMode(self._COL_PATH,   QHeaderView.ResizeMode.Stretch)
         self._table.setColumnWidth(self._COL_NAME,   180)
+        self._table.setColumnWidth(self._COL_YEAR,   150)
         self._table.setColumnWidth(self._COL_PAN,    120)
         self._table.setColumnWidth(self._COL_STATUS, 260)
 
@@ -298,15 +316,21 @@ class BatchProgressDialog(QDialog):
             f"QPushButton:hover{{background:{_bt.bg_table_alt};border-radius:4px;}}")
         self._table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-        for row, tgt in enumerate(targets):
+        for row, (tgt, spec) in enumerate(self._client_year_pairs):
             pan  = tgt.get("pan", "")
             name = tgt.get("name", "—")
-            self._pan_to_row[pan] = row
+            ay_label = spec["ay_label"]
+            self._row_key_to_row[(pan, ay_label)] = row
             self._table.setRowHeight(row, 40)
 
             name_item = QTableWidgetItem(name)
             name_item.setForeground(QColor(_bt.text_primary))
             self._table.setItem(row, self._COL_NAME, name_item)
+
+            year_item = QTableWidgetItem(ay_label)
+            year_item.setForeground(QColor(_bt.text_muted))
+            year_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
+            self._table.setItem(row, self._COL_YEAR, year_item)
 
             pan_item = QTableWidgetItem(pan)
             pan_item.setForeground(QColor(_bt.text_muted))
@@ -330,11 +354,11 @@ class BatchProgressDialog(QDialog):
 
         # ── Progress bar ──────────────────────────────────────────────────────
         self._progress_bar = QProgressBar()
-        self._progress_bar.setRange(0, len(targets))
+        self._progress_bar.setRange(0, len(self._client_year_pairs))
         self._progress_bar.setValue(0)
         self._progress_bar.setFixedHeight(18)
         self._progress_bar.setTextVisible(True)
-        self._progress_bar.setFormat(f"0 / {len(targets)} done")
+        self._progress_bar.setFormat(f"0 / {len(self._client_year_pairs)} done")
         self._progress_bar.setStyleSheet(
             f"QProgressBar{{border:1px solid {_bt.border};border-radius:9px;"
             f"background:{_bt.scrollbar_handle};text-align:center;font-size:11px;"
@@ -444,9 +468,10 @@ class BatchProgressDialog(QDialog):
 
         self._rows_data  = {}
 
-        for tgt in targets:
-            self._rows_data[tgt.get("pan", "")] = {
-                "name": tgt.get("name", ""), "path": "", "status": "Waiting", "ts": ""}
+        for tgt, spec in self._client_year_pairs:
+            self._rows_data[(tgt.get("pan", ""), spec["ay_label"])] = {
+                "name": tgt.get("name", ""), "ay_label": spec["ay_label"],
+                "path": "", "status": "Waiting", "ts": ""}
 
         self._update_signal.connect(self._on_update)
         self._path_signal.connect(self._on_path_update)
@@ -454,6 +479,12 @@ class BatchProgressDialog(QDialog):
         self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
 
     # ── internal helpers ──────────────────────────────────────────────────────
+
+    def _row_key_for_row(self, row: int):
+        for key, r in self._row_key_to_row.items():
+            if r == row:
+                return key
+        return None
 
     def _on_row_double_clicked(self, row: int, _col: int):
         """Show full status text for the double-clicked row."""
@@ -463,10 +494,10 @@ class BatchProgressDialog(QDialog):
             return
         status = status_item.text()
         name   = name_item.text() if name_item else ""
-        # Find timestamp from rows_data
         pan_item = self._table.item(row, self._COL_PAN)
         pan = pan_item.text() if pan_item else ""
-        ts  = self._rows_data.get(pan, {}).get("ts", "")
+        key = self._row_key_for_row(row)
+        ts  = self._rows_data.get(key, {}).get("ts", "")
         msg = f"{name}  ({pan})\n"
         if ts:
             msg += f"{ts}\n"
@@ -491,30 +522,33 @@ class BatchProgressDialog(QDialog):
         item.setToolTip(text)
         self._table.setItem(row, self._COL_STATUS, item)
 
-    def _on_update(self, pan: str, status: str):
-        """Live status text update only — does NOT count the client as done.
-        A multi-select batch runs several doc types per client in sequence,
-        each ending in its own terminal-looking status (e.g. "✅ 26AS
-        Downloaded" while Filed Returns/AIS are still queued for the same
-        client), so "saw a terminal glyph" can no longer mean "this client
-        is finished" — only the explicit client_finished() call means that."""
-        row = self._pan_to_row.get(pan)
+    def _on_update(self, pan: str, ay_label: str, status: str):
+        """Live status text update only — does NOT count the (client, year)
+        row as done. A multi-select batch runs several doc types per client
+        in sequence, each ending in its own terminal-looking status (e.g.
+        "✅ 26AS Downloaded" while Filed Returns/AIS are still queued for
+        the same client/year), so "saw a terminal glyph" can no longer mean
+        "this row is finished" — only the explicit client_finished() call
+        means that."""
+        key = (pan, ay_label)
+        row = self._row_key_to_row.get(key)
         if row is None:
             return
         self._set_status_item(row, status)
-        if pan in self._rows_data:
-            self._rows_data[pan]["status"] = status
-            self._rows_data[pan]["ts"] = datetime.datetime.now().strftime("%d-%b-%Y %H:%M:%S")
+        if key in self._rows_data:
+            self._rows_data[key]["status"] = status
+            self._rows_data[key]["ts"] = datetime.datetime.now().strftime("%d-%b-%Y %H:%M:%S")
 
-    def client_finished(self, pan: str):
-        """Thread-safe: call once per client, after ALL its selected doc
-        types have finished (success or failure) — the only correct signal
-        that this client's row is truly done."""
-        self._client_done_signal.emit(pan)
+    def client_finished(self, pan: str, ay_label: str):
+        """Thread-safe: call once per (client, year) row, after ALL selected
+        doc types have finished (success or failure) for that year — the
+        only correct signal that this row is truly done."""
+        self._client_done_signal.emit(pan, ay_label)
 
-    def _on_client_done(self, pan: str):
-        if pan not in self._counted_pans:
-            self._counted_pans.add(pan)
+    def _on_client_done(self, pan: str, ay_label: str):
+        key = (pan, ay_label)
+        if key not in self._counted_keys:
+            self._counted_keys.add(key)
             self._done_count += 1
             self._progress_bar.setValue(self._done_count)
             self._progress_bar.setFormat(f"{self._done_count} / {self._total} done")
@@ -523,13 +557,14 @@ class BatchProgressDialog(QDialog):
             self._report_btn.setEnabled(True)
             self._progress_bar.setFormat(f"All {self._total} done")
 
-    def _on_path_update(self, pan: str, folder: str):
-        row = self._pan_to_row.get(pan)
+    def _on_path_update(self, pan: str, ay_label: str, folder: str):
+        key = (pan, ay_label)
+        row = self._row_key_to_row.get(key)
         if row is None:
             return
-        self._pan_to_path[pan] = folder
-        if pan in self._rows_data:
-            self._rows_data[pan]["path"] = folder
+        self._path_by_key[key] = folder
+        if key in self._rows_data:
+            self._rows_data[key]["path"] = folder
         lbl = self._table.cellWidget(row, self._COL_PATH)
         if isinstance(lbl, QLabel):
             lbl.setText(
@@ -583,8 +618,8 @@ class BatchProgressDialog(QDialog):
         thin      = Side(style="thin", color="CBD5E1")
         border    = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-        headers    = ["#", "Client Name", "Save Folder", "Status", "Timestamp"]
-        col_widths = [5, 30, 60, 40, 22]
+        headers    = ["#", "Client Name", "Year", "Save Folder", "Status", "Timestamp"]
+        col_widths = [5, 30, 14, 60, 40, 22]
 
         for col_idx, (h, w) in enumerate(zip(headers, col_widths), start=1):
             cell = ws.cell(row=1, column=col_idx, value=h)
@@ -596,9 +631,10 @@ class BatchProgressDialog(QDialog):
 
         ws.row_dimensions[1].height = 22
 
-        for seq, tgt in enumerate(self._targets, start=1):
+        for seq, (tgt, spec) in enumerate(self._client_year_pairs, start=1):
             pan     = tgt.get("pan", "")
-            data    = self._rows_data.get(pan, {})
+            key     = (pan, spec["ay_label"])
+            data    = self._rows_data.get(key, {})
             row_num = seq + 1
             folder  = data.get("path", "")
             status  = data.get("status", "—")
@@ -607,21 +643,22 @@ class BatchProgressDialog(QDialog):
 
             ws.cell(row=row_num, column=1, value=seq).alignment = center
             ws.cell(row=row_num, column=2, value=name).alignment = left
+            ws.cell(row=row_num, column=3, value=spec["ay_label"]).alignment = center
 
             if folder and os.path.exists(folder):
-                cell = ws.cell(row=row_num, column=3, value=folder)
+                cell = ws.cell(row=row_num, column=4, value=folder)
                 cell.hyperlink = folder
                 cell.font      = link_font
                 cell.alignment = left
             else:
-                ws.cell(row=row_num, column=3, value=folder or "—").alignment = left
+                ws.cell(row=row_num, column=4, value=folder or "—").alignment = left
 
             import re as _re
             status_clean = _re.sub(r'[^\x00-\x7F✅❌🕐⬜⏹⏳]+', '', status).strip()
-            ws.cell(row=row_num, column=4, value=status_clean).alignment = left
-            ws.cell(row=row_num, column=5, value=row_ts or "—").alignment = center
+            ws.cell(row=row_num, column=5, value=status_clean).alignment = left
+            ws.cell(row=row_num, column=6, value=row_ts or "—").alignment = center
 
-            for col_idx in range(1, 6):
+            for col_idx in range(1, 7):
                 cell = ws.cell(row=row_num, column=col_idx)
                 cell.border = border
                 if not cell.font or cell.font == Font():
@@ -638,25 +675,25 @@ class BatchProgressDialog(QDialog):
 
     # ── public API ────────────────────────────────────────────────────────────
 
-    def set_status(self, pan: str, status: str):
+    def set_status(self, pan: str, ay_label: str, status: str):
         """Thread-safe status update."""
-        self._update_signal.emit(pan, status)
+        self._update_signal.emit(pan, ay_label, status)
 
-    def set_client_path(self, pan: str, folder: str):
-        """Thread-safe path update — call once the client folder is known."""
-        self._path_signal.emit(pan, folder)
+    def set_client_path(self, pan: str, ay_label: str, folder: str):
+        """Thread-safe path update — call once the (client, year) folder is known."""
+        self._path_signal.emit(pan, ay_label, folder)
 
     def batch_finished(self, aborted: bool = False):
         """Enable Close/Report and hide Stop. If aborted, sweeps non-terminal rows to ⏹ Stopped."""
         terminal = ("✅", "❌", "🕐", "⏹", "⬜ Skipped")
         if aborted:
-            for pan, row in self._pan_to_row.items():
+            for key, row in self._row_key_to_row.items():
                 item = self._table.item(row, self._COL_STATUS)
                 current = item.text() if item else ""
                 if not any(current.startswith(t) for t in terminal):
                     self._set_status_item(row, "⏹ Stopped")
-                    if pan in self._rows_data:
-                        self._rows_data[pan]["status"] = "⏹ Stopped"
+                    if key in self._rows_data:
+                        self._rows_data[key]["status"] = "⏹ Stopped"
         self._skip_btn.setVisible(False)
         self._tray_btn.setVisible(False)
         self._stop_btn.setVisible(False)
@@ -700,17 +737,18 @@ class BatchProgressDialog(QDialog):
             wb = openpyxl.Workbook()
             ws = wb.active
             ws.title = "Download Report"
-            headers    = ["#", "Client Name", "Save Folder", "Status", "Timestamp"]
-            col_widths = [5, 30, 60, 40, 22]
+            headers    = ["#", "Client Name", "Year", "Save Folder", "Status", "Timestamp"]
+            col_widths = [5, 30, 14, 60, 40, 22]
             for col_idx, (h, w) in enumerate(zip(headers, col_widths), start=1):
                 cell = ws.cell(row=1, column=col_idx, value=h)
                 cell.font = hdr_font; cell.fill = hdr_fill
                 cell.alignment = center; cell.border = border
                 ws.column_dimensions[get_column_letter(col_idx)].width = w
             ws.row_dimensions[1].height = 22
-            for seq, tgt in enumerate(self._targets, start=1):
+            for seq, (tgt, spec) in enumerate(self._client_year_pairs, start=1):
                 pan     = tgt.get("pan", "")
-                data    = self._rows_data.get(pan, {})
+                key     = (pan, spec["ay_label"])
+                data    = self._rows_data.get(key, {})
                 row_num = seq + 1
                 folder  = data.get("path", "")
                 status  = data.get("status", "—")
@@ -718,15 +756,16 @@ class BatchProgressDialog(QDialog):
                 row_ts  = data.get("ts", "")
                 ws.cell(row=row_num, column=1, value=seq).alignment = center
                 ws.cell(row=row_num, column=2, value=name).alignment = left
+                ws.cell(row=row_num, column=3, value=spec["ay_label"]).alignment = center
                 if folder and os.path.exists(folder):
-                    cell = ws.cell(row=row_num, column=3, value=folder)
+                    cell = ws.cell(row=row_num, column=4, value=folder)
                     cell.hyperlink = folder; cell.font = link_font; cell.alignment = left
                 else:
-                    ws.cell(row=row_num, column=3, value=folder or "—").alignment = left
+                    ws.cell(row=row_num, column=4, value=folder or "—").alignment = left
                 status_clean = _re.sub(r'[^\x00-\x7F✅❌🕐⬜⏹⏳]+', '', status).strip()
-                ws.cell(row=row_num, column=4, value=status_clean).alignment = left
-                ws.cell(row=row_num, column=5, value=row_ts or "—").alignment = center
-                for col_idx in range(1, 6):
+                ws.cell(row=row_num, column=5, value=status_clean).alignment = left
+                ws.cell(row=row_num, column=6, value=row_ts or "—").alignment = center
+                for col_idx in range(1, 7):
                     cell = ws.cell(row=row_num, column=col_idx)
                     cell.border = border
                     if not cell.font or cell.font == Font():
@@ -758,16 +797,23 @@ class BatchProgressDialog(QDialog):
         self._skip_btn.setEnabled(True)
 
     def _on_resume_clicked(self):
+        """A client is retried as a whole (login happens once, then every
+        selected year re-runs), so a client is 'remaining' if ANY of its
+        year-rows was left ⏹ Stopped — and ALL its rows reset to Waiting."""
         remaining = []
         for tgt in self._targets:
             pan = tgt.get("pan", "")
-            status = (self._rows_data.get(pan) or {}).get("status", "")
-            if status.startswith("⏹"):
+            client_keys = [k for k in self._row_key_to_row if k[0] == pan]
+            any_stopped = any(
+                (self._rows_data.get(k) or {}).get("status", "").startswith("⏹")
+                for k in client_keys)
+            if any_stopped:
                 remaining.append(tgt)
-                row = self._pan_to_row.get(pan)
-                if row is not None:
-                    self._set_status_item(row, "⬜ Waiting")
-                    self._rows_data[pan]["status"] = "⬜ Waiting"
+                for k in client_keys:
+                    row = self._row_key_to_row.get(k)
+                    if row is not None:
+                        self._set_status_item(row, "⬜ Waiting")
+                        self._rows_data[k]["status"] = "⬜ Waiting"
         if remaining and self._resume_callback:
             self._resume_callback(remaining)
 
@@ -2360,7 +2406,7 @@ class DownloadPickerDialog(QDialog):
             return cb
 
         add_option("26as", "26AS / Form 168",
-                    "PDF + Excel/TXT — form picked automatically by year", checked=True)
+                    "PDF + Excel/TXT — form picked automatically by year")
         add_option("request_ais", "AIS + TIS",
                     "Requests generation if not ready yet, downloads instantly if it is")
         add_option("ais_tis", "Download Previously Requested AIS",

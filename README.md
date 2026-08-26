@@ -1,17 +1,17 @@
 # AayDocCapio
 
-**v2.0.0** — A secure, standalone desktop utility for **bulk downloading Form 26AS, Form 168, AIS, TIS, and now Filed Returns & Intimation Orders** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients in one click — and **emailing those documents directly to clients**.
+**v2.1.0** — A secure, standalone desktop utility for **bulk downloading Form 26AS, Form 168, AIS, TIS, and Filed Returns & Intimation Orders** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients — across multiple Assessment/Tax Years — in one click, and **emailing those documents directly to clients**.
 
 Built with **PyQt6** + **Playwright**. Runs on Windows, macOS, and Linux/WSL.
 
 ---
 
-## What's New in 2.0.0
+## What's New in 2.1.0
 
-- **Filed Returns & Intimation Orders download** — download filed ITR Form, Receipt (or ITR-V), JSON, and Intimation Orders straight from the e-Filing portal, with an All-filings vs. Latest-filing-only option.
-- **Unified Download Picker** — one checkbox dialog now replaces the old per-document menu items, so 26AS/Form 168, AIS/TIS, and Filed Returns can all be selected together for a single batch run.
-- **Per-document-type status in the grid** — the status column now summarizes every document type checked for a client/year, with a hover tooltip showing the individual outcome for each.
-- **Mail templates support ITR documents** — email templates can now attach ITR Form, ITR Receipt, ITR-V, and Intimation Order alongside 26AS/AIS/TIS.
+- **Multi-year download** — check any combination of Assessment/Tax Years in the dropdown and every selected client downloads all of them in one run, without repeating the batch per year.
+- **Efficient per-client execution** — for each client, the app downloads one document type across all selected years before moving to the next, so it only logs in and navigates once per client, not once per year.
+- **Progress dialog and Run History updated for multiple years** — the batch progress dialog shows one row per client per year with a dedicated Year column, and the "View Log" dialog gets a year selector when a client has history for more than one year.
+- **Download Documents dialog starts with nothing pre-checked**, and duplicate ITR folders from the old naming convention now auto-merge into the new one.
 
 See the full [CHANGELOG](CHANGELOG.md) for details.
 

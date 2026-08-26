@@ -47,6 +47,57 @@ def migrate_flat_docs_to_subfolders(ay_folder: str, log_callback=None) -> None:
             log_callback(f"[Migrate] Skipped folder migration for {ay_folder}: {e}")
 
 
+def migrate_itr_filing_subfolder(download_dir: str, filing_type: str, filing_date_ddmmyyyy: str,
+                                  ack_no: str, log_callback=None) -> None:
+    """
+    Filed Returns subfolders were originally named "{filing_type}-{date}",
+    then changed to "{filing_type}-{date}-{ack_no}" once it was confirmed
+    live that type+date alone can collide (a discarded-then-refiled Original
+    sharing both with the return that replaced it). Old installs left
+    old-style folders behind; without this, re-running the same filing after
+    upgrading creates a second, ack_no-suffixed folder alongside the old one
+    instead of continuing to use it — same duplicate-folder problem the
+    ack_no fix was meant to solve, just from the other direction.
+
+    Best-effort, one-directional: if the old-style folder exists and the new
+    one doesn't, rename it; if both exist, move any files from the old one
+    into the new one (skipping anything already present) and remove the old
+    folder if it ends up empty. Never raises — a migration hiccup must not
+    block a download.
+    """
+    if not ack_no:
+        return  # old and new names are identical when there's no ack_no
+    try:
+        old_name = f"{filing_type}-{filing_date_ddmmyyyy}"
+        new_name = f"{filing_type}-{filing_date_ddmmyyyy}-{ack_no}"
+        for subfolder in ("ITR Returns", "Intimation Orders"):
+            old_dir = os.path.join(download_dir, subfolder, old_name)
+            new_dir = os.path.join(download_dir, subfolder, new_name)
+            if not os.path.isdir(old_dir):
+                continue
+            if not os.path.isdir(new_dir):
+                os.makedirs(os.path.join(download_dir, subfolder), exist_ok=True)
+                shutil.move(old_dir, new_dir)
+                if log_callback:
+                    log_callback(f"[Migrate] Renamed {subfolder}/{old_name} -> {new_name}")
+                continue
+            moved_any = False
+            for name in os.listdir(old_dir):
+                src = os.path.join(old_dir, name)
+                dest = os.path.join(new_dir, name)
+                if os.path.exists(dest):
+                    continue
+                shutil.move(src, dest)
+                moved_any = True
+            if moved_any and log_callback:
+                log_callback(f"[Migrate] Merged {subfolder}/{old_name} -> {new_name}")
+            if not os.listdir(old_dir):
+                os.rmdir(old_dir)
+    except Exception as e:
+        if log_callback:
+            log_callback(f"[Migrate] Skipped ITR subfolder migration for {filing_type}-{filing_date_ddmmyyyy}: {e}")
+
+
 def get_timestamp() -> str:
     """Return current time in Asia/Kolkata as DD-MM-YYYY HH:MM:SS."""
     try:

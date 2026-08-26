@@ -656,7 +656,7 @@ def _user_manual_page_html(img_uris: dict) -> str:
             + steps_html([
               'Select target clients by checking their rows in the table.',
               'Click the <strong>Download</strong> button on the toolbar to open the Download Picker dialog, '
-              'and make sure <strong>26AS / Form 168</strong> is checked (checked by default).',
+              'and check <strong>26AS / Form 168</strong>.',
               'Click <strong>Download</strong> in the dialog to launch the batch.',
               'The background automation will sequentially log in to each client\'s account, navigate to the TRACES portal, '
               'request 26AS or Form 168 (picked automatically based on the assessment year) in HTML/PDF and TXT format, '
@@ -693,7 +693,7 @@ def _user_manual_page_html(img_uris: dict) -> str:
             f'<strong>Download Documents</strong>. It replaces the older per-document menu items with a single checklist, '
             f'so you can combine any documents into one run for the selected clients:</p>'
             + bullets_html([
-              '<strong>26AS / Form 168</strong> — PDF + Excel/TXT, form picked automatically by year (checked by default).',
+              '<strong>26AS / Form 168</strong> — PDF + Excel/TXT, form picked automatically by year.',
               '<strong>AIS + TIS</strong> — requests generation if not ready yet, downloads instantly if it is.',
               '<strong>Download Previously Requested AIS</strong> — for clients whose AIS was requested earlier and should be ready now.',
               '<strong>ITR Return + Intimation Orders</strong> — Form, Receipt (or ITR-V), JSON, and any Intimation Orders. '

@@ -1,6 +1,7 @@
 import os, asyncio, re
 from playwright.async_api import Page
 from automation.downloader import update_browser_status
+from automation.diagnostics import capture_failure
 from utils import migrate_flat_docs_to_subfolders
 
 
@@ -23,6 +24,32 @@ async def _open_hamburger(page: Page, log_callback):
                 return
         except Exception:
             continue
+
+
+async def _click_efile_168(page: Page, log_callback) -> None:
+    """e-File is a stock Angular Material MatMenuTrigger, which opens on
+    CLICK natively — see automation/_nav_helpers.py's matching function for
+    the full writeup (a live diagnostics capture confirmed .hover() can
+    "succeed" per Playwright without the menu actually opening). Retries the
+    full wait+click cycle — dashboard Angular nav may take time to mount
+    even after the overlay clears."""
+    for _attempt in range(4):
+        try:
+            efile = page.locator("//*[normalize-space(.)='e-File']").first
+            await efile.wait_for(state="visible", timeout=30000)
+            await efile.click(timeout=10000)
+            return
+        except Exception:
+            if _attempt == 3:
+                await capture_failure(page, log_callback, "168_efile_hover_failed")
+                raise
+            log_callback(f"[168] e-File menu not ready (attempt {_attempt + 1}/4) — waiting...")
+            try:
+                await page.keyboard.press("Escape")
+                await page.evaluate("window.scrollTo(0, 0)")
+            except Exception:
+                pass
+            await asyncio.sleep(5)
 
 
 async def _enable_flutter_semantics(page: Page, log_callback):
@@ -183,111 +210,109 @@ async def _click_proceed(page: Page, log_callback):
     await asyncio.sleep(3)
 
 
-async def download_168(
-    page: Page,
-    tax_year: str,
-    download_dir: str,
-    log_callback,
-    pan: str = "",
-    dob: str = "",  # noqa: ARG001 — kept for call-site compatibility with download_26as signature
-) -> tuple[bool, str, str]:
-    """
-    Download Form 168/Annual Tax Statement from TRACES 2.0 (Flutter/CanvasKit web app).
+async def _navigate_to_traces_2_0(page: Page, log_callback) -> Page:
+    """One-time navigation to TRACES 2.0's Form 168 screen — everything up
+    to (but not including) selecting a Tax Year, which is year-specific and
+    belongs to the per-year step. F-14 (multi-year): this is the expensive/
+    fragile part (e-File click + a new-tab TRACES 2.0 redirect + Flutter
+    dashboard card click), so it runs ONCE per client regardless of how many
+    TY years are requested; callers loop `_download_168_for_year()`
+    afterward, which only reselects the Tax Year dropdown per year."""
+    await _open_hamburger(page, log_callback)
 
-    Flow:
-      1. ITD portal: e-File > Income Tax Returns > View Form 168 → new tab
-      2. TRACES 2.0 auth bridge dashboard → click Form 168 card → form screen
-      3. Enable Flutter semantics, select Tax Year (JS tap on canvas)
-      4. Select each download type by radio button (page.mouse.click at confirmed y)
-      5. Click Proceed (JS tap via semantics bbox) → expect_download
-    """
-    traces2_page = None
     try:
-        await _open_hamburger(page, log_callback)
+        await page.locator(".customLoaderBackdrop").wait_for(state="hidden", timeout=30000)
+    except Exception:
+        pass
 
+    log_callback("[168] Opening e-File menu...")
+    await _click_efile_168(page, log_callback)
+    await asyncio.sleep(1.0)
+
+    log_callback("[168] Hovering over Income Tax Returns...")
+    returns = page.locator("//*[text()='Income Tax Returns']").first
+    for _attempt in range(4):
         try:
-            await page.locator(".customLoaderBackdrop").wait_for(state="hidden", timeout=30000)
+            await returns.wait_for(state="visible", timeout=15000)
+            break
         except Exception:
-            pass
-
-        log_callback("[168] Hovering over e-File menu...")
-        for _attempt in range(4):
+            if _attempt == 3:
+                await capture_failure(page, log_callback, "168_income_tax_returns_hover_failed")
+                raise
+            log_callback(f"[168] Income Tax Returns not ready (attempt {_attempt + 1}/4) — reopening e-File...")
             try:
-                efile = page.locator("//*[normalize-space(.)='e-File']").first
-                await efile.wait_for(state="visible", timeout=30000)
-                await efile.hover(timeout=10000)
-                break
+                await page.keyboard.press("Escape")
+                await asyncio.sleep(1)
             except Exception:
-                if _attempt == 3:
-                    raise
-                log_callback(f"[168] e-File menu not ready (attempt {_attempt + 1}/4) — waiting...")
-                try:
-                    await page.keyboard.press("Escape")
-                    await page.evaluate("window.scrollTo(0, 0)")
-                except Exception:
-                    pass
-                await asyncio.sleep(5)
-        await asyncio.sleep(1.0)
+                pass
+            await _click_efile_168(page, log_callback)
+            await asyncio.sleep(1.0)
+    await returns.hover()
+    await asyncio.sleep(1.0)
 
-        log_callback("[168] Hovering over Income Tax Returns...")
-        returns = page.locator("//*[text()='Income Tax Returns']").first
-        await returns.wait_for(state="visible", timeout=30000)
-        await returns.hover()
-        await asyncio.sleep(1.0)
+    log_callback("[168] Clicking View Form 168 — waiting for TRACES 2.0 to load...")
+    await update_browser_status(page, "168: Opening TRACES 2.0 portal...")
+    view_168 = page.locator("button.mat-mdc-menu-item", has_text="View Form 168, Income Tax Act 2025").first
+    await view_168.wait_for(state="visible", timeout=30000)
 
-        log_callback("[168] Clicking View Form 168 — waiting for TRACES 2.0 to load...")
-        await update_browser_status(page, "168: Opening TRACES 2.0 portal...")
-        view_168 = page.locator("button.mat-mdc-menu-item", has_text="View Form 168, Income Tax Act 2025").first
-        await view_168.wait_for(state="visible", timeout=30000)
+    try:
+        async with page.context.expect_page(timeout=40000) as new_page_info:
+            await view_168.click()
+            try:
+                confirm_btn = page.locator("button", has_text=re.compile(r"confirm|proceed", re.IGNORECASE)).first
+                await confirm_btn.wait_for(state="visible", timeout=4000)
+                await confirm_btn.click()
+                log_callback("[168] Confirmed TRACES 2.0 redirect popup.")
+            except Exception:
+                pass
+        traces2_page = await new_page_info.value
+        await traces2_page.wait_for_load_state("domcontentloaded", timeout=40000)
+        log_callback("[168] TRACES 2.0 opened in a new tab.")
+    except Exception:
+        traces2_page = page
+        await page.wait_for_load_state("domcontentloaded", timeout=40000)
+        log_callback("[168] TRACES 2.0 loaded in the same tab.")
 
-        try:
-            async with page.context.expect_page(timeout=40000) as new_page_info:
-                await view_168.click()
-                try:
-                    confirm_btn = page.locator("button", has_text=re.compile(r"confirm|proceed", re.IGNORECASE)).first
-                    await confirm_btn.wait_for(state="visible", timeout=4000)
-                    await confirm_btn.click()
-                    log_callback("[168] Confirmed TRACES 2.0 redirect popup.")
-                except Exception:
-                    pass
-            traces2_page = await new_page_info.value
-            await traces2_page.wait_for_load_state("domcontentloaded", timeout=40000)
-            log_callback("[168] TRACES 2.0 opened in a new tab.")
-        except Exception:
-            traces2_page = page
-            await page.wait_for_load_state("domcontentloaded", timeout=40000)
-            log_callback("[168] TRACES 2.0 loaded in the same tab.")
+    log_callback(f"[168] TRACES 2.0 URL: {traces2_page.url}")
+    await update_browser_status(traces2_page, "TRACES 2.0: Connected.")
 
-        log_callback(f"[168] TRACES 2.0 URL: {traces2_page.url}")
-        await update_browser_status(traces2_page, "TRACES 2.0: Connected.")
+    screen = await traces2_page.evaluate("() => ({w: screen.width, h: screen.height})")
+    await traces2_page.set_viewport_size({"width": screen["w"], "height": screen["h"]})
 
-        screen = await traces2_page.evaluate("() => ({w: screen.width, h: screen.height})")
-        await traces2_page.set_viewport_size({"width": screen["w"], "height": screen["h"]})
+    if "authBridge" in traces2_page.url or "dashboard" in traces2_page.url:
+        log_callback("[168] Auth bridge dashboard — clicking Form 168 card...")
+        await update_browser_status(traces2_page, "TRACES 2.0: Navigating to Form 168...")
+        for _attempt in range(5):
+            await asyncio.sleep(3)
+            await _click_form168_card(traces2_page, log_callback)
+            await asyncio.sleep(3)
+            if "authBridge" not in traces2_page.url and "dashboard" not in traces2_page.url:
+                break
+            log_callback(f"[168] Still on dashboard after attempt {_attempt + 1} — retrying...")
+        await traces2_page.wait_for_load_state("domcontentloaded", timeout=30000)
+        log_callback(f"[168] Now at: {traces2_page.url}")
 
-        if "authBridge" in traces2_page.url or "dashboard" in traces2_page.url:
-            log_callback("[168] Auth bridge dashboard — clicking Form 168 card...")
-            await update_browser_status(traces2_page, "TRACES 2.0: Navigating to Form 168...")
-            for _attempt in range(5):
-                await asyncio.sleep(3)
-                await _click_form168_card(traces2_page, log_callback)
-                await asyncio.sleep(3)
-                if "authBridge" not in traces2_page.url and "dashboard" not in traces2_page.url:
-                    break
-                log_callback(f"[168] Still on dashboard after attempt {_attempt + 1} — retrying...")
-            await traces2_page.wait_for_load_state("domcontentloaded", timeout=30000)
-            log_callback(f"[168] Now at: {traces2_page.url}")
+    await update_browser_status(traces2_page, "TRACES 2.0: Loading Form 168 screen...")
+    await _enable_flutter_semantics(traces2_page, log_callback)
+    await _log_semantics(traces2_page, log_callback)
 
-        await update_browser_status(traces2_page, "TRACES 2.0: Loading Form 168 screen...")
-        await _enable_flutter_semantics(traces2_page, log_callback)
-        await _log_semantics(traces2_page, log_callback)
+    return traces2_page
 
+
+async def _download_168_for_year(traces2_page: Page, tax_year: str, download_dir: str,
+                                  log_callback, pan: str = "", dob: str = "") -> tuple[bool, str, str]:
+    """Downloads Form 168 PDF+Excel+TXT for ONE Tax Year, assuming
+    `_navigate_to_traces_2_0()` has already landed on the Form 168 screen.
+    Does NOT close `traces2_page` — the caller reuses it across years and
+    closes it once at the end."""
+    try:
         ty_str = tax_year.replace("-", "_")
         prefix = f"{pan}-" if pan else ""
         migrate_flat_docs_to_subfolders(download_dir, log_callback)
         download_dir = os.path.join(download_dir, "26AS")
         os.makedirs(download_dir, exist_ok=True)
 
-        # ── Select Tax Year (once — persists for all downloads) ──────────────
+        # ── Select Tax Year (once per year — persists for all downloads) ─────
         log_callback(f"[168] Selecting Tax Year: {tax_year}")
         await update_browser_status(traces2_page, f"TRACES 2.0: Selecting TY {tax_year}...")
         await _select_year(traces2_page, tax_year, log_callback)
@@ -344,18 +369,12 @@ async def download_168(
 
         await update_browser_status(traces2_page, "TRACES 2.0: Form 168 Download Complete!")
         await asyncio.sleep(1)
-        await traces2_page.close()
         txt_warn = "" if _saved_txt else "PDF saved but TXT download failed"
         return True, txt_warn, _saved_txt
 
     except Exception as e:
         err = str(e)
-        log_callback(f"[Error] Failed to download Form 168: {err}")
-        if traces2_page:
-            try:
-                await traces2_page.close()
-            except Exception:
-                pass
+        log_callback(f"[Error] Failed to download Form 168 for TY {tax_year}: {err}")
         if "Timeout" in err or "timeout" in err:
             if "e-File" in err or "normalize-space" in err:
                 reason = "Timed out — ITD dashboard still loading (try again)"
@@ -370,3 +389,35 @@ async def download_168(
         else:
             reason = err[:80] if len(err) <= 80 else err[:77] + "..."
         return False, reason, ""
+
+
+async def download_168(page: Page, tax_years: list[str], download_dir_for_year,
+                        log_callback, pan: str = "", dob: str = "") -> dict[str, tuple[bool, str, str]]:
+    """F-14 (multi-year) entry point. Navigates to TRACES 2.0's Form 168
+    screen ONCE, then for each Tax Year in `tax_years`: reselects the Tax
+    Year dropdown on the same already-open TRACES 2.0 tab and downloads
+    that year's PDF+Excel+TXT into `download_dir_for_year(tax_year)`.
+    Returns {tax_year: (ok, msg, txt_path)}."""
+    results: dict[str, tuple[bool, str, str]] = {}
+    try:
+        traces2_page = await _navigate_to_traces_2_0(page, log_callback)
+    except Exception as e:
+        err = str(e)
+        log_callback(f"[Error] Failed to reach TRACES 2.0 for Form 168: {err}")
+        reason = "Timed out — ITD dashboard still loading (try again)" if "Timeout" in err or "timeout" in err \
+            else (err[:80] if len(err) <= 80 else err[:77] + "...")
+        for ty in tax_years:
+            results[ty] = (False, reason, "")
+        return results
+
+    try:
+        for tax_year in tax_years:
+            download_dir = download_dir_for_year(tax_year)
+            results[tax_year] = await _download_168_for_year(
+                traces2_page, tax_year, download_dir, log_callback, pan=pan, dob=dob)
+    finally:
+        try:
+            await traces2_page.close()
+        except Exception:
+            pass
+    return results

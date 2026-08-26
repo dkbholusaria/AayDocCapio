@@ -2,6 +2,25 @@
 
 All notable changes to AayDocCapio are documented here.
 
+## [2.1.0] — 2026-08-26
+
+### New Features
+
+#### Multi-Year Download (F-14)
+- **Select several Assessment/Tax Years at once** — the AY/TY dropdown is now a multi-select checklist; check any combination of years and every selected client downloads all of them in one run, no need to repeat the batch per year
+- **Efficient per-document-type execution** — for each client, the app downloads one document type across every selected year before moving to the next (e.g. all years' Filed Returns, then all years' 26AS), so it logs in and navigates to each portal once per client instead of once per year
+- **Progress dialog shows every client/year combination** — one row per client per year, with a dedicated Year column, so you can see exactly which year of which client is downloading or has failed
+- **Run History supports multiple years per client** — the "View Log" dialog now has a year selector when a client has history for more than one year, instead of only ever showing one year's history
+
+### Improvements
+- **Download Documents dialog starts with nothing pre-checked** — previously 26AS/Form 168 was checked by default; you now choose explicitly every time
+- **Duplicate ITR folders auto-merge** — Filed Returns subfolders from the old naming (`Original-31032017`) automatically migrate into the new naming (`Original-31032017-<acknowledgement number>`) the next time that filing is downloaded, instead of creating a second folder
+
+### Bug Fixes
+- **"Income Tax Returns" navigation could time out even on a fresh login** — a step in opening the e-File menu had no retry, so an occasional slow page render could fail the whole download even for a client running first and alone; it now retries the same way the rest of the navigation already did
+
+---
+
 ## [2.0.0] — 2026-08-10
 
 ### New Features
