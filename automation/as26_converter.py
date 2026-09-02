@@ -54,9 +54,12 @@ def _parse(txt_path: str) -> dict:
 
     # ── File header ────────────────────────────────────────────────────────
     # Form 26AS: line 0 blank, line 1 title, line 2 keys, line 3 values
-    # Form 168:  line 0 title (^Form 168/...^), line 1 keys, line 2 values
-    # Detect by checking whether line 0 starts with "^Form 168"
-    if lines[0].startswith("^Form 168") or lines[0].startswith("^FORM 168"):
+    # Form 168:  line 0 title, line 1 keys, line 2 values
+    # Detect by whether line 0 is blank, not by its exact wording — the ITD
+    # portal has changed the Form 168 title text at least once already
+    # ("^Form 168...^" → "^Annual Tax Statement^"), but both known Form 168
+    # exports keep line 0 non-blank, while Form 26AS's is always blank.
+    if lines[0].strip():
         header_keys   = [c.strip() for c in lines[1].split("^") if c.strip()]
         header_values = [c.strip() for c in lines[2].split("^")] if len(lines) > 2 else []
         parts_start   = 3
