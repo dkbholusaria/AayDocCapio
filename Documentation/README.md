@@ -1,17 +1,18 @@
 # AayDocCapio
 
-**v2.1.0** — A secure, standalone desktop utility for **bulk downloading Form 26AS, Form 168, AIS, TIS, and Filed Returns & Intimation Orders** from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients — across multiple Assessment/Tax Years — in one click, and **emailing those documents directly to clients**.
+**v2.3.0** — A secure, standalone desktop utility for **bulk downloading Form 26AS, Form 168, AIS, TIS, and Filed Returns & Intimation Orders**, and **generating tax payment challans**, from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients — across multiple Assessment/Tax Years — in one click, and **emailing those documents directly to clients**.
 
 Built with **PyQt6** + **Playwright**. Runs on Windows, macOS, and Linux/WSL.
 
 ---
 
-## What's New in 2.1.0
+## What's New in 2.3.0
 
-- **Multi-year download** — check any combination of Assessment/Tax Years in the dropdown and every selected client downloads all of them in one run, without repeating the batch per year.
-- **Efficient per-client execution** — for each client, the app downloads one document type across all selected years before moving to the next, so it only logs in and navigates once per client, not once per year.
-- **Progress dialog and Run History updated for multiple years** — the batch progress dialog shows one row per client per year with a dedicated Year column, and the "View Log" dialog gets a year selector when a client has history for more than one year.
-- **Download Documents dialog starts with nothing pre-checked**, and duplicate ITR folders from the old naming convention now auto-merge into the new one.
+- **Bulk Tax Challan Generation** — fill and submit the ITD e-Pay Tax "New Payment" wizard for Advance Tax or Self-Assessment Tax across many clients in one run, stopping at "Pay Later" (never "Pay Now") so a real CRN is generated without touching net banking, OTP, or any bank redirect.
+- **Tax Type decided automatically** from the Financial Year you pick — never a field you fill in yourself.
+- **All 5 real payment modes supported** — Net Banking, Debit Card, Pay at Bank Counter, RTGS/NEFT, and Payment Gateway — downloading the real Challan Form or Mandate Form PDF where available.
+- **Bulk entry via manual rows or Excel/CSV import**, plus an end-of-run Excel summary with CRN, amounts, and status per client.
+- **New "🧾 E-Pay Tax" toolbar button and menu.**
 
 See the full [CHANGELOG](CHANGELOG.md) for details.
 

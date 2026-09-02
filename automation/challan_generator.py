@@ -100,8 +100,23 @@ _NET_BANKING_EXTENDED = [
 # Debit Card is NOT the same 33-bank list — the same ITD page states
 # explicitly: "debit cards of Canara Bank, ICICI Bank, Indian Bank, State
 # Bank of India, Punjab National Bank and Union Bank of India are being
-# offered" — exactly these 6, confirmed, no broader extended list.
-_DEBIT_CARD_EXTENDED = []
+# offered" — exactly these 6, but BUG FIX (2026-09-02) confirmed live: only
+# 4 of those 6 (Canara, ICICI, Indian Bank, SBI) actually get their own
+# radio tile on the real Debit Card tab — Punjab National Bank and Union
+# Bank Of India are NOT tiles there (a diagnostic capture showed a timeout
+# with zero elements matching "Union Bank Of India" at all). Both are
+# reachable via the tab's own "Other Bank" radio (id="bankOther", same
+# pattern as Net Banking), so they belong in the extended list instead.
+_DEBIT_CARD_EXTENDED = ["Punjab National Bank", "Union Bank Of India"]
+# Payment Gateway's bank-selection UI (confirmed live 2026-09-02) is
+# structurally identical to Net Banking's: primary radio tiles for a
+# handful of gateway-partner banks plus an "Other Bank" radio (id=
+# "bankOther") with its own nested searchable dropdown for the rest. The 6
+# primary tiles below are exactly what a live diagnostic capture showed
+# rendered on this tab. Selecting a gateway is mandatory here — Continue
+# never enables without one radio checked (confirmed live: a run that left
+# bank="" for this mode timed out with every radio unselected).
+_PAYMENT_GATEWAY_EXTENDED = []
 
 PAYMENT_MODES = {
     "Net Banking": {
@@ -111,8 +126,7 @@ PAYMENT_MODES = {
         "has_download": False, "artifact": "view_details_screenshot",
     },
     "Debit Card": {
-        "banks": ["Canara Bank", "ICICI Bank", "Indian Bank", "Punjab National Bank",
-                  "State Bank Of India", "Union Bank Of India"],
+        "banks": ["Canara Bank", "ICICI Bank", "Indian Bank", "State Bank Of India", "Other Bank"],
         "extended_banks": _DEBIT_CARD_EXTENDED,
         "has_download": False, "artifact": "view_details_screenshot",
     },
@@ -127,8 +141,9 @@ PAYMENT_MODES = {
         "has_download": True, "artifact": "mandate_form",
     },
     "Payment Gateway including UPI and Credit Card": {
-        "banks": [],
-        "extended_banks": [],
+        "banks": ["Canara Bank", "Federal Bank", "HDFC Bank", "ICICI Bank",
+                  "Kotak Mahindra Bank", "State Bank Of India", "Other Bank"],
+        "extended_banks": _PAYMENT_GATEWAY_EXTENDED,
         "has_download": False, "artifact": "view_details_screenshot",
     },
 }
@@ -222,13 +237,32 @@ def _norm_bank_name(text: str) -> str:
     return s
 
 
-async def _click_matching_option(page: Page, target_text: str, timeout: int = 10000):
-    """Find and click the open dropdown option whose text matches target_text
-    once both are loosely normalized (see _norm_bank_name) — tolerant of the
-    casing/wording drift confirmed live between this app's bank-name lists
-    and the portal's actual option text."""
+async def _click_matching_option(
+    scope, target_text: str, timeout: int = 10000,
+    selector: str = "mat-option, [role='option']",
+):
+    """Find and click the visible element (matching `selector`) whose text
+    matches target_text once both are loosely normalized (see
+    _norm_bank_name) — tolerant of the casing/wording drift confirmed live
+    between this app's bank-name lists and the portal's actual text.
+    Defaults to open-dropdown options; pass selector="mat-radio-button" for
+    a tile/radio group instead (confirmed live 2026-09-02: the primary bank
+    tiles need the same tolerant matching as the "Other Bank" dropdown —
+    an exact-text XPath either matched nothing at all, e.g. "Union Bank Of
+    India" on the Debit Card tab, or silently failed to actually register
+    the click, e.g. "Cash" on Pay at Bank Counter, which left the page's
+    own Continue button permanently disabled).
+
+    `scope`: a Page or a Locator to search within — BUG FIX (2026-09-02,
+    round 2): a page-wide "mat-radio-button" search matched the same bank
+    name's tile on a different, INACTIVE tab (every tab's radio group
+    stays in the DOM, just marked inert, not removed — e.g. "ICICI Bank"
+    is a tile on Net Banking, Debit Card, AND Payment Gateway), so the
+    click landed on an inert/invisible radio and silently did nothing.
+    Callers for tile clicks now pass the active tab panel Locator instead
+    of the bare Page."""
     target_norm = _norm_bank_name(target_text)
-    options = page.locator("mat-option, [role='option']")
+    options = scope.locator(selector)
     await options.first.wait_for(state="visible", timeout=timeout)
     count = await options.count()
     for i in range(count):
@@ -237,7 +271,7 @@ async def _click_matching_option(page: Page, target_text: str, timeout: int = 10
         if text_norm == target_norm:
             await opt.click()
             return
-    raise RuntimeError(f"No dropdown option matching '{target_text}' found among {count} options")
+    raise RuntimeError(f"No element matching '{target_text}' found among {count} candidates ({selector!r})")
 
 
 async def _check_type_of_payment_available(page: Page, tax_type: str, step) -> bool:
@@ -305,11 +339,31 @@ async def generate_challan(
             "artifact_path": "",
         }
 
+    # BUG FIX (2026-09-02): confirmed live — Pay at Bank Counter has a
+    # mandatory "Select Bank (authorised Banks only)" dropdown for every
+    # sub-mode (Cash included). Without a bank name to select, Continue can
+    # never enable and the run would otherwise silently hang for 30s on
+    # that click before an opaque timeout. Fail fast with a clear reason.
+    if payment_mode == "Pay at Bank Counter" and not drawee_bank:
+        return {
+            "fy_value": fy_value, "portal_year_label": portal_year_label, "tax_type": tax_type,
+            "crn": "", "total_amount": total_amount, "valid_till": "",
+            "payment_mode": payment_mode, "bank": bank, "drawee_bank": drawee_bank, "status": "failed",
+            "reason": "Pay at Bank Counter requires a 'Drawn on Bank' / branch bank name "
+                      "(the portal's mandatory 'Select Bank' dropdown) — none was provided.",
+            "artifact_path": "",
+        }
+
     try:
         step(f"Generating challan — FY={fy_value}, portal_year={portal_year_label}, "
              f"type={tax_type}, mode={payment_mode}/{bank}, total=₹{total_amount:,.0f}")
 
-        challan_dir = os.path.join(output_dir, "Tax Challans (Generated)")
+        # Per-year subfolder (e.g. "Tax Challans (Generated)/AY 2025-26" or
+        # ".../TY 2026-27") so runs across multiple years don't all dump
+        # into one flat folder — same AY/TY tag used in filenames below.
+        year_tag = f"{TAX_TYPES[tax_type]['act_year_type']}{portal_year_label}".replace("-", "_")
+        year_folder = f"{TAX_TYPES[tax_type]['act_year_type']} {portal_year_label}"
+        challan_dir = os.path.join(output_dir, "Tax Challans (Generated)", year_folder)
         os.makedirs(challan_dir, exist_ok=True)
 
         step("Clicking + New Payment...")
@@ -406,9 +460,30 @@ async def generate_challan(
         if bank:
             known_banks = mode_info.get("banks", [])
             if bank in known_banks and bank != "Other Bank":
-                bank_option = page.locator(f"//*[normalize-space(.)='{bank}']").first
-                await bank_option.wait_for(state="visible", timeout=10000)
-                await bank_option.click()
+                # BUG FIX (2026-09-02): confirmed live — the exact-text
+                # XPath here failed outright (zero matches, not even a
+                # wrong one) for "Union Bank Of India" on the Debit Card
+                # tab, and separately left "Cash" on Pay at Bank Counter
+                # selected in a way that never enabled Continue. Same root
+                # cause class as the "Other Bank" and bank-name-casing
+                # bugs fixed earlier: the portal's real tile text/markup
+                # doesn't reliably match a naive exact string. Use the same
+                # tolerant option-scanning matcher, over the radio tiles
+                # instead of dropdown options.
+                #
+                # BUG FIX (2026-09-02, round 2): confirmed live again —
+                # a page-wide "mat-radio-button" search matched the SAME
+                # bank name's tile on a different, inactive tab (every
+                # tab's radio group stays in the DOM, just marked inert,
+                # not removed — e.g. "ICICI Bank" is a tile on Net
+                # Banking, Debit Card, AND Payment Gateway), so the click
+                # landed on an inert/invisible radio and silently did
+                # nothing, leaving Continue disabled. Same scoping fix as
+                # the "Other Bank" nested dropdown below: restrict the
+                # search to the active tab panel only.
+                active_panel = page.locator(".mat-mdc-tab-body-active").last
+                await _click_matching_option(
+                    active_panel, bank, selector="mat-radio-button")
             else:
                 # Confirmed live (2026-09-02): only a handful of banks get
                 # their own radio tile (Axis, Bank of Baroda, HDFC, ICICI,
@@ -453,13 +528,17 @@ async def generate_challan(
                 await _click_matching_option(page, bank)
             await asyncio.sleep(0.3)
 
-        # Confirmed against a real sample PDF: Pay at Bank Counter's Cheque/
-        # Demand Draft sub-modes carry their own "Drawn on Bank" field
-        # (which bank the cheque/DD is drawn on) — Cash has no such field.
-        # UNCONFIRMED live whether it's a dropdown or a free-text box; try
-        # a dropdown first, fall back to typing into a text input.
-        if payment_mode == "Pay at Bank Counter" and bank in ("Cheque", "Demand Draft") and drawee_bank:
-            step(f"Selecting Drawn on Bank = {drawee_bank}...")
+        # BUG FIX (2026-09-02): confirmed live — Pay at Bank Counter has a
+        # SEPARATE mandatory "Select Bank (authorised Banks only)" dropdown
+        # that appears regardless of Cash/Cheque/Demand Draft (a diagnostic
+        # screenshot showed it required with "Cash" selected, blocking
+        # Continue for 30s until timeout). This was previously assumed to
+        # be the Cheque/DD-only "Drawn on Bank" field and skipped entirely
+        # for Cash — wrong: it's the counter branch you'll pay at, needed
+        # for every sub-mode. Reuse `drawee_bank` as its value since it's
+        # the only bank-name input this row carries for this mode.
+        if payment_mode == "Pay at Bank Counter" and drawee_bank:
+            step(f"Selecting Bank (authorised Banks only) = {drawee_bank}...")
             try:
                 # Same fix as the "Other Bank" dropdown above: scope the
                 # trigger search to the active tab panel so it can't match
@@ -544,7 +623,7 @@ async def generate_challan(
         if mode_info["has_download"]:
             doc_label = "Challan Form" if mode_info["artifact"] == "challan_form" else "Mandate Form"
             step(f"Downloading {doc_label} PDF...")
-            filename = f"{prefix}Challan-{fy_value.replace('-', '_')}-{tax_type}-{crn}.pdf"
+            filename = f"{prefix}Challan-{year_tag}-{tax_type}-{crn}.pdf"
             output_path = os.path.join(challan_dir, filename)
             download_btn = page.locator("button", has_text=f"Download {doc_label}").first
             async with page.expect_download() as download_info:
@@ -559,7 +638,7 @@ async def generate_challan(
             # rather than navigating away to Generated Challans + View
             # Details.
             step("No download for this mode — screenshotting confirmation page...")
-            filename = f"{prefix}Challan-{fy_value.replace('-', '_')}-{tax_type}-{crn}.png"
+            filename = f"{prefix}Challan-{year_tag}-{tax_type}-{crn}.png"
             output_path = os.path.join(challan_dir, filename)
             await page.screenshot(path=output_path, full_page=True)
             step(f"[Victory] Challan generated: {os.path.basename(output_path)} (CRN {crn})")

@@ -2,6 +2,24 @@
 
 All notable changes to AayDocCapio are documented here.
 
+## [2.3.0] — 2026-09-02
+
+### New Features
+
+#### Bulk Tax Challan Generation (F-64)
+- **Generate real tax challans for many clients in one run** — AayDocCapio's first *active* feature: fills and submits the ITD e-Pay Tax "New Payment" wizard for Advance Tax or Self-Assessment Tax across a batch of clients, stopping at "Pay Later" (never "Pay Now") so a real CRN is generated without touching net banking, OTP, or any bank redirect
+- **Tax Type is decided automatically** — pick a Financial Year once for the whole run; the app works out whether that year takes Advance Tax (100) or Self-Assessment Tax (300) from the app's own year list, never a field you fill in yourself
+- **All 5 real payment modes supported** — Net Banking, Debit Card, Pay at Bank Counter (Cash/Cheque/Demand Draft), RTGS/NEFT, and Payment Gateway, each with its own confirmed bank list; downloads the real Challan Form or Mandate Form PDF where the portal offers one, and a confirmation-page screenshot otherwise
+- **Bulk entry via manual rows or Excel/CSV import** — add clients one at a time or import a spreadsheet, with an importable template and export for saving a work-in-progress batch
+- **End-of-run Excel summary** — one row per client with CRN, amounts, valid-till date, payment mode, and status, so a batch can be reviewed at a glance afterward
+- **New "🧾 E-Pay Tax" toolbar button and menu** — a dedicated entry point alongside the existing Downloads button
+
+### Improvements
+- **Artifact filenames and folders now carry an AY/TY prefix** (e.g. `AY2025_26`) instead of a bare Financial Year, so challans for different years in the same output folder never collide or get misread
+- **Download/Run toolbar button renamed to a consistent "Downloads" label** across all its states (idle, running, idle-after-run)
+
+---
+
 ## [2.1.0] — 2026-08-26
 
 ### New Features

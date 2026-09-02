@@ -2886,11 +2886,18 @@ class AayDocCapioApp(QMainWindow):
         wb = Workbook()
         ws = wb.active
         ws.append(CHALLAN_SUMMARY_COLUMNS)
+        # BUG FIX (2026-09-02): "Portal Year Label" showed a bare "2025-26"
+        # with no way to tell AY vs TY from the sheet alone — same issue
+        # fixed in generate_challan()'s artifact filenames. Prefix it the
+        # same way, using TAX_TYPES' act_year_type ("AY" or "TY").
+        year_prefix = TAX_TYPES.get(tax_type, {}).get("act_year_type", "")
         for r in results:
+            portal_year_label = r.get("portal_year_label", "")
+            year_label_display = f"{year_prefix} {portal_year_label}".strip() if portal_year_label else ""
             ws.append([
                 r.get("pan", ""), r.get("name", ""), fy_value,
                 TAX_TYPES.get(tax_type, {}).get("label", tax_type),
-                r.get("portal_year_label", ""), r.get("payment_mode", ""), r.get("bank", ""),
+                year_label_display, r.get("payment_mode", ""), r.get("bank", ""),
                 r.get("drawee_bank", ""), r.get("total_amount", 0), r.get("crn", ""),
                 r.get("valid_till", ""), r.get("status", ""), r.get("reason", ""),
                 r.get("artifact_path", ""),
