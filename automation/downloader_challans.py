@@ -353,10 +353,17 @@ async def _download_challans_for_year(
             step(f"Found {row_count} row(s) on this page")
             for i in range(row_count):
                 row = rows.nth(i)
+                # Confirmed live: the year column's col-id differs by Act —
+                # "assessmentYear" under the 1961 Act table, but the 2025
+                # Act's table (labeled "Tax Year" instead of "Assessment
+                # Year") uses a different one; a hardcoded "assessmentYear"
+                # matched nothing and hung until timeout on a TY account.
+                # Try both rather than guess which one this table uses.
+                year_cell = row.locator('[col-id="assessmentYear"], [col-id="taxYear"]').first
                 try:
-                    ay_text = (await row.locator('[col-id="assessmentYear"]').inner_text()).strip()
+                    ay_text = (await year_cell.inner_text()).strip()
                 except Exception as e:
-                    step(f"Row {i}: could not read Assessment Year cell ({e})")
+                    step(f"Row {i}: could not read Assessment/Tax Year cell ({e})")
                     continue
                 if ay_text != year_value:
                     continue
