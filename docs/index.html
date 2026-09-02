@@ -1168,19 +1168,19 @@
   <div class="hero-left">
     <div class="eyebrow">
       <div class="eyebrow-dot"></div>
-      Release Notes · AayDocCapio v2.1.0
+      Release Notes · AayDocCapio v2.3.0
     </div>
 
-    <h1>AayDocCapio v2.1.0<br>Release Notes for<br><span class="accent">Multi-Year<br>Download</span></h1>
+    <h1>AayDocCapio v2.3.0<br>Release Notes for<br><span class="accent">Bulk Tax<br>Challan Generation</span></h1>
 
     <p class="hero-desc">
-      Check any combination of Assessment/Tax Years and download every one of them
-      for every selected client in a single run — one login and one navigation per
-      client, not per year.
+      Fill and submit the ITD e-Pay Tax "New Payment" wizard for many clients in one
+      run, and get a real CRN without ever touching net banking or OTP — the app
+      always stops at "Pay Later", never "Pay Now".
     </p>
 
     <div class="hero-cta-row">
-      <a class="btn-primary" href="#download">⬇ Download v2.1.0</a>
+      <a class="btn-primary" href="#download">⬇ Download v2.3.0</a>
       <a class="btn-outline" href="#features">View Key Features</a>
     </div>
 
@@ -1240,8 +1240,8 @@
 
 <!-- Release strip -->
 <div class="release-strip">
-  <span class="release-badge-pill">Latest Release · v2.1.0 · 26 Aug 2026</span>
-  Multi-year download — check several Assessment/Tax Years and download them all in one run
+  <span class="release-badge-pill">Latest Release · v2.3.0 · 02 Sep 2026</span>
+  Bulk tax challan generation — generate real ITD challans for many clients in one run
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════
@@ -1250,27 +1250,27 @@
 <section id="whats-new">
   <div class="section-wrap">
     <div class="section-eyebrow"><div class="eyebrow-dot-sm"></div> Key Updates</div>
-    <h2>What's New In AayDocCapio v2.1.0?</h2>
-    <p class="section-sub">A workflow release built around one request: stop running the same batch once per year — select every year you need and let it run once.</p>
+    <h2>What's New In AayDocCapio v2.3.0?</h2>
+    <p class="section-sub">AayDocCapio's first active feature — it doesn't just download documents anymore, it can now generate real tax challans for you.</p>
 
     <div class="feature-grid">
       <div class="feature-card">
         <div class="fc-check">✓</div>
-        <h3>Multi-Year Download</h3>
-        <p>The Assessment/Tax Year dropdown is now a multi-select checklist. Check any combination of years and every selected client downloads all of them in one run — no more repeating the batch per year.</p>
-        <div class="fc-benefit">One batch instead of N batches for N years</div>
+        <h3>Bulk Tax Challan Generation</h3>
+        <p>Fill and submit the ITD e-Pay Tax "New Payment" wizard for Advance Tax or Self-Assessment Tax across many clients in one run, always stopping at "Pay Later" — never "Pay Now" — so a real CRN is generated without touching net banking or OTP.</p>
+        <div class="fc-benefit">A real CRN per client, no manual portal clicking</div>
       </div>
       <div class="feature-card">
         <div class="fc-check">✓</div>
-        <h3>One Login Per Client, Not Per Year</h3>
-        <p>For each client, the app downloads one document type across every selected year before moving to the next — e.g. all years' Filed Returns, then all years' 26AS — so it logs in and navigates to each portal once per client.</p>
-        <div class="fc-benefit">Fewer logins, faster batches</div>
+        <h3>Tax Type Decided Automatically</h3>
+        <p>Pick a Financial Year once for the whole run and the app works out whether it takes Advance Tax (100) or Self-Assessment Tax (300) itself — never a field you fill in.</p>
+        <div class="fc-benefit">No manual Act/year lookups</div>
       </div>
       <div class="feature-card">
         <div class="fc-check">✓</div>
-        <h3>Progress &amp; Run History, Year-Aware</h3>
-        <p>The batch progress dialog shows one row per client per year with a dedicated Year column, and the Run History dialog gets a year selector whenever a client has history for more than one year.</p>
-        <div class="fc-benefit">See exactly which client and year is running or failed</div>
+        <h3>Every Real Payment Mode Supported</h3>
+        <p>Net Banking, Debit Card, Pay at Bank Counter, RTGS/NEFT, and Payment Gateway are all supported, downloading the real Challan Form or Mandate Form PDF where the portal offers one.</p>
+        <div class="fc-benefit">The same document you'd get filing manually</div>
       </div>
     </div>
   </div>
@@ -1288,6 +1288,7 @@
     <div class="tab-layout">
       <div class="tab-nav">
         <button class="tab-btn active" onclick="switchTab(event,'downloads')">Downloads</button>
+        <button class="tab-btn" onclick="switchTab(event,'challans')">Tax Challans</button>
         <button class="tab-btn" onclick="switchTab(event,'excel')">Excel Reports</button>
         <button class="tab-btn" onclick="switchTab(event,'email')">Email Delivery</button>
         <button class="tab-btn" onclick="switchTab(event,'manage')">Manage &amp; Settings</button>
@@ -1304,6 +1305,19 @@
           <div class="tab-bullet"><div class="tab-check">✓</div><span><strong>Auto PDF unlock</strong> — PAN + DOB derived passwords tried automatically; warns on mismatch</span></div>
           <div class="tab-bullet"><div class="tab-check">✓</div><span><strong>Live batch progress</strong> — per-client-per-year status, stop control, saved-folder links in a real-time dialog</span></div>
           <div class="tab-bullet"><div class="tab-check">✓</div><span><strong>Encrypted credential vault</strong> — AES-128 Fernet local storage; no cloud sync or telemetry</span></div>
+        </div>
+      </div>
+
+      <div id="tab-challans" class="tab-panel">
+        <h3>Bulk Tax Challan Generation</h3>
+        <p class="tab-desc">Fill and submit the ITD e-Pay Tax "New Payment" wizard for many clients in one run — a real CRN generated for each, without ever touching net banking or OTP.</p>
+        <div class="tab-bullets">
+          <div class="tab-bullet"><div class="tab-check">✓</div><span><strong>Always stops at "Pay Later"</strong> — never "Pay Now" — the challan is saved with a real CRN under the portal's own Generated Challans tab</span></div>
+          <div class="tab-bullet"><div class="tab-check">✓</div><span><strong>Tax Type decided automatically</strong> — pick a Financial Year once for the whole run; the app works out Advance Tax (100) vs Self-Assessment Tax (300) itself</span></div>
+          <div class="tab-bullet"><div class="tab-check">✓</div><span><strong>All 5 real payment modes</strong> — Net Banking, Debit Card, Pay at Bank Counter, RTGS/NEFT, and Payment Gateway, each with its own confirmed bank list</span></div>
+          <div class="tab-bullet"><div class="tab-check">✓</div><span><strong>Real downloadable documents</strong> — the Challan Form or Mandate Form PDF where the portal offers one, a confirmation screenshot otherwise</span></div>
+          <div class="tab-bullet"><div class="tab-check">✓</div><span><strong>Manual entry or Excel/CSV import</strong> — add clients one at a time or import a spreadsheet, with a template and export</span></div>
+          <div class="tab-bullet"><div class="tab-check">✓</div><span><strong>End-of-run Excel summary</strong> — CRN, amounts, valid-till date, and status for every client in the batch</span></div>
         </div>
       </div>
 
@@ -1409,23 +1423,23 @@
 <section class="alt" id="download">
   <div class="section-wrap">
     <div class="section-eyebrow"><div class="eyebrow-dot-sm"></div> Download</div>
-    <h2>Download AayDocCapio v2.1.0</h2>
+    <h2>Download AayDocCapio v2.3.0</h2>
     <p class="section-sub">Windows 10 / 11 64-bit · macOS Apple Silicon · Requires Google Chrome for AIS/TIS</p>
     <div class="download-grid">
       <div class="download-card">
         <h3>Windows Setup</h3>
         <p>Recommended for most existing Windows users. Use if you previously installed with the .exe setup.</p>
-        <a class="dl-btn dl-btn-primary" href="https://github.com/dkbholusaria/AayDocCapio/releases/download/v2.1.0/AayDocCapio_Setup_v2.1.0.exe">Download .exe<sub>v2.1.0 · Wizard Installer</sub></a>
+        <a class="dl-btn dl-btn-primary" href="https://github.com/dkbholusaria/AayDocCapio/releases/download/v2.3.0/AayDocCapio_Setup_v2.3.0.exe">Download .exe<sub>v2.3.0 · Wizard Installer</sub></a>
       </div>
       <div class="download-card">
         <h3>Windows MSI</h3>
         <p>For new enterprise or IT-managed installs. Uninstall the .exe version first if switching.</p>
-        <a class="dl-btn dl-btn-secondary" href="https://github.com/dkbholusaria/AayDocCapio/releases/download/v2.1.0/AayDocCapio_Setup_v2.1.0.msi">Download .msi<sub>v2.1.0 · Silent / managed install</sub></a>
+        <a class="dl-btn dl-btn-secondary" href="https://github.com/dkbholusaria/AayDocCapio/releases/download/v2.3.0/AayDocCapio_Setup_v2.3.0.msi">Download .msi<sub>v2.3.0 · Silent / managed install</sub></a>
       </div>
       <div class="download-card">
         <h3>macOS App</h3>
         <p>Apple Silicon app bundle packaged as a zip. Open via right-click → Open if Gatekeeper warns.</p>
-        <a class="dl-btn dl-btn-secondary" href="https://github.com/dkbholusaria/AayDocCapio/releases/download/v2.1.0/AayDocCapio-macos-arm64-v2.1.0.zip">Download macOS zip<sub>v2.1.0 · .app bundle</sub></a>
+        <a class="dl-btn dl-btn-secondary" href="https://github.com/dkbholusaria/AayDocCapio/releases/download/v2.3.0/AayDocCapio-macos-arm64-v2.3.0.zip">Download macOS zip<sub>v2.3.0 · .app bundle</sub></a>
       </div>
     </div>
     <div class="av-warning">

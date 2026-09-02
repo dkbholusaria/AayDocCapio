@@ -2559,7 +2559,13 @@ class ChallanRowDetailDialog(QDialog):
     def _on_bank_changed(self):
         mode = self._mode_combo.currentText()
         bank = self._current_bank()
-        self._drawee_widget.setVisible(mode == "Pay at Bank Counter" and bank in ("Cheque", "Demand Draft"))
+        # BUG FIX (2026-09-02): confirmed live — the portal's "Select Bank
+        # (authorised Banks only)" dropdown is mandatory for EVERY Pay at
+        # Bank Counter sub-mode, Cash included, not just Cheque/Demand
+        # Draft as originally assumed. A live run with Cash selected had
+        # nowhere in this dialog to enter that bank, so the automation had
+        # no value to fill and Continue stayed disabled on the portal.
+        self._drawee_widget.setVisible(mode == "Pay at Bank Counter")
         self._update_cash_warning()
 
     def _current_bank(self) -> str:
@@ -3244,10 +3250,12 @@ class GenerateChallansDialog(QDialog):
 
         # ── Drawn on Bank — dropdown always available (full bank list); ──
         # visually greyed out via conditional formatting when Payment Mode
-        # / Bank / Sub-Mode don't call for it (Pay at Bank Counter +
-        # Cheque/Demand Draft only) — true cell locking needs sheet
-        # protection + VBA, which isn't worth the fragility here; the grey
-        # fill communicates "not needed" without blocking anything.
+        # doesn't call for it. BUG FIX (2026-09-02): confirmed live — this
+        # field is mandatory for EVERY Pay at Bank Counter sub-mode (Cash
+        # included, not just Cheque/Demand Draft as originally assumed);
+        # true cell locking needs sheet protection + VBA, which isn't
+        # worth the fragility here; the grey fill communicates "not
+        # needed" without blocking anything.
         dv_drawee = DataValidation(type="list", formula1=f"Mode_{_sanitize('Net Banking')}", allow_blank=True)
         dv_drawee.errorTitle = "Invalid Bank"
         dv_drawee.error = "Please pick a bank from the dropdown."
@@ -3256,10 +3264,7 @@ class GenerateChallansDialog(QDialog):
 
         grey_fill = PatternFill(start_color="EEEEEE", end_color="EEEEEE", fill_type="solid")
         grey_font = Font(color="AAAAAA")
-        applicable_formula = (
-            f'NOT(AND(${col_mode}2="Pay at Bank Counter",'
-            f'OR(${col_bank}2="Cheque",${col_bank}2="Demand Draft")))'
-        )
+        applicable_formula = f'${col_mode}2<>"Pay at Bank Counter"'
         ws.conditional_formatting.add(
             f"{col_drawee}2:{col_drawee}{last_row}",
             FormulaRule(formula=[applicable_formula], fill=grey_fill, font=grey_font),
