@@ -31,7 +31,10 @@ from utils import get_timestamp, notify_windows
 from ui._theme import _t
 from ui.helpers import _btn, _lbl, _shadow
 from ui.widgets import StyledComboBox, CheckableComboBox
-from ui.dialogs import ManageYearsDialog, BatchProgressDialog, DownloadPickerDialog
+from ui.dialogs import (
+    ManageYearsDialog, BatchProgressDialog, DownloadPickerDialog,
+    GenerateChallansDialog, ChallanGenerationProgressDialog,
+)
 from ui.log_history import LogHistoryDialog, LogStore
 from automation.errors import _friendly_error
 
@@ -238,6 +241,8 @@ class AayDocCapioApp(QMainWindow):
     _log_signal = pyqtSignal(str)
     _batch_done_signal = pyqtSignal()
     _show_progress_signal = pyqtSignal(list, object, list, str, str)   # (targets, selected_docs: set, year_specs, output_dir, year_tag)
+    _challan_done_signal = pyqtSignal()
+    _show_challan_progress_signal = pyqtSignal(list, str, str, str)   # (targets, fy_value, type_label, output_dir)
 
     def __init__(self):
         super().__init__()
@@ -282,6 +287,17 @@ class AayDocCapioApp(QMainWindow):
         self._batch_done_signal.connect(self._on_batch_done)
         self._show_progress_signal.connect(self._show_progress_dialog)
         self._progress_dialog = None   # BatchProgressDialog instance
+
+        # F-64: separate running/progress state from the download batch above
+        # — a challan-generation run and a download run are different
+        # in-flight flows, each with their own is_running-style guard.
+        self._challan_running = False
+        self._challan_loop = None
+        self._challan_task = None
+        self._challan_aborted = False
+        self._challan_progress_dialog = None
+        self._challan_done_signal.connect(self._on_challan_batch_done)
+        self._show_challan_progress_signal.connect(self._show_challan_progress_dialog)
 
         try:
             log_path = os.path.join(_app_dir(), "app.log")
@@ -340,7 +356,7 @@ class AayDocCapioApp(QMainWindow):
         self._tray_send_act.triggered.connect(self._tray_to_system_manual)
         self._tray_send_act.setVisible(False)
         self._tray_stop_act = QAction("Stop Batch", self)
-        self._tray_stop_act.triggered.connect(self.stop_automation)
+        self._tray_stop_act.triggered.connect(self._tray_stop_active)
         self._tray_stop_act.setEnabled(False)
         quit_act = QAction("Quit", self)
         quit_act.triggered.connect(QApplication.instance().quit)
@@ -366,14 +382,23 @@ class AayDocCapioApp(QMainWindow):
         self._tray_show_hint()
 
     def _tray_to_system_manual(self):
-        """Send to tray on demand (from progress dialog button or tray menu)."""
-        n = len(self._progress_dialog._targets) if self._progress_dialog else 0
+        """Send to tray on demand (from either progress dialog's Tray button,
+        or the tray menu) — whichever batch is actually running (download or
+        challan generation) is the one whose dialog gets hidden/counted."""
+        if self._challan_running and self._challan_progress_dialog:
+            n = len(self._challan_progress_dialog._targets)
+        elif self._progress_dialog:
+            n = len(self._progress_dialog._targets)
+        else:
+            n = 0
         self._tray.setToolTip(f"AayDocCapio — Running ({n} client(s)…)")
         self._tray_stop_act.setEnabled(True)
         self._tray_send_act.setVisible(False)  # hidden while already in tray
         self._tray.show()
         if self._progress_dialog:
             self._progress_dialog.hide()
+        if self._challan_progress_dialog:
+            self._challan_progress_dialog.hide()
         self.hide()
         self._tray_show_hint()
 
@@ -384,9 +409,9 @@ class AayDocCapioApp(QMainWindow):
             "Click the tray icon to restore the window, or right-click for options.")
 
     def _tray_restore(self):
-        """Restore main window and progress dialog from tray."""
+        """Restore main window and whichever progress dialog(s) from tray."""
         self._tray.hide()
-        self._tray_send_act.setVisible(self.is_running)
+        self._tray_send_act.setVisible(self.is_running or self._challan_running)
         self.show()
         self.showNormal()
         self.activateWindow()
@@ -395,6 +420,19 @@ class AayDocCapioApp(QMainWindow):
             self._progress_dialog.show()
             self._progress_dialog.raise_()
             self._progress_dialog.activateWindow()
+        if self._challan_progress_dialog:
+            self._challan_progress_dialog.show()
+            self._challan_progress_dialog.raise_()
+            self._challan_progress_dialog.activateWindow()
+
+    def _tray_stop_active(self):
+        """Routes the tray menu's "Stop Batch" to whichever batch is
+        actually running — download and challan generation each have their
+        own stop function and own running flag."""
+        if self.is_running:
+            self.stop_automation()
+        if self._challan_running:
+            self.stop_challan_generation()
 
     def _on_tray_activated(self, reason):
         if reason in (QSystemTrayIcon.ActivationReason.Trigger,
@@ -476,6 +514,15 @@ class AayDocCapioApp(QMainWindow):
         act_mail.triggered.connect(self._open_mail_docs)
         tools_menu.addAction(act_mail)
         self._tools_menu = tools_menu
+
+        # E-Pay Tax menu (F-64) — home for challan-generation features;
+        # future Type-of-Payment additions (Demand Payment, Block Assessment,
+        # etc.) get new items here rather than new toolbar buttons each time.
+        epay_menu = menubar.addMenu("E-Pay Tax")
+        act_gen_challans = QAction("Generate Tax Challans…", self)
+        act_gen_challans.triggered.connect(self._open_generate_challans_dialog)
+        epay_menu.addAction(act_gen_challans)
+        self._epay_menu = epay_menu
 
         # Help menu
         help_menu = menubar.addMenu("Help")
@@ -1383,7 +1430,7 @@ class AayDocCapioApp(QMainWindow):
         # (DownloadPickerDialog) instead of a dropdown menu with one action
         # per document type — lets a user select any combination for one run.
         self.btn_run = QToolButton()
-        self.btn_run.setText("  Download")
+        self.btn_run.setText("  Downloads")
         self.btn_run.setFixedHeight(34)
         self.btn_run.setMinimumWidth(130)
         from ui.helpers import _icon_path
@@ -1405,6 +1452,25 @@ class AayDocCapioApp(QMainWindow):
         )
         self.btn_run.clicked.connect(self._open_download_picker)
         hl.addWidget(self.btn_run)
+        hl.addSpacing(8)
+
+        # F-64: separate button for the "active" (record-creating) e-Pay Tax
+        # flow — styled distinctly from Downloads' green since this one
+        # generates real portal records rather than just fetching files.
+        self.btn_epay = QToolButton()
+        self.btn_epay.setText("  🧾 E-Pay Tax")
+        self.btn_epay.setFixedHeight(34)
+        self.btn_epay.setMinimumWidth(130)
+        self.btn_epay.setStyleSheet(
+            "QToolButton{"
+            "  background:#2563EB; color:#FFFFFF; border:none;"
+            "  border-radius:8px; font-size:13px; font-weight:600; padding:0 14px;"
+            "}"
+            "QToolButton:hover{ background:#1D4ED8; }"
+            "QToolButton:disabled{ background:#BFDBFE; color:#EFF6FF; }"
+        )
+        self.btn_epay.clicked.connect(self._open_generate_challans_dialog)
+        hl.addWidget(self.btn_epay)
         hl.addSpacing(8)
 
         # ── Exit button ───────────────────────────────────────────────────────
@@ -2564,7 +2630,7 @@ class AayDocCapioApp(QMainWindow):
         output_dir = self.dir_lbl.text()
         self._last_batch_params = (year_specs, output_dir, selected_docs)
 
-        self.btn_run.setText("⏳ Running...")
+        self.btn_run.setText("⏳ Downloading...")
 
         run_label = " + ".join(DOC_TYPE_LABELS.get(d, d) for d in sorted(selected_docs))
         years_desc = ", ".join(ay_labels)
@@ -2604,6 +2670,241 @@ class AayDocCapioApp(QMainWindow):
         self._progress_dialog.raise_()
         self._progress_dialog.activateWindow()
 
+    # ── F-64: Generate Tax Challans ──────────────────────────────────────────
+
+    def _open_generate_challans_dialog(self):
+        """Toolbar/menu entry point for bulk challan generation — a separate
+        flow from the Downloads batch above, since each row here carries its
+        own amount breakup (not just client identity), which the existing
+        HANDLERS/DownloadPickerDialog/BatchProgressDialog pipeline has no
+        room for. See PlansofThisProject/F-64_bulk_tax_challan_generation.md."""
+        if self._challan_running:
+            return
+        dlg = GenerateChallansDialog(self, self.vault, self._ay_entries)
+        if dlg.exec() == dlg.DialogCode.Accepted:
+            self.start_challan_generation(dlg.fy_value, dlg.rows)
+
+    def start_challan_generation(self, fy_value: str, rows: list):
+        from automation.challan_generator import resolve_tax_type, TAX_TYPES
+        try:
+            tax_type, portal_year_label = resolve_tax_type(fy_value, self._ay_entries)
+        except Exception as e:
+            QMessageBox.critical(self, "Year Not Ready", str(e))
+            return
+
+        # Match each row's PAN against the vault once, up front, so a client
+        # removed/renamed between dialog-open and Generate-click can't crash
+        # the batch mid-run — same defensiveness as start_automation's
+        # targets list build.
+        by_pan = {a.get("pan", "").upper(): a for a in self.assessee_list}
+        targets = []
+        for row in rows:
+            client = by_pan.get(row["pan"].upper())
+            if not client:
+                self.log(f"[Warning] Skipping {row['pan']} — no longer in Client Master.")
+                continue
+            targets.append({**client, "_amounts": row})
+        if not targets:
+            QMessageBox.warning(self, "Nothing to Generate", "None of the selected clients could be matched.")
+            return
+
+        self._challan_running = True
+        self._challan_aborted = False
+        self.log_box.clear()
+        if hasattr(self, "_tray_send_act"):
+            self._tray_send_act.setVisible(True)
+
+        output_dir = self.dir_lbl.text()
+        type_label = TAX_TYPES[tax_type]["label"]
+        # portal_year_label alone is just a bare "2026-27" — prefix with
+        # AY/TY so it's clear which Act/year convention it is, same as the
+        # dialog's own combo already shows (e.g. "TY 2026-27 (FY 2026-27)").
+        year_prefix = "TY" if tax_type == "advance" else "AY"
+        year_display = f"{year_prefix} {portal_year_label}"
+        self.log(f"[System] Starting Tax Challan generation — {len(targets)} client(s) | "
+                 f"FY {fy_value} → {type_label} | Output: {output_dir}")
+
+        self._show_challan_progress_signal.emit(targets, year_display, type_label, output_dir)
+
+        threading.Thread(
+            target=self._run_challan_wrapper,
+            args=(targets, fy_value, portal_year_label, tax_type, output_dir),
+            daemon=True).start()
+
+    def _show_challan_progress_dialog(self, targets: list, year_display: str, type_label: str, output_dir: str):
+        self._challan_progress_dialog = ChallanGenerationProgressDialog(
+            targets, year_display, type_label,
+            stop_callback=self.stop_challan_generation,
+            tray_callback=self._tray_to_system_manual,
+            output_dir=output_dir, parent=self)
+        self._challan_progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        self._challan_progress_dialog.show()
+        self._challan_progress_dialog.raise_()
+        self._challan_progress_dialog.activateWindow()
+
+    def stop_challan_generation(self):
+        if not self._challan_running:
+            return
+        self.log("[System] Abort requested (Tax Challan generation)...")
+        self._challan_running = False
+        self._challan_aborted = True
+        if self._challan_task and self._challan_loop:
+            self._challan_loop.call_soon_threadsafe(self._challan_task.cancel)
+
+    def _run_challan_wrapper(self, targets, fy_value, portal_year_label, tax_type, output_dir):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        self._challan_loop = loop
+        try:
+            self._challan_task = loop.create_task(
+                self._execute_challan_generation(targets, fy_value, portal_year_label, tax_type, output_dir))
+            loop.run_until_complete(self._challan_task)
+        except asyncio.CancelledError:
+            self.log("[System] Tax Challan generation cancelled.")
+        except Exception as e:
+            self.log(f"[System Error] Tax Challan generation crashed: {e}")
+        finally:
+            self._challan_task = None
+            self._challan_loop = None
+            loop.close()
+            self._challan_running = False
+            if self._challan_progress_dialog:
+                self._challan_progress_dialog.batch_finished()
+            self._challan_done_signal.emit()
+
+    async def _execute_challan_generation(self, targets, fy_value, portal_year_label, tax_type, output_dir):
+        from automation.challan_generator import generate_challan, TAX_TYPES
+
+        def set_status(row_index, text):
+            if self._challan_progress_dialog:
+                self._challan_progress_dialog.set_status(row_index, text)
+
+        try:
+            interactive = not self.chk_headless.isChecked()
+            context = await browser_manager.get_context(log_callback=self.log, interactive=interactive)
+        except Exception as e:
+            self.log(f"[System Error] Browser init failed: {e}"); return
+
+        results = []
+        processed_indices = set()
+        try:
+            for i, target in enumerate(targets):
+                if not self._challan_running:
+                    self.log("[System] Aborted."); break
+
+                pan = target.get("pan", "")
+                name = target.get("name", "")
+                dob = target.get("dob", "")
+                row = target.get("_amounts", {})
+                payment_mode = row.get("payment_mode", "")
+                bank = row.get("bank", "")
+                drawee_bank = row.get("drawee_bank", "")
+                amounts = {k: row.get(k, 0) for k in
+                           ("tax", "surcharge", "cess", "interest", "penalty", "others")}
+                self.log("──────────────────────────────────────────────────")
+                self.log(f"[{i+1}/{len(targets)}] {name}")
+                set_status(i, "⏳ Logging in to ITD...")
+
+                page = None
+                try:
+                    page = await login_itd(pan, target.get("password"), self.log, context,
+                                            is_running=lambda: self._challan_running)
+                    set_status(i, "⏳ Navigating to e-Pay Tax...")
+                    from automation.downloader_challans import navigate_to_epay_tax_act
+                    await navigate_to_epay_tax_act(page, self.log, TAX_TYPES[tax_type]["act_year_type"])
+
+                    set_status(i, "⏳ Generating challan...")
+                    result = await generate_challan(
+                        page, fy_value, portal_year_label, tax_type, amounts,
+                        payment_mode, bank, drawee_bank,
+                        output_dir, self.log, pan=pan, dob=dob)
+                    result["pan"] = pan
+                    result["name"] = name
+                    results.append(result)
+                    processed_indices.add(i)
+
+                    if result["status"] == "generated":
+                        set_status(i, f"✅ Generated — CRN {result['crn']}")
+                        if self._challan_progress_dialog and result.get("artifact_path"):
+                            self._challan_progress_dialog.set_artifact_path(i, result["artifact_path"])
+                    elif result["status"] == "unavailable":
+                        set_status(i, f"⚠ Unavailable — {result['reason']}")
+                    else:
+                        set_status(i, f"❌ Failed — {result['reason']}")
+                except Exception as e:
+                    self.log(f"[Error] {name}: {e}")
+                    set_status(i, f"❌ Failed — {e}")
+                    results.append({
+                        "pan": pan, "name": name, "fy_value": fy_value,
+                        "portal_year_label": portal_year_label, "tax_type": tax_type,
+                        "crn": "", "total_amount": sum(amounts.get(k, 0) or 0 for k in
+                            ("tax", "surcharge", "cess", "interest", "penalty", "others")),
+                        "valid_till": "", "payment_mode": payment_mode, "bank": bank,
+                        "drawee_bank": drawee_bank,
+                        "status": "failed", "reason": str(e), "artifact_path": "",
+                    })
+                    processed_indices.add(i)
+                finally:
+                    if page:
+                        try:
+                            await logout_itd(page, self.log)
+                        except Exception:
+                            pass
+        except asyncio.CancelledError:
+            # stop_challan_generation() cancels this task directly —
+            # CancelledError isn't an Exception subclass (Python 3.8+), so
+            # the per-client `except Exception` above never sees it and the
+            # in-flight client's row was otherwise left frozen on whatever
+            # status it last had ("Logging in...", etc.), making the
+            # progress dialog look stuck even though the run did stop.
+            self.log("[System] Tax Challan generation stopped by user.")
+        finally:
+            # Mark the in-flight client (if any) and every not-yet-started
+            # one as stopped, rather than leaving their rows on a stale
+            # "Logging in..."/"Waiting" status forever. Tracked by row
+            # index, not PAN — the same PAN can appear in multiple rows
+            # (e.g. a split Cash + Cheque challan pair for one client).
+            for idx in range(len(targets)):
+                if idx not in processed_indices:
+                    set_status(idx, "⏹ Stopped")
+            try:
+                report_path = self._write_challan_summary(results, output_dir, fy_value, tax_type)
+                if report_path and self._challan_progress_dialog:
+                    self._challan_progress_dialog.set_report_path(report_path)
+            except Exception as e:
+                self.log(f"[Warning] Could not write challan summary: {e}")
+
+    def _write_challan_summary(self, results: list, output_dir: str, fy_value: str, tax_type: str) -> str:
+        from automation.challan_fields import CHALLAN_SUMMARY_COLUMNS
+        from automation.challan_generator import TAX_TYPES
+        from openpyxl import Workbook
+        import datetime as _dt
+
+        os.makedirs(output_dir, exist_ok=True)
+        ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = os.path.join(output_dir, f"Tax_Challans_Summary_{ts}.xlsx")
+        wb = Workbook()
+        ws = wb.active
+        ws.append(CHALLAN_SUMMARY_COLUMNS)
+        for r in results:
+            ws.append([
+                r.get("pan", ""), r.get("name", ""), fy_value,
+                TAX_TYPES.get(tax_type, {}).get("label", tax_type),
+                r.get("portal_year_label", ""), r.get("payment_mode", ""), r.get("bank", ""),
+                r.get("drawee_bank", ""), r.get("total_amount", 0), r.get("crn", ""),
+                r.get("valid_till", ""), r.get("status", ""), r.get("reason", ""),
+                r.get("artifact_path", ""),
+            ])
+        wb.save(path)
+        self.log(f"[System] Challan summary written: {path}")
+        return path
+
+    def _on_challan_batch_done(self):
+        self.log("[System] Tax Challan generation idle.")
+        if hasattr(self, "_tray_send_act") and not self.is_running:
+            self._tray_send_act.setVisible(False)
+        self.refresh_grid()
+
     def skip_client(self):
         """Signal the batch runner to skip the currently-downloading client."""
         self._skip_current = True
@@ -2642,7 +2943,7 @@ class AayDocCapioApp(QMainWindow):
         self.is_running = True
         self._batch_aborted = False
         self._lock_ui(True)
-        self.btn_run.setText("⏳ Running...")
+        self.btn_run.setText("⏳ Downloading...")
         self.log(f"[System] Resuming — {len(remaining_targets)} client(s) remaining...")
         if self._progress_dialog:
             self._progress_dialog.batch_resumed()
@@ -2698,7 +2999,7 @@ class AayDocCapioApp(QMainWindow):
 
     def _on_batch_done(self):
         import datetime
-        self.btn_run.setText("▶  Run")
+        self.btn_run.setText("  Downloads")
         self._lock_ui(False)
         self.log("[System] Engine Idle.")
         # Refresh grid so Last Download Status / Last Saved Location columns update
@@ -2710,8 +3011,9 @@ class AayDocCapioApp(QMainWindow):
         if hasattr(self, "_tray") and self._tray.isVisible():
             notify_windows("AayDocCapio — Download Complete",
                            f"{run_label} batch finished. Click the tray icon to restore.")
-            self._tray_stop_act.setEnabled(False)
-            self._tray_send_act.setVisible(False)
+            if not self._challan_running:
+                self._tray_stop_act.setEnabled(False)
+                self._tray_send_act.setVisible(False)
             self._tray.setToolTip("AayDocCapio — Batch complete")
             # Auto-restore after balloon (small delay so user sees the notification)
         # F-35: Windows native toast — only when NOT using tray (tray has its own balloon)

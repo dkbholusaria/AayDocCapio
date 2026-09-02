@@ -15,7 +15,7 @@ from PyQt6.QtGui import (
 from ui._theme import _t
 from ui.helpers import _btn, _lbl, _status_style, _UI_FONT, _icon_path
 from automation.doc_types import match_doc_type
-from config import _open_path, _log_open
+from config import _open_path, _log_open, _app_dir
 from themes import MONO_FONT_NAME as _MONO_FONT
 
 
@@ -2333,6 +2333,1179 @@ class EmailLogDialog(QDialog):
             except Exception:
                 pass
             self._text.clear()
+
+
+# ── Generate Tax Challans Dialog (F-64) ────────────────────────────────────────
+
+class ChallanRowDetailDialog(QDialog):
+    """
+    Full-detail editor for ONE GenerateChallansDialog row — PAN, Payment
+    Mode, Bank/Sub-Mode (options depend on Mode), and the Tax/Surcharge/
+    Cess/Interest/Penalty/Others breakup. Opened by double-clicking a
+    summary-table row, or by "+ Add Row" for a new one — the summary table
+    itself only ever shows PAN/Name/Total/Mode, per the user's request to
+    keep the main view scannable and push full editing into its own dialog.
+    """
+    def __init__(self, parent, vault, row_data=None):
+        super().__init__(parent)
+        from automation.challan_generator import PAYMENT_MODES, DEFAULT_PAYMENT_MODE, cash_limit_exceeded
+        from automation.challan_fields import CHALLAN_AMOUNT_FIELDS
+
+        self._vault = vault
+        self._payment_modes = PAYMENT_MODES
+        self._cash_limit_exceeded = cash_limit_exceeded
+        self._amount_keys = CHALLAN_AMOUNT_FIELDS
+        row_data = row_data or {}
+        self.result_data = None
+
+        self.setWindowTitle("Challan Details")
+        self.setMinimumWidth(440)
+        _bt = _t()
+        self.setStyleSheet(f"QDialog{{background:{_bt.bg_window};}}")
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 16, 18, 14)
+        layout.setSpacing(10)
+
+        # ── PAN (pick from client list, or type a new one) ─────────────
+        layout.addWidget(_lbl("PAN"))
+        self._pan_combo = QComboBox()
+        self._pan_combo.setEditable(True)
+        self._pan_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        for a in sorted(vault.get_all_assessees(), key=lambda a: a.get("name", "")):
+            self._pan_combo.addItem(f"{a.get('pan','')} — {a.get('name','')}", a.get("pan", ""))
+        # Qt's auto-created completer for an editable combo defaults to
+        # "starts with" matching against the item text — since items read
+        # "PAN — Name", typing a name (which sits after the PAN prefix)
+        # never matched. Switch it to "contains", case-insensitive, so
+        # searching by either PAN or name works.
+        completer = self._pan_combo.completer()
+        if completer:
+            completer.setFilterMode(Qt.MatchFlag.MatchContains)
+            completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        # Qt's default popup only shows 10 items before scrolling, which on
+        # a 33-bank list reads as "incomplete" even though every item is
+        # actually there — raise the visible count so most lists fit
+        # without scrolling.
+        self._pan_combo.setMaxVisibleItems(18)
+        self._pan_combo.setCurrentText(row_data.get("pan", ""))
+        # setCurrentText()/clicking a dropdown item fires currentTextChanged,
+        # not editTextChanged (that one's typing-only) — connect both, since
+        # relying on editTextChanged alone silently misses item selection.
+        self._pan_combo.editTextChanged.connect(self._on_pan_changed)
+        self._pan_combo.currentTextChanged.connect(self._on_pan_changed)
+        layout.addWidget(self._pan_combo)
+
+        self._name_label = QLabel("")
+        self._name_label.setStyleSheet(f"color:{_bt.text_muted};font-size:11px;background:transparent;")
+        layout.addWidget(self._name_label)
+
+        # ── Payment Mode + Bank/Sub-Mode ─────────────────────────────────
+        mode_row = QHBoxLayout()
+        mode_col = QVBoxLayout()
+        mode_col.addWidget(_lbl("Payment Mode"))
+        self._mode_combo = QComboBox()
+        self._mode_combo.addItems(list(self._payment_modes.keys()))
+        self._mode_combo.setCurrentText(row_data.get("payment_mode") or DEFAULT_PAYMENT_MODE)
+        self._mode_combo.currentTextChanged.connect(self._on_mode_changed)
+        mode_col.addWidget(self._mode_combo)
+        mode_row.addLayout(mode_col)
+
+        # One flat, searchable picklist per the user's direction — no
+        # visible "Other Bank" tier. Populated from
+        # automation.challan_generator.all_bank_options(mode) (primary
+        # on-screen tiles + a best-effort extended list); the field stays
+        # editable so a bank not in that list can still be typed directly.
+        # generate_challan() decides on its own, per bank name, whether it's
+        # a primary tile (clicked directly) or needs the portal's own
+        # "Other Bank" nested search — the user never needs to know which.
+        bank_col = QVBoxLayout()
+        bank_col.addWidget(_lbl("Bank / Sub-Mode"))
+        self._bank_combo = QComboBox()
+        self._bank_combo.setEditable(True)
+        self._bank_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        bank_completer = self._bank_combo.completer()
+        if bank_completer:
+            bank_completer.setFilterMode(Qt.MatchFlag.MatchContains)
+            bank_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self._bank_combo.setMaxVisibleItems(18)
+        # Same reasoning as the PAN combo above — connect both signals so
+        # picking a bank from the dropdown (not just typing one) reliably
+        # updates the cash-cap warning and the Drawn on Bank field's
+        # visibility.
+        self._bank_combo.editTextChanged.connect(self._on_bank_changed)
+        self._bank_combo.currentTextChanged.connect(self._on_bank_changed)
+        bank_col.addWidget(self._bank_combo)
+        mode_row.addLayout(bank_col)
+        layout.addLayout(mode_row)
+
+        # Confirmed against a real sample PDF ("Drawn on Bank: Kotak
+        # Mahindra Bank"): Pay at Bank Counter's Cheque/Demand Draft
+        # sub-modes carry their own separate bank field for which bank the
+        # cheque/DD itself is drawn on — Cash has no such field, and no
+        # other Payment Mode has one either. Reuses the same full bank list
+        # as Net Banking (any real bank could plausibly issue a cheque),
+        # editable/searchable the same way.
+        drawee_row = QHBoxLayout()
+        drawee_label = QLabel("Drawn on Bank")
+        drawee_label.setFixedWidth(120)
+        drawee_label.setStyleSheet(f"color:{_bt.text_primary};background:transparent;")
+        drawee_row.addWidget(drawee_label)
+        self._drawee_combo = QComboBox()
+        self._drawee_combo.setEditable(True)
+        self._drawee_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        from automation.challan_generator import all_bank_options as _all_bank_options
+        self._drawee_combo.addItems(_all_bank_options("Net Banking"))
+        drawee_completer = self._drawee_combo.completer()
+        if drawee_completer:
+            drawee_completer.setFilterMode(Qt.MatchFlag.MatchContains)
+            drawee_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self._drawee_combo.setMaxVisibleItems(18)
+        self._drawee_combo.setCurrentText(row_data.get("drawee_bank", ""))
+        drawee_row.addWidget(self._drawee_combo)
+        self._drawee_widget = QWidget()
+        self._drawee_widget.setLayout(drawee_row)
+        self._drawee_widget.setVisible(False)
+        layout.addWidget(self._drawee_widget)
+
+        self._cash_warning = QLabel("")
+        self._cash_warning.setStyleSheet(f"color:{getattr(_bt, 'warning', '#D97706')};font-size:11px;background:transparent;")
+        self._cash_warning.setWordWrap(True)
+        layout.addWidget(self._cash_warning)
+
+        # ── Amount breakup ───────────────────────────────────────────────
+        layout.addWidget(_lbl("Amount Breakup (₹)"))
+        self._amount_edits = {}
+        amounts_grid = QVBoxLayout()
+        amounts_grid.setSpacing(4)
+        for key, label, kind in [
+            ("tax", "Tax", "amount"), ("surcharge", "Surcharge", "amount"),
+            ("cess", "Cess", "amount"), ("interest", "Interest", "amount"),
+            ("penalty", "Penalty", "amount"), ("others", "Others", "amount"),
+        ]:
+            row = QHBoxLayout()
+            lbl = QLabel(label)
+            lbl.setFixedWidth(90)
+            lbl.setStyleSheet(f"color:{_bt.text_primary};background:transparent;")
+            row.addWidget(lbl)
+            edit = QLineEdit(str(row_data.get(key, "") or ""))
+            edit.textChanged.connect(self._update_total)
+            self._amount_edits[key] = edit
+            row.addWidget(edit)
+            amounts_grid.addLayout(row)
+        layout.addLayout(amounts_grid)
+
+        total_row = QHBoxLayout()
+        total_row.addWidget(_lbl("Total", bold=True))
+        self._total_label = QLabel("0")
+        self._total_label.setStyleSheet(f"color:{_bt.text_primary};font-weight:bold;background:transparent;")
+        total_row.addWidget(self._total_label)
+        total_row.addStretch(1)
+        layout.addLayout(total_row)
+
+        # ── OK / Cancel ──────────────────────────────────────────────────
+        btn_row = QHBoxLayout()
+        btn_row.addStretch(1)
+        btn_cancel = _btn("Cancel", "outline")
+        btn_cancel.clicked.connect(self.reject)
+        btn_row.addWidget(btn_cancel)
+        self._btn_ok = _btn("OK", "primary")
+        self._btn_ok.clicked.connect(self._on_ok)
+        btn_row.addWidget(self._btn_ok)
+        layout.addLayout(btn_row)
+
+        self._on_pan_changed()
+        self._on_mode_changed(select_bank=row_data.get("bank", ""))
+        self._update_total()
+
+    def _current_pan(self) -> str:
+        idx = self._pan_combo.currentIndex()
+        text = self._pan_combo.currentText().strip()
+        if idx >= 0 and self._pan_combo.itemText(idx) == text:
+            return (self._pan_combo.itemData(idx) or "").upper()
+        if " — " in text:
+            return text.split(" — ")[0].strip().upper()
+        return text.upper()
+
+    def _on_pan_changed(self):
+        pan = self._current_pan()
+        matched = next((a for a in self._vault.get_all_assessees() if a.get("pan", "").upper() == pan), None)
+        _bt = _t()
+        if pan and not matched:
+            self._name_label.setText("⚠ Unknown PAN — not in Client Master")
+            self._name_label.setStyleSheet(f"color:{getattr(_bt, 'warning', '#D97706')};font-size:11px;background:transparent;")
+        elif matched:
+            self._name_label.setText(matched.get("name", ""))
+            self._name_label.setStyleSheet(f"color:{_bt.text_muted};font-size:11px;background:transparent;")
+        else:
+            self._name_label.setText("")
+
+    def _on_mode_changed(self, *_args, select_bank=""):
+        from automation.challan_generator import all_bank_options
+        mode = self._mode_combo.currentText()
+        options = all_bank_options(mode)
+        self._bank_combo.blockSignals(True)
+        self._bank_combo.clear()
+        if options:
+            self._bank_combo.addItems(options)
+            self._bank_combo.setEnabled(True)
+            self._bank_combo.setCurrentText(select_bank or "")
+        else:
+            self._bank_combo.addItem("(not required for this mode)")
+            self._bank_combo.setEnabled(False)
+        self._bank_combo.blockSignals(False)
+        self._on_bank_changed()
+
+    def _on_bank_changed(self):
+        mode = self._mode_combo.currentText()
+        bank = self._current_bank()
+        self._drawee_widget.setVisible(mode == "Pay at Bank Counter" and bank in ("Cheque", "Demand Draft"))
+        self._update_cash_warning()
+
+    def _current_bank(self) -> str:
+        if not self._bank_combo.isEnabled():
+            return ""
+        return self._bank_combo.currentText().strip()
+
+    def _current_total(self) -> float:
+        total = 0.0
+        for key, edit in self._amount_edits.items():
+            try:
+                total += float(edit.text()) if edit.text().strip() else 0.0
+            except ValueError:
+                pass
+        return total
+
+    def _update_total(self):
+        self._total_label.setText(f"{self._current_total():g}")
+        self._update_cash_warning()
+
+    def _update_cash_warning(self):
+        mode = self._mode_combo.currentText()
+        bank = self._current_bank()
+        total = self._current_total()
+        if self._cash_limit_exceeded(mode, bank, total):
+            self._cash_warning.setText(
+                f"⚠ Pay at Bank Counter / Cash is capped at ₹10,000 (RBI rule) — this total is "
+                f"₹{total:,.0f}. Use Cheque or Demand Draft instead."
+            )
+            self._btn_ok.setEnabled(False)
+        else:
+            self._cash_warning.setText("")
+            self._btn_ok.setEnabled(True)
+
+    def _on_ok(self):
+        pan = self._current_pan()
+        if not pan:
+            QMessageBox.warning(self, "PAN Required", "Please enter or select a PAN.")
+            return
+        amounts = {}
+        for key, edit in self._amount_edits.items():
+            text = edit.text().strip()
+            try:
+                amounts[key] = float(text) if text else 0
+            except ValueError:
+                QMessageBox.warning(self, "Invalid Amount", f"'{text}' is not a valid amount.")
+                return
+        self.result_data = {
+            "pan": pan,
+            "payment_mode": self._mode_combo.currentText(),
+            "bank": self._current_bank(),
+            "drawee_bank": self._drawee_combo.currentText().strip() if self._drawee_widget.isVisible() else "",
+            **amounts,
+        }
+        self.accept()
+
+
+class GenerateChallansDialog(QDialog):
+    """
+    Bulk-generate tax payment challans (Advance Tax / Self-Assessment Tax)
+    on the ITD e-Pay Tax "New Payment" wizard, for many clients in one run.
+
+    Financial Year is picked ONCE for the whole dialog (not per row) — the
+    same year always applies to every client in a batch (a CA works through
+    "Q2 advance tax for FY 2026-27, for these 15 clients", never a mix of
+    years in one run). Tax Type (Advance/Self-Assessment) is never a field
+    the user fills in — it's computed from the FY via
+    automation.challan_generator.resolve_tax_type(), using the app's own
+    assessment_years.json entries, and shown read-only next to the Year combo.
+
+    The summary table only shows PAN, Name, Total Amount, and Payment Mode
+    (per the user's request to keep the main view scannable) — double-
+    clicking a row (or "+ Add Row") opens ChallanRowDetailDialog for full
+    editing of PAN, Payment Mode, Bank/Sub-Mode, and the amount breakup.
+    Row data lives in self._row_data (a plain list of dicts), not in the
+    QTableWidget cells directly. Column labels come from
+    automation.challan_fields.CHALLAN_INPUT_COLUMNS — the single source of
+    truth also used by the Excel/CSV import, export, and template — see
+    automation/doc_types.py's own docstring for why two independent column
+    lists caused the Form 168 emailer bugs twice already.
+    """
+    _COL_PAN = 0
+    _COL_NAME = 1
+    _COL_TOTAL = 2
+    _COL_MODE = 3
+
+    def __init__(self, parent, vault, ay_entries):
+        super().__init__(parent)
+        from automation.challan_fields import CHALLAN_INPUT_COLUMNS, CHALLAN_AMOUNT_FIELDS
+        from automation.challan_generator import resolve_tax_type, TAX_TYPES, cash_limit_exceeded
+
+        self._vault = vault
+        self._ay_entries = ay_entries
+        self._resolve_tax_type = resolve_tax_type
+        self._tax_types = TAX_TYPES
+        self._cash_limit_exceeded = cash_limit_exceeded
+        self._columns = CHALLAN_INPUT_COLUMNS  # [(key, label, kind), ...] — full per-client field shape
+        self._amount_keys = CHALLAN_AMOUNT_FIELDS
+
+        self.fy_value = None
+        self.rows = []
+        self._tax_type_valid = False
+        self._row_data: list = []   # [{"pan", "payment_mode", "bank", "tax", ...}, ...]
+
+        self.setWindowTitle("Generate Tax Challans")
+        self.setMinimumSize(760, 520)
+        self.resize(820, 560)
+        self.setSizeGripEnabled(True)
+        _bt = _t()
+        self.setStyleSheet(f"QDialog{{background:{_bt.bg_window};}}")
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 14, 16, 12)
+        layout.setSpacing(8)
+
+        # ── Year selector row ────────────────────────────────────────────
+        # Same labels as the main screen's Assessment/Tax Year combo (e.g.
+        # "TY 2026-27 (FY 2026-27)", "AY 2026-27 (FY 2025-26)") — single-
+        # select here (not the main screen's checkable multi-select), since
+        # exactly one Year/Tax Type applies to the whole batch (see Context
+        # decision 5 in the plan). Each entry's own AY/TY key already tells
+        # us the Tax Type directly.
+        fy_row = QHBoxLayout()
+        fy_row.setSpacing(10)
+        fy_row.addWidget(_lbl("Assessment / Tax Year:"))
+        self._fy_combo = QComboBox()
+        for e in ay_entries:
+            if not e.get("enabled", True):
+                continue
+            y = e.get("year", {})
+            fy = y.get("FY")
+            if not fy:
+                continue
+            self._fy_combo.addItem(e.get("label", fy), fy)
+        self._fy_combo.currentIndexChanged.connect(self._on_fy_changed)
+        fy_row.addWidget(self._fy_combo)
+        # This is the single most consequential computed fact in the dialog
+        # (it decides the Act and Type-of-Payment the whole run submits
+        # under) — styled as a prominent accent-colored badge, not a small
+        # muted caption, so it can't be missed.
+        self._type_label = QLabel("")
+        self._type_label.setStyleSheet(
+            f"color:{_bt.accent_text};background:{_bt.accent};font-size:13px;"
+            f"font-weight:bold;padding:4px 10px;border-radius:10px;")
+        fy_row.addWidget(self._type_label)
+        fy_row.addStretch(1)
+        layout.addLayout(fy_row)
+
+        # ── Toolbar ──────────────────────────────────────────────────────
+        # Icon-only with tooltips, not icon+text — six full-text buttons
+        # didn't fit the dialog width and truncated ("Import Excel/C...").
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(6)
+
+        def _icon_btn(icon, tooltip, style="outline"):
+            b = _btn(icon, style, min_width=40)
+            b.setToolTip(tooltip)
+            return b
+
+        btn_add = _icon_btn("➕", "Add Row", "primary")
+        btn_add.clicked.connect(self._add_row)
+        toolbar.addWidget(btn_add)
+        btn_remove = _icon_btn("🗑", "Remove Row", "danger")
+        btn_remove.clicked.connect(self._remove_row)
+        toolbar.addWidget(btn_remove)
+        btn_import = _icon_btn("📥", "Import Excel/CSV")
+        btn_import.clicked.connect(self._import_rows)
+        toolbar.addWidget(btn_import)
+        btn_export = _icon_btn("📤", "Export")
+        btn_export.clicked.connect(self._export_rows)
+        toolbar.addWidget(btn_export)
+        btn_template = _icon_btn("📄", "Download Import Template")
+        btn_template.clicked.connect(self._download_template)
+        toolbar.addWidget(btn_template)
+        toolbar.addStretch(1)
+        # Lightweight in-app persistence — a single local "last saved"
+        # slot the user can save to / reload from without going through a
+        # file picker each time (Export/Import stay available for actually
+        # sharing a file with someone or keeping dated copies).
+        btn_save_draft = _icon_btn("💾", "Save Draft")
+        btn_save_draft.clicked.connect(self._save_draft)
+        toolbar.addWidget(btn_save_draft)
+        self._btn_reload_draft = _icon_btn("📂", "Reload Last Saved")
+        self._btn_reload_draft.clicked.connect(lambda: self._load_draft(confirm=True))
+        self._btn_reload_draft.setEnabled(os.path.exists(self._draft_path()))
+        toolbar.addWidget(self._btn_reload_draft)
+        layout.addLayout(toolbar)
+
+        # ── Summary table (PAN / Name / Total / Mode only) ───────────────
+        self._table = QTableWidget(0, 4)
+        self._table.setHorizontalHeaderLabels(["PAN", "Name", "Total Amount", "Payment Mode"])
+        hdr = self._table.horizontalHeader()
+        hdr.setSectionResizeMode(self._COL_PAN, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(self._COL_NAME, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(self._COL_TOTAL, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(self._COL_MODE, QHeaderView.ResizeMode.Interactive)
+        self._table.setColumnWidth(self._COL_PAN, 110)
+        self._table.setColumnWidth(self._COL_TOTAL, 110)
+        self._table.setColumnWidth(self._COL_MODE, 160)
+        self._table.verticalHeader().setVisible(False)
+        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._table.cellDoubleClicked.connect(self._edit_row)
+        # Same theme-aware table/header styling BatchProgressDialog already
+        # uses — without it, QTableWidget falls back to native (light)
+        # colors regardless of the app's dark/light theme, which is exactly
+        # what made the header text unreadable in dark mode.
+        self._table.setStyleSheet(
+            f"QTableWidget{{border:1.5px solid {_bt.border};border-radius:8px;"
+            f"background:{_bt.bg_table};outline:0;gridline-color:{_bt.grid};}}"
+            f"QTableWidget::item{{border-bottom:1px solid {_bt.grid};padding:0 8px;}}")
+        hdr.setStyleSheet(
+            f"QHeaderView::section{{"
+            f"background-color:{_bt.bg_header};"
+            f"border:none;"
+            f"border-right:1px solid {_bt.border};"
+            f"border-bottom:1px solid {_bt.border};"
+            f"font-weight:bold;color:{_bt.text_muted};"
+            f"font-size:11px;height:34px;"
+            f"padding:0 8px;}}")
+        layout.addWidget(self._table, stretch=1)
+
+        hint = QLabel("Double-click a row to view/edit its full details (bank, amount breakup).")
+        hint.setStyleSheet(f"color:{_bt.text_muted};font-size:11px;background:transparent;")
+        layout.addWidget(hint)
+
+        # ── Footer ───────────────────────────────────────────────────────
+        footer = QHBoxLayout()
+        self._counts_label = QLabel("")
+        self._counts_label.setStyleSheet(f"color:{_bt.text_muted};font-size:12px;background:transparent;")
+        footer.addWidget(self._counts_label)
+        footer.addStretch(1)
+        btn_cancel = _btn("Cancel", "outline")
+        btn_cancel.clicked.connect(self.reject)
+        footer.addWidget(btn_cancel)
+        self._btn_generate = _btn("Generate", "success")
+        self._btn_generate.clicked.connect(self._on_generate_clicked)
+        footer.addWidget(self._btn_generate)
+        layout.addLayout(footer)
+
+        self._on_fy_changed()
+        self._refresh_table()
+
+        if os.path.exists(self._draft_path()):
+            import datetime as _dt
+            saved_at = _dt.datetime.fromtimestamp(os.path.getmtime(self._draft_path()))
+            if QMessageBox.question(
+                self, "Resume Last Saved Draft?",
+                f"A saved draft exists from {saved_at.strftime('%d-%b-%Y %H:%M')}. Load it?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            ) == QMessageBox.StandardButton.Yes:
+                self._load_draft(confirm=False)
+
+    # ── Save / reload draft (local, no file picker) ──────────────────────
+
+    def _draft_path(self) -> str:
+        return os.path.join(_app_dir(), "challan_draft.json")
+
+    def _save_draft(self):
+        data = {"fy_value": self.fy_value, "rows": self._row_data}
+        try:
+            with open(self._draft_path(), "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            self._btn_reload_draft.setEnabled(True)
+            QMessageBox.information(self, "Draft Saved",
+                f"{len(self._row_data)} row(s) saved as your last draft — "
+                "use \"Reload Last Saved\" next time instead of Export/Import.")
+        except Exception as e:
+            QMessageBox.critical(self, "Save Failed", f"Could not save draft: {e}")
+
+    def _load_draft(self, confirm: bool = True):
+        path = self._draft_path()
+        if not os.path.exists(path):
+            QMessageBox.information(self, "No Saved Draft", "No saved draft was found.")
+            return
+        if confirm and self._row_data and QMessageBox.question(
+            self, "Replace Current Rows?",
+            f"This replaces the {len(self._row_data)} row(s) currently in the table with the "
+            "last saved draft. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            QMessageBox.critical(self, "Load Failed", f"Could not read saved draft: {e}")
+            return
+
+        fy_value = data.get("fy_value")
+        if fy_value:
+            idx = self._fy_combo.findData(fy_value)
+            if idx >= 0:
+                self._fy_combo.setCurrentIndex(idx)
+        self._row_data = data.get("rows", [])
+        self._refresh_table()
+
+    # ── FY / Tax Type ────────────────────────────────────────────────────
+
+    def _on_fy_changed(self):
+        fy = self._fy_combo.currentData()
+        self.fy_value = fy or None
+        if not fy:
+            self._type_label.setText("")
+            self._tax_type_valid = False
+            self._update_footer_counts()
+            return
+        try:
+            tax_type, _portal_year_label = self._resolve_tax_type(fy, self._ay_entries)
+            # portal_year_label is intentionally not shown here — it's
+            # already visible as part of the selected combo item's own text
+            # (e.g. "TY 2026-27" / "AY 2026-27"), so repeating it here would
+            # just be noise.
+            label = self._tax_types[tax_type]["label"]
+            self._type_label.setText(f"→ {label}")
+            _bt = _t()
+            self._type_label.setStyleSheet(
+                f"color:{_bt.accent_text};background:{_bt.accent};font-size:13px;"
+                f"font-weight:bold;padding:4px 10px;border-radius:10px;")
+            self._tax_type_valid = True
+        except Exception as e:
+            _bt = _t()
+            warn = getattr(_bt, "warning", "#D97706")
+            self._type_label.setText(f"→ {e}")
+            self._type_label.setStyleSheet(
+                f"color:{warn};background:transparent;font-size:12px;font-weight:normal;padding:0;")
+            self._tax_type_valid = False
+        self._update_footer_counts()
+
+    # ── Row management ───────────────────────────────────────────────────
+
+    def _row_total(self, row: dict) -> float:
+        total = 0.0
+        for key in self._amount_keys:
+            try:
+                total += float(row.get(key, 0) or 0)
+            except (TypeError, ValueError):
+                pass
+        return total
+
+    def _row_is_ready(self, row: dict) -> bool:
+        pan = (row.get("pan") or "").upper()
+        if not pan:
+            return False
+        matched = any(a.get("pan", "").upper() == pan for a in self._vault.get_all_assessees())
+        if not matched:
+            return False
+        total = self._row_total(row)
+        if total <= 0:
+            return False
+        if self._cash_limit_exceeded(row.get("payment_mode", ""), row.get("bank", ""), total):
+            return False
+        return True
+
+    def _refresh_table(self):
+        _bt = _t()
+        self._table.setRowCount(len(self._row_data))
+        for i, row in enumerate(self._row_data):
+            pan = (row.get("pan") or "").upper()
+            matched = next((a for a in self._vault.get_all_assessees() if a.get("pan", "").upper() == pan), None)
+            self._table.setRowHeight(i, 36)
+
+            pan_item = QTableWidgetItem(pan)
+            pan_item.setForeground(QColor(_bt.text_primary))
+            self._table.setItem(i, self._COL_PAN, pan_item)
+
+            name_item = QTableWidgetItem()
+            if pan and not matched:
+                name_item.setText("⚠ Unknown PAN")
+                name_item.setForeground(QColor(getattr(_bt, "warning", "#D97706")))
+            elif matched:
+                name_item.setText(matched.get("name", ""))
+                name_item.setForeground(QColor(_bt.text_primary))
+            self._table.setItem(i, self._COL_NAME, name_item)
+
+            total = self._row_total(row)
+            total_item = QTableWidgetItem(f"{total:g}")
+            total_item.setForeground(QColor(_bt.text_primary))
+            if self._cash_limit_exceeded(row.get("payment_mode", ""), row.get("bank", ""), total):
+                total_item.setForeground(QColor(getattr(_bt, "warning", "#D97706")))
+            self._table.setItem(i, self._COL_TOTAL, total_item)
+
+            mode = row.get("payment_mode", "")
+            bank = row.get("bank", "")
+            mode_text = f"{mode} / {bank}" if bank else mode
+            mode_item = QTableWidgetItem(mode_text)
+            mode_item.setForeground(QColor(_bt.text_primary))
+            self._table.setItem(i, self._COL_MODE, mode_item)
+
+        self._update_footer_counts()
+
+    def _add_row(self):
+        dlg = ChallanRowDetailDialog(self, self._vault)
+        if dlg.exec() == dlg.DialogCode.Accepted and dlg.result_data:
+            self._row_data.append(dlg.result_data)
+            self._refresh_table()
+
+    def _edit_row(self, row, _col=0):
+        if row < 0 or row >= len(self._row_data):
+            return
+        dlg = ChallanRowDetailDialog(self, self._vault, self._row_data[row])
+        if dlg.exec() == dlg.DialogCode.Accepted and dlg.result_data:
+            self._row_data[row] = dlg.result_data
+            self._refresh_table()
+
+    def _remove_row(self):
+        rows = sorted({idx.row() for idx in self._table.selectedIndexes()}, reverse=True)
+        if not rows and self._row_data:
+            rows = [len(self._row_data) - 1]
+        for r in rows:
+            if 0 <= r < len(self._row_data):
+                del self._row_data[r]
+        self._refresh_table()
+
+    def _update_footer_counts(self):
+        total_rows = len(self._row_data)
+        ready = sum(1 for r in self._row_data if self._row_is_ready(r))
+        flagged = total_rows - ready
+        self._counts_label.setText(f"Rows: {total_rows}   Ready to generate: {ready}   Flagged: {flagged}")
+        self._btn_generate.setEnabled(ready > 0 and self._tax_type_valid)
+
+    # ── Import / Export / Template ───────────────────────────────────────
+
+    def _import_rows(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Import Challan Rows", "",
+            "Excel / CSV files (*.xlsx *.csv)")
+        if not path:
+            return
+        try:
+            headers, data_rows = self._read_table_file(path)
+        except Exception as e:
+            QMessageBox.critical(self, "Import Error", f"Failed to read file: {e}")
+            return
+
+        # Headers in the file are the human-readable LABELS ("Payment
+        # Mode", "Drawn on Bank"), not the internal field keys
+        # ("payment_mode", "drawee_bank") — map file headers to field keys
+        # via CHALLAN_INPUT_COLUMNS' own label text, not by assuming they're
+        # spelled the same. A raw "pan"/"tax" header still matches directly
+        # since those particular labels happen to equal their key already.
+        # An extra "Name" column (present in every file this dialog writes,
+        # purely for the human filling it in — it never drives anything on
+        # import, PAN is the only join key) is simply left unmapped here and
+        # ignored, same as any other unrecognized column.
+        label_to_key = {label.lower(): key for key, label, _ in self._columns}
+        col = {label_to_key.get(h, h): i for i, h in enumerate(headers)}
+        required = {"pan", "tax"}
+        missing = required - set(col)
+        if missing:
+            QMessageBox.critical(self, "Import Error",
+                f"Missing required columns: {', '.join(missing)}. Headers must include PAN and Tax.")
+            return
+
+        from automation.challan_generator import DEFAULT_PAYMENT_MODE, DEFAULT_BANK
+
+        added = 0
+        errors = []
+        for idx, raw_row in enumerate(data_rows):
+            row_num = idx + 2
+            try:
+                def _cell(key):
+                    if key not in col or col[key] >= len(raw_row):
+                        return None
+                    v = raw_row[col[key]]
+                    return str(v).strip() if v not in (None, "") else ""
+
+                pan = (_cell("pan") or "").upper()
+                if not pan:
+                    errors.append(f"Row {row_num}: Missing PAN.")
+                    continue
+
+                new_row = {
+                    "pan": pan,
+                    "payment_mode": _cell("payment_mode") or DEFAULT_PAYMENT_MODE,
+                    "bank": _cell("bank") or DEFAULT_BANK,
+                    "drawee_bank": _cell("drawee_bank") or "",
+                }
+                bad_amount = False
+                for key, label, kind in self._columns:
+                    if kind != "amount":
+                        continue
+                    raw_val = _cell(key)
+                    if not raw_val:
+                        new_row[key] = 0
+                        continue
+                    try:
+                        new_row[key] = float(raw_val)
+                    except ValueError:
+                        errors.append(f"Row {row_num}: '{label}' is not a number.")
+                        bad_amount = True
+                if bad_amount:
+                    continue
+
+                self._row_data.append(new_row)
+                added += 1
+            except Exception as e:
+                errors.append(f"Row {row_num}: Error importing entry: {e}")
+
+        self._refresh_table()
+        summary = f"{added} row(s) imported"
+        if errors:
+            summary += f", {len(errors)} skipped — see details"
+            QMessageBox.warning(self, "Import Complete", summary + "\n\n" + "\n".join(errors))
+        else:
+            QMessageBox.information(self, "Import Complete", summary + ".")
+
+    def _read_table_file(self, path):
+        if path.endswith(".xlsx"):
+            from openpyxl import load_workbook
+            wb = load_workbook(path, data_only=True)
+            # Files this dialog writes carry a hidden "Lists" sheet
+            # alongside the data — pick the "Challans" sheet explicitly if
+            # present rather than trusting wb.active (which is usually
+            # right, but is a saved-state property, not a guarantee).
+            ws = wb["Challans"] if "Challans" in wb.sheetnames else wb.active
+            raw_rows = list(ws.iter_rows(values_only=True))
+        elif path.endswith(".csv"):
+            import csv
+            with open(path, newline="", encoding="utf-8-sig") as f:
+                raw_rows = list(csv.reader(f))
+        else:
+            raise ValueError("Unsupported file format. Please use Excel (.xlsx) or CSV (.csv).")
+        if not raw_rows:
+            raise ValueError("File is empty.")
+        headers = [str(c).strip().lower() if c is not None else "" for c in raw_rows[0]]
+        return headers, raw_rows[1:]
+
+    def _offer_open_file(self, title: str, message: str, path: str):
+        """Success dialog with a one-click way to open the file it just
+        wrote, instead of leaving the user to go find it themselves."""
+        box = QMessageBox(self)
+        box.setWindowTitle(title)
+        box.setText(message)
+        open_btn = box.addButton("Open File", QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Ok)
+        box.exec()
+        if box.clickedButton() is open_btn:
+            _open_path(path)
+
+    def _export_headers(self) -> list:
+        """Column layout for both Export and the Import Template — a
+        read-only "Name" column sits right after PAN purely so the person
+        filling the sheet can see whose row is whose; it's never read back
+        on import (PAN is the only join key — see _import_rows)."""
+        return ["PAN", "Name"] + [label for key, label, _ in self._columns if key != "pan"]
+
+    def _row_to_export_values(self, row: dict) -> list:
+        pan = (row.get("pan") or "").upper()
+        matched = next((a for a in self._vault.get_all_assessees() if a.get("pan", "").upper() == pan), None)
+        name = matched.get("name", "") if matched else ""
+        return [pan, name] + [row.get(key, "") for key, _, _ in self._columns if key != "pan"]
+
+    def _export_rows(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Export Challan Rows",
+            "Challan_Rows", "Excel Workbook (*.xlsx);;CSV (*.csv)")
+        if not path:
+            return
+        if not (path.endswith(".xlsx") or path.endswith(".csv")):
+            path += ".xlsx"
+        headers = self._export_headers()
+        rows = [self._row_to_export_values(row) for row in self._row_data]
+        try:
+            self._write_table_file(path, headers, rows)
+            self._offer_open_file("Export Complete", f"{len(rows)} row(s) exported to:\n{path}", path)
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"Failed: {e}")
+
+    def _download_template(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Save Template",
+            "Challan_Rows_Template", "Excel Workbook (*.xlsx);;CSV (*.csv)")
+        if not path:
+            return
+        from automation.challan_generator import DEFAULT_PAYMENT_MODE, DEFAULT_BANK
+        headers = self._export_headers()
+        sample_row = self._row_to_export_values({
+            "pan": "AAAPT0001A", "payment_mode": DEFAULT_PAYMENT_MODE, "bank": DEFAULT_BANK,
+            "drawee_bank": "", "tax": 15000, "surcharge": 0, "cess": 0,
+            "interest": 0, "penalty": 0, "others": 0,
+        })
+        sample_row[1] = "Sample Client Name"  # no vault match for a fake PAN — fill in a placeholder
+        try:
+            self._write_table_file(path, headers, [sample_row])
+            self._offer_open_file("Success", f"Template generated at:\n{path}", path)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed: {e}")
+
+    def _write_table_file(self, path, headers, rows):
+        if path.endswith(".csv"):
+            import csv
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(headers)
+                w.writerows(rows)
+            return
+
+        import re
+        from openpyxl import Workbook
+        from openpyxl.worksheet.datavalidation import DataValidation
+        from openpyxl.formatting.rule import FormulaRule
+        from openpyxl.styles import PatternFill, Font
+        from openpyxl.utils import get_column_letter
+        from openpyxl.workbook.defined_name import DefinedName
+        from automation.challan_generator import PAYMENT_MODES, all_bank_options
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Challans"
+        ws.append(headers)
+        for row in rows:
+            ws.append(row)
+
+        # Column positions are found by label text, not assumed fixed
+        # indices — headers here always start "PAN", "Name", ... but the
+        # rest can shift if CHALLAN_INPUT_COLUMNS changes shape later.
+        def _col(label):
+            return get_column_letter(headers.index(label) + 1)
+        col_mode = _col("Payment Mode")
+        col_bank = _col("Bank / Sub-Mode")
+        col_drawee = _col("Drawn on Bank")
+        last_row = max(len(rows), 1) + 200  # headroom for rows added later in Excel
+
+        # ── Hidden "Lists" sheet backing every dropdown ──────────────────
+        # Excel's in-cell list validation (formula1='"A,B,C"') caps at 255
+        # characters — nowhere near enough for a 33-bank list — so every
+        # allowed-values set lives in real cells here, referenced by range.
+        modes = list(PAYMENT_MODES.keys())
+
+        def _sanitize(text: str) -> str:
+            s = re.sub(r"[^A-Za-z0-9_]", "_", text)
+            return s if s and (s[0].isalpha() or s[0] == "_") else f"_{s}"
+
+        ws_lists = wb.create_sheet("Lists")
+        ws_lists["A1"] = "Payment Mode"
+        ws_lists["B1"] = "Named range for this mode's Bank / Sub-Mode list"
+        mode_range_names = {}
+        for i, m in enumerate(modes, start=2):
+            ws_lists.cell(row=i, column=1, value=m)
+            range_name = f"Mode_{_sanitize(m)}"
+            mode_range_names[m] = range_name
+            ws_lists.cell(row=i, column=2, value=range_name)
+
+        # One column per mode for its own Bank / Sub-Mode options — column 3
+        # (C) onward, in the same order as `modes`. Modes with no picklist
+        # (RTGS/NEFT, Payment Gateway) still get a single placeholder value
+        # so their defined name resolves to something instead of erroring.
+        for m_idx, m in enumerate(modes):
+            col_num = 3 + m_idx
+            col_letter = get_column_letter(col_num)
+            options = all_bank_options(m) or ["(not required for this mode)"]
+            ws_lists.cell(row=1, column=col_num, value=m)
+            for i, opt in enumerate(options, start=2):
+                ws_lists.cell(row=i, column=col_num, value=opt)
+            range_ref = f"Lists!${col_letter}$2:${col_letter}${len(options) + 1}"
+            wb.defined_names[mode_range_names[m]] = DefinedName(mode_range_names[m], attr_text=range_ref)
+
+        ws_lists.sheet_state = "hidden"
+
+        # ── Payment Mode (col B in the sheet, but located dynamically) ───
+        dv_mode = DataValidation(type="list", formula1=f"Lists!$A$2:$A${len(modes) + 1}", allow_blank=True)
+        dv_mode.errorTitle = "Invalid Payment Mode"
+        dv_mode.error = "Please pick a Payment Mode from the dropdown."
+        ws.add_data_validation(dv_mode)
+        dv_mode.add(f"{col_mode}2:{col_mode}{last_row}")
+
+        # ── Bank / Sub-Mode — CASCADING on Payment Mode ──────────────────
+        # VLOOKUP finds this row's mode in Lists!A:B and returns the
+        # matching named-range name (computed in Python above, not derived
+        # by string manipulation inside the formula), then INDIRECT
+        # resolves that name to the actual option list for that mode.
+        dv_bank = DataValidation(
+            type="list",
+            formula1=f'=INDIRECT(VLOOKUP(${col_mode}2,Lists!$A$2:$B${len(modes) + 1},2,FALSE))',
+            allow_blank=True,
+        )
+        dv_bank.errorTitle = "Invalid Bank / Sub-Mode"
+        dv_bank.error = "Please pick a Payment Mode first, then a matching Bank / Sub-Mode."
+        ws.add_data_validation(dv_bank)
+        dv_bank.add(f"{col_bank}2:{col_bank}{last_row}")
+
+        # ── Drawn on Bank — dropdown always available (full bank list); ──
+        # visually greyed out via conditional formatting when Payment Mode
+        # / Bank / Sub-Mode don't call for it (Pay at Bank Counter +
+        # Cheque/Demand Draft only) — true cell locking needs sheet
+        # protection + VBA, which isn't worth the fragility here; the grey
+        # fill communicates "not needed" without blocking anything.
+        dv_drawee = DataValidation(type="list", formula1=f"Mode_{_sanitize('Net Banking')}", allow_blank=True)
+        dv_drawee.errorTitle = "Invalid Bank"
+        dv_drawee.error = "Please pick a bank from the dropdown."
+        ws.add_data_validation(dv_drawee)
+        dv_drawee.add(f"{col_drawee}2:{col_drawee}{last_row}")
+
+        grey_fill = PatternFill(start_color="EEEEEE", end_color="EEEEEE", fill_type="solid")
+        grey_font = Font(color="AAAAAA")
+        applicable_formula = (
+            f'NOT(AND(${col_mode}2="Pay at Bank Counter",'
+            f'OR(${col_bank}2="Cheque",${col_bank}2="Demand Draft")))'
+        )
+        ws.conditional_formatting.add(
+            f"{col_drawee}2:{col_drawee}{last_row}",
+            FormulaRule(formula=[applicable_formula], fill=grey_fill, font=grey_font),
+        )
+
+        wb.save(path)
+
+    # ── Accept ───────────────────────────────────────────────────────────
+
+    def _on_generate_clicked(self):
+        if not self.fy_value:
+            QMessageBox.warning(self, "No Year Selected", "Please select an Assessment / Tax Year.")
+            return
+        try:
+            self._resolve_tax_type(self.fy_value, self._ay_entries)
+        except Exception as e:
+            QMessageBox.critical(self, "Year Not Ready", str(e))
+            return
+
+        rows = [dict(row) for row in self._row_data if self._row_is_ready(row)]
+        if not rows:
+            QMessageBox.warning(self, "Nothing to Generate", "No rows are ready to generate.")
+            return
+
+        self.rows = rows
+        self.accept()
+class ChallanGenerationProgressDialog(QDialog):
+    """
+    Live progress popup for a Generate Tax Challans run (F-64). Deliberately
+    NOT a reuse of BatchProgressDialog — that class's rows are a hardcoded
+    `targets × year_specs` cross-product built for multiple years per run;
+    this feature has exactly one FY/Tax Type for the whole run (see
+    GenerateChallansDialog). Rows are keyed by their position in `targets`,
+    not by PAN — a client can appear more than once in the same run (e.g.
+    a Cash challan up to the ₹10,000 cap plus a Cheque challan for the
+    remainder), and keying by PAN alone would collide both rows' status
+    updates onto whichever one was registered last.
+    """
+    _update_signal = pyqtSignal(int, str)   # row_index, status
+    _path_signal = pyqtSignal(int, str)     # row_index, path
+    _done_signal = pyqtSignal()
+
+    _COL_NAME = 0
+    _COL_PAN = 1
+    _COL_STATUS = 2
+    _COL_PATH = 3
+
+    def __init__(self, targets: list, year_display: str, type_label: str,
+                 stop_callback=None, tray_callback=None, output_dir: str = "", parent=None):
+        super().__init__(parent)
+        self._stop_callback = stop_callback
+        self._tray_callback = tray_callback
+        self._output_dir = output_dir
+        self._targets = targets
+        self._last_report_path = ""
+
+        self.setWindowTitle(f"Generate Tax Challans — {year_display} — Batch Progress")
+        self.setMinimumSize(820, 460)
+        self.resize(960, min(160 + len(targets) * 42, 680))
+        self.setSizeGripEnabled(True)
+        _bt = _t()
+        self.setStyleSheet(f"QDialog{{background:{_bt.bg_window};}}")
+
+        self._counted_rows = set()
+        self._done_count = 0
+        self._total = len(targets)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 14, 16, 12)
+        layout.setSpacing(8)
+
+        title = QLabel(f"<b>Generating Tax Challans</b> — {len(targets)} client(s) "
+                        f"&nbsp;·&nbsp; <span style='color:{_bt.accent}'>{year_display} → {type_label}</span>")
+        title.setStyleSheet(f"font-size:14px; color:{_bt.text_primary}; background:transparent;")
+        layout.addWidget(title)
+
+        self._table = QTableWidget(len(targets), 4)
+        self._table.setHorizontalHeaderLabels(["Name", "PAN", "Status", "Artifact"])
+        hdr = self._table.horizontalHeader()
+        hdr.setSectionResizeMode(self._COL_NAME, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(self._COL_PAN, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(self._COL_STATUS, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(self._COL_PATH, QHeaderView.ResizeMode.Stretch)
+        self._table.setColumnWidth(self._COL_NAME, 180)
+        self._table.setColumnWidth(self._COL_PAN, 120)
+        self._table.setColumnWidth(self._COL_STATUS, 260)
+        self._table.verticalHeader().setVisible(False)
+        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self._table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        # Same theme-aware table/header styling BatchProgressDialog already
+        # uses — without it, QTableWidget (and the QProgressBar below)
+        # fall back to native light-mode colors regardless of the app's
+        # theme, same bug already fixed once for GenerateChallansDialog's
+        # own table but missed here.
+        self._table.setStyleSheet(
+            f"QTableWidget{{border:1.5px solid {_bt.border};border-radius:8px;"
+            f"background:{_bt.bg_table};outline:0;gridline-color:{_bt.grid};}}"
+            f"QTableWidget::item{{border-bottom:1px solid {_bt.grid};padding:0 8px;}}")
+        hdr.setStyleSheet(
+            f"QHeaderView::section{{"
+            f"background-color:{_bt.bg_header};"
+            f"border:none;"
+            f"border-right:1px solid {_bt.border};"
+            f"border-bottom:1px solid {_bt.border};"
+            f"font-weight:bold;color:{_bt.text_muted};"
+            f"font-size:11px;height:34px;"
+            f"padding:0 8px;}}")
+
+        for row, tgt in enumerate(targets):
+            pan = tgt.get("pan", "")
+            self._table.setRowHeight(row, 40)
+            name_item = QTableWidgetItem(tgt.get("name", "—"))
+            name_item.setForeground(QColor(_bt.text_primary))
+            self._table.setItem(row, self._COL_NAME, name_item)
+            pan_item = QTableWidgetItem(pan)
+            pan_item.setFont(QFont(_MONO_FONT, 10))
+            pan_item.setForeground(QColor(_bt.text_muted))
+            self._table.setItem(row, self._COL_PAN, pan_item)
+            status_item = QTableWidgetItem("⬜ Waiting")
+            status_item.setForeground(QColor(_bt.text_primary))
+            self._table.setItem(row, self._COL_STATUS, status_item)
+            path_lbl = QLabel("—")
+            path_lbl.setStyleSheet(f"color:{_bt.text_muted};font-size:11px;padding:0 8px;background:transparent;")
+            path_lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+            path_lbl.setWordWrap(False)
+            path_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+            path_lbl.setOpenExternalLinks(False)
+            path_lbl.linkActivated.connect(self._open_row_path)
+            self._table.setCellWidget(row, self._COL_PATH, path_lbl)
+
+        layout.addWidget(self._table, stretch=1)
+
+        self._progress_bar = QProgressBar()
+        self._progress_bar.setRange(0, self._total)
+        self._progress_bar.setFixedHeight(18)
+        self._progress_bar.setTextVisible(True)
+        self._progress_bar.setFormat(f"0 / {self._total} done")
+        self._progress_bar.setStyleSheet(
+            f"QProgressBar{{border:1px solid {_bt.border};border-radius:9px;"
+            f"background:{_bt.scrollbar_handle};text-align:center;font-size:11px;"
+            f"font-weight:600;color:{_bt.accent_text};}}"
+            f"QProgressBar::chunk{{background:#16A34A;border-radius:9px;}}")
+        layout.addWidget(self._progress_bar)
+
+        footer = QHBoxLayout()
+        self._loc_val = QLabel(output_dir or "—")
+        self._loc_val.setStyleSheet(f"color:{_bt.text_muted};font-size:11px;background:transparent;")
+        self._loc_val.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        footer.addWidget(self._loc_val, stretch=1)
+
+        self._open_folder_btn = _btn("📂  Open Folder", "outline")
+        self._open_folder_btn.clicked.connect(self._open_output_dir)
+        footer.addWidget(self._open_folder_btn)
+
+        self._report_btn = _btn("📊  Open Summary", "outline")
+        self._report_btn.setEnabled(False)
+        self._report_btn.clicked.connect(self._open_report)
+        footer.addWidget(self._report_btn)
+
+        self._tray_btn = _btn("⬇  Tray", "outline")
+        self._tray_btn.setToolTip("Hide to system tray — click the tray icon to restore")
+        self._tray_btn.setVisible(bool(self._tray_callback))
+        self._tray_btn.clicked.connect(self._on_tray_clicked)
+        footer.addWidget(self._tray_btn)
+
+        self._stop_btn = _btn("⏹  Stop", "danger")
+        self._stop_btn.clicked.connect(self._on_stop_clicked)
+        footer.addWidget(self._stop_btn)
+        layout.addLayout(footer)
+
+        self._update_signal.connect(self._on_update)
+        self._path_signal.connect(self._on_path)
+
+    def set_status(self, row_index, text):
+        self._update_signal.emit(row_index, text)
+
+    def set_artifact_path(self, row_index, path):
+        self._path_signal.emit(row_index, path)
+
+    def set_report_path(self, path):
+        self._last_report_path = path
+        self._report_btn.setEnabled(bool(path))
+
+    def _on_update(self, row_index, text):
+        if not (0 <= row_index < self._total):
+            return
+        self._table.item(row_index, self._COL_STATUS).setText(text)
+        terminal = ("✅", "❌", "🕐", "⏹", "⬜", "⚠")
+        if row_index not in self._counted_rows and any(text.startswith(p) for p in terminal) and text != "⬜ Waiting":
+            self._counted_rows.add(row_index)
+            self._done_count += 1
+            self._progress_bar.setValue(self._done_count)
+            self._progress_bar.setFormat(f"{self._done_count} / {self._total} done")
+
+    def _on_path(self, row_index, path):
+        if not (0 <= row_index < self._total):
+            return
+        lbl = self._table.cellWidget(row_index, self._COL_PATH)
+        if lbl:
+            # BUG FIX (2026-09-02): this was plain setText(path) — no <a
+            # href> markup and the label was never given
+            # TextBrowserInteraction/linkActivated wiring at row-creation
+            # time either, so the path rendered as inert text that only
+            # looked clickable. Match BatchProgressDialog's row-link
+            # pattern (_on_path_update) so clicking it actually opens the
+            # file/folder via _open_row_path.
+            lbl.setText(
+                f'<a href="{path}" style="color:#2563EB;text-decoration:underline;">'
+                f'{path}</a>')
+            lbl.setToolTip(path)
+
+    def batch_finished(self):
+        # A disabled "Stop" button once nothing is left to stop reads as
+        # broken, not finished — turn it into a real "Close" action instead.
+        _bt = _t()
+        self._stop_btn.setText("Close")
+        self._stop_btn.setStyleSheet(
+            f"QPushButton{{background:{_bt.bg_table_alt};color:{_bt.text_primary};"
+            f"border:1px solid {_bt.border};border-radius:6px;padding:6px 14px;"
+            f"font-weight:bold;font-size:12px;}}"
+            f"QPushButton:hover{{background:{_bt.bg_input};}}")
+        self._stop_btn.clicked.disconnect()
+        self._stop_btn.clicked.connect(self.accept)
+        self._stop_btn.setEnabled(True)
+        self._tray_btn.setVisible(False)  # nothing left to send to tray for
+
+    def _on_stop_clicked(self):
+        if self._stop_callback:
+            self._stop_callback()
+        self._stop_btn.setEnabled(False)
+
+    def _on_tray_clicked(self):
+        if self._tray_callback:
+            self._tray_callback()
+
+    def _open_output_dir(self):
+        if self._output_dir:
+            _open_path(self._output_dir)
+
+    def _open_report(self):
+        if self._last_report_path:
+            _open_path(self._last_report_path)
+
+    def _open_row_path(self, url: str):
+        _open_path(url)
 
 
 # ── Download Picker Dialog (F-56 Phase 3) ─────────────────────────────────────

@@ -128,14 +128,20 @@ async def _click_efile_challans(page: Page, log_callback) -> None:
             await asyncio.sleep(5)
 
 
-async def _navigate_to_payment_history(page: Page, log_callback, year_type: str) -> Page:
+async def navigate_to_epay_tax_act(page: Page, log_callback, year_type: str) -> Page:
     """One-time navigation per Act group: e-File > e-Pay Tax > select
-    Income-tax Act (1961 for AY years, 2025 for TY years) > Payment History
-    tab. F-14 (multi-year): this is the expensive/fragile part, so it runs
-    ONCE per client per Act group; callers loop the per-year filter+scan
-    afterward on this same already-open page — same shape as 26AS/Form 168's
-    TRACES-1.0-vs-2.0 split, since the Act choice is likewise fixed for the
-    whole navigation and can't be changed mid-session."""
+    Income-tax Act (1961 for AY years, 2025 for TY years) > Continue,
+    landing on the e-Pay Tax dashboard (Saved Drafts / Generated Challans /
+    Payment History tabs, "+ New Payment" button). Shared by
+    automation/downloader_challans.py's own Payment-History-tab flow (F-61)
+    and automation/challan_generator.py's New-Payment flow (F-64) — both
+    need this exact same Act-selection dance and nothing past it differs.
+
+    F-14 (multi-year): this is the expensive/fragile part, so it runs ONCE
+    per client per Act group; callers loop/branch afterward on this same
+    already-open page — same shape as 26AS/Form 168's TRACES-1.0-vs-2.0
+    split, since the Act choice is likewise fixed for the whole navigation
+    and can't be changed mid-session."""
     log_callback("[CHALLAN] Opening hamburger menu (if collapsed)...")
     await open_hamburger(page, log_callback, prefix="CHALLAN")
 
@@ -184,6 +190,14 @@ async def _navigate_to_payment_history(page: Page, log_callback, year_type: str)
     await _click_visible_exact_text(page, "button", "Continue", log_callback, "CHALLAN")
     await page.wait_for_load_state("domcontentloaded", timeout=30000)
     await asyncio.sleep(1.0)
+
+    return page
+
+
+async def _navigate_to_payment_history(page: Page, log_callback, year_type: str) -> Page:
+    """F-61: e-Pay Tax dashboard > Payment History tab, on top of the shared
+    Act-selection flow in navigate_to_epay_tax_act()."""
+    await navigate_to_epay_tax_act(page, log_callback, year_type)
 
     log_callback("[CHALLAN] Clicking Payment History tab...")
     payment_history_tab = page.locator("//*[normalize-space(.)='Payment History']").first
