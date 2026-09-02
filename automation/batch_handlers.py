@@ -32,6 +32,7 @@ import asyncio
 
 from automation.downloader_ais_tis import run_request_ais, run_download_ais_tis
 from automation.downloader_filed_returns import download_filed_returns
+from automation.downloader_challans import download_challans
 from forms import form_spec, DEFAULT_FORM
 
 DOC_TYPE_LABELS = {
@@ -39,6 +40,7 @@ DOC_TYPE_LABELS = {
     "request_ais": "AIS Request",
     "ais_tis": "AIS/TIS",
     "filed_returns": "Filed Returns",
+    "challans": "Tax Challans",
 }
 
 
@@ -96,13 +98,18 @@ async def handle_26as(page, pan, dob, year_specs, out_for_year, log_callback, se
         _form = _spec["label"]
         year_type = group_specs[0]["year_type"]
         values = [s["value"] for s in group_specs]
+        value_to_ay_label = {s["value"]: s["ay_label"] for s in group_specs}
         for s in group_specs:
-            set_status(pan, s["ay_label"], f"⏳ Downloading {_form}...")
+            set_status(pan, s["ay_label"], f"⏳ Queued — {_form}")
 
         def _out_for_value(value, _yt=year_type):
             return out_for_year(_yt, value)
 
-        results = await _spec["download"](page, values, _out_for_value, log_callback, pan=pan, dob=dob)
+        def _on_year_start(value, _map=value_to_ay_label, _form=_form):
+            set_status(pan, _map.get(value, value), f"⏳ Downloading {_form}...")
+
+        results = await _spec["download"](page, values, _out_for_value, log_callback, pan=pan, dob=dob,
+                                           on_year_start=_on_year_start)
 
         for value, (ok, err_msg, txt_path) in results.items():
             ay_label = ay_label_by_value.get(value, value)
@@ -140,7 +147,7 @@ async def handle_request_ais(page, pan, dob, year_specs, out_for_year, log_callb
     fy_to_ay_label = {s["fy"]: s["ay_label"] for s in year_specs}
 
     for s in year_specs:
-        set_status(pan, s["ay_label"], "⏳ Opening AIS portal...")
+        set_status(pan, s["ay_label"], "⏳ Queued — AIS + TIS")
 
     def _out_for_fy(fy):
         # AIS/TIS folders are keyed by FY, always under the "AY_"-style
@@ -150,9 +157,13 @@ async def handle_request_ais(page, pan, dob, year_specs, out_for_year, log_callb
         value = spec["value"] if spec else fy
         return out_for_year(yt, value)
 
+    def _on_year_start(fy):
+        set_status(pan, fy_to_ay_label.get(fy, fy), "⏳ Requesting AIS + TIS...")
+
     results = await run_request_ais(page, fiscal_years, _out_for_fy, log_callback,
                                      pan=pan, dob=dob,
-                                     status_callback=lambda t, _p=pan: log_callback(f"[AIS-Request] {t}"))
+                                     status_callback=lambda t, _p=pan: log_callback(f"[AIS-Request] {t}"),
+                                     on_year_start=_on_year_start)
     ais_statuses = {}
     ref_ids = {}
     for fy, outcome in results.items():
@@ -181,7 +192,7 @@ async def handle_ais_tis(page, pan, dob, year_specs, out_for_year, log_callback,
     fy_to_ay_label = {s["fy"]: s["ay_label"] for s in year_specs}
 
     for s in year_specs:
-        set_status(pan, s["ay_label"], "⏳ Downloading AIS from Activity History...")
+        set_status(pan, s["ay_label"], "⏳ Queued — AIS from Activity History")
 
     def _out_for_fy(fy):
         spec = next((s for s in year_specs if s["fy"] == fy), None)
@@ -189,11 +200,15 @@ async def handle_ais_tis(page, pan, dob, year_specs, out_for_year, log_callback,
         value = spec["value"] if spec else fy
         return out_for_year(yt, value)
 
+    def _on_year_start(fy):
+        set_status(pan, fy_to_ay_label.get(fy, fy), "⏳ Downloading AIS from Activity History...")
+
     results = await run_download_ais_tis(
         page, fiscal_years, _out_for_fy, log_callback, pan=pan, dob=dob,
         dl_ais=True, dl_tis=False,
         should_continue=(is_running if is_running else (lambda: True)),
-        status_callback=lambda t: log_callback(f"[AIS-Download] {t}"))
+        status_callback=lambda t: log_callback(f"[AIS-Download] {t}"),
+        on_year_start=_on_year_start)
 
     from automation.downloader_ais_tis import combined_status_label
     for fy, outcome in results.items():
@@ -209,15 +224,19 @@ async def handle_filed_returns(page, pan, dob, year_specs, out_for_year, log_cal
     values = [s["value"] for s in year_specs]
 
     for s in year_specs:
-        set_status(pan, s["ay_label"], "⏳ Downloading Filed Returns...")
+        set_status(pan, s["ay_label"], "⏳ Queued — Filed Returns")
 
     def _out_for_value(value):
         spec = next((s for s in year_specs if s["value"] == value), None)
         yt = spec["year_type"] if spec else "AY"
         return out_for_year(yt, value)
 
+    def _on_year_start(value):
+        set_status(pan, ay_label_by_value.get(value, value), "⏳ Downloading Filed Returns...")
+
     results = await download_filed_returns(
-        page, values, _out_for_value, log_callback, pan=pan, dob=dob, filing_scope=filing_scope
+        page, values, _out_for_value, log_callback, pan=pan, dob=dob, filing_scope=filing_scope,
+        on_year_start=_on_year_start,
     )
 
     all_saved = []
@@ -234,11 +253,58 @@ async def handle_filed_returns(page, pan, dob, year_specs, out_for_year, log_cal
     return {"saved": all_saved}
 
 
+async def handle_challans(page, pan, dob, year_specs, out_for_year, log_callback, set_status,
+                           filing_scope="all", is_running=None) -> dict:
+    """e-Pay Tax's Payment History is scoped to ONE Income-tax Act per
+    navigation (1961 for AY years, 2025 for TY years) — same reason 26AS
+    and Form 168 can't share one open-once session — so this partitions
+    year_specs by year_type and calls download_challans() at most once per
+    group (0, 1, or 2 navigations total, never once per year)."""
+    await ensure_dashboard(page, log_callback)
+
+    ay_specs = [s for s in year_specs if s["year_type"] != "TY"]
+    ty_specs = [s for s in year_specs if s["year_type"] == "TY"]
+
+    all_saved = []
+    for group_specs, group_year_type in ((ay_specs, "AY"), (ty_specs, "TY")):
+        if not group_specs:
+            continue
+        value_to_ay_label = {s["value"]: s["ay_label"] for s in group_specs}
+        values = [s["value"] for s in group_specs]
+        for s in group_specs:
+            set_status(pan, s["ay_label"], "⏳ Queued — Tax Challans")
+
+        def _out_for_value(value, _yt=group_year_type):
+            return out_for_year(_yt, value)
+
+        def _on_year_start(value, _map=value_to_ay_label):
+            set_status(pan, _map.get(value, value), "⏳ Downloading Tax Challans...")
+
+        results = await download_challans(
+            page, values, _out_for_value, log_callback, pan=pan, dob=dob,
+            year_type=group_year_type, on_year_start=_on_year_start,
+        )
+
+        for value, (ok, msg, saved) in results.items():
+            ay_label = value_to_ay_label.get(value, value)
+            all_saved.extend(saved)
+            if ok:
+                if msg:
+                    set_status(pan, ay_label, f"⚠ Partially Completed — {msg}")
+                else:
+                    set_status(pan, ay_label, f"✅ Challans Downloaded ({len(saved)} file(s))")
+            else:
+                set_status(pan, ay_label, f"❌ Challans Failed — {msg}")
+
+    return {"saved": all_saved}
+
+
 HANDLERS = {
     "26as": handle_26as,
     "request_ais": handle_request_ais,
     "ais_tis": handle_ais_tis,
     "filed_returns": handle_filed_returns,
+    "challans": handle_challans,
 }
 
 # Filed Returns has only ever been tested (and confirmed working) running
@@ -247,9 +313,15 @@ HANDLERS = {
 # Returns first, then 26AS) has never been tried. Reload/new-tab resets are
 # both ruled out (they log the session out entirely — confirmed live), so
 # as a cheap, low-risk experiment, always dispatch Filed Returns before the
-# other e-File-based handler (26AS); AIS handlers don't use the e-File menu
-# at all, so their position doesn't matter for this bug.
-HANDLER_ORDER = ["filed_returns", "26as", "request_ais", "ais_tis"]
+# other e-File-based handlers; AIS handlers don't use the e-File menu at
+# all, so their position doesn't matter for this bug. Challans (F-61) is
+# also e-File-based (e-Pay Tax hangs directly off the same menu) but is
+# brand new and untested in multi-select batches — placed last among the
+# e-File handlers so any second/third-handler fragility hits the newest,
+# least-trusted code first rather than regressing the two already-proven
+# handlers; needs live multi-select testing (e.g. Filed Returns + Challans,
+# 26AS + Challans) before this ordering can be trusted.
+HANDLER_ORDER = ["filed_returns", "26as", "challans", "request_ais", "ais_tis"]
 
 
 def ordered_doc_types(selected_docs):

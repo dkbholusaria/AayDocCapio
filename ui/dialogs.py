@@ -240,6 +240,7 @@ class BatchProgressDialog(QDialog):
             "request_ais":    "Requesting AIS Generation",
             "ais_tis":        "AIS / TIS",
             "filed_returns":  "Filed Returns",
+            "challans":       "Tax Challans",
         }
         mode_label = " + ".join(
             _doc_labels.get(d, d) for d in sorted(selected_docs)
@@ -1603,6 +1604,7 @@ class SmtpSettingsDialog(QDialog):
             ("ITR Receipt", "itr_receipt"),
             ("ITR-V",       "itr_v"),
             ("Intimation",  "intimation"),
+            ("Challan",     "challan_pdf"),
         ]:
             cb = QCheckBox(label)
             cb.setChecked(True)
@@ -2414,6 +2416,9 @@ class DownloadPickerDialog(QDialog):
 
         itr_cb = add_option("filed_returns", "ITR Return + Intimation Orders",
                              "Form, Receipt (or ITR-V), JSON, and any Intimation Orders")
+
+        add_option("challans", "Tax Payment Challans",
+                    "Downloads challan PDFs from e-Pay Tax Payment History for the selected year")
 
         self._scope_panel = QFrame()
         self._scope_panel.setStyleSheet(

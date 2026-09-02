@@ -1654,7 +1654,7 @@ class AayDocCapioApp(QMainWindow):
             if len(breakdown) > 1:
                 _doc_labels = {"26as": "26AS/Form 168", "request_ais": "AIS Request",
                                "ais_tis": "AIS/TIS", "filed_returns": "Filed Returns",
-                               "legacy": "Download"}
+                               "challans": "Tax Challans", "legacy": "Download"}
                 tooltip_text = "\n".join(
                     f"{_doc_labels.get(dt, dt)}: {st}" for dt, st in breakdown
                 )
