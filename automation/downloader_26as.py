@@ -363,13 +363,17 @@ async def _download_26as_for_year(traces_page: Page, assessment_year: str, downl
 
 
 async def download_26as(page: Page, assessment_years: list[str], download_dir_for_year,
-                         log_callback, pan: str = "", dob: str = "") -> dict[str, tuple[bool, str, str]]:
+                         log_callback, pan: str = "", dob: str = "",
+                         on_year_start=None) -> dict[str, tuple[bool, str, str]]:
     """F-14 (multi-year) entry point. Navigates to TRACES 1.0's Tax Credit
     section ONCE, then for each Assessment Year in `assessment_years`:
     reselects the AY dropdown on the same already-open TRACES tab and
     downloads that year's PDF+TXT into `download_dir_for_year(assessment_year)`.
     Returns {assessment_year: (ok, msg, txt_path)} — same per-year result
-    shape the single-year version used to return directly."""
+    shape the single-year version used to return directly.
+
+    `on_year_start(assessment_year)`, if given, fires right before that
+    year's download begins."""
     results: dict[str, tuple[bool, str, str]] = {}
     try:
         traces_page = await _navigate_to_traces_1_0(page, log_callback)
@@ -386,6 +390,8 @@ async def download_26as(page: Page, assessment_years: list[str], download_dir_fo
 
     try:
         for assessment_year in assessment_years:
+            if on_year_start:
+                on_year_start(assessment_year)
             download_dir = download_dir_for_year(assessment_year)
             results[assessment_year] = await _download_26as_for_year(
                 traces_page, assessment_year, download_dir, log_callback, pan=pan, dob=dob)

@@ -813,13 +813,16 @@ async def download_ais_from_activity_history(portal: Page, fiscal_year: str,
 
 async def run_request_ais(itd_page: Page, fiscal_years: list[str], download_dir_for_year,
                           log, pan: str = "", dob: str = "",
-                          status_callback=None) -> dict[str, dict]:
+                          status_callback=None, on_year_start=None) -> dict[str, dict]:
     """
     Phase 1 — Called from 'Request AIS' button. Opens the Compliance Portal
     once, then for each fiscal year: selects that FY, requests AIS PDF
     generation, downloads TIS. Returns {fiscal_year: outcome_dict}, where
     each outcome_dict has the same shape as before (`.get("status")`, plus a
     `"tis"` sub-outcome).
+
+    `on_year_start(fiscal_year)`, if given, fires right before that year's
+    request/download begins (including years skipped for being pre-2021-22).
     """
     def _status(msg):
         if status_callback:
@@ -832,6 +835,8 @@ async def run_request_ais(itd_page: Page, fiscal_years: list[str], download_dir_
         await _navigate_to_ais_tab(portal, log, status_cb=status_callback)
 
         for fiscal_year in fiscal_years:
+            if on_year_start:
+                on_year_start(fiscal_year)
             fy_start = int(fiscal_year.split("-")[0]) if "-" in fiscal_year else 0
             if fy_start < 2021:
                 log(f"[AIS] Skipping FY {fiscal_year} — AIS not available before FY 2021-22.")
@@ -886,13 +891,16 @@ async def run_download_ais_tis(itd_page: Page, fiscal_years: list[str], download
                                log, pan: str = "", dob: str = "",
                                dl_ais: bool = True, dl_tis: bool = True,
                                ais_ref_ids: dict | None = None, should_continue=None,
-                               status_callback=None) -> dict[str, dict]:
+                               status_callback=None, on_year_start=None) -> dict[str, dict]:
     """
     Phase 2 — Called from 'Download AIS/TIS' button. Opens the Compliance
     Portal once, then for each fiscal year reselects FY and downloads
     whatever was requested. `ais_ref_ids` is an optional {fiscal_year: ref_id}
     map (Reference IDs from a prior request_ais call in the same batch).
     Returns {fiscal_year: {"ais": outcome, "tis": outcome}}.
+
+    `on_year_start(fiscal_year)`, if given, fires right before that year's
+    download begins.
     """
     ais_ref_ids = ais_ref_ids or {}
     results: dict[str, dict] = {}
@@ -902,6 +910,8 @@ async def run_download_ais_tis(itd_page: Page, fiscal_years: list[str], download
         await _navigate_to_ais_tab(portal, log, status_cb=status_callback)
 
         for fiscal_year in fiscal_years:
+            if on_year_start:
+                on_year_start(fiscal_year)
             fy_start = int(fiscal_year.split("-")[0]) if "-" in fiscal_year else 0
             if fy_start < 2021:
                 log(f"[AIS/TIS] Skipping FY {fiscal_year} — not available before FY 2021-22.")

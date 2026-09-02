@@ -793,13 +793,18 @@ async def download_filed_returns(
     pan: str = "",
     dob: str = "",
     filing_scope: str = "all",
+    on_year_start=None,
 ) -> dict[str, tuple[bool, str, list[dict]]]:
     """F-14 (multi-year) entry point. Navigates to "View Filed Returns" ONCE,
     then for each Assessment Year in `assessment_years`: re-applies the AY
     filter (unchecking whichever year was applied last) and processes that
     year's filings into `download_dir_for_year(assessment_year)`. Returns
     {assessment_year: (ok, msg, saved_files)} — same per-year result shape
-    the single-year version used to return directly."""
+    the single-year version used to return directly.
+
+    `on_year_start(assessment_year)`, if given, fires right before that
+    year's download begins — lets the caller update a per-year "now
+    downloading" status instead of only finding out once it's done."""
     step = make_step_logger(log_callback, "FILEDRET")
     results: dict[str, tuple[bool, str, list[dict]]] = {}
     try:
@@ -812,6 +817,8 @@ async def download_filed_returns(
 
     previous_year: str | None = None
     for assessment_year in assessment_years:
+        if on_year_start:
+            on_year_start(assessment_year)
         download_dir = download_dir_for_year(assessment_year)
         results[assessment_year] = await _download_filed_returns_for_year(
             filed_returns_page, assessment_year, download_dir, log_callback,

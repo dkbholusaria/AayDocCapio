@@ -392,12 +392,16 @@ async def _download_168_for_year(traces2_page: Page, tax_year: str, download_dir
 
 
 async def download_168(page: Page, tax_years: list[str], download_dir_for_year,
-                        log_callback, pan: str = "", dob: str = "") -> dict[str, tuple[bool, str, str]]:
+                        log_callback, pan: str = "", dob: str = "",
+                        on_year_start=None) -> dict[str, tuple[bool, str, str]]:
     """F-14 (multi-year) entry point. Navigates to TRACES 2.0's Form 168
     screen ONCE, then for each Tax Year in `tax_years`: reselects the Tax
     Year dropdown on the same already-open TRACES 2.0 tab and downloads
     that year's PDF+Excel+TXT into `download_dir_for_year(tax_year)`.
-    Returns {tax_year: (ok, msg, txt_path)}."""
+    Returns {tax_year: (ok, msg, txt_path)}.
+
+    `on_year_start(tax_year)`, if given, fires right before that year's
+    download begins."""
     results: dict[str, tuple[bool, str, str]] = {}
     try:
         traces2_page = await _navigate_to_traces_2_0(page, log_callback)
@@ -412,6 +416,8 @@ async def download_168(page: Page, tax_years: list[str], download_dir_for_year,
 
     try:
         for tax_year in tax_years:
+            if on_year_start:
+                on_year_start(tax_year)
             download_dir = download_dir_for_year(tax_year)
             results[tax_year] = await _download_168_for_year(
                 traces2_page, tax_year, download_dir, log_callback, pan=pan, dob=dob)
