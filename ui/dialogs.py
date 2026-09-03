@@ -3022,7 +3022,7 @@ class GenerateChallansDialog(QDialog):
                 f"Missing required columns: {', '.join(missing)}. Headers must include PAN and Tax.")
             return
 
-        from automation.challan_generator import DEFAULT_PAYMENT_MODE, DEFAULT_BANK
+        from automation.challan_generator import DEFAULT_PAYMENT_MODE, DEFAULT_BANK, all_bank_options
 
         added = 0
         errors = []
@@ -3040,10 +3040,22 @@ class GenerateChallansDialog(QDialog):
                     errors.append(f"Row {row_num}: Missing PAN.")
                     continue
 
+                row_payment_mode = _cell("payment_mode") or DEFAULT_PAYMENT_MODE
+                # BUG FIX (2026-09-03): confirmed live — defaulting a blank
+                # "bank" cell to DEFAULT_BANK ("Cheque") regardless of mode
+                # left RTGS/NEFT rows (which have no bank picklist at all —
+                # confirmed live via a portal screenshot showing the
+                # RTGS/NEFT tab going straight to Continue with no bank
+                # selection UI) carrying a stray "Cheque" that doesn't match
+                # anything on that tab, sending the automation on a 30s hunt
+                # for a nonexistent "Other Bank" option. Only default to
+                # DEFAULT_BANK when this mode actually has banks to pick
+                # from — same rule the row-detail dialog's _on_mode_changed
+                # already applies interactively.
                 new_row = {
                     "pan": pan,
-                    "payment_mode": _cell("payment_mode") or DEFAULT_PAYMENT_MODE,
-                    "bank": _cell("bank") or DEFAULT_BANK,
+                    "payment_mode": row_payment_mode,
+                    "bank": _cell("bank") or (DEFAULT_BANK if all_bank_options(row_payment_mode) else ""),
                     "drawee_bank": _cell("drawee_bank") or "",
                 }
                 bad_amount = False
