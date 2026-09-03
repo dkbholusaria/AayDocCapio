@@ -2909,6 +2909,16 @@ class GenerateChallansDialog(QDialog):
                 pass
         return total
 
+    def _row_missing_bank(self, row: dict) -> bool:
+        # A mode with its own bank/sub-mode picklist (i.e. not RTGS/NEFT,
+        # which has none at all) needs that field filled in — confirmed
+        # live via the "app automatically picked 'Cheque'" bug report:
+        # a blank Bank / Sub-Mode must never silently run on the portal.
+        from automation.challan_generator import all_bank_options
+        mode = row.get("payment_mode", "")
+        bank = row.get("bank", "")
+        return bool(all_bank_options(mode)) and not bank
+
     def _row_is_ready(self, row: dict) -> bool:
         pan = (row.get("pan") or "").upper()
         if not pan:
@@ -2920,6 +2930,8 @@ class GenerateChallansDialog(QDialog):
         if total <= 0:
             return False
         if self._cash_limit_exceeded(row.get("payment_mode", ""), row.get("bank", ""), total):
+            return False
+        if self._row_missing_bank(row):
             return False
         return True
 
@@ -2953,9 +2965,15 @@ class GenerateChallansDialog(QDialog):
 
             mode = row.get("payment_mode", "")
             bank = row.get("bank", "")
-            mode_text = f"{mode} / {bank}" if bank else mode
+            if self._row_missing_bank(row):
+                mode_text = f"{mode} — ⚠ Bank / Sub-Mode required"
+            else:
+                mode_text = f"{mode} / {bank}" if bank else mode
             mode_item = QTableWidgetItem(mode_text)
-            mode_item.setForeground(QColor(_bt.text_primary))
+            if self._row_missing_bank(row):
+                mode_item.setForeground(QColor(getattr(_bt, "warning", "#D97706")))
+            else:
+                mode_item.setForeground(QColor(_bt.text_primary))
             self._table.setItem(i, self._COL_MODE, mode_item)
 
         self._update_footer_counts()
@@ -3026,6 +3044,7 @@ class GenerateChallansDialog(QDialog):
 
         added = 0
         errors = []
+        warnings = []
         for idx, raw_row in enumerate(data_rows):
             row_num = idx + 2
             try:
@@ -3041,23 +3060,35 @@ class GenerateChallansDialog(QDialog):
                     continue
 
                 row_payment_mode = _cell("payment_mode") or DEFAULT_PAYMENT_MODE
-                # BUG FIX (2026-09-03): confirmed live — defaulting a blank
-                # "bank" cell to DEFAULT_BANK ("Cheque") regardless of mode
-                # left RTGS/NEFT rows (which have no bank picklist at all —
-                # confirmed live via a portal screenshot showing the
-                # RTGS/NEFT tab going straight to Continue with no bank
-                # selection UI) carrying a stray "Cheque" that doesn't match
-                # anything on that tab, sending the automation on a 30s hunt
-                # for a nonexistent "Other Bank" option. Only default to
-                # DEFAULT_BANK when this mode actually has banks to pick
-                # from — same rule the row-detail dialog's _on_mode_changed
-                # already applies interactively.
+                row_bank_options = all_bank_options(row_payment_mode)
+                # BUG FIX (2026-09-03): confirmed live, twice — the first
+                # round only fixed RTGS/NEFT (no bank picklist at all, so
+                # any default was wrong); this round confirmed live that
+                # the same DEFAULT_BANK ("Cheque") was still being applied
+                # to EVERY other mode with a blank Bank / Sub-Mode cell too,
+                # including Net Banking — where "Cheque" isn't a valid
+                # option at all (it's a Pay at Bank Counter sub-mode).
+                # DEFAULT_BANK is only ever a sensible guess for Pay at
+                # Bank Counter, so only default to it when it's actually
+                # one of this mode's own options; every other mode with a
+                # blank Bank / Sub-Mode is a genuinely missing mandatory
+                # field, not something to guess at — leave it blank and
+                # flag the row (see the missing-mandatory-bank check
+                # below), same as a missing PAN is flagged rather than
+                # silently guessed.
+                default_bank = DEFAULT_BANK if DEFAULT_BANK in row_bank_options else ""
+                row_bank = _cell("bank") or default_bank
                 new_row = {
                     "pan": pan,
                     "payment_mode": row_payment_mode,
-                    "bank": _cell("bank") or (DEFAULT_BANK if all_bank_options(row_payment_mode) else ""),
+                    "bank": row_bank,
                     "drawee_bank": _cell("drawee_bank") or "",
                 }
+                if row_bank_options and not row_bank:
+                    warnings.append(
+                        f"Row {row_num}: Payment Mode '{row_payment_mode}' needs a Bank / Sub-Mode — "
+                        f"row imported but flagged, won't run until fixed."
+                    )
                 bad_amount = False
                 for key, label, kind in self._columns:
                     if kind != "amount":
@@ -3082,8 +3113,12 @@ class GenerateChallansDialog(QDialog):
         self._refresh_table()
         summary = f"{added} row(s) imported"
         if errors:
-            summary += f", {len(errors)} skipped — see details"
-            QMessageBox.warning(self, "Import Complete", summary + "\n\n" + "\n".join(errors))
+            summary += f", {len(errors)} skipped"
+        if warnings:
+            summary += f", {len(warnings)} flagged (missing Bank / Sub-Mode)"
+        if errors or warnings:
+            summary += " — see details"
+            QMessageBox.warning(self, "Import Complete", summary + "\n\n" + "\n".join(errors + warnings))
         else:
             QMessageBox.information(self, "Import Complete", summary + ".")
 
