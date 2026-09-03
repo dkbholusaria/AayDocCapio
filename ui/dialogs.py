@@ -3265,6 +3265,7 @@ class GenerateChallansDialog(QDialog):
         import re
         from openpyxl import Workbook
         from openpyxl.worksheet.datavalidation import DataValidation
+        from openpyxl.worksheet.table import Table, TableStyleInfo
         from openpyxl.formatting.rule import FormulaRule
         from openpyxl.styles import PatternFill, Font, Alignment
         from openpyxl.utils import get_column_letter
@@ -3287,6 +3288,30 @@ class GenerateChallansDialog(QDialog):
         col_bank = _col("Bank / Sub-Mode")
         col_drawee = _col("Drawn on Bank")
         last_row = max(len(rows), 1) + 200  # headroom for rows added later in Excel
+
+        # ── Format the data itself as a real Excel Table ─────────────────
+        # A plain grid of unstyled cells is what the user's screenshot
+        # showed — banded rows, a styled header, filter arrows, and
+        # sized-to-content columns make it read as an actual data sheet
+        # rather than a raw CSV pasted into Excel.
+        last_col_letter = get_column_letter(len(headers))
+        table_last_row = len(rows) + 1  # header + actual data rows only —
+        # the 200-row headroom above is for validation/dropdowns further
+        # down the sheet, not part of the table itself; Excel auto-grows
+        # the table when a user types into the row right below it.
+        tab = Table(displayName="Challans", ref=f"A1:{last_col_letter}{table_last_row}")
+        tab.tableStyleInfo = TableStyleInfo(
+            name="TableStyleMedium2", showFirstColumn=False, showLastColumn=False,
+            showRowStripes=True, showColumnStripes=False,
+        )
+        ws.add_table(tab)
+        ws.freeze_panes = "A2"
+        for i, label in enumerate(headers, start=1):
+            width = max(12, min(30, len(label) + 4))
+            ws.column_dimensions[get_column_letter(i)].width = width
+        for row_cells in ws.iter_rows(min_row=2, max_row=max(table_last_row, 2), max_col=len(headers)):
+            for cell in row_cells:
+                cell.alignment = Alignment(vertical="center")
 
         # ── Hidden "Lists" sheet backing every dropdown ──────────────────
         # Excel's in-cell list validation (formula1='"A,B,C"') caps at 255
