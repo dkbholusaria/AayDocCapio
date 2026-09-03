@@ -3202,13 +3202,64 @@ class GenerateChallansDialog(QDialog):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed: {e}")
 
+    def _instructions_text(self) -> str:
+        """Plain-text version of the Instructions sheet, for the CSV export
+        path (CSV has no second sheet to carry it)."""
+        lines = [
+            "HOW TO FILL IN THIS TEMPLATE",
+            "=" * 29,
+            "",
+            'One row per client. If you are using the Excel version instead, do not '
+            'edit the hidden "Lists" sheet — it only supplies the dropdowns on the '
+            '"Challans" sheet.',
+            "",
+            "PAN",
+            "  Must match a PAN already saved in AayDocCapio's Client Master. An "
+            "unmatched PAN is flagged (not silently dropped) when you re-import this file.",
+            "",
+            "Name",
+            "  For your own reference only — never read back on import; the PAN is "
+            "the only join key.",
+            "",
+            "Payment Mode",
+            "  Pick one of the 5 real ITD payment modes: Net Banking, Debit Card, "
+            "Pay at Bank Counter, RTGS/NEFT, or Payment Gateway including UPI and Credit Card.",
+            "",
+            "Bank / Sub-Mode",
+            "  Depends on the Payment Mode on that row. RTGS/NEFT has no bank "
+            "picklist at all on the portal — leave this blank for RTGS/NEFT rows.",
+            "",
+            "Drawn on Bank",
+            "  Only applies to Pay at Bank Counter (the bank your cheque/DD/cash "
+            "payment is drawn on or paid at) — required for every Pay at Bank Counter "
+            "sub-mode, including Cash. Leave blank for every other Payment Mode.",
+            "",
+            "Tax / Surcharge / Cess / Interest / Penalty / Others",
+            "  If you only have one lump-sum figure for a client, put the whole "
+            "amount in Tax and leave the rest at 0 — that's the common case. Only "
+            "fill in the other columns when you actually have a breakup (e.g. "
+            "separate 234B/234C interest).",
+            "",
+            "Note: a row with a Payment Mode that doesn't need a Bank / Sub-Mode or "
+            "Drawn on Bank value must leave that cell blank, not filled with an "
+            "unrelated value — a blank cell there is what the app expects.",
+        ]
+        return "\n".join(lines)
+
     def _write_table_file(self, path, headers, rows):
         if path.endswith(".csv"):
             import csv
+            import re
             with open(path, "w", newline="", encoding="utf-8") as f:
                 w = csv.writer(f)
                 w.writerow(headers)
                 w.writerows(rows)
+            # CSV has no second sheet to carry the fill-in instructions, so
+            # they'd otherwise vanish entirely for anyone who picks CSV over
+            # Excel — write them as a plain-text sibling file instead.
+            instructions_path = re.sub(r"\.csv$", "", path, flags=re.IGNORECASE) + "_Instructions.txt"
+            with open(instructions_path, "w", encoding="utf-8") as f:
+                f.write(self._instructions_text())
             return
 
         import re
@@ -3378,59 +3429,107 @@ class GenerateChallansDialog(QDialog):
         # default, explaining the column-by-column expectations and the
         # grey/blank-only behavior above (which otherwise looks like an
         # unexplained restriction to anyone who hasn't read this code).
+        # Laid out as a two-column field/description table with a banner
+        # and a highlighted closing note, rather than a single wall of
+        # left-aligned text — confirmed live (a screenshot) that the
+        # original plain stacked-paragraph version read as cramped and
+        # hard to scan.
+        from openpyxl.styles import Border, Side
+
         ws_help = wb.create_sheet("Instructions", 0)
         ws_help.sheet_view.showGridLines = False
-        ws_help.column_dimensions["A"].width = 100
-        bold = Font(bold=True)
-        title_font = Font(bold=True, size=14)
-        instructions = [
-            ("How to fill in this template", title_font),
-            ("", None),
-            ("One row per client. Do not edit the hidden \"Lists\" sheet — it only "
-             "supplies the dropdowns on the \"Challans\" sheet.", None),
-            ("", None),
-            ("PAN", bold),
-            ("Must match a PAN already saved in AayDocCapio's Client Master. An "
-             "unmatched PAN is flagged (not silently dropped) when you re-import this file.", None),
-            ("", None),
-            ("Name", bold),
-            ("For your own reference only — never read back on import; the PAN is "
-             "the only join key.", None),
-            ("", None),
-            ("Payment Mode", bold),
-            ("Pick one of the 5 real ITD payment modes from the dropdown: Net "
-             "Banking, Debit Card, Pay at Bank Counter, RTGS/NEFT, or Payment "
-             "Gateway including UPI and Credit Card.", None),
-            ("", None),
-            ("Bank / Sub-Mode", bold),
-            ("Its dropdown changes to match whatever Payment Mode you picked on "
-             "that row. RTGS/NEFT has no bank picklist at all on the portal, so "
-             "for RTGS/NEFT rows this cell greys out and only accepts blank — "
-             "leave it empty.", None),
-            ("", None),
-            ("Drawn on Bank", bold),
-            ("Only applies to Pay at Bank Counter (the bank your cheque/DD/cash "
-             "payment is drawn on or paid at) — required for every Pay at Bank "
-             "Counter sub-mode, including Cash. Greys out and only accepts blank "
-             "for every other Payment Mode.", None),
-            ("", None),
-            ("Tax / Surcharge / Cess / Interest / Penalty / Others", bold),
-            ("If you only have one lump-sum figure for a client, put the whole "
-             "amount in Tax and leave the rest at 0 — that's the common case and "
-             "matches how most Advance Tax / Self-Assessment Tax payments are "
-             "entered. Only fill in the other columns when you actually have a "
-             "breakup (e.g. separate 234B/234C interest).", None),
-            ("", None),
-            ("A grey cell with a red \"stop\" error when you type into it means "
-             "that field doesn't apply to the Payment Mode you picked on that "
-             "row — leave it blank rather than trying to force a value in.", None),
+        ws_help.column_dimensions["A"].width = 28
+        ws_help.column_dimensions["B"].width = 95
+
+        BANNER_FILL = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+        HEADER_FILL = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+        BAND_FILL = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+        NOTE_FILL = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+        thin = Side(style="thin", color="BFBFBF")
+        box_border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+        r = 1
+        ws_help.merge_cells(f"A{r}:B{r}")
+        title_cell = ws_help.cell(row=r, column=1, value="How to fill in this template")
+        title_cell.font = Font(bold=True, size=16, color="FFFFFF")
+        title_cell.fill = BANNER_FILL
+        title_cell.alignment = Alignment(vertical="center", horizontal="left", indent=1)
+        ws_help.row_dimensions[r].height = 28
+        r += 1
+
+        ws_help.merge_cells(f"A{r}:B{r}")
+        intro_cell = ws_help.cell(
+            row=r, column=1,
+            value='One row per client. Do not edit the hidden "Lists" sheet — it only '
+                  'supplies the dropdowns on the "Challans" sheet.',
+        )
+        intro_cell.font = Font(italic=True, color="595959")
+        intro_cell.alignment = Alignment(wrap_text=True, vertical="top", indent=1)
+        ws_help.row_dimensions[r].height = 28
+        r += 2
+
+        header_row = r
+        for col, text in ((1, "Column"), (2, "What to enter")):
+            c = ws_help.cell(row=header_row, column=col, value=text)
+            c.font = Font(bold=True, color="1F4E78")
+            c.fill = HEADER_FILL
+            c.border = box_border
+            c.alignment = Alignment(vertical="center", indent=1)
+        r += 1
+
+        sections = [
+            ("PAN",
+             "Must match a PAN already saved in AayDocCapio's Client Master. An unmatched "
+             "PAN is flagged (not silently dropped) when you re-import this file."),
+            ("Name",
+             "For your own reference only — never read back on import; the PAN is the "
+             "only join key."),
+            ("Payment Mode",
+             "Pick one of the 5 real ITD payment modes from the dropdown: Net Banking, "
+             "Debit Card, Pay at Bank Counter, RTGS/NEFT, or Payment Gateway including "
+             "UPI and Credit Card."),
+            ("Bank / Sub-Mode",
+             "Its dropdown changes to match whatever Payment Mode you picked on that "
+             "row. RTGS/NEFT has no bank picklist at all on the portal, so for RTGS/NEFT "
+             "rows this cell greys out and only accepts blank — leave it empty."),
+            ("Drawn on Bank",
+             "Only applies to Pay at Bank Counter (the bank your cheque/DD/cash payment "
+             "is drawn on or paid at) — required for every Pay at Bank Counter sub-mode, "
+             "including Cash. Greys out and only accepts blank for every other Payment Mode."),
+            ("Tax / Surcharge / Cess /\nInterest / Penalty / Others",
+             "If you only have one lump-sum figure for a client, put the whole amount in "
+             "Tax and leave the rest at 0 — that's the common case and matches how most "
+             "Advance Tax / Self-Assessment Tax payments are entered. Only fill in the "
+             "other columns when you actually have a breakup (e.g. separate 234B/234C interest)."),
         ]
-        for text, font in instructions:
-            ws_help.append([text])
-            cell = ws_help.cell(row=ws_help.max_row, column=1)
-            if font:
-                cell.font = font
-            cell.alignment = Alignment(wrap_text=True, vertical="top")
+        for i, (field, desc) in enumerate(sections):
+            field_cell = ws_help.cell(row=r, column=1, value=field)
+            desc_cell = ws_help.cell(row=r, column=2, value=desc)
+            fill = BAND_FILL if i % 2 == 1 else None
+            for c in (field_cell, desc_cell):
+                c.border = box_border
+                if fill:
+                    c.fill = fill
+            field_cell.font = Font(bold=True)
+            field_cell.alignment = Alignment(wrap_text=True, vertical="top", indent=1)
+            desc_cell.alignment = Alignment(wrap_text=True, vertical="top", indent=1)
+            ws_help.row_dimensions[r].height = 42
+            r += 1
+
+        r += 1
+        ws_help.merge_cells(f"A{r}:B{r}")
+        note_cell = ws_help.cell(
+            row=r, column=1,
+            value='Note: A grey cell with a red "stop" error when you type into it means '
+                  'that field doesn\'t apply to the Payment Mode you picked on that row — '
+                  'leave it blank rather than trying to force a value in.',
+        )
+        note_cell.font = Font(bold=True, color="7F6000")
+        note_cell.fill = NOTE_FILL
+        note_cell.border = box_border
+        note_cell.alignment = Alignment(wrap_text=True, vertical="center", indent=1)
+        ws_help.row_dimensions[r].height = 40
+
         wb.active = wb["Instructions"]
 
         wb.save(path)
