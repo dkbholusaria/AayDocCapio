@@ -1,18 +1,17 @@
 # AayDocCapio
 
-**v2.3.0** — A secure, standalone desktop utility for **bulk downloading Form 26AS, Form 168, AIS, TIS, and Filed Returns & Intimation Orders**, and **generating tax payment challans**, from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients — across multiple Assessment/Tax Years — in one click, and **emailing those documents directly to clients**.
+**v2.3.7** — A secure, standalone desktop utility for **bulk downloading Form 26AS, Form 168, AIS, TIS, and Filed Returns & Intimation Orders**, and **generating tax payment challans**, from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients — across multiple Assessment/Tax Years — in one click, and **emailing those documents directly to clients**.
 
 Built with **PyQt6** + **Playwright**. Runs on Windows, macOS, and Linux/WSL.
 
 ---
 
-## What's New in 2.3.0
+## What's New in 2.3.7
 
-- **Bulk Tax Challan Generation** — fill and submit the ITD e-Pay Tax "New Payment" wizard for Advance Tax or Self-Assessment Tax across many clients in one run, stopping at "Pay Later" (never "Pay Now") so a real CRN is generated without touching net banking, OTP, or any bank redirect.
-- **Tax Type decided automatically** from the Financial Year you pick — never a field you fill in yourself.
-- **All 5 real payment modes supported** — Net Banking, Debit Card, Pay at Bank Counter, RTGS/NEFT, and Payment Gateway — downloading the real Challan Form or Mandate Form PDF where available.
-- **Bulk entry via manual rows or Excel/CSV import**, plus an end-of-run Excel summary with CRN, amounts, and status per client.
-- **New "🧾 E-Pay Tax" toolbar button and menu.**
+- **Tax challan import template overhaul** — a branded, plain-English Instructions sheet; Bank / Sub-Mode and Drawn on Bank cells that grey out and block entries that don't apply to the row's Payment Mode; the Challans sheet formatted as a real Excel table, pre-sized for 50 rows.
+- **New "Download Import Template" entry** under the E-Pay Tax menu — get the blank template without opening the full Generate Tax Challans dialog first.
+- **Reliability fixes for bulk tax challan generation** — Corporate PAN tile recognition, RTGS/NEFT no longer hangs waiting for a bank selection it never needs, e-Pay Tax navigation no longer locks onto a stale page heading on repeat navigation.
+- **Stronger validation** — a Bank / Sub-Mode or Drawn on Bank value that doesn't match the row's Payment Mode is now flagged on import and blocked in the manual Add/Edit Row dialog, instead of silently accepted.
 
 See the full [CHANGELOG](CHANGELOG.md) for details.
 
