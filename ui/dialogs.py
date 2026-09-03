@@ -2909,15 +2909,31 @@ class GenerateChallansDialog(QDialog):
                 pass
         return total
 
-    def _row_missing_bank(self, row: dict) -> bool:
-        # A mode with its own bank/sub-mode picklist (i.e. not RTGS/NEFT,
-        # which has none at all) needs that field filled in — confirmed
-        # live via the "app automatically picked 'Cheque'" bug report:
-        # a blank Bank / Sub-Mode must never silently run on the portal.
+    def _row_bank_problem(self, row: dict) -> str:
+        # Covers every way Bank / Sub-Mode can be wrong for the row's
+        # current Payment Mode, not just "blank": confirmed live — Excel's
+        # cascading dropdown narrows the *options* when Payment Mode
+        # changes, but it can't clear a cell's *existing* value (that needs
+        # a macro, which this template deliberately doesn't ship), so a row
+        # edited from Pay at Bank Counter/Cheque to Net Banking keeps
+        # showing "Cheque" — a value Net Banking never actually offers.
+        # Same root cause as the earlier "app automatically picked
+        # 'Cheque'" bug, just reached by editing instead of a blank import.
         from automation.challan_generator import all_bank_options
         mode = row.get("payment_mode", "")
         bank = row.get("bank", "")
-        return bool(all_bank_options(mode)) and not bank
+        options = all_bank_options(mode)
+        if options:
+            if not bank:
+                return "needs a Bank / Sub-Mode"
+            if bank not in options:
+                return f"'{bank}' isn't a valid Bank / Sub-Mode for {mode}"
+        elif bank:
+            return f"{mode} doesn't use a Bank / Sub-Mode — clear this value"
+        return ""
+
+    def _row_missing_bank(self, row: dict) -> bool:
+        return bool(self._row_bank_problem(row))
 
     def _row_is_ready(self, row: dict) -> bool:
         pan = (row.get("pan") or "").upper()
@@ -2965,12 +2981,13 @@ class GenerateChallansDialog(QDialog):
 
             mode = row.get("payment_mode", "")
             bank = row.get("bank", "")
-            if self._row_missing_bank(row):
-                mode_text = f"{mode} — ⚠ Bank / Sub-Mode required"
+            bank_problem = self._row_bank_problem(row)
+            if bank_problem:
+                mode_text = f"{mode} — ⚠ {bank_problem}"
             else:
                 mode_text = f"{mode} / {bank}" if bank else mode
             mode_item = QTableWidgetItem(mode_text)
-            if self._row_missing_bank(row):
+            if bank_problem:
                 mode_item.setForeground(QColor(getattr(_bt, "warning", "#D97706")))
             else:
                 mode_item.setForeground(QColor(_bt.text_primary))
@@ -3084,9 +3101,17 @@ class GenerateChallansDialog(QDialog):
                     "bank": row_bank,
                     "drawee_bank": _cell("drawee_bank") or "",
                 }
-                if row_bank_options and not row_bank:
+                # BUG FIX (2026-09-03): confirmed live — a row edited from
+                # one Payment Mode to another (e.g. Pay at Bank Counter to
+                # Net Banking) can keep its OLD Bank / Sub-Mode value,
+                # since Excel's cascading dropdown narrows future choices
+                # but can't clear what's already typed in the cell. Only
+                # checking for a *blank* Bank / Sub-Mode missed this — a
+                # stale, no-longer-valid value slipped through unflagged.
+                bank_problem = self._row_bank_problem(new_row)
+                if bank_problem:
                     warnings.append(
-                        f"Row {row_num}: Payment Mode '{row_payment_mode}' needs a Bank / Sub-Mode — "
+                        f"Row {row_num}: Payment Mode '{row_payment_mode}' {bank_problem} — "
                         f"row imported but flagged, won't run until fixed."
                     )
                 bad_amount = False
@@ -3115,7 +3140,7 @@ class GenerateChallansDialog(QDialog):
         if errors:
             summary += f", {len(errors)} skipped"
         if warnings:
-            summary += f", {len(warnings)} flagged (missing Bank / Sub-Mode)"
+            summary += f", {len(warnings)} flagged (Bank / Sub-Mode problem)"
         if errors or warnings:
             summary += " — see details"
             QMessageBox.warning(self, "Import Complete", summary + "\n\n" + "\n".join(errors + warnings))
@@ -3242,7 +3267,9 @@ class GenerateChallansDialog(QDialog):
             "",
             "Bank / Sub-Mode",
             "  What you can pick here depends on the Payment Mode you chose. "
-            "RTGS/NEFT doesn't need a bank at all — leave this blank for those rows.",
+            "RTGS/NEFT doesn't need a bank at all — leave this blank for those rows. "
+            "If you change the Payment Mode after already picking a bank, clear and "
+            "re-pick this cell too — it won't clear itself.",
             "",
             "Drawn on Bank",
             "  Only needed for Pay at Bank Counter (Cash, Cheque, or Demand Draft) — "
@@ -3556,7 +3583,10 @@ class GenerateChallansDialog(QDialog):
             ("Bank / Sub-Mode",
              "What you can pick here depends on the Payment Mode you chose on that row. "
              "RTGS/NEFT doesn't need a bank at all, so for RTGS/NEFT rows this cell "
-             "greys out — leave it empty."),
+             "greys out — leave it empty. If you change the Payment Mode after already "
+             "picking a Bank / Sub-Mode, clear and re-pick this cell too — Excel doesn't "
+             "do that for you automatically, and the app will flag the row on import if "
+             "you forget."),
             ("Drawn on Bank",
              "Only needed for Pay at Bank Counter (Cash, Cheque, or Demand Draft) — the "
              "bank the payment is made at. Greys out for every other Payment Mode — "
