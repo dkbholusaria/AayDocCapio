@@ -3299,10 +3299,14 @@ class GenerateChallansDialog(QDialog):
         # sized-to-content columns make it read as an actual data sheet
         # rather than a raw CSV pasted into Excel.
         last_col_letter = get_column_letter(len(headers))
-        table_last_row = len(rows) + 1  # header + actual data rows only —
-        # the 200-row headroom above is for validation/dropdowns further
-        # down the sheet, not part of the table itself; Excel auto-grows
-        # the table when a user types into the row right below it.
+        # Confirmed live — a table sized to exactly the written rows (often
+        # just the one sample row) forces the user through Table Design >
+        # Resize Table before they can type a real batch in. Pad the table
+        # itself out to a minimum row count so it's already sized for bulk
+        # entry; the 200-row headroom on `last_row` above covers validation/
+        # dropdowns further down still, past even this padded table.
+        MIN_TEMPLATE_ROWS = 50
+        table_last_row = max(len(rows), MIN_TEMPLATE_ROWS) + 1
         tab = Table(displayName="Challans", ref=f"A1:{last_col_letter}{table_last_row}")
         tab.tableStyleInfo = TableStyleInfo(
             name="TableStyleMedium2", showFirstColumn=False, showLastColumn=False,
