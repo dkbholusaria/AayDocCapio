@@ -3141,7 +3141,17 @@ class GenerateChallansDialog(QDialog):
         if not raw_rows:
             raise ValueError("File is empty.")
         headers = [str(c).strip().lower() if c is not None else "" for c in raw_rows[0]]
-        return headers, raw_rows[1:]
+        # BUG FIX (2026-09-03): confirmed live — padding the Challans table
+        # out to a 50-row minimum (so it's ready for bulk entry without a
+        # manual Resize Table) makes openpyxl report those blank padded
+        # rows as real rows on read-back, each triggering a "missing PAN"
+        # error when the still-mostly-blank template is re-imported as-is.
+        # A completely empty row was never real data to begin with.
+        data_rows = [
+            row for row in raw_rows[1:]
+            if any(c is not None and str(c).strip() != "" for c in row)
+        ]
+        return headers, data_rows
 
     def _offer_open_file(self, title: str, message: str, path: str):
         """Success dialog with a one-click way to open the file it just
@@ -3332,13 +3342,10 @@ class GenerateChallansDialog(QDialog):
 
         ws_lists = wb.create_sheet("Lists")
         ws_lists["A1"] = "Payment Mode"
-        ws_lists["B1"] = "Named range for this mode's Bank / Sub-Mode list"
         mode_range_names = {}
         for i, m in enumerate(modes, start=2):
             ws_lists.cell(row=i, column=1, value=m)
-            range_name = f"Mode_{_sanitize(m)}"
-            mode_range_names[m] = range_name
-            ws_lists.cell(row=i, column=2, value=range_name)
+            mode_range_names[m] = f"Mode_{_sanitize(m)}"
 
         # One column per mode for its own Bank / Sub-Mode options — column 3
         # (C) onward, in the same order as `modes`. BUG FIX (2026-09-03):
@@ -3372,14 +3379,9 @@ class GenerateChallansDialog(QDialog):
         # Sub-Mode case above, for the same reason.
         drawee_full_options = all_bank_options("Net Banking")  # any real bank can plausibly issue a cheque/DD
         drawee_range_names = {}
-        ws_lists["D1"] = "Payment Mode"
-        ws_lists["E1"] = "Named range for this mode's Drawn on Bank list"
+        for m in modes:
+            drawee_range_names[m] = f"Drawee_{_sanitize(m)}"
         drawee_col_start = 3 + len(modes)
-        for i, m in enumerate(modes, start=2):
-            ws_lists.cell(row=i, column=4, value=m)
-            range_name = f"Drawee_{_sanitize(m)}"
-            drawee_range_names[m] = range_name
-            ws_lists.cell(row=i, column=5, value=range_name)
         for m_idx, m in enumerate(modes):
             col_num = drawee_col_start + m_idx
             col_letter = get_column_letter(col_num)
@@ -3403,18 +3405,24 @@ class GenerateChallansDialog(QDialog):
         dv_mode.add(f"{col_mode}2:{col_mode}{last_row}")
 
         # ── Bank / Sub-Mode — CASCADING on Payment Mode ──────────────────
-        # VLOOKUP finds this row's mode in Lists!A:B and returns the
-        # matching named-range name (computed in Python above, not derived
-        # by string manipulation inside the formula), then INDIRECT
-        # resolves that name to the actual option list for that mode.
-        # BUG FIX (2026-09-03): showErrorMessage/errorStyle were never set,
-        # so this validation's errorTitle/error text was dead — Excel
-        # accepted any typed value regardless of the dropdown's contents.
-        # Now genuinely blocks ("stop") anything outside the current mode's
-        # own list, including RTGS/NEFT's blank-only list from above.
+        # BUG FIX (2026-09-03): confirmed live (a real screenshot) — the
+        # original approach used VLOOKUP against a small Lists!A:B helper
+        # table to translate the mode name into its named-range name before
+        # INDIRECT resolved it, and in real Excel that indirection somehow
+        # produced the WRONG mode's list (Bank / Sub-Mode showing the
+        # "Drawn on Bank" side's range names). Dropped the helper table
+        # entirely — the range name is built directly from the mode cell's
+        # own text with SUBSTITUTE (mirroring _sanitize() above: modes only
+        # ever contain spaces and "/", both swapped for "_"), which is the
+        # standard, more robust way to do a cascading Excel dropdown.
+        # BUG FIX (2026-09-03, earlier): showErrorMessage/errorStyle were
+        # never set, so this validation's errorTitle/error text was dead —
+        # Excel accepted any typed value regardless of the dropdown's
+        # contents. Now genuinely blocks ("stop") anything outside the
+        # current mode's own list, including RTGS/NEFT's blank-only list.
         dv_bank = DataValidation(
             type="list",
-            formula1=f'=INDIRECT(VLOOKUP(${col_mode}2,Lists!$A$2:$B${len(modes) + 1},2,FALSE))',
+            formula1=f'=INDIRECT("Mode_"&SUBSTITUTE(SUBSTITUTE(${col_mode}2," ","_"),"/","_"))',
             allow_blank=True, showErrorMessage=True, errorStyle="stop",
         )
         dv_bank.errorTitle = "Not Required / Invalid Bank"
@@ -3430,7 +3438,7 @@ class GenerateChallansDialog(QDialog):
         # included, not just Cheque/Demand Draft as originally assumed).
         dv_drawee = DataValidation(
             type="list",
-            formula1=f'=INDIRECT(VLOOKUP(${col_mode}2,Lists!$D$2:$E${len(modes) + 1},2,FALSE))',
+            formula1=f'=INDIRECT("Drawee_"&SUBSTITUTE(SUBSTITUTE(${col_mode}2," ","_"),"/","_"))',
             allow_blank=True, showErrorMessage=True, errorStyle="stop",
         )
         dv_drawee.errorTitle = "Not Required / Invalid Bank"
