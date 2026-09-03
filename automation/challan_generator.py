@@ -464,8 +464,16 @@ async def generate_challan(
         step(f"Step 3a: selecting Payment Mode = {payment_mode}" + (f" / {bank}" if bank else "") + "...")
         await _click_visible_exact_text(page, "*", payment_mode, log_callback, "CHALLAN")
         await asyncio.sleep(0.5)
-        if bank:
-            known_banks = mode_info.get("banks", [])
+        known_banks = mode_info.get("banks", [])
+        # BUG FIX (2026-09-03): confirmed live — a row carrying a stray
+        # `bank` value for a mode with no bank picklist at all (RTGS/NEFT's
+        # own "banks" list is empty by design, see PAYMENT_MODES above) fell
+        # through to the "Other Bank" fallback below and hunted for a
+        # #bankOther radio that doesn't exist on that tab, hanging for the
+        # full 30s click timeout ("element is not stable ... detached from
+        # DOM, retrying"). A mode with no banks configured never has
+        # anything to select here, regardless of what `bank` was passed in.
+        if bank and known_banks:
             if bank in known_banks and bank != "Other Bank":
                 # BUG FIX (2026-09-02): confirmed live — the exact-text
                 # XPath here failed outright (zero matches, not even a
