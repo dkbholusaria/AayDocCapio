@@ -10,7 +10,8 @@ PlansofThisProject/F-64_bulk_tax_challan_generation.md):
   1. navigate_to_epay_tax_act() (shared with downloader_challans.py) lands on
      the e-Pay Tax dashboard for the correct Act.
   2. "New Payment" (a "+" icon + text "New Payment" — the "+" is an image,
-     not part of the button's text) > "Income Tax" tile > Proceed.
+     not part of the button's text) > "Income Tax" tile (Company/Corporate
+     PANs see "Corporation Tax" instead — same minor heads) > Proceed.
   3. Step 1 "Add Tax Applicable Details": Tax Year + Type of Payment (Minor
      Head) > Continue.
   4. Step 2 "Add Tax Break Up Details": (a) Tax ... (f) Others > Continue.
@@ -374,8 +375,14 @@ async def generate_challan(
         await _click_visible_exact_text(page, "button", "New Payment", log_callback, "CHALLAN")
         await asyncio.sleep(1.0)
 
-        step("Clicking Income Tax tile > Proceed...")
-        income_tax_tile = page.locator("//*[normalize-space(.)='Income Tax']").first
+        step("Clicking Income Tax / Corporation Tax tile > Proceed...")
+        # Individual/HUF/Firm/etc. PANs see a tile labelled "Income Tax"; Company
+        # PANs see the equivalent tile labelled "Corporation Tax" instead (same
+        # Advance Tax (100) / Self Assessment Tax (300) minor heads either way) —
+        # so accept whichever one the portal actually renders for this PAN type.
+        income_tax_tile = page.locator(
+            "//*[normalize-space(.)='Income Tax' or normalize-space(.)='Corporation Tax']"
+        ).first
         await income_tax_tile.wait_for(state="visible", timeout=15000)
         # UNCONFIRMED: the tile's own "Proceed" button vs a page-level one —
         # scoped to the tile's container, falling back to the first visible
