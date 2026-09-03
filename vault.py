@@ -346,12 +346,23 @@ class VaultManager:
             if file_path.endswith('.xlsx'):
                 from openpyxl import load_workbook
                 wb = load_workbook(file_path, data_only=True)
-                ws = wb.active
+                # Files this app writes now carry a leading "Instructions"
+                # sheet (see _write_client_table_file) — pick "Clients"
+                # explicitly rather than trusting wb.active, which just
+                # reflects whichever sheet was active when last saved.
+                ws = wb["Clients"] if "Clients" in wb.sheetnames else wb.active
                 raw_rows = list(ws.iter_rows(values_only=True))
                 if not raw_rows:
                     return 0, ["File is empty."]
                 headers = [str(c).strip().lower() if c is not None else "" for c in raw_rows[0]]
-                data_rows = raw_rows[1:]
+                # BUG FIX (2026-09-03): padding the Clients table out to a
+                # 50-row minimum for bulk entry means openpyxl reports those
+                # blank padded rows as real rows on read-back — filter out
+                # anything with no actual content before validating rows.
+                data_rows = [
+                    row for row in raw_rows[1:]
+                    if any(c is not None and str(c).strip() != "" for c in row)
+                ]
             elif file_path.endswith('.csv'):
                 with open(file_path, newline='', encoding='utf-8-sig') as f:
                     reader = csv.reader(f)
@@ -359,7 +370,7 @@ class VaultManager:
                 if not raw_rows:
                     return 0, ["File is empty."]
                 headers = [c.strip().lower() for c in raw_rows[0]]
-                data_rows = raw_rows[1:]
+                data_rows = [row for row in raw_rows[1:] if any(c.strip() for c in row)]
             else:
                 return 0, ["Unsupported file format. Please use Excel (.xlsx) or CSV (.csv)."]
         except Exception as e:
@@ -424,17 +435,8 @@ class VaultManager:
         headers = ["Name", "PAN", "DOB", "Password", "Email", "CC"]
         sample = ["John Doe", "AAAPT0001A", "01-01-1980", "YourPortalPassword",
                   "client@example.com", "spouse@example.com;accountant@firm.com"]
-        if file_path.endswith('.csv'):
-            with open(file_path, 'w', newline='', encoding='utf-8') as f:
-                csv.writer(f).writerows([headers, sample])
-        else:
-            from openpyxl import Workbook
-            target = file_path if file_path.endswith('.xlsx') else file_path + ".xlsx"
-            wb = Workbook()
-            ws = wb.active
-            ws.append(headers)
-            ws.append(sample)
-            wb.save(target)
+        target = file_path if (file_path.endswith('.csv') or file_path.endswith('.xlsx')) else file_path + ".xlsx"
+        self._write_client_table_file(target, headers, [sample])
 
     def export_data(self, file_path: str):
         """Exports all saved assessees (with decrypted passwords) to Excel or CSV."""
@@ -443,19 +445,211 @@ class VaultManager:
         rows = [[a.get("name", ""), a.get("pan", ""), a.get("dob", ""), a.get("password", ""),
                  a.get("email", ""), a.get("cc", "")]
                 for a in assessees]
-        if file_path.endswith('.csv'):
-            with open(file_path, 'w', newline='', encoding='utf-8') as f:
+        self._write_client_table_file(file_path, headers, rows)
+
+    def _client_instructions_text(self) -> str:
+        """Plain-text version of the Client Master Instructions sheet, for
+        the CSV path (CSV has no second sheet to carry it) — same wording
+        as the Excel version, kept in one place per column below."""
+        lines = [
+            "Client Master — Import Template",
+            "AayDoc Capio™  ·  © 2026  ·  Developed by CA. Deepak Bhholusaria  ·  "
+            "linkedin.com/in/bhholusaria  ·  deepak@ailearrning.guru",
+            "",
+            "HOW TO FILL IN THIS TEMPLATE",
+            "=" * 29,
+            "",
+            "One row per client.",
+            "",
+            "Name",
+            "  The client's name, just for you to recognise them by.",
+            "",
+            "PAN",
+            "  The client's 10-character PAN, e.g. AAAPT0001A. If a PAN already "
+            "exists in AayDocCapio, importing it again updates that client instead "
+            "of adding a duplicate.",
+            "",
+            "DOB",
+            "  Date of birth, as DD-MM-YYYY (e.g. 01-01-1980). A few other common "
+            "date formats are also accepted.",
+            "",
+            "Password",
+            "  The client's ITD e-Filing portal password.",
+            "",
+            "Email / CC",
+            "  Optional. Email is who reports get sent to; CC can have more than "
+            "one address, separated by semicolons.",
+            "",
+            "Note: Name, PAN, DOB, and Password are all required — a row missing "
+            "any of these is skipped and listed as an error when you import it.",
+            "",
+            "Note: this file has real portal passwords in plain text once you fill "
+            "it in (or once you export your saved clients) — keep it somewhere safe "
+            "and delete it when you're done with it.",
+        ]
+        return "\n".join(lines)
+
+    def _write_client_table_file(self, path, headers, rows):
+        """Shared writer for both the import template and the full-data
+        export — same branded/table-formatted layout the bulk tax challan
+        template uses (see ui/dialogs.py's _write_table_file), kept
+        consistent across the app's two Excel import flows."""
+        if path.endswith(".csv"):
+            with open(path, 'w', newline='', encoding='utf-8') as f:
                 w = csv.writer(f)
                 w.writerow(headers)
                 w.writerows(rows)
-        else:
-            from openpyxl import Workbook
-            wb = Workbook()
-            ws = wb.active
-            ws.append(headers)
-            for row in rows:
-                ws.append(row)
-            wb.save(file_path)
+            instructions_path = re.sub(r"\.csv$", "", path, flags=re.IGNORECASE) + "_Instructions.txt"
+            with open(instructions_path, "w", encoding="utf-8") as f:
+                f.write(self._client_instructions_text())
+            return
+
+        from openpyxl import Workbook
+        from openpyxl.worksheet.table import Table, TableStyleInfo
+        from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Clients"
+        ws.append(headers)
+        for row in rows:
+            ws.append(row)
+
+        last_col_letter = get_column_letter(len(headers))
+        MIN_TEMPLATE_ROWS = 50
+        table_last_row = max(len(rows), MIN_TEMPLATE_ROWS) + 1
+        tab = Table(displayName="Clients", ref=f"A1:{last_col_letter}{table_last_row}")
+        tab.tableStyleInfo = TableStyleInfo(
+            name="TableStyleMedium2", showFirstColumn=False, showLastColumn=False,
+            showRowStripes=True, showColumnStripes=False,
+        )
+        ws.add_table(tab)
+        ws.freeze_panes = "A2"
+        col_widths = {"Name": 22, "PAN": 14, "DOB": 12, "Password": 20, "Email": 26, "CC": 30}
+        for i, label in enumerate(headers, start=1):
+            ws.column_dimensions[get_column_letter(i)].width = col_widths.get(label, 16)
+        for row_cells in ws.iter_rows(min_row=2, max_row=max(table_last_row, 2), max_col=len(headers)):
+            for cell in row_cells:
+                cell.alignment = Alignment(vertical="center")
+
+        # ── "Instructions" sheet — same brand banner + Column/What to enter ─
+        # table layout as the tax challan template (ui/dialogs.py), so both
+        # of the app's import flows read as the same product.
+        NAVY = "0A1628"
+        GREY = "94A3B8"
+        BANNER_FILL = PatternFill(start_color=NAVY, end_color=NAVY, fill_type="solid")
+        HEADER_FILL = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+        BAND_FILL = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+        NOTE_FILL = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+        thin = Side(style="thin", color="BFBFBF")
+        box_border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+        ws_help = wb.create_sheet("Instructions", 0)
+        ws_help.sheet_view.showGridLines = False
+        ws_help.column_dimensions["A"].width = 22
+        ws_help.column_dimensions["B"].width = 95
+
+        r = 1
+        ws_help.merge_cells(f"A{r}:B{r}")
+        title_cell = ws_help.cell(row=r, column=1, value="Client Master — Import Template")
+        title_cell.font = Font(bold=True, size=13, color="FFFFFF")
+        title_cell.fill = BANNER_FILL
+        title_cell.alignment = Alignment(vertical="center", horizontal="center")
+        ws_help.row_dimensions[r].height = 28
+        r += 1
+
+        ws_help.merge_cells(f"A{r}:B{r}")
+        credit_cell = ws_help.cell(
+            row=r, column=1,
+            value="AayDoc Capio™  ·  © 2026  ·  Developed by CA. Deepak Bhholusaria  ·  "
+                  "linkedin.com/in/bhholusaria  ·  deepak@ailearrning.guru",
+        )
+        credit_cell.font = Font(size=8, color=GREY)
+        credit_cell.fill = BANNER_FILL
+        credit_cell.alignment = Alignment(vertical="center", horizontal="center", wrap_text=True)
+        ws_help.row_dimensions[r].height = 18
+        r += 2
+
+        ws_help.merge_cells(f"A{r}:B{r}")
+        heading_cell = ws_help.cell(row=r, column=1, value="How to fill in this template")
+        heading_cell.font = Font(bold=True, size=13, color=NAVY)
+        heading_cell.alignment = Alignment(vertical="center", indent=1)
+        ws_help.row_dimensions[r].height = 22
+        r += 1
+
+        ws_help.merge_cells(f"A{r}:B{r}")
+        intro_cell = ws_help.cell(row=r, column=1, value="One row per client.")
+        intro_cell.font = Font(italic=True, color="595959")
+        intro_cell.alignment = Alignment(wrap_text=True, vertical="top", indent=1)
+        r += 2
+
+        header_row = r
+        for col, text in ((1, "Column"), (2, "What to enter")):
+            c = ws_help.cell(row=header_row, column=col, value=text)
+            c.font = Font(bold=True, color="1F4E78")
+            c.fill = HEADER_FILL
+            c.border = box_border
+            c.alignment = Alignment(vertical="center", indent=1)
+        r += 1
+
+        sections = [
+            ("Name", "The client's name, just for you to recognise them by."),
+            ("PAN",
+             "The client's 10-character PAN, e.g. AAAPT0001A. If a PAN already exists "
+             "in AayDocCapio, importing it again updates that client instead of adding "
+             "a duplicate."),
+            ("DOB",
+             "Date of birth, as DD-MM-YYYY (e.g. 01-01-1980). A few other common date "
+             "formats are also accepted."),
+            ("Password", "The client's ITD e-Filing portal password."),
+            ("Email / CC",
+             "Optional. Email is who reports get sent to; CC can have more than one "
+             "address, separated by semicolons."),
+        ]
+        for i, (field, desc) in enumerate(sections):
+            field_cell = ws_help.cell(row=r, column=1, value=field)
+            desc_cell = ws_help.cell(row=r, column=2, value=desc)
+            fill = BAND_FILL if i % 2 == 1 else None
+            for c in (field_cell, desc_cell):
+                c.border = box_border
+                if fill:
+                    c.fill = fill
+            field_cell.font = Font(bold=True)
+            field_cell.alignment = Alignment(wrap_text=True, vertical="top", indent=1)
+            desc_cell.alignment = Alignment(wrap_text=True, vertical="top", indent=1)
+            ws_help.row_dimensions[r].height = 36
+            r += 1
+
+        r += 1
+        ws_help.merge_cells(f"A{r}:B{r}")
+        note_cell = ws_help.cell(
+            row=r, column=1,
+            value="Note: Name, PAN, DOB, and Password are all required — a row missing "
+                  "any of these is skipped and listed as an error when you import it.",
+        )
+        note_cell.font = Font(bold=True, color="7F6000")
+        note_cell.fill = NOTE_FILL
+        note_cell.border = box_border
+        note_cell.alignment = Alignment(wrap_text=True, vertical="center", indent=1)
+        ws_help.row_dimensions[r].height = 32
+        r += 1
+
+        ws_help.merge_cells(f"A{r}:B{r}")
+        security_note_cell = ws_help.cell(
+            row=r, column=1,
+            value="Note: this file has real portal passwords in plain text once you "
+                  "fill it in (or once you export your saved clients) — keep it "
+                  "somewhere safe and delete it when you're done with it.",
+        )
+        security_note_cell.font = Font(bold=True, color="7F6000")
+        security_note_cell.fill = NOTE_FILL
+        security_note_cell.border = box_border
+        security_note_cell.alignment = Alignment(wrap_text=True, vertical="center", indent=1)
+        ws_help.row_dimensions[r].height = 32
+
+        wb.active = wb["Instructions"]
+        wb.save(path)
 
     # --- Settings Management ---
 

@@ -4,6 +4,9 @@ tax_vault.json
 # Runtime log history — user data, never commit
 log_history.json
 
+# Saved Generate Tax Challans draft — local session state, never commit
+challan_draft.json
+
 # Internal planning — not for public repo
 Documentation/ISSUES_BACKLOG.md
 
