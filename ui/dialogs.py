@@ -3213,40 +3213,39 @@ class GenerateChallansDialog(QDialog):
             "HOW TO FILL IN THIS TEMPLATE",
             "=" * 29,
             "",
-            'One row per client. If you are using the Excel version instead, do not '
-            'edit the hidden "Lists" sheet — it only supplies the dropdowns on the '
+            "One row per client. If you're using the Excel version instead, don't "
+            'edit the hidden "Lists" sheet — it just powers the dropdowns on the '
             '"Challans" sheet.',
             "",
             "PAN",
-            "  Must match a PAN already saved in AayDocCapio's Client Master. An "
-            "unmatched PAN is flagged (not silently dropped) when you re-import this file.",
+            "  Must already be saved in AayDocCapio's Client Master. If it isn't, "
+            "you'll see a warning when you import this file — the row still comes "
+            "in, but it won't run until you fix the PAN.",
             "",
             "Name",
-            "  For your own reference only — never read back on import; the PAN is "
-            "the only join key.",
+            "  Just for you to see whose row is whose. The app ignores this column "
+            "when importing — it only looks at the PAN.",
             "",
             "Payment Mode",
-            "  Pick one of the 5 real ITD payment modes: Net Banking, Debit Card, "
-            "Pay at Bank Counter, RTGS/NEFT, or Payment Gateway including UPI and Credit Card.",
+            "  Choose one: Net Banking, Debit Card, Pay at Bank Counter, RTGS/NEFT, "
+            "or Payment Gateway including UPI and Credit Card.",
             "",
             "Bank / Sub-Mode",
-            "  Depends on the Payment Mode on that row. RTGS/NEFT has no bank "
-            "picklist at all on the portal — leave this blank for RTGS/NEFT rows.",
+            "  What you can pick here depends on the Payment Mode you chose. "
+            "RTGS/NEFT doesn't need a bank at all — leave this blank for those rows.",
             "",
             "Drawn on Bank",
-            "  Only applies to Pay at Bank Counter (the bank your cheque/DD/cash "
-            "payment is drawn on or paid at) — required for every Pay at Bank Counter "
-            "sub-mode, including Cash. Leave blank for every other Payment Mode.",
+            "  Only needed for Pay at Bank Counter (Cash, Cheque, or Demand Draft) — "
+            "the bank the payment is made at. Leave this blank for every other "
+            "Payment Mode.",
             "",
             "Tax / Surcharge / Cess / Interest / Penalty / Others",
-            "  If you only have one lump-sum figure for a client, put the whole "
-            "amount in Tax and leave the rest at 0 — that's the common case. Only "
-            "fill in the other columns when you actually have a breakup (e.g. "
-            "separate 234B/234C interest).",
+            "  Most of the time you'll only have one total amount — put it all in "
+            "Tax and leave the rest as 0. Only split it across the other columns if "
+            "you actually have a breakup, e.g. interest calculated separately.",
             "",
-            "Note: a row with a Payment Mode that doesn't need a Bank / Sub-Mode or "
-            "Drawn on Bank value must leave that cell blank, not filled with an "
-            "unrelated value — a blank cell there is what the app expects.",
+            "Note: if a row's Payment Mode doesn't need a Bank / Sub-Mode or Drawn "
+            "on Bank, leave that cell blank. Don't put anything else in it.",
         ]
         return "\n".join(lines)
 
@@ -3518,8 +3517,8 @@ class GenerateChallansDialog(QDialog):
         ws_help.merge_cells(f"A{r}:B{r}")
         intro_cell = ws_help.cell(
             row=r, column=1,
-            value='One row per client. Do not edit the hidden "Lists" sheet — it only '
-                  'supplies the dropdowns on the "Challans" sheet.',
+            value='One row per client. Don\'t edit the hidden "Lists" sheet — it just '
+                  'powers the dropdowns on the "Challans" sheet.',
         )
         intro_cell.font = Font(italic=True, color="595959")
         intro_cell.alignment = Alignment(wrap_text=True, vertical="top", indent=1)
@@ -3537,28 +3536,27 @@ class GenerateChallansDialog(QDialog):
 
         sections = [
             ("PAN",
-             "Must match a PAN already saved in AayDocCapio's Client Master. An unmatched "
-             "PAN is flagged (not silently dropped) when you re-import this file."),
+             "Must already be saved in AayDocCapio's Client Master. If it isn't, you'll "
+             "see a warning when you import this file — the row still comes in, but it "
+             "won't run until you fix the PAN."),
             ("Name",
-             "For your own reference only — never read back on import; the PAN is the "
-             "only join key."),
+             "Just for you to see whose row is whose. The app ignores this column when "
+             "importing — it only looks at the PAN."),
             ("Payment Mode",
-             "Pick one of the 5 real ITD payment modes from the dropdown: Net Banking, "
-             "Debit Card, Pay at Bank Counter, RTGS/NEFT, or Payment Gateway including "
-             "UPI and Credit Card."),
+             "Choose one from the dropdown: Net Banking, Debit Card, Pay at Bank "
+             "Counter, RTGS/NEFT, or Payment Gateway including UPI and Credit Card."),
             ("Bank / Sub-Mode",
-             "Its dropdown changes to match whatever Payment Mode you picked on that "
-             "row. RTGS/NEFT has no bank picklist at all on the portal, so for RTGS/NEFT "
-             "rows this cell greys out and only accepts blank — leave it empty."),
+             "What you can pick here depends on the Payment Mode you chose on that row. "
+             "RTGS/NEFT doesn't need a bank at all, so for RTGS/NEFT rows this cell "
+             "greys out — leave it empty."),
             ("Drawn on Bank",
-             "Only applies to Pay at Bank Counter (the bank your cheque/DD/cash payment "
-             "is drawn on or paid at) — required for every Pay at Bank Counter sub-mode, "
-             "including Cash. Greys out and only accepts blank for every other Payment Mode."),
+             "Only needed for Pay at Bank Counter (Cash, Cheque, or Demand Draft) — the "
+             "bank the payment is made at. Greys out for every other Payment Mode — "
+             "leave it empty."),
             ("Tax / Surcharge / Cess /\nInterest / Penalty / Others",
-             "If you only have one lump-sum figure for a client, put the whole amount in "
-             "Tax and leave the rest at 0 — that's the common case and matches how most "
-             "Advance Tax / Self-Assessment Tax payments are entered. Only fill in the "
-             "other columns when you actually have a breakup (e.g. separate 234B/234C interest)."),
+             "Most of the time you'll only have one total amount — put it all in Tax "
+             "and leave the rest as 0. Only split it across the other columns if you "
+             "actually have a breakup, e.g. interest calculated separately."),
         ]
         for i, (field, desc) in enumerate(sections):
             field_cell = ws_help.cell(row=r, column=1, value=field)
@@ -3578,9 +3576,9 @@ class GenerateChallansDialog(QDialog):
         ws_help.merge_cells(f"A{r}:B{r}")
         note_cell = ws_help.cell(
             row=r, column=1,
-            value='Note: A grey cell with a red "stop" error when you type into it means '
-                  'that field doesn\'t apply to the Payment Mode you picked on that row — '
-                  'leave it blank rather than trying to force a value in.',
+            value='Note: If you type into a grey cell, you\'ll get a red error. That just '
+                  'means that field doesn\'t apply to the Payment Mode you picked on that '
+                  'row — leave it blank instead.',
         )
         note_cell.font = Font(bold=True, color="7F6000")
         note_cell.fill = NOTE_FILL
