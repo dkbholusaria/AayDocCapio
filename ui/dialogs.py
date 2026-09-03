@@ -3206,6 +3206,10 @@ class GenerateChallansDialog(QDialog):
         """Plain-text version of the Instructions sheet, for the CSV export
         path (CSV has no second sheet to carry it)."""
         lines = [
+            "Bulk Tax Challan — Import Template",
+            "AayDoc Capio™  ·  © 2026  ·  Developed by CA. Deepak Bhholusaria  ·  "
+            "linkedin.com/in/bhholusaria  ·  deepak@ailearrning.guru",
+            "",
             "HOW TO FILL IN THIS TEMPLATE",
             "=" * 29,
             "",
@@ -3466,7 +3470,13 @@ class GenerateChallansDialog(QDialog):
         ws_help.column_dimensions["A"].width = 28
         ws_help.column_dimensions["B"].width = 95
 
-        BANNER_FILL = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+        # Same brand banner (title + credit subtitle, navy/white/grey) used
+        # on every generated report — automation/ais_converter.py's
+        # "General Info" cover sheet is the reference this matches, so the
+        # template reads as the same product rather than an unbranded file.
+        NAVY = "0A1628"
+        GREY = "94A3B8"
+        BANNER_FILL = PatternFill(start_color=NAVY, end_color=NAVY, fill_type="solid")
         HEADER_FILL = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
         BAND_FILL = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
         NOTE_FILL = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
@@ -3475,11 +3485,30 @@ class GenerateChallansDialog(QDialog):
 
         r = 1
         ws_help.merge_cells(f"A{r}:B{r}")
-        title_cell = ws_help.cell(row=r, column=1, value="How to fill in this template")
-        title_cell.font = Font(bold=True, size=16, color="FFFFFF")
+        title_cell = ws_help.cell(row=r, column=1, value="Bulk Tax Challan — Import Template")
+        title_cell.font = Font(bold=True, size=13, color="FFFFFF")
         title_cell.fill = BANNER_FILL
-        title_cell.alignment = Alignment(vertical="center", horizontal="left", indent=1)
+        title_cell.alignment = Alignment(vertical="center", horizontal="center", indent=1)
         ws_help.row_dimensions[r].height = 28
+        r += 1
+
+        ws_help.merge_cells(f"A{r}:B{r}")
+        credit_cell = ws_help.cell(
+            row=r, column=1,
+            value="AayDoc Capio™  ·  © 2026  ·  Developed by CA. Deepak Bhholusaria  ·  "
+                  "linkedin.com/in/bhholusaria  ·  deepak@ailearrning.guru",
+        )
+        credit_cell.font = Font(size=8, color=GREY)
+        credit_cell.fill = BANNER_FILL
+        credit_cell.alignment = Alignment(vertical="center", horizontal="center", wrap_text=True)
+        ws_help.row_dimensions[r].height = 18
+        r += 2
+
+        ws_help.merge_cells(f"A{r}:B{r}")
+        heading_cell = ws_help.cell(row=r, column=1, value="How to fill in this template")
+        heading_cell.font = Font(bold=True, size=13, color=NAVY)
+        heading_cell.alignment = Alignment(vertical="center", indent=1)
+        ws_help.row_dimensions[r].height = 22
         r += 1
 
         ws_help.merge_cells(f"A{r}:B{r}")
