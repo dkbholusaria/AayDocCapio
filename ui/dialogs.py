@@ -2670,6 +2670,7 @@ class GenerateChallansDialog(QDialog):
     _COL_NAME = 1
     _COL_TOTAL = 2
     _COL_MODE = 3
+    _COL_BANK = 4
 
     def __init__(self, parent, vault, ay_entries):
         super().__init__(parent)
@@ -2773,17 +2774,24 @@ class GenerateChallansDialog(QDialog):
         toolbar.addWidget(self._btn_reload_draft)
         layout.addLayout(toolbar)
 
-        # ── Summary table (PAN / Name / Total / Mode only) ───────────────
-        self._table = QTableWidget(0, 4)
-        self._table.setHorizontalHeaderLabels(["PAN", "Name", "Total Amount", "Payment Mode"])
+        # ── Summary table (PAN / Name / Total / Mode / Bank) ─────────────
+        # Mode and Bank / Sub-Mode used to share one column as combined
+        # text ("Payment Gateway including UPI and Credit Card / Cash"),
+        # which wrapped to two lines and truncated the mode name — split
+        # into their own columns so each reads cleanly at a glance.
+        self._table = QTableWidget(0, 5)
+        self._table.setHorizontalHeaderLabels(
+            ["PAN", "Name", "Total Amount", "Payment Mode", "Bank / Sub-Mode"])
         hdr = self._table.horizontalHeader()
         hdr.setSectionResizeMode(self._COL_PAN, QHeaderView.ResizeMode.Interactive)
         hdr.setSectionResizeMode(self._COL_NAME, QHeaderView.ResizeMode.Stretch)
         hdr.setSectionResizeMode(self._COL_TOTAL, QHeaderView.ResizeMode.Interactive)
         hdr.setSectionResizeMode(self._COL_MODE, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(self._COL_BANK, QHeaderView.ResizeMode.Interactive)
         self._table.setColumnWidth(self._COL_PAN, 110)
         self._table.setColumnWidth(self._COL_TOTAL, 110)
-        self._table.setColumnWidth(self._COL_MODE, 160)
+        self._table.setColumnWidth(self._COL_MODE, 200)
+        self._table.setColumnWidth(self._COL_BANK, 150)
         self._table.verticalHeader().setVisible(False)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -2986,16 +2994,18 @@ class GenerateChallansDialog(QDialog):
             mode = row.get("payment_mode", "")
             bank = row.get("bank", "")
             bank_problem = self._row_bank_problem(row)
-            if bank_problem:
-                mode_text = f"{mode} — ⚠ {bank_problem}"
-            else:
-                mode_text = f"{mode} / {bank}" if bank else mode
-            mode_item = QTableWidgetItem(mode_text)
-            if bank_problem:
-                mode_item.setForeground(QColor(getattr(_bt, "warning", "#D97706")))
-            else:
-                mode_item.setForeground(QColor(_bt.text_primary))
+            warn_color = QColor(getattr(_bt, "warning", "#D97706"))
+            normal_color = QColor(_bt.text_primary)
+
+            mode_item = QTableWidgetItem(mode)
+            mode_item.setForeground(warn_color if bank_problem else normal_color)
             self._table.setItem(i, self._COL_MODE, mode_item)
+
+            bank_item = QTableWidgetItem(f"⚠ {bank_problem}" if bank_problem else bank)
+            bank_item.setForeground(warn_color if bank_problem else normal_color)
+            if bank_problem:
+                bank_item.setToolTip(bank_problem.capitalize() + ".")
+            self._table.setItem(i, self._COL_BANK, bank_item)
 
         self._update_footer_counts()
 
