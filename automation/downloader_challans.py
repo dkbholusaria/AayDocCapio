@@ -155,9 +155,23 @@ async def navigate_to_epay_tax_act(page: Page, log_callback, year_type: str) -> 
     await asyncio.sleep(1.0)
 
     log_callback("[CHALLAN] Clicking e-Pay Tax...")
-    epay_tax = page.locator("//*[normalize-space(.)='e-Pay Tax']").first
+    # BUG FIX (2026-09-03): confirmed live — on a client's second/third
+    # navigation to e-Pay Tax within the same run (e.g. retrying after a
+    # mid-scan failure), the page is already on the e-Pay Tax dashboard from
+    # the earlier navigation, whose component carries its own permanently
+    # -hidden `<h1 hidden>e-Pay Tax</h1>`. A page-wide exact-text locator
+    # matches that hidden heading (it sorts before the freshly-opened
+    # dropdown menu, which is portaled into a `cdk-overlay-container` at the
+    # very end of <body>) and `.first` locks onto it, so `wait_for(visible)`
+    # timed out on every attempt — same root-cause class as the "Other Bank"
+    # ancestor-div bug elsewhere in this file. Scope the search to the
+    # currently-open e-File dropdown panel instead, and re-resolve it fresh
+    # on each retry (the panel itself gets torn down/reopened between
+    # attempts, so a locator captured once before the loop can go stale).
     for _attempt in range(4):
         try:
+            menu_panel = page.locator(".mat-mdc-menu-panel").last
+            epay_tax = menu_panel.get_by_text("e-Pay Tax", exact=True)
             await epay_tax.wait_for(state="visible", timeout=15000)
             break
         except Exception:
