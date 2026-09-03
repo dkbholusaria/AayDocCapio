@@ -2,6 +2,28 @@
 
 All notable changes to AayDocCapio are documented here.
 
+## [2.3.7] — 2026-09-03
+
+### Improvements
+
+#### Tax Challan Import Template (F-64)
+- **Branded, plain-English Instructions sheet** — every column explained in a proper banner + table layout, matching the branding on every other generated report
+- **Bank / Sub-Mode and Drawn on Bank grey out and block entries that don't apply** — pick a Payment Mode that doesn't need one and the cell greys out; typing a value in anyway is rejected instead of silently accepted
+- **Challans sheet is now a real Excel table** — banded rows, filter arrows, a frozen header row, and pre-sized for 50 rows so you can start typing a real batch straight away instead of resizing the table first
+- **CSV export/template now includes the instructions too**, as a plain-text file alongside the CSV
+- **Generate Tax Challans table shows Payment Mode and Bank / Sub-Mode as separate columns**, instead of one combined column that wrapped and truncated longer mode names
+- **New "Download Import Template" entry under the E-Pay Tax menu** — get the blank template directly, without opening the full Generate Tax Challans dialog first
+
+### Bug Fixes
+- **Company/Corporate PAN clients** — the "Corporation Tax" tile (shown instead of "Income Tax" for these PANs) is now recognized correctly
+- **RTGS/NEFT rows no longer hang** waiting for a bank selection — RTGS/NEFT never has one on the portal
+- **e-Pay Tax navigation no longer locks onto a stale page heading** on a second or third navigation within the same run, which could time out the whole client
+- **Import no longer defaults a blank Bank / Sub-Mode to "Cheque"** for modes where Cheque isn't actually valid (e.g. Net Banking) — it's now left blank and the row is flagged instead
+- **A Bank / Sub-Mode or Drawn on Bank value that doesn't match the row's Payment Mode is now flagged** instead of silently accepted — including a stale value left over after changing Payment Mode on an already-filled row
+- **The manual Add/Edit Row dialog can no longer save a row with an invalid or missing Bank / Sub-Mode or Drawn on Bank** — it now blocks with a clear message, matching the checks already applied on import
+
+---
+
 ## [2.3.0] — 2026-09-02
 
 ### New Features
