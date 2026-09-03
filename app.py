@@ -522,6 +522,9 @@ class AayDocCapioApp(QMainWindow):
         act_gen_challans = QAction("Generate Tax Challans…", self)
         act_gen_challans.triggered.connect(self._open_generate_challans_dialog)
         epay_menu.addAction(act_gen_challans)
+        act_challan_template = QAction("Download Import Template…", self)
+        act_challan_template.triggered.connect(self._download_challan_template)
+        epay_menu.addAction(act_challan_template)
         self._epay_menu = epay_menu
 
         # Help menu
@@ -2683,6 +2686,21 @@ class AayDocCapioApp(QMainWindow):
         dlg = GenerateChallansDialog(self, self.vault, self._ay_entries)
         if dlg.exec() == dlg.DialogCode.Accepted:
             self.start_challan_generation(dlg.fy_value, dlg.rows)
+
+    def _download_challan_template(self):
+        """E-Pay Tax > Download Import Template — lets a user get the blank
+        template straight away, without opening the full Generate Tax
+        Challans dialog first just to reach its own template button."""
+        from ui.dialogs import download_challan_template
+        path, _ = QFileDialog.getSaveFileName(self, "Save Template",
+            "Challan_Rows_Template", "Excel Workbook (*.xlsx);;CSV (*.csv)")
+        if not path:
+            return
+        try:
+            download_challan_template(path)
+            QMessageBox.information(self, "Success", f"Template generated at:\n{path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed: {e}")
 
     def start_challan_generation(self, fy_value: str, rows: list):
         from automation.challan_generator import resolve_tax_type, TAX_TYPES
