@@ -2549,7 +2549,15 @@ class ChallanRowDetailDialog(QDialog):
         if options:
             self._bank_combo.addItems(options)
             self._bank_combo.setEnabled(True)
-            self._bank_combo.setCurrentText(select_bank or "")
+            # BUG FIX (2026-09-03): confirmed live — since this combo is
+            # editable, setCurrentText() will happily display ANY string
+            # here, valid option or not. Opening an existing row whose
+            # stored Bank / Sub-Mode no longer matches its Payment Mode
+            # (e.g. imported before a validation fix, or edited to a
+            # different mode) silently pre-filled the stale value instead
+            # of showing it was actually invalid. Only pre-fill it when
+            # it's genuinely one of this mode's own options.
+            self._bank_combo.setCurrentText(select_bank if select_bank in options else "")
         else:
             self._bank_combo.addItem("(not required for this mode)")
             self._bank_combo.setEnabled(False)
@@ -2604,6 +2612,17 @@ class ChallanRowDetailDialog(QDialog):
         pan = self._current_pan()
         if not pan:
             QMessageBox.warning(self, "PAN Required", "Please enter or select a PAN.")
+            return
+        # BUG FIX (2026-09-03): confirmed live — the Bank / Sub-Mode combo
+        # is editable, so it will happily accept and save a value that
+        # isn't actually valid for the selected Payment Mode (e.g. "Cash"
+        # under Payment Gateway) without any complaint. Block on the same
+        # check used everywhere else (table warnings, import) instead of
+        # only catching this in the table after the fact.
+        from automation.challan_generator import bank_problem
+        problem = bank_problem(self._mode_combo.currentText(), self._current_bank())
+        if problem:
+            QMessageBox.warning(self, "Bank / Sub-Mode", problem.capitalize() + ".")
             return
         amounts = {}
         for key, edit in self._amount_edits.items():
@@ -2910,27 +2929,12 @@ class GenerateChallansDialog(QDialog):
         return total
 
     def _row_bank_problem(self, row: dict) -> str:
-        # Covers every way Bank / Sub-Mode can be wrong for the row's
-        # current Payment Mode, not just "blank": confirmed live — Excel's
-        # cascading dropdown narrows the *options* when Payment Mode
-        # changes, but it can't clear a cell's *existing* value (that needs
-        # a macro, which this template deliberately doesn't ship), so a row
-        # edited from Pay at Bank Counter/Cheque to Net Banking keeps
-        # showing "Cheque" — a value Net Banking never actually offers.
-        # Same root cause as the earlier "app automatically picked
-        # 'Cheque'" bug, just reached by editing instead of a blank import.
-        from automation.challan_generator import all_bank_options
-        mode = row.get("payment_mode", "")
-        bank = row.get("bank", "")
-        options = all_bank_options(mode)
-        if options:
-            if not bank:
-                return "needs a Bank / Sub-Mode"
-            if bank not in options:
-                return f"'{bank}' isn't a valid Bank / Sub-Mode for {mode}"
-        elif bank:
-            return f"{mode} doesn't use a Bank / Sub-Mode — clear this value"
-        return ""
+        # Delegates to automation.challan_generator.bank_problem() — the
+        # single source of truth shared with ChallanRowDetailDialog (the
+        # manual add/edit dialog) and the import flow below, so all three
+        # agree on what counts as valid instead of drifting apart.
+        from automation.challan_generator import bank_problem
+        return bank_problem(row.get("payment_mode", ""), row.get("bank", ""))
 
     def _row_missing_bank(self, row: dict) -> bool:
         return bool(self._row_bank_problem(row))

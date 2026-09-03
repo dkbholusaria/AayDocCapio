@@ -171,6 +171,33 @@ def all_bank_options(payment_mode: str) -> list:
     return out
 
 
+def bank_problem(payment_mode: str, bank: str) -> str:
+    """Single source of truth for whether a (Payment Mode, Bank / Sub-Mode)
+    combination makes sense — used by ui/dialogs.py's GenerateChallansDialog
+    (table warnings, import validation) AND ChallanRowDetailDialog (the
+    manual add/edit dialog), so both agree on what counts as valid instead
+    of each re-deriving its own rule (see automation/doc_types.py's
+    docstring on the Form 168 emailer bugs for why that drift is worth
+    avoiding). Returns "" if fine, else a short human-readable reason.
+
+    Three distinct cases, not just "blank":
+      - mode needs a bank and none is given (missing)
+      - mode needs a bank and the given one isn't one of its own options
+        (invalid — ambiguous, so always flagged/blocked rather than guessed)
+      - mode has no bank picklist at all (e.g. RTGS/NEFT) but a value is
+        there anyway (not applicable — unambiguous, safe to just clear)
+    """
+    options = all_bank_options(payment_mode)
+    if options:
+        if not bank:
+            return "needs a Bank / Sub-Mode"
+        if bank not in options:
+            return f"'{bank}' isn't a valid Bank / Sub-Mode for {payment_mode}"
+    elif bank:
+        return f"{payment_mode} doesn't use a Bank / Sub-Mode — clear this value"
+    return ""
+
+
 def cash_limit_exceeded(payment_mode: str, bank: str, total_amount: float) -> bool:
     """Client-side mirror of the portal's own ₹10,000 Cash cap (confirmed by
     the user testing it live), so the dialog can flag a row before it ever
