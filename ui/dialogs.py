@@ -3180,7 +3180,7 @@ class GenerateChallansDialog(QDialog):
         from openpyxl import Workbook
         from openpyxl.worksheet.datavalidation import DataValidation
         from openpyxl.formatting.rule import FormulaRule
-        from openpyxl.styles import PatternFill, Font
+        from openpyxl.styles import PatternFill, Font, Alignment
         from openpyxl.utils import get_column_letter
         from openpyxl.workbook.defined_name import DefinedName
         from automation.challan_generator import PAYMENT_MODES, all_bank_options
@@ -3223,23 +3223,62 @@ class GenerateChallansDialog(QDialog):
             ws_lists.cell(row=i, column=2, value=range_name)
 
         # One column per mode for its own Bank / Sub-Mode options — column 3
-        # (C) onward, in the same order as `modes`. Modes with no picklist
-        # (RTGS/NEFT, Payment Gateway) still get a single placeholder value
-        # so their defined name resolves to something instead of erroring.
+        # (C) onward, in the same order as `modes`. BUG FIX (2026-09-03):
+        # confirmed live (a real template screenshot) — modes with no
+        # picklist at all (RTGS/NEFT; see automation/challan_generator.py's
+        # PAYMENT_MODES) used to get a single descriptive placeholder value
+        # ("(not required for this mode)") as their only dropdown option,
+        # which a user could still select and end up with misleading
+        # non-blank text in a field the portal never shows a picklist for.
+        # A single BLANK cell instead — Excel's list validation still needs
+        # a real range to avoid an #REF! error, but a blank source means
+        # blank is the only thing selectable from the dropdown, and (now
+        # that showErrorMessage/errorStyle are wired below) any other typed
+        # value is rejected outright rather than silently accepted.
         for m_idx, m in enumerate(modes):
             col_num = 3 + m_idx
             col_letter = get_column_letter(col_num)
-            options = all_bank_options(m) or ["(not required for this mode)"]
+            options = all_bank_options(m) or [""]
             ws_lists.cell(row=1, column=col_num, value=m)
             for i, opt in enumerate(options, start=2):
                 ws_lists.cell(row=i, column=col_num, value=opt)
             range_ref = f"Lists!${col_letter}$2:${col_letter}${len(options) + 1}"
             wb.defined_names[mode_range_names[m]] = DefinedName(mode_range_names[m], attr_text=range_ref)
 
+        # ── Drawn on Bank per-mode lists — mirrors the Bank / Sub-Mode ────
+        # mechanism above, but keyed on whether the mode is "Pay at Bank
+        # Counter" (the only mode this field ever applies to, confirmed
+        # live against a real sample PDF's "Drawn on Bank" field) rather
+        # than on that mode's own bank-tile list. Every other mode gets the
+        # same single-blank-cell treatment as the no-picklist Bank /
+        # Sub-Mode case above, for the same reason.
+        drawee_full_options = all_bank_options("Net Banking")  # any real bank can plausibly issue a cheque/DD
+        drawee_range_names = {}
+        ws_lists["D1"] = "Payment Mode"
+        ws_lists["E1"] = "Named range for this mode's Drawn on Bank list"
+        drawee_col_start = 3 + len(modes)
+        for i, m in enumerate(modes, start=2):
+            ws_lists.cell(row=i, column=4, value=m)
+            range_name = f"Drawee_{_sanitize(m)}"
+            drawee_range_names[m] = range_name
+            ws_lists.cell(row=i, column=5, value=range_name)
+        for m_idx, m in enumerate(modes):
+            col_num = drawee_col_start + m_idx
+            col_letter = get_column_letter(col_num)
+            options = drawee_full_options if m == "Pay at Bank Counter" else [""]
+            ws_lists.cell(row=1, column=col_num, value=f"Drawee for {m}")
+            for i, opt in enumerate(options, start=2):
+                ws_lists.cell(row=i, column=col_num, value=opt)
+            range_ref = f"Lists!${col_letter}$2:${col_letter}${len(options) + 1}"
+            wb.defined_names[drawee_range_names[m]] = DefinedName(drawee_range_names[m], attr_text=range_ref)
+
         ws_lists.sheet_state = "hidden"
 
         # ── Payment Mode (col B in the sheet, but located dynamically) ───
-        dv_mode = DataValidation(type="list", formula1=f"Lists!$A$2:$A${len(modes) + 1}", allow_blank=True)
+        dv_mode = DataValidation(
+            type="list", formula1=f"Lists!$A$2:$A${len(modes) + 1}", allow_blank=True,
+            showErrorMessage=True, errorStyle="stop",
+        )
         dv_mode.errorTitle = "Invalid Payment Mode"
         dv_mode.error = "Please pick a Payment Mode from the dropdown."
         ws.add_data_validation(dv_mode)
@@ -3250,37 +3289,114 @@ class GenerateChallansDialog(QDialog):
         # matching named-range name (computed in Python above, not derived
         # by string manipulation inside the formula), then INDIRECT
         # resolves that name to the actual option list for that mode.
+        # BUG FIX (2026-09-03): showErrorMessage/errorStyle were never set,
+        # so this validation's errorTitle/error text was dead — Excel
+        # accepted any typed value regardless of the dropdown's contents.
+        # Now genuinely blocks ("stop") anything outside the current mode's
+        # own list, including RTGS/NEFT's blank-only list from above.
         dv_bank = DataValidation(
             type="list",
             formula1=f'=INDIRECT(VLOOKUP(${col_mode}2,Lists!$A$2:$B${len(modes) + 1},2,FALSE))',
-            allow_blank=True,
+            allow_blank=True, showErrorMessage=True, errorStyle="stop",
         )
-        dv_bank.errorTitle = "Invalid Bank / Sub-Mode"
-        dv_bank.error = "Please pick a Payment Mode first, then a matching Bank / Sub-Mode."
+        dv_bank.errorTitle = "Not Required / Invalid Bank"
+        dv_bank.error = ("Please pick a Payment Mode first, then a matching Bank / Sub-Mode. "
+                          "RTGS/NEFT has no Bank / Sub-Mode on the portal — leave this blank.")
         ws.add_data_validation(dv_bank)
         dv_bank.add(f"{col_bank}2:{col_bank}{last_row}")
 
-        # ── Drawn on Bank — dropdown always available (full bank list); ──
-        # visually greyed out via conditional formatting when Payment Mode
-        # doesn't call for it. BUG FIX (2026-09-02): confirmed live — this
+        # ── Drawn on Bank — CASCADING the same way, now genuinely blank- ──
+        # only outside "Pay at Bank Counter" instead of merely greyed out.
+        # BUG FIX (2026-09-02, extended 2026-09-03): confirmed live — this
         # field is mandatory for EVERY Pay at Bank Counter sub-mode (Cash
-        # included, not just Cheque/Demand Draft as originally assumed);
-        # true cell locking needs sheet protection + VBA, which isn't
-        # worth the fragility here; the grey fill communicates "not
-        # needed" without blocking anything.
-        dv_drawee = DataValidation(type="list", formula1=f"Mode_{_sanitize('Net Banking')}", allow_blank=True)
-        dv_drawee.errorTitle = "Invalid Bank"
-        dv_drawee.error = "Please pick a bank from the dropdown."
+        # included, not just Cheque/Demand Draft as originally assumed).
+        dv_drawee = DataValidation(
+            type="list",
+            formula1=f'=INDIRECT(VLOOKUP(${col_mode}2,Lists!$D$2:$E${len(modes) + 1},2,FALSE))',
+            allow_blank=True, showErrorMessage=True, errorStyle="stop",
+        )
+        dv_drawee.errorTitle = "Not Required / Invalid Bank"
+        dv_drawee.error = "Drawn on Bank only applies to Pay at Bank Counter — leave this blank for other Payment Modes."
         ws.add_data_validation(dv_drawee)
         dv_drawee.add(f"{col_drawee}2:{col_drawee}{last_row}")
 
+        # ── Visual hint to match the blocking above: grey out both fields ─
+        # on rows where they're not applicable, so it reads as "disabled"
+        # rather than just "happens to reject your input".
         grey_fill = PatternFill(start_color="EEEEEE", end_color="EEEEEE", fill_type="solid")
         grey_font = Font(color="AAAAAA")
-        applicable_formula = f'${col_mode}2<>"Pay at Bank Counter"'
+        no_bank_modes = [m for m in modes if not all_bank_options(m)]
+        if no_bank_modes:
+            bank_not_applicable_formula = "OR(" + ",".join(
+                f'${col_mode}2="{m}"' for m in no_bank_modes) + ")"
+            ws.conditional_formatting.add(
+                f"{col_bank}2:{col_bank}{last_row}",
+                FormulaRule(formula=[bank_not_applicable_formula], fill=grey_fill, font=grey_font),
+            )
+        drawee_not_applicable_formula = f'${col_mode}2<>"Pay at Bank Counter"'
         ws.conditional_formatting.add(
             f"{col_drawee}2:{col_drawee}{last_row}",
-            FormulaRule(formula=[applicable_formula], fill=grey_fill, font=grey_font),
+            FormulaRule(formula=[drawee_not_applicable_formula], fill=grey_fill, font=grey_font),
         )
+
+        # ── "Instructions" sheet — placed first so it's what opens by ────
+        # default, explaining the column-by-column expectations and the
+        # grey/blank-only behavior above (which otherwise looks like an
+        # unexplained restriction to anyone who hasn't read this code).
+        ws_help = wb.create_sheet("Instructions", 0)
+        ws_help.sheet_view.showGridLines = False
+        ws_help.column_dimensions["A"].width = 100
+        bold = Font(bold=True)
+        title_font = Font(bold=True, size=14)
+        instructions = [
+            ("How to fill in this template", title_font),
+            ("", None),
+            ("One row per client. Do not edit the hidden \"Lists\" sheet — it only "
+             "supplies the dropdowns on the \"Challans\" sheet.", None),
+            ("", None),
+            ("PAN", bold),
+            ("Must match a PAN already saved in AayDocCapio's Client Master. An "
+             "unmatched PAN is flagged (not silently dropped) when you re-import this file.", None),
+            ("", None),
+            ("Name", bold),
+            ("For your own reference only — never read back on import; the PAN is "
+             "the only join key.", None),
+            ("", None),
+            ("Payment Mode", bold),
+            ("Pick one of the 5 real ITD payment modes from the dropdown: Net "
+             "Banking, Debit Card, Pay at Bank Counter, RTGS/NEFT, or Payment "
+             "Gateway including UPI and Credit Card.", None),
+            ("", None),
+            ("Bank / Sub-Mode", bold),
+            ("Its dropdown changes to match whatever Payment Mode you picked on "
+             "that row. RTGS/NEFT has no bank picklist at all on the portal, so "
+             "for RTGS/NEFT rows this cell greys out and only accepts blank — "
+             "leave it empty.", None),
+            ("", None),
+            ("Drawn on Bank", bold),
+            ("Only applies to Pay at Bank Counter (the bank your cheque/DD/cash "
+             "payment is drawn on or paid at) — required for every Pay at Bank "
+             "Counter sub-mode, including Cash. Greys out and only accepts blank "
+             "for every other Payment Mode.", None),
+            ("", None),
+            ("Tax / Surcharge / Cess / Interest / Penalty / Others", bold),
+            ("If you only have one lump-sum figure for a client, put the whole "
+             "amount in Tax and leave the rest at 0 — that's the common case and "
+             "matches how most Advance Tax / Self-Assessment Tax payments are "
+             "entered. Only fill in the other columns when you actually have a "
+             "breakup (e.g. separate 234B/234C interest).", None),
+            ("", None),
+            ("A grey cell with a red \"stop\" error when you type into it means "
+             "that field doesn't apply to the Payment Mode you picked on that "
+             "row — leave it blank rather than trying to force a value in.", None),
+        ]
+        for text, font in instructions:
+            ws_help.append([text])
+            cell = ws_help.cell(row=ws_help.max_row, column=1)
+            if font:
+                cell.font = font
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+        wb.active = wb["Instructions"]
 
         wb.save(path)
 
