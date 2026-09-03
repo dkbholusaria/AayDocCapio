@@ -3095,6 +3095,16 @@ class GenerateChallansDialog(QDialog):
                 # silently guessed.
                 default_bank = DEFAULT_BANK if DEFAULT_BANK in row_bank_options else ""
                 row_bank = _cell("bank") or default_bank
+                # BUG FIX (2026-09-03): confirmed live — a mode with NO
+                # bank picklist at all (RTGS/NEFT) can still carry a stale
+                # value left over from before the Payment Mode was changed
+                # (Excel can't clear it automatically — see the note above
+                # dv_bank). There's nothing ambiguous about this case: the
+                # mode simply never uses this field, so the leftover value
+                # is noise, not a problem to make the user go fix — silently
+                # drop it instead of flagging the row over it.
+                if not row_bank_options:
+                    row_bank = ""
                 new_row = {
                     "pan": pan,
                     "payment_mode": row_payment_mode,
@@ -3102,12 +3112,16 @@ class GenerateChallansDialog(QDialog):
                     "drawee_bank": _cell("drawee_bank") or "",
                 }
                 # BUG FIX (2026-09-03): confirmed live — a row edited from
-                # one Payment Mode to another (e.g. Pay at Bank Counter to
-                # Net Banking) can keep its OLD Bank / Sub-Mode value,
-                # since Excel's cascading dropdown narrows future choices
-                # but can't clear what's already typed in the cell. Only
-                # checking for a *blank* Bank / Sub-Mode missed this — a
-                # stale, no-longer-valid value slipped through unflagged.
+                # one Payment Mode to another that still HAS its own bank
+                # picklist (e.g. Pay at Bank Counter to Net Banking) can
+                # keep its OLD Bank / Sub-Mode value, since Excel's
+                # cascading dropdown narrows future choices but can't clear
+                # what's already typed in the cell. Only checking for a
+                # *blank* Bank / Sub-Mode missed this — a stale,
+                # no-longer-valid value slipped through unflagged. Unlike
+                # the no-picklist-at-all case above, this one IS ambiguous
+                # (which real bank did they mean?), so it's still flagged
+                # rather than guessed at or silently dropped.
                 bank_problem = self._row_bank_problem(new_row)
                 if bank_problem:
                     warnings.append(
