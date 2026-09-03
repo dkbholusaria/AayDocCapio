@@ -2619,10 +2619,19 @@ class ChallanRowDetailDialog(QDialog):
         # under Payment Gateway) without any complaint. Block on the same
         # check used everywhere else (table warnings, import) instead of
         # only catching this in the table after the fact.
-        from automation.challan_generator import bank_problem
-        problem = bank_problem(self._mode_combo.currentText(), self._current_bank())
+        from automation.challan_generator import bank_problem, drawee_bank_problem
+        mode = self._mode_combo.currentText()
+        problem = bank_problem(mode, self._current_bank())
         if problem:
             QMessageBox.warning(self, "Bank / Sub-Mode", problem.capitalize() + ".")
+            return
+        # BUG FIX (2026-09-03): confirmed live — Drawn on Bank is mandatory
+        # for every Pay at Bank Counter sub-mode (Cash included), but
+        # nothing stopped OK from being clicked while it was left blank.
+        drawee_bank = self._drawee_combo.currentText().strip() if self._drawee_widget.isVisible() else ""
+        drawee_problem = drawee_bank_problem(mode, drawee_bank)
+        if drawee_problem:
+            QMessageBox.warning(self, "Drawn on Bank", drawee_problem.capitalize() + ".")
             return
         amounts = {}
         for key, edit in self._amount_edits.items():
@@ -2634,9 +2643,9 @@ class ChallanRowDetailDialog(QDialog):
                 return
         self.result_data = {
             "pan": pan,
-            "payment_mode": self._mode_combo.currentText(),
+            "payment_mode": mode,
             "bank": self._current_bank(),
-            "drawee_bank": self._drawee_combo.currentText().strip() if self._drawee_widget.isVisible() else "",
+            "drawee_bank": drawee_bank,
             **amounts,
         }
         self.accept()
@@ -2944,8 +2953,19 @@ class GenerateChallansDialog(QDialog):
         from automation.challan_generator import bank_problem
         return bank_problem(row.get("payment_mode", ""), row.get("bank", ""))
 
+    def _row_drawee_problem(self, row: dict) -> str:
+        # Same idea, for Drawn on Bank — see automation.challan_generator's
+        # drawee_bank_problem() docstring. BUG FIX (2026-09-03): confirmed
+        # live — a row could be edited and saved with Drawn on Bank left
+        # blank under Pay at Bank Counter, since ChallanRowDetailDialog's
+        # OK button never checked it. Now checked here too, so such a row
+        # can't slip into "Ready to generate" even if it somehow gets past
+        # the edit dialog (e.g. an older draft file).
+        from automation.challan_generator import drawee_bank_problem
+        return drawee_bank_problem(row.get("payment_mode", ""), row.get("drawee_bank", ""))
+
     def _row_missing_bank(self, row: dict) -> bool:
-        return bool(self._row_bank_problem(row))
+        return bool(self._row_bank_problem(row)) or bool(self._row_drawee_problem(row))
 
     def _row_is_ready(self, row: dict) -> bool:
         pan = (row.get("pan") or "").upper()
@@ -2993,18 +3013,21 @@ class GenerateChallansDialog(QDialog):
 
             mode = row.get("payment_mode", "")
             bank = row.get("bank", "")
-            bank_problem = self._row_bank_problem(row)
+            # Drawn on Bank has no dedicated table column (only shown in
+            # the row detail dialog), so a problem with it surfaces here
+            # too rather than staying invisible until the row is opened.
+            problem = self._row_bank_problem(row) or self._row_drawee_problem(row)
             warn_color = QColor(getattr(_bt, "warning", "#D97706"))
             normal_color = QColor(_bt.text_primary)
 
             mode_item = QTableWidgetItem(mode)
-            mode_item.setForeground(warn_color if bank_problem else normal_color)
+            mode_item.setForeground(warn_color if problem else normal_color)
             self._table.setItem(i, self._COL_MODE, mode_item)
 
-            bank_item = QTableWidgetItem(f"⚠ {bank_problem}" if bank_problem else bank)
-            bank_item.setForeground(warn_color if bank_problem else normal_color)
-            if bank_problem:
-                bank_item.setToolTip(bank_problem.capitalize() + ".")
+            bank_item = QTableWidgetItem(f"⚠ {problem}" if problem else bank)
+            bank_item.setForeground(warn_color if problem else normal_color)
+            if problem:
+                bank_item.setToolTip(problem.capitalize() + ".")
             self._table.setItem(i, self._COL_BANK, bank_item)
 
         self._update_footer_counts()
@@ -3119,11 +3142,18 @@ class GenerateChallansDialog(QDialog):
                 # drop it instead of flagging the row over it.
                 if not row_bank_options:
                     row_bank = ""
+                row_drawee_bank = _cell("drawee_bank") or ""
+                # Same leniency as the RTGS/NEFT case above — Drawn on Bank
+                # only ever applies to Pay at Bank Counter, so a stray value
+                # under any other mode is unambiguous noise, not something
+                # to flag the row over.
+                if row_payment_mode != "Pay at Bank Counter":
+                    row_drawee_bank = ""
                 new_row = {
                     "pan": pan,
                     "payment_mode": row_payment_mode,
                     "bank": row_bank,
-                    "drawee_bank": _cell("drawee_bank") or "",
+                    "drawee_bank": row_drawee_bank,
                 }
                 # BUG FIX (2026-09-03): confirmed live — a row edited from
                 # one Payment Mode to another that still HAS its own bank
@@ -3140,6 +3170,16 @@ class GenerateChallansDialog(QDialog):
                 if bank_problem:
                     warnings.append(
                         f"Row {row_num}: Payment Mode '{row_payment_mode}' {bank_problem} — "
+                        f"row imported but flagged, won't run until fixed."
+                    )
+                # BUG FIX (2026-09-03): confirmed live — Drawn on Bank is
+                # mandatory for every Pay at Bank Counter sub-mode (Cash
+                # included), but a blank one wasn't checked on import at
+                # all, only in the (also-unchecked-until-now) edit dialog.
+                drawee_problem = self._row_drawee_problem(new_row)
+                if drawee_problem:
+                    warnings.append(
+                        f"Row {row_num}: Payment Mode '{row_payment_mode}' {drawee_problem} — "
                         f"row imported but flagged, won't run until fixed."
                     )
                 bad_amount = False

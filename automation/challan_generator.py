@@ -198,6 +198,19 @@ def bank_problem(payment_mode: str, bank: str) -> str:
     return ""
 
 
+def drawee_bank_problem(payment_mode: str, drawee_bank: str) -> str:
+    """Same idea as bank_problem() but for Drawn on Bank — confirmed live
+    it's mandatory for EVERY Pay at Bank Counter sub-mode (Cash included,
+    not just Cheque/Demand Draft), and inapplicable for every other mode.
+    Returns "" if fine, else a short human-readable reason."""
+    if payment_mode == "Pay at Bank Counter":
+        if not drawee_bank:
+            return "needs a Drawn on Bank"
+    elif drawee_bank:
+        return f"{payment_mode} doesn't use Drawn on Bank — clear this value"
+    return ""
+
+
 def cash_limit_exceeded(payment_mode: str, bank: str, total_amount: float) -> bool:
     """Client-side mirror of the portal's own ₹10,000 Cash cap (confirmed by
     the user testing it live), so the dialog can flag a row before it ever
