@@ -30,6 +30,17 @@ Follow these steps in order — no step is optional:
 - **Adding Packages:** Verify the project dependency manager first (default to `venv + pip` and update `requirements.txt` via `pip freeze > requirements.txt`).
 - **Compact Context:** Compact the context from time to time by summarizing findings or archiving logs to save tokens.
 
+## Collaboration & Planning Preferences
+
+- **Evidence before architecture.** Verify domain facts (real data, real schemas, real behaviour) before designing against them — don't guess when something can be checked.
+- **Ask before hard-to-reverse decisions; decide and record the rest.** Foundational choices (data layer, core tooling, external integrations) get confirmed directly. Lower-risk, easily-revisited choices can be made autonomously — but record the reasoning (as an ADR or equivalent), don't just decide silently.
+- **Break plans into small, independently verifiable sub-plans.** Each piece should have its own goal, deliverables, and verification — not one monolithic block that only proves itself once everything is done.
+- **Placeholder future work, don't plan ahead of what's known.** Stub out later phases/features so nothing is forgotten, but leave them undetailed until they actually start.
+- **Make scope boundaries explicit.** What's in scope vs. deferred belongs in its own labeled section, not left implicit.
+- **Dependency order should be real, not ceremonial.** Sequence work by genuine dependency, not artificial phase gates — stay agile (parallel work, short iterations, an early end-to-end "walking skeleton") within and across that order.
+- **Everything discussed must land in the project**, not just live in conversation or scratch space — documentation, decisions, and diagrams need a durable home in the repo.
+- **Plans keep evolving until explicitly approved.** Expect iteration before commitment, not during execution.
+
 ---
 
 ## Project Layout
