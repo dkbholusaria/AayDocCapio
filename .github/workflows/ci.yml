@@ -1,0 +1,19 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      # test_convert.py needs real client data from the gitignored testdata/
+      # folder (never committed — see .gitignore), so CI can't run it directly.
+      # This instead verifies the code it exercises actually imports cleanly.
+      - run: python -c "from automation.ais_converter import convert_ais_json"
