@@ -401,9 +401,12 @@ async def generate_challan(
 
         # `output_dir` is already the caller's per-client, per-AY/TY folder
         # (matching the "{PAN}-{Name}/AY_2026_27/" convention used for
-        # 26AS/AIS/Filed Returns/downloaded Tax Challans elsewhere) — same
-        # AY/TY tag used in filenames below.
-        year_tag = f"{TAX_TYPES[tax_type]['act_year_type']}{portal_year_label}".replace("-", "_")
+        # 26AS/AIS/Filed Returns/downloaded Tax Challans elsewhere), so the
+        # year segment in filenames below drops the AY/TY prefix — same
+        # bare "2026_27" style as 26AS/AIS/ITR filenames, since AY vs TY is
+        # already encoded in the folder name.
+        year_tag = portal_year_label.replace("-", "_")
+        tax_type_slug = _slug(TAX_TYPES[tax_type]["label"])
         challan_dir = os.path.join(output_dir, "Tax Challans (Generated)")
         os.makedirs(challan_dir, exist_ok=True)
 
@@ -678,7 +681,7 @@ async def generate_challan(
         if mode_info["has_download"]:
             doc_label = "Challan Form" if mode_info["artifact"] == "challan_form" else "Mandate Form"
             step(f"Downloading {doc_label} PDF...")
-            filename = f"{prefix}Challan-{year_tag}-{tax_type}-{crn}.pdf"
+            filename = f"{prefix}Challan-{year_tag}-{tax_type_slug}-{crn}.pdf"
             output_path = os.path.join(challan_dir, filename)
             download_btn = page.locator("button", has_text=f"Download {doc_label}").first
             async with page.expect_download() as download_info:
@@ -693,7 +696,7 @@ async def generate_challan(
             # rather than navigating away to Generated Challans + View
             # Details.
             step("No download for this mode — screenshotting confirmation page...")
-            filename = f"{prefix}Challan-{year_tag}-{tax_type}-{crn}.png"
+            filename = f"{prefix}Challan-{year_tag}-{tax_type_slug}-{crn}.png"
             output_path = os.path.join(challan_dir, filename)
             await page.screenshot(path=output_path, full_page=True)
             step(f"[Victory] Challan generated: {os.path.basename(output_path)} (CRN {crn})")
