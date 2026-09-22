@@ -163,14 +163,22 @@ async def _select_year(page: Page, tax_year: str, log_callback):
 
 async def _select_radio(page: Page, label_text: str, log_callback):
     """
-    Select a radio button using page.mouse.move()+click() at confirmed coordinates.
+    Select a radio button via its live semantics bounding box, same
+    pattern as _click_proceed()/_select_year() elsewhere in this file.
 
-    Radio button y positions confirmed visually via red-dot sweep (viewport 1600×900,
-    page not scrolled). x=415 is the radio circle column.
-      View Online:    y=430
-      Download PDF:   y=465
-      Download Excel: y=495
-      Download Text:  y=525
+    BUG FIX (2026-09-22): confirmed live — this used to click a fixed
+    page coordinate (415, y), with y hardcoded per option from a one-time
+    "red-dot sweep" at viewport 1600×900, page not scrolled. Once the
+    page's scroll/layout drifted between the three sequential downloads
+    (PDF, Excel, TXT), each subsequent fixed-coordinate click landed on
+    the row below the intended one: "Download PDF" actually selected
+    Excel, "Download Excel" actually selected Text — producing files
+    saved under the wrong extension with the wrong content (a ".pdf"
+    that was really an .xlsx, an "-itd.xlsx" that was really the raw
+    TXT). Locating the live element and clicking its current bounding
+    box (like every other click in this file already does) makes this
+    immune to scroll/layout drift. Old y values kept only as a fallback
+    if the live element can't be found.
     """
     radio_y = {
         "View Online":    430,
@@ -181,12 +189,28 @@ async def _select_radio(page: Page, label_text: str, log_callback):
     y = radio_y.get(label_text)
     if y is None:
         raise Exception(f"Unknown radio option: {label_text}")
-    log_callback(f"[168] Selecting radio '{label_text}' at (415, {y})")
+
+    el = page.locator(f"flt-semantics[aria-label*='{label_text}']").first
+    try:
+        await el.wait_for(state="attached", timeout=5000)
+        box = await el.bounding_box()
+        if box and box["width"] > 0:
+            cx = box["x"] + box["width"] / 2
+            cy = box["y"] + box["height"] / 2
+            log_callback(f"[168] Selecting radio '{label_text}' at ({cx:.0f}, {cy:.0f})")
+            await _js_tap(page, cx, cy, log_callback)
+            await asyncio.sleep(0.3)
+            log_callback(f"[168] Radio selected: {label_text}")
+            return
+    except Exception:
+        pass
+
+    log_callback(f"[168] Radio '{label_text}' semantics not found — falling back to fixed (415, {y})")
     await page.mouse.move(415, y)
     await asyncio.sleep(0.15)
     await page.mouse.click(415, y)
     await asyncio.sleep(0.3)
-    log_callback(f"[168] Radio selected: {label_text}")
+    log_callback(f"[168] Radio selected (fallback): {label_text}")
 
 
 async def _click_proceed(page: Page, log_callback):
