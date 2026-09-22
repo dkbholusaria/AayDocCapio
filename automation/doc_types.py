@@ -114,7 +114,7 @@ DOC_TYPES = [
     {
         "key": "challan_pdf", "template_key": "challan_pdf",
         "label": "Tax Payment Challan (PDF)", "short_label": "Challan",
-        "subfolder": "Tax Challans", "nested": False, "glob_suffix": "-Challan-*.pdf",
+        "subfolder": "Tax Challans (Paid)", "nested": False, "glob_suffix": "-Challan-*.pdf",
         "match": lambda n: "-CHALLAN-" in n and n.endswith(".PDF"),
         "emailable": True,
     },

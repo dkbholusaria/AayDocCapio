@@ -45,6 +45,7 @@ from automation.downloader_challans import (
 )
 from automation.diagnostics import capture_failure
 from automation.challan_fields import CHALLAN_AMOUNT_FIELDS
+from utils import migrate_challan_subfolder_names
 
 
 TAX_TYPES = {
@@ -410,7 +411,8 @@ async def generate_challan(
         # otherwise carry no indication of which convention its year is.
         year_tag = f"{TAX_TYPES[tax_type]['act_year_type']}_{portal_year_label.replace('-', '_')}"
         tax_type_slug = _slug(TAX_TYPES[tax_type]["label"])
-        challan_dir = os.path.join(output_dir, "Tax Challans (Generated)")
+        migrate_challan_subfolder_names(output_dir, step)
+        challan_dir = os.path.join(output_dir, "Tax Challans (Payable)")
         os.makedirs(challan_dir, exist_ok=True)
 
         step("Clicking + New Payment...")

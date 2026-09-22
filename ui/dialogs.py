@@ -3493,7 +3493,7 @@ class GenerateChallansDialog(QDialog):
         layout.addLayout(fy_row)
 
         # Shows where each client's challan will actually land — same
-        # "{PAN}-{Name}/{AY|TY}_{year}/Tax Challans (Generated)/" nesting
+        # "{PAN}-{Name}/{AY|TY}_{year}/Tax Challans (Payable)/" nesting
         # used for 26AS/AIS/Filed Returns/downloaded Tax Challans — so the
         # user isn't guessing about the save location before clicking
         # Generate. Updated per-year in _on_fy_changed() since the AY/TY
@@ -3690,7 +3690,7 @@ class GenerateChallansDialog(QDialog):
             year_dir = f"{year_type}_{portal_year_label.replace('-', '_')}"
             base = self._output_dir or "<Output Folder>"
             self._path_hint.setText(
-                f"Saves to: {base}\\{{PAN}}-{{Name}}\\{year_dir}\\Tax Challans (Generated)\\")
+                f"Saves to: {base}\\{{PAN}}-{{Name}}\\{year_dir}\\Tax Challans (Payable)\\")
         except Exception as e:
             _bt = _t()
             warn = getattr(_bt, "warning", "#D97706")
