@@ -2869,7 +2869,7 @@ class AayDocCapioApp(QMainWindow):
         room for. See PlansofThisProject/F-64_bulk_tax_challan_generation.md."""
         if self._challan_running:
             return
-        dlg = GenerateChallansDialog(self, self.vault, self._ay_entries)
+        dlg = GenerateChallansDialog(self, self.vault, self._ay_entries, output_dir=self.dir_lbl.text())
         if dlg.exec() == dlg.DialogCode.Accepted:
             self.start_challan_generation(dlg.fy_value, dlg.rows)
 

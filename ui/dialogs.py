@@ -3429,13 +3429,14 @@ class GenerateChallansDialog(QDialog):
     _COL_MODE = 3
     _COL_BANK = 4
 
-    def __init__(self, parent, vault, ay_entries):
+    def __init__(self, parent, vault, ay_entries, output_dir: str = ""):
         super().__init__(parent)
         from automation.challan_fields import CHALLAN_INPUT_COLUMNS, CHALLAN_AMOUNT_FIELDS
         from automation.challan_generator import resolve_tax_type, TAX_TYPES, cash_limit_exceeded
 
         self._vault = vault
         self._ay_entries = ay_entries
+        self._output_dir = output_dir
         self._resolve_tax_type = resolve_tax_type
         self._tax_types = TAX_TYPES
         self._cash_limit_exceeded = cash_limit_exceeded
@@ -3490,6 +3491,17 @@ class GenerateChallansDialog(QDialog):
         fy_row.addWidget(self._type_label)
         fy_row.addStretch(1)
         layout.addLayout(fy_row)
+
+        # Shows where each client's challan will actually land — same
+        # "{PAN}-{Name}/{AY|TY}_{year}/Tax Challans (Generated)/" nesting
+        # used for 26AS/AIS/Filed Returns/downloaded Tax Challans — so the
+        # user isn't guessing about the save location before clicking
+        # Generate. Updated per-year in _on_fy_changed() since the AY/TY
+        # segment depends on the selected year.
+        self._path_hint = QLabel("")
+        self._path_hint.setStyleSheet(f"color:{_bt.text_muted};font-size:11px;background:transparent;")
+        self._path_hint.setWordWrap(True)
+        layout.addWidget(self._path_hint)
 
         # ── Toolbar ──────────────────────────────────────────────────────
         # Icon-only with tooltips, not icon+text — six full-text buttons
@@ -3658,14 +3670,15 @@ class GenerateChallansDialog(QDialog):
         if not fy:
             self._type_label.setText("")
             self._tax_type_valid = False
+            self._path_hint.setText("")
             self._update_footer_counts()
             return
         try:
-            tax_type, _portal_year_label = self._resolve_tax_type(fy, self._ay_entries)
-            # portal_year_label is intentionally not shown here — it's
-            # already visible as part of the selected combo item's own text
-            # (e.g. "TY 2026-27" / "AY 2026-27"), so repeating it here would
-            # just be noise.
+            tax_type, portal_year_label = self._resolve_tax_type(fy, self._ay_entries)
+            # portal_year_label is intentionally not shown in _type_label —
+            # it's already visible as part of the selected combo item's own
+            # text (e.g. "TY 2026-27" / "AY 2026-27"), so repeating it there
+            # would just be noise. It's used below for the save-path hint.
             label = self._tax_types[tax_type]["label"]
             self._type_label.setText(f"→ {label}")
             _bt = _t()
@@ -3673,6 +3686,11 @@ class GenerateChallansDialog(QDialog):
                 f"color:{_bt.accent_text};background:{_bt.accent};font-size:13px;"
                 f"font-weight:bold;padding:4px 10px;border-radius:10px;")
             self._tax_type_valid = True
+            year_type = self._tax_types[tax_type]["act_year_type"]
+            year_dir = f"{year_type}_{portal_year_label.replace('-', '_')}"
+            base = self._output_dir or "<Output Folder>"
+            self._path_hint.setText(
+                f"Saves to: {base}\\{{PAN}}-{{Name}}\\{year_dir}\\Tax Challans (Generated)\\")
         except Exception as e:
             _bt = _t()
             warn = getattr(_bt, "warning", "#D97706")
@@ -3680,6 +3698,7 @@ class GenerateChallansDialog(QDialog):
             self._type_label.setStyleSheet(
                 f"color:{warn};background:transparent;font-size:12px;font-weight:normal;padding:0;")
             self._tax_type_valid = False
+            self._path_hint.setText("")
         self._update_footer_counts()
 
     # ── Row management ───────────────────────────────────────────────────
