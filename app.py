@@ -3010,7 +3010,7 @@ class AayDocCapioApp(QMainWindow):
 
                 # Same "{PAN}-{Name}/AY_2026_27/" convention used for
                 # 26AS/AIS/Filed Returns/downloaded Tax Challans, so
-                # "Tax Challans (Generated)" lands under the client's own
+                # "Tax Challans (Payable)" lands under the client's own
                 # PAN+Year folder instead of a flat top-level folder.
                 name_safe = "".join(c if c.isalnum() or c in " _-" else "" for c in name)
                 year_type = TAX_TYPES[tax_type]["act_year_type"]

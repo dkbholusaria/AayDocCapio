@@ -34,6 +34,7 @@ from automation.downloader import update_browser_status, make_step_logger
 from automation._nav_helpers import open_hamburger
 from automation.diagnostics import capture_failure
 from automation.pdf_unlocker import unlock_pdf
+from utils import migrate_challan_subfolder_names
 
 
 def _normalize_year(text: str) -> tuple[str, str] | None:
@@ -358,12 +359,13 @@ async def _download_challans_for_year(
     History tab for the correct Act. Challans are independent payments (not
     revisions of one another the way ITR filings are), so there's no
     "filing scope" concept here — every payment for the year is fetched,
-    saved flat into a "Tax Challans" subfolder keyed by CIN (unique per
-    payment)."""
+    saved flat into a "Tax Challans (Paid)" subfolder keyed by CIN (unique
+    per payment)."""
     step = make_step_logger(log_callback, "CHALLAN")
     try:
         step(f"Starting Challan download — year={year_value}, pan={'set' if pan else 'blank'}")
-        challan_dir = os.path.join(download_dir, "Tax Challans")
+        migrate_challan_subfolder_names(download_dir, step)
+        challan_dir = os.path.join(download_dir, "Tax Challans (Paid)")
         os.makedirs(challan_dir, exist_ok=True)
         prefix = f"{pan}-" if pan else ""
 
