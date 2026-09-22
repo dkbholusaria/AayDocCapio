@@ -342,6 +342,15 @@ async def _download_168_for_year(traces2_page: Page, tax_year: str, download_dir
         await update_browser_status(traces2_page, f"TRACES 2.0: Selecting TY {tax_year}...")
         await _select_year(traces2_page, tax_year, log_callback)
 
+        # DIAGNOSTIC (2026-09-22): _select_radio()'s aria-label locator for
+        # "Download PDF"/"Download Excel"/"Download Text" never matches live
+        # (confirmed: every run falls back to the old fixed coordinates,
+        # which download the wrong content under each filename) — dump the
+        # live semantics right here, after the Tax Year is selected and
+        # before any radio/format interaction, to see what's actually on
+        # screen at the moment _select_radio() runs.
+        await _log_semantics(traces2_page, log_callback)
+
         # ── PDF download ──────────────────────────────────────────────────────
         log_callback("[168] Selecting Download PDF...")
         await update_browser_status(traces2_page, "TRACES 2.0: Downloading PDF...")
