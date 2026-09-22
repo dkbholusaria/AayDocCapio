@@ -152,8 +152,17 @@ def _parse(txt_path: str) -> dict:
             continue
 
         def _norm_col(name: str) -> str:
-            """Normalise rupee symbols and trailing footnote asterisks in column names."""
-            return name.replace("(â¹)", "(Rs.)").replace("(₹)", "(Rs.)").rstrip("*")
+            """Normalise rupee symbols, trailing footnote asterisks, and
+            Form 168's "Section Code" wording. Confirmed live: Form 26AS's
+            own column for this is just "Section", but Form 168's raw TXT
+            header literally says "Section Code" — every consumer below
+            looks it up as d.get("Section", ""), which silently returned ""
+            for every Form 168 row until this normalized both to the same
+            key."""
+            name = name.replace("(â¹)", "(Rs.)").replace("(₹)", "(Rs.)").rstrip("*")
+            if name == "Section Code":
+                name = "Section"
+            return name
 
         summary_headers = [_norm_col(c.strip()) for c in non_blank[0].split("^")]
         detail_headers  = []
