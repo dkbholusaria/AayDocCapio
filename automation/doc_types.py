@@ -27,25 +27,28 @@ DOC_TYPES = [
         "match": lambda n: "-26AS-" in n and n.endswith(".XLSX"),
         "emailable": True,
     },
+    # Form 168 — from TY 2026-27 onward, Form 26AS's replacement under the
+    # 2025 Income-tax Act — downloads under its own "168" subfolder (see
+    # utils.migrate_168_subfolder_name()), not "26AS".
     {
         "key": "168_itd_xlsx", "template_key": "168_xlsx",
         "label": "Form 168 — ITD Native Excel", "short_label": "168 ITD Excel",
-        "subfolder": "26AS", "nested": False, "glob_suffix": "-168-*.xlsx",
-        "match": lambda n: "168" in n and n.endswith("-ITD.XLSX"),
+        "subfolder": "168", "nested": False, "glob_suffix": "-168-*.xlsx",
+        "match": lambda n: "-168-" in n and n.endswith("-ITD.XLSX"),
         "emailable": True,
     },
     {
         "key": "168_pdf", "template_key": "168_pdf",
         "label": "Form 168 — Annual Tax Statement (PDF)", "short_label": "168 PDF",
-        "subfolder": "26AS", "nested": False, "glob_suffix": "-168-*.pdf",
-        "match": lambda n: "168" in n and n.endswith(".PDF"),
+        "subfolder": "168", "nested": False, "glob_suffix": "-168-*.pdf",
+        "match": lambda n: "-168-" in n and n.endswith(".PDF"),
         "emailable": True,
     },
     {
         "key": "168_xlsx", "template_key": "168_xlsx",
         "label": "Form 168 — Annual Tax Statement (Excel)", "short_label": "168 Excel",
-        "subfolder": "26AS", "nested": False, "glob_suffix": "-168-*.xlsx",
-        "match": lambda n: "168" in n and n.endswith(".XLSX"),
+        "subfolder": "168", "nested": False, "glob_suffix": "-168-*.xlsx",
+        "match": lambda n: "-168-" in n and n.endswith(".XLSX"),
         "emailable": True,
     },
     {
