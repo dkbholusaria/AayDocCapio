@@ -562,7 +562,16 @@ async def generate_challan(
                 # confirmed live by a diagnostic screenshot showing "Other
                 # Bank" still unchecked after the click. The portal gives
                 # this radio a stable id="bankOther"; use that directly.
-                other_tile = page.locator("#bankOther")
+                #
+                # BUG FIX (2026-09-22): confirmed live — a page-wide
+                # "#bankOther" search hit the same "every inactive tab keeps
+                # its own copy in the DOM" problem already fixed above for
+                # the bank-tile click (Debit Card's own #bankOther plus Net
+                # Banking's inert one both matched, a strict-mode violation
+                # that crashed the run). Scope to the active tab panel here
+                # too, same as the tile-click branch above.
+                active_panel = page.locator(".mat-mdc-tab-body-active").last
+                other_tile = active_panel.locator("#bankOther")
                 await other_tile.wait_for(state="visible", timeout=10000)
                 await other_tile.click()
                 await asyncio.sleep(0.5)
@@ -579,7 +588,6 @@ async def generate_challan(
                 # portaled to <body> (not nested under the panel), so that
                 # search stays page-wide — but by then only this select's
                 # overlay is open, so there's no ambiguity to worry about.
-                active_panel = page.locator(".mat-mdc-tab-body-active").last
                 nested_select = active_panel.locator("mat-select, select").last
                 await nested_select.wait_for(state="visible", timeout=10000)
                 await nested_select.click()
