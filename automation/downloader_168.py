@@ -383,11 +383,17 @@ async def _download_168_for_year(traces2_page: Page, tax_year: str, download_dir
         # the browser is visible): overlays a live (x, y) mouse-position
         # readout and pauses so a human can hover each radio option by hand
         # and read off its real coordinates — same "red-dot sweep" method
-        # originally used to calibrate the fallback coordinates below.
+        # originally used to calibrate the fallback coordinates below. Pause
+        # length defaults to 2 minutes; override with
+        # AAYDOC_168_COORD_DEBUG_SECONDS if that's still not enough.
         if os.environ.get("AAYDOC_168_COORD_DEBUG") == "1":
             await _enable_coord_overlay(traces2_page, log_callback)
-            log_callback("[168] COORD DEBUG: hover each radio option now — pausing 20s...")
-            await asyncio.sleep(20)
+            try:
+                pause_s = int(os.environ.get("AAYDOC_168_COORD_DEBUG_SECONDS", "120"))
+            except ValueError:
+                pause_s = 120
+            log_callback(f"[168] COORD DEBUG: hover each radio option now — pausing {pause_s}s...")
+            await asyncio.sleep(pause_s)
 
         # ── PDF download ──────────────────────────────────────────────────────
         log_callback("[168] Selecting Download PDF...")
