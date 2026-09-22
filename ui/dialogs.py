@@ -4134,7 +4134,7 @@ class ChallanGenerationProgressDialog(QDialog):
         layout.addWidget(title)
 
         self._table = QTableWidget(len(targets), 4)
-        self._table.setHorizontalHeaderLabels(["Name", "PAN", "Status", "Artifact"])
+        self._table.setHorizontalHeaderLabels(["Name", "PAN", "Status", "Save Path"])
         hdr = self._table.horizontalHeader()
         hdr.setSectionResizeMode(self._COL_NAME, QHeaderView.ResizeMode.Interactive)
         hdr.setSectionResizeMode(self._COL_PAN, QHeaderView.ResizeMode.Interactive)
