@@ -190,54 +190,38 @@ async def _select_year(page: Page, tax_year: str, log_callback):
 
 async def _select_radio(page: Page, label_text: str, log_callback):
     """
-    Select a radio button via its live semantics bounding box, same
-    pattern as _click_proceed()/_select_year() elsewhere in this file.
+    Select a radio button using page.mouse.move()+click() at confirmed
+    coordinates.
 
-    BUG FIX (2026-09-22): confirmed live — this used to click a fixed
-    page coordinate (415, y), with y hardcoded per option from a one-time
-    "red-dot sweep" at viewport 1600×900, page not scrolled. Once the
-    page's scroll/layout drifted between the three sequential downloads
-    (PDF, Excel, TXT), each subsequent fixed-coordinate click landed on
-    the row below the intended one: "Download PDF" actually selected
-    Excel, "Download Excel" actually selected Text — producing files
-    saved under the wrong extension with the wrong content (a ".pdf"
-    that was really an .xlsx, an "-itd.xlsx" that was really the raw
-    TXT). Locating the live element and clicking its current bounding
-    box (like every other click in this file already does) makes this
-    immune to scroll/layout drift. Old y values kept only as a fallback
-    if the live element can't be found.
+    BUG FIX (2026-09-22): confirmed live — the original coordinates
+    (x=415, y=430/465/495/525) went stale; the radio group had drifted
+    ~20px higher than when those were measured, so each click landed on
+    the row below the one intended ("Download PDF" actually selected
+    Excel, "Download Excel" actually selected Text — files saved under
+    the wrong extension with the wrong content). A prior attempt to fix
+    this via a live aria-label locator never worked (these radios never
+    exposed matching Flutter semantics — confirmed: every run fell back
+    to the fixed coordinates), so that approach was dropped. Re-measured
+    live via the AAYDOC_168_COORD_DEBUG overlay (see _enable_coord_overlay)
+    and updated below. If this drifts again, re-run with
+    AAYDOC_168_COORD_DEBUG=1 to remeasure rather than guessing.
     """
-    radio_y = {
-        "View Online":    430,
-        "Download PDF":   465,
-        "Download Excel": 495,
-        "Download Text":  525,
+    radio_xy = {
+        "View Online":    (414, 412),
+        "Download PDF":   (414, 444),
+        "Download Excel": (414, 473),
+        "Download Text":  (414, 507),
     }
-    y = radio_y.get(label_text)
-    if y is None:
+    xy = radio_xy.get(label_text)
+    if xy is None:
         raise Exception(f"Unknown radio option: {label_text}")
-
-    el = page.locator(f"flt-semantics[aria-label*='{label_text}']").first
-    try:
-        await el.wait_for(state="attached", timeout=5000)
-        box = await el.bounding_box()
-        if box and box["width"] > 0:
-            cx = box["x"] + box["width"] / 2
-            cy = box["y"] + box["height"] / 2
-            log_callback(f"[168] Selecting radio '{label_text}' at ({cx:.0f}, {cy:.0f})")
-            await _js_tap(page, cx, cy, log_callback)
-            await asyncio.sleep(0.3)
-            log_callback(f"[168] Radio selected: {label_text}")
-            return
-    except Exception:
-        pass
-
-    log_callback(f"[168] Radio '{label_text}' semantics not found — falling back to fixed (415, {y})")
-    await page.mouse.move(415, y)
+    x, y = xy
+    log_callback(f"[168] Selecting radio '{label_text}' at ({x}, {y})")
+    await page.mouse.move(x, y)
     await asyncio.sleep(0.15)
-    await page.mouse.click(415, y)
+    await page.mouse.click(x, y)
     await asyncio.sleep(0.3)
-    log_callback(f"[168] Radio selected (fallback): {label_text}")
+    log_callback(f"[168] Radio selected: {label_text}")
 
 
 async def _click_proceed(page: Page, log_callback):
