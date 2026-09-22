@@ -1563,16 +1563,19 @@ class AayDocCapioApp(QMainWindow):
         col.addWidget(self.ais_status_bar)
         return container
 
+    _LOG_PANEL_HEIGHT = 190
+    _LOG_HEADER_HEIGHT = 32
+
     def _mk_footer(self):
         footer = QFrame()
-        footer.setFixedHeight(190)
         footer.setStyleSheet("QFrame{background:#0F172A;}")
         fl = QVBoxLayout(footer)
         fl.setContentsMargins(0, 0, 0, 0)
         fl.setSpacing(0)
+        self._log_footer = footer
 
         log_hdr = QFrame()
-        log_hdr.setFixedHeight(32)
+        log_hdr.setFixedHeight(self._LOG_HEADER_HEIGHT)
         log_hdr.setStyleSheet("QFrame{background:#1E293B;}")
         hhl = QHBoxLayout(log_hdr); hhl.setContentsMargins(16, 0, 12, 0)
         dot = QLabel("●")
@@ -1588,6 +1591,14 @@ class AayDocCapioApp(QMainWindow):
             f"QPushButton:hover{{color:{_t().text_primary};border-color:{_t().text_muted};}}")
         copy_btn.clicked.connect(self.copy_logs_to_clipboard)
         hhl.addWidget(copy_btn)
+        self._log_toggle_btn = QPushButton("▾ Hide")
+        self._log_toggle_btn.setFixedHeight(22)
+        self._log_toggle_btn.setStyleSheet(
+            f"QPushButton{{background:transparent;color:{_t().text_muted};border:1px solid {_t().border};"
+            f"border-radius:4px;padding:0 10px;font-size:10px;margin-left:6px;}}"
+            f"QPushButton:hover{{color:{_t().text_primary};border-color:{_t().text_muted};}}")
+        self._log_toggle_btn.clicked.connect(self._toggle_log_panel)
+        hhl.addWidget(self._log_toggle_btn)
         fl.addWidget(log_hdr)
 
         self.log_box = QTextEdit()
@@ -1597,7 +1608,21 @@ class AayDocCapioApp(QMainWindow):
             f"font-family:'{_MONO_FONT}',monospace;"
             "font-size:11px;color:#7DD3FC;padding:8px 16px;}")
         fl.addWidget(self.log_box)
+
+        collapsed = self.vault.get_setting("log_panel_collapsed", False)
+        self._set_log_panel_collapsed(collapsed, persist=False)
         return footer
+
+    def _toggle_log_panel(self):
+        self._set_log_panel_collapsed(self.log_box.isVisible())
+
+    def _set_log_panel_collapsed(self, collapsed: bool, persist: bool = True):
+        self.log_box.setVisible(not collapsed)
+        self._log_footer.setFixedHeight(
+            self._LOG_HEADER_HEIGHT if collapsed else self._LOG_PANEL_HEIGHT)
+        self._log_toggle_btn.setText("▸ Show" if collapsed else "▾ Hide")
+        if persist:
+            self.vault.update_setting("log_panel_collapsed", collapsed)
 
     # ── Grid ──────────────────────────────────────────────────────────────────
 
