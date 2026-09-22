@@ -12,7 +12,7 @@ import sys
 # emailer scanning it), never as a single upfront full-tree scan at startup.
 _LEGACY_FLAT_PATTERNS = (
     ("*-26AS-*", "26AS"),
-    ("*-168-*", "26AS"),
+    ("*-168-*", "168"),
     ("*-AIS-*", "AIS-TIS"),
     ("*-TIS-*", "AIS-TIS"),
 )
@@ -150,6 +150,52 @@ def migrate_challan_subfolder_names(download_dir: str, log_callback=None) -> Non
     except Exception as e:
         if log_callback:
             log_callback(f"[Migrate] Skipped Tax Challan subfolder migration for {download_dir}: {e}")
+
+
+def migrate_168_subfolder_name(ay_folder: str, log_callback=None) -> None:
+    """
+    Form 168 (the form Form 26AS is renamed to under the 2025 Income-tax
+    Act, downloaded for TY years) used to share the same "26AS" subfolder
+    as real Form 26AS downloads (AY years) — both landed in .../26AS/ even
+    though they're a different form once TY years exist. AY and TY years
+    already live in separate parent folders (AY_.../ vs TY_.../), so a TY
+    year's "26AS" subfolder can only ever hold Form 168 files — detect that
+    by content (filenames containing "-168-", never "-26AS-") rather than
+    trusting the caller to know which year type this is, so this is safe to
+    call from any code path that touches a per-year folder, AY or TY alike.
+    Rename-or-merge into "168/", same pattern as
+    migrate_challan_subfolder_names(). Never raises.
+    """
+    try:
+        old_dir = os.path.join(ay_folder, "26AS")
+        if not os.path.isdir(old_dir):
+            return
+        names = os.listdir(old_dir)
+        if not names or any("-26AS-" in n.upper() for n in names):
+            return  # empty, or real Form 26AS content present — leave alone
+        if not any("-168-" in n.upper() for n in names):
+            return  # nothing Form-168-shaped here either
+        new_dir = os.path.join(ay_folder, "168")
+        if not os.path.isdir(new_dir):
+            shutil.move(old_dir, new_dir)
+            if log_callback:
+                log_callback("[Migrate] Renamed 26AS/ -> 168/ (Form 168 content)")
+            return
+        moved_any = False
+        for name in names:
+            src = os.path.join(old_dir, name)
+            dest = os.path.join(new_dir, name)
+            if os.path.exists(dest):
+                continue
+            shutil.move(src, dest)
+            moved_any = True
+        if moved_any and log_callback:
+            log_callback("[Migrate] Merged 26AS/ -> 168/ (Form 168 content)")
+        if not os.listdir(old_dir):
+            os.rmdir(old_dir)
+    except Exception as e:
+        if log_callback:
+            log_callback(f"[Migrate] Skipped Form 168 subfolder migration for {ay_folder}: {e}")
 
 
 def get_timestamp() -> str:

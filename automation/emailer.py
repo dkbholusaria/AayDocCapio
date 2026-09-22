@@ -9,7 +9,7 @@ from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 
-from utils import migrate_flat_docs_to_subfolders, migrate_challan_subfolder_names
+from utils import migrate_flat_docs_to_subfolders, migrate_challan_subfolder_names, migrate_168_subfolder_name
 from automation.doc_types import DOC_TYPES, match_doc_type
 
 # ── Email activity log ────────────────────────────────────────────────────────
@@ -128,6 +128,7 @@ def collect_attachments(ay_folder: str, pan: str) -> list:
 
     migrate_flat_docs_to_subfolders(ay_folder)
     migrate_challan_subfolder_names(ay_folder)
+    migrate_168_subfolder_name(ay_folder)
 
     # Built from automation/doc_types.py (the single source of truth also
     # used by _doc_list()/MailDocsDialog) rather than a hand-maintained list
