@@ -84,6 +84,33 @@ async def _log_semantics(page: Page, log_callback):
         log_callback(f"[168] Semantics dump failed: {e}")
 
 
+async def _enable_coord_overlay(page: Page, log_callback):
+    """Debug aid, opt-in only (see AAYDOC_168_COORD_DEBUG): overlays a
+    fixed, always-on-top red label showing the live mouse position, so a
+    human can hover the visible (non-headless) browser over each radio
+    option and read off its real (x, y) — the same "red-dot sweep" method
+    originally used to calibrate _select_radio()'s fallback coordinates.
+    Purely visual — the code never reads this back, a human reports the
+    numbers they see."""
+    try:
+        await page.evaluate("""() => {
+            if (document.getElementById('__coord_overlay__')) return;
+            const el = document.createElement('div');
+            el.id = '__coord_overlay__';
+            el.style.cssText = 'position:fixed;top:8px;left:8px;z-index:999999;' +
+                'background:red;color:white;font:bold 16px monospace;' +
+                'padding:4px 8px;border-radius:4px;pointer-events:none;';
+            el.textContent = 'x, y';
+            document.body.appendChild(el);
+            window.addEventListener('mousemove', (e) => {
+                el.textContent = e.clientX + ', ' + e.clientY;
+            });
+        }""")
+        log_callback("[168] Coordinate overlay enabled — hover the visible browser to read live (x, y).")
+    except Exception as e:
+        log_callback(f"[168] Could not enable coordinate overlay: {e}")
+
+
 async def _js_tap(page: Page, x: float, y: float, log_callback):
     """
     Dispatch touch+mouse events on the Flutter canvas (inside flt-glass-pane shadow DOM).
@@ -350,6 +377,17 @@ async def _download_168_for_year(traces2_page: Page, tax_year: str, download_dir
         # before any radio/format interaction, to see what's actually on
         # screen at the moment _select_radio() runs.
         await _log_semantics(traces2_page, log_callback)
+
+        # DIAGNOSTIC, opt-in only (set AAYDOC_168_COORD_DEBUG=1 before
+        # launching the app, and run with "Run in background" unchecked so
+        # the browser is visible): overlays a live (x, y) mouse-position
+        # readout and pauses so a human can hover each radio option by hand
+        # and read off its real coordinates — same "red-dot sweep" method
+        # originally used to calibrate the fallback coordinates below.
+        if os.environ.get("AAYDOC_168_COORD_DEBUG") == "1":
+            await _enable_coord_overlay(traces2_page, log_callback)
+            log_callback("[168] COORD DEBUG: hover each radio option now — pausing 20s...")
+            await asyncio.sleep(20)
 
         # ── PDF download ──────────────────────────────────────────────────────
         log_callback("[168] Selecting Download PDF...")
