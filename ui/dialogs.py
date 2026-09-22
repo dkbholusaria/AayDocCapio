@@ -4473,6 +4473,7 @@ class MailDocsDialog(QDialog):
     _COL_EMAIL = 3
     _COL_CC    = 4
     _COL_FILES = 5
+    _COL_DOCS  = 6
 
     def __init__(self, parent, vault, ay_label: str):
         super().__init__(parent)
@@ -4623,21 +4624,23 @@ class MailDocsDialog(QDialog):
         main.addLayout(form)
 
         # ── Table ─────────────────────────────────────────────────────────────
-        self._table = QTableWidget(0, 6)
+        self._table = QTableWidget(0, 7)
         self._table.setHorizontalHeaderLabels(
-            ["", "Name  ⇅", "PAN  ⇅", "Email  ⇅", "CC  ⇅", "Files  ⇅"])
+            ["", "Name  ⇅", "PAN  ⇅", "Email  ⇅", "CC  ⇅", "Files  ⇅", "Documents"])
 
         hdr = self._table.horizontalHeader()
         hdr.setSectionResizeMode(self._COL_CHK,   QHeaderView.ResizeMode.Fixed)
         hdr.setSectionResizeMode(self._COL_NAME,  QHeaderView.ResizeMode.Interactive)
         hdr.setSectionResizeMode(self._COL_PAN,   QHeaderView.ResizeMode.Interactive)
-        hdr.setSectionResizeMode(self._COL_EMAIL, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(self._COL_EMAIL, QHeaderView.ResizeMode.Interactive)
         hdr.setSectionResizeMode(self._COL_CC,    QHeaderView.ResizeMode.Interactive)
-        hdr.setSectionResizeMode(self._COL_FILES, QHeaderView.ResizeMode.Fixed)
+        hdr.setSectionResizeMode(self._COL_FILES, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(self._COL_DOCS,  QHeaderView.ResizeMode.Stretch)
         hdr.setStretchLastSection(False)
         self._table.setColumnWidth(self._COL_CHK,   36)
         self._table.setColumnWidth(self._COL_NAME, 180)
         self._table.setColumnWidth(self._COL_PAN,  110)
+        self._table.setColumnWidth(self._COL_EMAIL, 220)
         self._table.setColumnWidth(self._COL_CC,   180)
         self._table.setColumnWidth(self._COL_FILES, 80)
 
@@ -4919,6 +4922,21 @@ class MailDocsDialog(QDialog):
                 files_item.setForeground(QColor("#EF4444"))
             files_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
             self._table.setItem(row, self._COL_FILES, files_item)
+
+            # Documents — which doc types will actually be attached, not
+            # just a bare count, so the user can see what they're sending
+            # (e.g. "Challan (Payable)") before clicking Send.
+            doc_labels = []
+            for a in kept_attachments:
+                entry = match_doc_type(os.path.basename(a).upper())
+                label = entry["short_label"] if entry else os.path.basename(a)
+                if label not in doc_labels:
+                    doc_labels.append(label)
+            docs_item = QTableWidgetItem(", ".join(doc_labels))
+            docs_item.setForeground(QColor(t.text_primary if doc_labels else t.text_muted))
+            if doc_labels:
+                docs_item.setToolTip("\n".join(os.path.basename(f) for f in kept_attachments))
+            self._table.setItem(row, self._COL_DOCS, docs_item)
 
     # ── sort ──────────────────────────────────────────────────────────────────
 
