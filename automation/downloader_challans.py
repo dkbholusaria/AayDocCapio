@@ -36,6 +36,26 @@ from automation.diagnostics import capture_failure
 from automation.pdf_unlocker import unlock_pdf
 
 
+def _normalize_year(text: str) -> tuple[str, str] | None:
+    """Extract (start_year, 2-digit_end_year) from an AY/TY string, tolerant
+    of both the app's short "2026-27" form and the portal's own long
+    "2026-2027" form (confirmed live: Form 26AS's header carries the long
+    form — see automation/as26_converter.py's Form-26AS header keys — so
+    the Payment History table's Assessment Year column is not guaranteed
+    to match the app's short form byte-for-byte), plus surrounding text
+    like "A.Y. 2026-27"."""
+    m = re.search(r"(\d{4})\s*-\s*(\d{2,4})", text)
+    if not m:
+        return None
+    return m.group(1), m.group(2)[-2:]
+
+
+def _years_match(ay_text: str, year_value: str) -> bool:
+    a = _normalize_year(ay_text)
+    b = _normalize_year(year_value)
+    return a is not None and a == b
+
+
 async def _first_visible(locator, timeout_ms: int = 10000):
     """Given a Playwright locator that can match more than one element where
     only one is genuinely visible/interactable, poll until one becomes
@@ -393,7 +413,8 @@ async def _download_challans_for_year(
                 except Exception as e:
                     step(f"Row {i}: could not read Assessment/Tax Year cell ({e})")
                     continue
-                if ay_text != year_value:
+                if not _years_match(ay_text, year_value):
+                    step(f"Row {i}: year '{ay_text}' does not match target {year_value} — skipping")
                     continue
 
                 try:
