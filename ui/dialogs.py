@@ -4573,6 +4573,7 @@ class MailDocsDialog(QDialog):
             self._tpl_combo.addItem(tpl["name"])
         idx = next((i for i, t_ in enumerate(templates) if t_["name"] == active_name), 0)
         self._tpl_combo.setCurrentIndex(idx)
+        self._tpl_combo.currentIndexChanged.connect(self._on_template_changed)
         form.addRow(_form_lbl("Template:"), self._tpl_combo)
 
         # Folder row
@@ -4725,6 +4726,50 @@ class MailDocsDialog(QDialog):
 
     # ── scan ──────────────────────────────────────────────────────────────────
 
+    def _current_doc_filter(self) -> dict:
+        """The active template's per-doc-type attach filter (its "docs"
+        dict), keyed by automation.doc_types.py's template_key. Empty dict
+        means "attach everything" (no template, or a template that never
+        set any checkbox)."""
+        all_templates = self._vault.get_email_templates()
+        tpl_name = self._tpl_combo.currentText()
+        active_tpl = next((t for t in all_templates if t["name"] == tpl_name),
+                          all_templates[0] if all_templates else None)
+        return active_tpl.get("docs", {}) if active_tpl else {}
+
+    def _keep(self, path: str) -> bool:
+        doc_filter = self._current_doc_filter()
+        if not doc_filter:
+            return True
+        n = os.path.basename(path).upper()
+        entry = match_doc_type(n)
+        if entry and entry["template_key"]:
+            return doc_filter.get(entry["template_key"], True)
+        return True
+
+    def _on_template_changed(self):
+        # Fires during __init__ (setCurrentIndex) before the table/scan
+        # state exists — nothing to refresh yet in that case.
+        if not getattr(self, "_clients", None) or not hasattr(self, "_checkboxes"):
+            return
+        checked_pans = {pan for pan, chk in self._checkboxes.items() if chk.isChecked()}
+        live_emails  = {pan: ed.text() for pan, ed in self._email_edits.items()}
+        live_cc      = {pan: ed.text() for pan, ed in self._cc_edits.items()}
+        for c in self._clients:
+            if c["pan"] in live_emails:
+                c["email"] = live_emails[c["pan"]]
+            if c["pan"] in live_cc:
+                c["cc"] = live_cc[c["pan"]]
+        self._populate_table(checked_pans=checked_pans)
+        self._refresh_scan_summary()
+        self._apply_filter(self._filter_edit.text())
+
+    def _refresh_scan_summary(self):
+        n = len(self._clients)
+        n_files = sum(1 for c in self._clients if any(self._keep(a) for a in c["attachments"]))
+        self._scan_summary = f"Found {n} client(s) — {n_files} with files for {self._ay_label}."
+        self._update_status_label()
+
     def _scan(self):
         from automation.emailer import scan_for_clients
         root = self._folder_edit.text().strip()
@@ -4751,9 +4796,7 @@ class MailDocsDialog(QDialog):
                 "No matching clients found. Check that the folder contains {PAN}-Name sub-folders.")
             self._send_btn.setEnabled(False)
         else:
-            n_files = sum(1 for c in self._clients if c["attachments"])
-            self._scan_summary = f"Found {n} client(s) — {n_files} with files for {self._ay_label}."
-            self._update_status_label()
+            self._refresh_scan_summary()
             self._send_btn.setEnabled(True)
 
     def _update_status_label(self):
@@ -4786,7 +4829,11 @@ class MailDocsDialog(QDialog):
             self._table.setRowHeight(row, 38)
 
             pan = client["pan"]
-            has_files = bool(client["attachments"])  # used for Files column display
+            # Filtered by the currently selected template's doc checkboxes,
+            # so "3 files" here matches what Send would actually attach —
+            # not the raw on-disk count regardless of template.
+            kept_attachments = [a for a in client["attachments"] if self._keep(a)]
+            has_files = bool(kept_attachments)  # used for Files column display
             can_select = True  # always allow selection; doc filtering happens at send time
 
             # Checkbox cell
@@ -4850,7 +4897,7 @@ class MailDocsDialog(QDialog):
             self._cc_edits[pan] = cc_edit
 
             # Files — restore live status (e.g. ✅ Sent) if available, else show count
-            n_files = len(client["attachments"])
+            n_files = len(kept_attachments)
             restored = status_map.get(pan) if status_map else None
             if restored and restored not in (f"{n_files} file{'s' if n_files != 1 else ''}", "⚠ No files"):
                 files_item = QTableWidgetItem(restored)
@@ -4863,7 +4910,7 @@ class MailDocsDialog(QDialog):
                 else:
                     files_item.setForeground(QColor(t.text_primary))
             elif has_files:
-                tip = "\n".join(os.path.basename(f) for f in client["attachments"])
+                tip = "\n".join(os.path.basename(f) for f in kept_attachments)
                 files_item = QTableWidgetItem(f"{n_files} file{'s' if n_files != 1 else ''}")
                 files_item.setForeground(QColor(t.text_primary))
                 files_item.setToolTip(tip)
@@ -4913,7 +4960,7 @@ class MailDocsDialog(QDialog):
             self._COL_PAN:   lambda c: c["pan"].lower(),
             self._COL_EMAIL: lambda c: c.get("email", "").lower(),
             self._COL_CC:    lambda c: c.get("cc", "").lower(),
-            self._COL_FILES: lambda c: len(c["attachments"]),
+            self._COL_FILES: lambda c: sum(1 for a in c["attachments"] if self._keep(a)),
         }
         key_fn = key_map.get(self._sort_col)
         if key_fn:
@@ -4971,18 +5018,6 @@ class MailDocsDialog(QDialog):
             self._vault.set_active_template(active_tpl["name"])
             cfg["email_subject_tpl"] = active_tpl.get("subject", cfg.get("email_subject_tpl", ""))
             cfg["email_body_tpl"]    = active_tpl.get("body",    cfg.get("email_body_tpl", ""))
-            doc_filter = active_tpl.get("docs", {})
-        else:
-            doc_filter = {}
-
-        def _keep(path: str) -> bool:
-            if not doc_filter:
-                return True
-            n = os.path.basename(path).upper()
-            entry = match_doc_type(n)
-            if entry and entry["template_key"]:
-                return doc_filter.get(entry["template_key"], True)
-            return True
 
         # Collect selected clients and validate emails
         selected = []
@@ -5001,7 +5036,7 @@ class MailDocsDialog(QDialog):
                     "background:#FEF2F2;color:#B91C1C;font-size:11px;padding:0 4px;}")
                 continue
             cc = self._cc_edits[pan].text().strip()
-            attachments = [a for a in client["attachments"] if _keep(a)]
+            attachments = [a for a in client["attachments"] if self._keep(a)]
             if not attachments:
                 skipped_no_docs.append((client["name"], pan))
                 continue
