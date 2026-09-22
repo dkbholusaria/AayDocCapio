@@ -2,6 +2,33 @@
 
 All notable changes to AayDocCapio are documented here.
 
+## [2.4.6] — 2026-09-22
+
+### New Features
+
+#### Form 168 downloads get their own folder
+- Form 168 (Form 26AS's replacement for TY 2026-27 onward) now saves into its own "168" folder instead of sharing the "26AS" folder with real Form 26AS downloads — old installs migrate automatically
+- Mail Docs to Clients now shows a "Documents" column listing exactly which document types will be attached for each client, instead of just a bare file count
+- The Live Logs panel at the bottom of the main window can now be collapsed to reclaim screen space, with the choice remembered next time you open the app
+
+### Improvements
+- Tax Challans are now organized into separate "Paid" and "Payable" folders, with old installs' folders migrated automatically — including very old installs that still had a flat "Challans" folder from before this
+- Generated (not-yet-paid) challan filenames now carry the same Assessment/Tax Year prefix as every other document, and a readable payment-type name instead of an internal code
+- The Generate Tax Challans screen now shows exactly where files will be saved before you click Generate
+- "Challan (Paid)" and "Challan (Payable)" are now separate checkboxes in Email Settings, since they serve different purposes
+- Mail Docs to Clients' file count now reflects the currently selected email template, instead of always showing every document regardless of which ones that template would actually attach
+- The Email and Files columns in Mail Docs to Clients can now be resized like every other column
+
+### Bug Fixes
+- Fixed Form 26AS conversion coming back with a blank header (including missing addresses) when the ITD portal's export format changed
+- Fixed AIS incorrectly showing "still generating — try again" when it had, in fact, already downloaded successfully earlier in the same run
+- Fixed Tax Challans sometimes not being found when downloading, due to a year-format mismatch between the app and the portal
+- Fixed a crash when generating a challan for a bank reached via the "Other Bank" option
+- Fixed Form 168 PDF, Excel, and TXT downloads sometimes saving under the wrong file — a PDF that was actually Excel content, or an Excel file that was actually the raw text data — so the files wouldn't open
+- Fixed the "Section" column coming back blank in converted Form 168 reports
+
+---
+
 ## [2.4.1] — 2026-09-07
 
 ### New Features
