@@ -98,6 +98,60 @@ def migrate_itr_filing_subfolder(download_dir: str, filing_type: str, filing_dat
             log_callback(f"[Migrate] Skipped ITR subfolder migration for {filing_type}-{filing_date_ddmmyyyy}: {e}")
 
 
+# Tax Challan subfolder naming history, oldest to newest: the very first
+# layout used a flat "Challans" subfolder for downloaded (already-paid)
+# challans, with no separate concept of a not-yet-paid "generated" challan.
+# That was later renamed "Tax Challans", and split from a new "Tax Challans
+# (Generated)" subfolder once F-64 (Generate Tax Challans) shipped. Both
+# were renamed again to "Tax Challans (Paid)" / "Tax Challans (Payable)" for
+# clarity. Applied as an ordered chain (oldest name first) so an install
+# that skipped several releases still lands on the current name in one call.
+_CHALLAN_SUBFOLDER_HISTORY = {
+    "Tax Challans (Paid)": ("Challans", "Tax Challans"),
+    "Tax Challans (Payable)": ("Tax Challans (Generated)",),
+}
+
+
+def migrate_challan_subfolder_names(download_dir: str, log_callback=None) -> None:
+    """
+    Best-effort, one-directional migration of old Tax Challan subfolder
+    names into the current ones (see _CHALLAN_SUBFOLDER_HISTORY). If an old
+    name exists and the current one doesn't, rename it; if both exist, move
+    any files from the old one into the current one (skipping anything
+    already present) and remove the old folder if it ends up empty. Never
+    raises — a migration hiccup must not block a download or an email send.
+    """
+    try:
+        if not os.path.isdir(download_dir):
+            return
+        for new_name, old_names in _CHALLAN_SUBFOLDER_HISTORY.items():
+            new_dir = os.path.join(download_dir, new_name)
+            for old_name in old_names:
+                old_dir = os.path.join(download_dir, old_name)
+                if not os.path.isdir(old_dir):
+                    continue
+                if not os.path.isdir(new_dir):
+                    shutil.move(old_dir, new_dir)
+                    if log_callback:
+                        log_callback(f"[Migrate] Renamed {old_name}/ -> {new_name}/")
+                    continue
+                moved_any = False
+                for name in os.listdir(old_dir):
+                    src = os.path.join(old_dir, name)
+                    dest = os.path.join(new_dir, name)
+                    if os.path.exists(dest):
+                        continue
+                    shutil.move(src, dest)
+                    moved_any = True
+                if moved_any and log_callback:
+                    log_callback(f"[Migrate] Merged {old_name}/ -> {new_name}/")
+                if not os.listdir(old_dir):
+                    os.rmdir(old_dir)
+    except Exception as e:
+        if log_callback:
+            log_callback(f"[Migrate] Skipped Tax Challan subfolder migration for {download_dir}: {e}")
+
+
 def get_timestamp() -> str:
     """Return current time in Asia/Kolkata as DD-MM-YYYY HH:MM:SS."""
     try:
