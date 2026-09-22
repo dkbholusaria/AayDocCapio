@@ -3007,6 +3007,16 @@ class AayDocCapioApp(QMainWindow):
                            ("tax", "surcharge", "cess", "interest", "penalty", "others")}
                 self.log("──────────────────────────────────────────────────")
                 self.log(f"[{i+1}/{len(targets)}] {name}")
+
+                # Same "{PAN}-{Name}/AY_2026_27/" convention used for
+                # 26AS/AIS/Filed Returns/downloaded Tax Challans, so
+                # "Tax Challans (Generated)" lands under the client's own
+                # PAN+Year folder instead of a flat top-level folder.
+                name_safe = "".join(c if c.isalnum() or c in " _-" else "" for c in name)
+                year_type = TAX_TYPES[tax_type]["act_year_type"]
+                client_year_dir = os.path.join(
+                    output_dir, f"{pan}-{name_safe}",
+                    f"{year_type}_{portal_year_label.replace('-', '_')}")
                 set_status(i, "⏳ Logging in to ITD...")
 
                 page = None
@@ -3021,7 +3031,7 @@ class AayDocCapioApp(QMainWindow):
                     result = await generate_challan(
                         page, fy_value, portal_year_label, tax_type, amounts,
                         payment_mode, bank, drawee_bank,
-                        output_dir, self.log, pan=pan, dob=dob)
+                        client_year_dir, self.log, pan=pan, dob=dob)
                     result["pan"] = pan
                     result["name"] = name
                     results.append(result)
