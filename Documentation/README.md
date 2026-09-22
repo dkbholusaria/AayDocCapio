@@ -1,16 +1,18 @@
 # AayDocCapio
 
-**v2.4.1** — A secure, standalone desktop utility for **bulk downloading Form 26AS, Form 168, AIS, TIS, and Filed Returns & Intimation Orders**, and **generating tax payment challans**, from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients — across multiple Assessment/Tax Years — in one click, and **emailing those documents directly to clients**.
+**v2.4.6** — A secure, standalone desktop utility for **bulk downloading Form 26AS, Form 168, AIS, TIS, and Filed Returns & Intimation Orders**, and **generating tax payment challans**, from the [Income Tax Department e-Filing portal](https://eportal.incometax.gov.in) for multiple clients — across multiple Assessment/Tax Years — in one click, and **emailing those documents directly to clients**.
 
 Built with **PyQt6** + **Playwright**. Runs on Windows, macOS, and Linux/WSL.
 
 ---
 
-## What's New in 2.4.1
+## What's New in 2.4.6
 
-- **ITR Processing Status Tracker** — log in and see where each client's return actually stands (Pending e-Verification, Processed, Processed with Refund/Demand Due, etc.), shown exactly as the portal shows it. A new "Return Status" window lets you filter by client and Year and re-check live; ordinary Downloads runs now keep this data fresh automatically too.
-- **Client Groups** — organize clients into groups (e.g. by family or firm), with a two-panel Manage Groups window to add/remove members, group filters in the main grid and Return Status window, and Group support in the Client Master import template.
-- **A branded splash screen** on startup.
+- **Form 168 gets its own folder** instead of sharing "26AS" with real Form 26AS downloads, with automatic migration for existing installs.
+- **Tax Challans reorganized into "Paid" and "Payable" folders**, with separate email checkboxes and a save-path preview before generating.
+- **Mail Docs to Clients improvements** — a new "Documents" column shows exactly what will be attached, file counts respect the selected email template, and more columns are resizable.
+- **The Live Logs panel can now be collapsed** to reclaim screen space.
+- Fixed several download reliability issues: Form 26AS header parsing, AIS false "still generating" status, Tax Challan year matching, and Form 168 files saving under the wrong file type.
 
 See the full [CHANGELOG](CHANGELOG.md) for details.
 
