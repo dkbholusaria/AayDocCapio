@@ -399,12 +399,12 @@ async def generate_challan(
         step(f"Generating challan — FY={fy_value}, portal_year={portal_year_label}, "
              f"type={tax_type}, mode={payment_mode}/{bank}, total=₹{total_amount:,.0f}")
 
-        # Per-year subfolder (e.g. "Tax Challans (Generated)/AY 2025-26" or
-        # ".../TY 2026-27") so runs across multiple years don't all dump
-        # into one flat folder — same AY/TY tag used in filenames below.
+        # `output_dir` is already the caller's per-client, per-AY/TY folder
+        # (matching the "{PAN}-{Name}/AY_2026_27/" convention used for
+        # 26AS/AIS/Filed Returns/downloaded Tax Challans elsewhere) — same
+        # AY/TY tag used in filenames below.
         year_tag = f"{TAX_TYPES[tax_type]['act_year_type']}{portal_year_label}".replace("-", "_")
-        year_folder = f"{TAX_TYPES[tax_type]['act_year_type']} {portal_year_label}"
-        challan_dir = os.path.join(output_dir, "Tax Challans (Generated)", year_folder)
+        challan_dir = os.path.join(output_dir, "Tax Challans (Generated)")
         os.makedirs(challan_dir, exist_ok=True)
 
         step("Clicking + New Payment...")
