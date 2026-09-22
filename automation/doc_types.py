@@ -118,6 +118,31 @@ DOC_TYPES = [
         "match": lambda n: "-CHALLAN-" in n and n.endswith(".PDF"),
         "emailable": True,
     },
+    # Same doc type as above (deliberately the same key/template_key/label,
+    # so they share one "Challan" checkbox in Email Settings and one line
+    # in the emailed document list) but for challans generated via New
+    # Payment/"Pay Later" and not yet actually paid — these live in a
+    # separate "Tax Challans (Payable)" subfolder (see automation/
+    # challan_generator.py), which the entry above never looked inside,
+    # so a generated-but-unpaid challan was silently never attachable.
+    {
+        "key": "challan_pdf", "template_key": "challan_pdf",
+        "label": "Tax Payment Challan (PDF)", "short_label": "Challan",
+        "subfolder": "Tax Challans (Payable)", "nested": False, "glob_suffix": "-Challan-*.pdf",
+        "match": lambda n: "-CHALLAN-" in n and n.endswith(".PDF"),
+        "emailable": True,
+    },
+    # Net Banking/Debit Card/Payment Gateway modes have no downloadable
+    # document — generate_challan() screenshots the confirmation page as a
+    # PNG instead (see PAYMENT_MODES' "view_details_screenshot" artifact).
+    # Same key/checkbox as the PDF entries above.
+    {
+        "key": "challan_pdf", "template_key": "challan_pdf",
+        "label": "Tax Payment Challan (PDF)", "short_label": "Challan",
+        "subfolder": "Tax Challans (Payable)", "nested": False, "glob_suffix": "-Challan-*.png",
+        "match": lambda n: "-CHALLAN-" in n and n.endswith(".PNG"),
+        "emailable": True,
+    },
 ]
 
 
