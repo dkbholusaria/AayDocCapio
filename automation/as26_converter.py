@@ -53,20 +53,38 @@ def _parse(txt_path: str) -> dict:
     lines = [ln.rstrip("\n\r") for ln in raw.splitlines()]
 
     # ── File header ────────────────────────────────────────────────────────
-    # Form 26AS: line 0 blank, line 1 title, line 2 keys, line 3 values
-    # Form 168:  line 0 title, line 1 keys, line 2 values
-    # Detect by whether line 0 is blank, not by its exact wording — the ITD
-    # portal has changed the Form 168 title text at least once already
-    # ("^Form 168...^" → "^Annual Tax Statement^"), but both known Form 168
-    # exports keep line 0 non-blank, while Form 26AS's is always blank.
-    if lines[0].strip():
-        header_keys   = [c.strip() for c in lines[1].split("^") if c.strip()]
-        header_values = [c.strip() for c in lines[2].split("^")] if len(lines) > 2 else []
-        parts_start   = 3
+    # The header block is a title line (and sometimes a blank line) followed
+    # by a keys row and a values row, but exactly how many lines precede the
+    # keys row has kept changing as the ITD portal tweaks the title text
+    # ("^Form 168...^" → "^Annual Tax Statement^", and now Form 26AS itself
+    # has picked up a non-blank "^Annual Tax Statement^" line 0 too, where it
+    # used to be blank). Counting fixed line offsets is too fragile, so find
+    # the keys row by content instead: it's the first line whose ^-separated
+    # fields include "PAN".
+    header_row_idx = None
+    for i, ln in enumerate(lines[:6]):
+        fields = [c.strip() for c in ln.split("^") if c.strip()]
+        if len(fields) >= 5 and any("PAN" in f.upper() for f in fields):
+            header_row_idx = i
+            break
+    if header_row_idx is not None:
+        header_keys   = [c.strip() for c in lines[header_row_idx].split("^") if c.strip()]
+        header_values = (
+            [c.strip() for c in lines[header_row_idx + 1].split("^")]
+            if header_row_idx + 1 < len(lines)
+            else []
+        )
+        parts_start = header_row_idx + 2
     else:
-        header_keys   = [c.strip() for c in lines[2].split("^") if c.strip()]
-        header_values = [c.strip() for c in lines[3].split("^")] if len(lines) > 3 else []
-        parts_start   = 4
+        # Fallback to the old position-based heuristic if no row matched.
+        if lines[0].strip():
+            header_keys   = [c.strip() for c in lines[1].split("^") if c.strip()]
+            header_values = [c.strip() for c in lines[2].split("^")] if len(lines) > 2 else []
+            parts_start   = 3
+        else:
+            header_keys   = [c.strip() for c in lines[2].split("^") if c.strip()]
+            header_values = [c.strip() for c in lines[3].split("^")] if len(lines) > 3 else []
+            parts_start   = 4
     header = dict(zip(header_keys, header_values))
 
     # ── Split into Part blocks ─────────────────────────────────────────────
