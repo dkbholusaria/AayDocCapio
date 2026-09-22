@@ -401,11 +401,14 @@ async def generate_challan(
 
         # `output_dir` is already the caller's per-client, per-AY/TY folder
         # (matching the "{PAN}-{Name}/AY_2026_27/" convention used for
-        # 26AS/AIS/Filed Returns/downloaded Tax Challans elsewhere), so the
-        # year segment in filenames below drops the AY/TY prefix — same
-        # bare "2026_27" style as 26AS/AIS/ITR filenames, since AY vs TY is
-        # already encoded in the folder name.
-        year_tag = portal_year_label.replace("-", "_")
+        # 26AS/AIS/Filed Returns/downloaded Tax Challans elsewhere), but the
+        # filename itself still needs its own AY/TY prefix — Documentation/
+        # PRD.md's A-03 (Must) requires every filename to self-identify its
+        # AY/TY/FY, and CHANGELOG.md documents this as a deliberate
+        # collision-prevention fix (2026-09-02), not just decoration; a
+        # generated challan copied or emailed out of its year folder would
+        # otherwise carry no indication of which convention its year is.
+        year_tag = f"{TAX_TYPES[tax_type]['act_year_type']}_{portal_year_label.replace('-', '_')}"
         tax_type_slug = _slug(TAX_TYPES[tax_type]["label"])
         challan_dir = os.path.join(output_dir, "Tax Challans (Generated)")
         os.makedirs(challan_dir, exist_ok=True)
