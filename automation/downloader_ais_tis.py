@@ -800,8 +800,8 @@ async def download_ais_from_activity_history(portal: Page, fiscal_year: str,
         except Exception:
             act_text = ""
 
-        if "downloaded" in act_text.lower():
-            step("Row shows AIS already downloaded — nothing further to do")
+        if "downloaded" in act_text.lower() and os.path.exists(ais_file):
+            step("Row shows AIS already downloaded and local file exists — nothing further to do")
             log(f"[AIS] {fy_desc} was already downloaded — no further action needed.")
             return _outcome("already_present")
 
