@@ -791,6 +791,20 @@ async def download_ais_from_activity_history(portal: Page, fiscal_year: str,
             unlock = _unlock_and_warn(ais_file, pan=pan, dob=dob, log=log, label="AIS PDF", status_cb=status_cb)
             return _outcome("downloaded", unlocked=unlock.get("unlocked"), reason=unlock.get("reason"))
 
+        # No visible download link doesn't always mean "still generating" —
+        # ITD drops the link once a row has already been downloaded (e.g. via
+        # the earlier instant-download pass in this same run). Check the
+        # row's own activity-type text before assuming it's pending.
+        try:
+            act_text = (await row.locator("td.mat-column-activityType").first.inner_text()).strip()
+        except Exception:
+            act_text = ""
+
+        if "downloaded" in act_text.lower() and os.path.exists(ais_file):
+            step("Row shows AIS already downloaded and local file exists — nothing further to do")
+            log(f"[AIS] {fy_desc} was already downloaded — no further action needed.")
+            return _outcome("already_present")
+
         step("Row present but still generating — not waiting, re-run this action later")
         log(f"[AIS] Still generating on ITD servers for {fy_desc} — re-run "
             f"'Download Previously Requested AIS' later.")
