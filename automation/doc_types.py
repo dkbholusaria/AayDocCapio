@@ -111,36 +111,43 @@ DOC_TYPES = [
         "match": lambda n: "-INTIMATION-" in n and n.endswith(".PDF"),
         "emailable": True,
     },
+    # Paid vs Payable are deliberately separate keys/checkboxes (per the
+    # user: "both serve different purposes" — a Paid challan is a payment
+    # receipt, a Payable one is an amount-due notice asking the client to
+    # go pay it) even though both come from downloader_challans.py/
+    # challan_generator.py's shared "-Challan-" filename convention. They're
+    # told apart by content, not folder (match_doc_type() only ever sees a
+    # bare filename, no folder context) — challan_generator.py's filenames
+    # carry an "AY_"/"TY_"-prefixed year segment (see #76) right after
+    # "-Challan-", which downloader_challans.py's downloaded-challan
+    # filenames never do (bare "2026_27", no prefix) — so that prefix is
+    # what distinguishes a Payable challan's filename from a Paid one's.
     {
-        "key": "challan_pdf", "template_key": "challan_pdf",
-        "label": "Tax Payment Challan (PDF)", "short_label": "Challan",
+        "key": "challan_paid_pdf", "template_key": "challan_paid_pdf",
+        "label": "Tax Payment Challan — Paid (PDF)", "short_label": "Challan (Paid)",
         "subfolder": "Tax Challans (Paid)", "nested": False, "glob_suffix": "-Challan-*.pdf",
-        "match": lambda n: "-CHALLAN-" in n and n.endswith(".PDF"),
+        "match": lambda n: "-CHALLAN-" in n and n.endswith(".PDF")
+                            and "-CHALLAN-AY_" not in n and "-CHALLAN-TY_" not in n,
         "emailable": True,
     },
-    # Same doc type as above (deliberately the same key/template_key/label,
-    # so they share one "Challan" checkbox in Email Settings and one line
-    # in the emailed document list) but for challans generated via New
-    # Payment/"Pay Later" and not yet actually paid — these live in a
-    # separate "Tax Challans (Payable)" subfolder (see automation/
-    # challan_generator.py), which the entry above never looked inside,
-    # so a generated-but-unpaid challan was silently never attachable.
     {
-        "key": "challan_pdf", "template_key": "challan_pdf",
-        "label": "Tax Payment Challan (PDF)", "short_label": "Challan",
+        "key": "challan_payable_pdf", "template_key": "challan_payable_pdf",
+        "label": "Tax Payment Challan — Payable (PDF)", "short_label": "Challan (Payable)",
         "subfolder": "Tax Challans (Payable)", "nested": False, "glob_suffix": "-Challan-*.pdf",
-        "match": lambda n: "-CHALLAN-" in n and n.endswith(".PDF"),
+        "match": lambda n: "-CHALLAN-" in n and n.endswith(".PDF")
+                            and ("-CHALLAN-AY_" in n or "-CHALLAN-TY_" in n),
         "emailable": True,
     },
     # Net Banking/Debit Card/Payment Gateway modes have no downloadable
     # document — generate_challan() screenshots the confirmation page as a
     # PNG instead (see PAYMENT_MODES' "view_details_screenshot" artifact).
-    # Same key/checkbox as the PDF entries above.
+    # Same key/checkbox as the Payable PDF entry above.
     {
-        "key": "challan_pdf", "template_key": "challan_pdf",
-        "label": "Tax Payment Challan (PDF)", "short_label": "Challan",
+        "key": "challan_payable_pdf", "template_key": "challan_payable_pdf",
+        "label": "Tax Payment Challan — Payable (PDF)", "short_label": "Challan (Payable)",
         "subfolder": "Tax Challans (Payable)", "nested": False, "glob_suffix": "-Challan-*.png",
-        "match": lambda n: "-CHALLAN-" in n and n.endswith(".PNG"),
+        "match": lambda n: "-CHALLAN-" in n and n.endswith(".PNG")
+                            and ("-CHALLAN-AY_" in n or "-CHALLAN-TY_" in n),
         "emailable": True,
     },
 ]

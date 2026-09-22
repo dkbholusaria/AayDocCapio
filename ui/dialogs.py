@@ -1934,11 +1934,12 @@ class SmtpSettingsDialog(QDialog):
             self._doc_cbs[key] = cb
             docs_row1.addWidget(cb)
         for label, key in [
-            ("ITR Form",    "itr_form"),
-            ("ITR Receipt", "itr_receipt"),
-            ("ITR-V",       "itr_v"),
-            ("Intimation",  "intimation"),
-            ("Challan",     "challan_pdf"),
+            ("ITR Form",          "itr_form"),
+            ("ITR Receipt",       "itr_receipt"),
+            ("ITR-V",             "itr_v"),
+            ("Intimation",        "intimation"),
+            ("Challan (Paid)",    "challan_paid_pdf"),
+            ("Challan (Payable)", "challan_payable_pdf"),
         ]:
             cb = QCheckBox(label)
             cb.setChecked(True)
