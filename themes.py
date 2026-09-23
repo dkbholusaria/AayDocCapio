@@ -75,6 +75,13 @@ class ThemeColors:
     scrollbar_handle:       str
     scrollbar_handle_hover: str
 
+    # Hub accents (F-77a nav rail active-state / ribbon tint per domain)
+    accent_home: str   # Home / Clients
+    accent_it:   str   # Income Tax
+    accent_gst:  str   # GST (placeholder hub)
+    accent_tds:  str   # TDS (placeholder hub)
+    accent_mca:  str   # MCA (placeholder hub)
+
 
 # ── Theme definitions ─────────────────────────────────────────────────────────
 
@@ -117,6 +124,12 @@ THEMES: dict[str, ThemeColors] = {
 
         scrollbar_handle       = "#CBD5E1",
         scrollbar_handle_hover = "#94A3B8",
+
+        accent_home     = "#2563EB",
+        accent_it       = "#9F1239",
+        accent_gst      = "#15803D",
+        accent_tds      = "#0F766E",
+        accent_mca      = "#7E22CE",
     ),
 
     "dark": ThemeColors(
@@ -156,6 +169,12 @@ THEMES: dict[str, ThemeColors] = {
 
         scrollbar_handle       = "#1E3A5F",
         scrollbar_handle_hover = "#2563EB",
+
+        accent_home     = "#2563EB",
+        accent_it       = "#F43F5E",
+        accent_gst      = "#4ADE80",
+        accent_tds      = "#2DD4BF",
+        accent_mca      = "#C084FC",
     ),
 }
 
