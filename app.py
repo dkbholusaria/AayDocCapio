@@ -650,22 +650,13 @@ class AayDocCapioApp(QMainWindow):
                 f"QFrame#header {{ background: {t.bg_window}; border: none; }}"
                 f" QLabel {{ border: none; text-decoration: none; }}"
             )
-        if hasattr(self, "_hdr_aay"):
-            self._hdr_aay.setStyleSheet(
-                f"color:{t.text_primary}; font-family:'Avenir Next'; font-size:36px;"
-                f" font-weight:700; background:transparent; text-decoration:none; border:none;")
-        if hasattr(self, "_hdr_capio"):
-            self._hdr_capio.setStyleSheet(
-                f"color:{t.accent}; font-family:'Avenir Next'; font-size:36px;"
-                f" font-weight:700; background:transparent; text-decoration:none; border:none;")
-        if hasattr(self, "_hdr_tm"):
-            self._hdr_tm.setStyleSheet(
-                f"color:{t.accent}; font-family:'Avenir Next'; font-size:14px;"
-                f" font-weight:700; background:transparent; padding-bottom:18px;"
-                f" text-decoration:none; border:none;")
-        if hasattr(self, "_hdr_sep"):
-            self._hdr_sep.setStyleSheet(
-                f"color:{t.border}; font-size:22px; background:transparent; border:none;")
+        if hasattr(self, "_hdr_logo"):
+            _logo_file = "AayDoc_Header_Dark.png" if self._current_theme == "dark" else "AayDoc_Header_Light.png"
+            _logo_path = os.path.join(_bundled_dir(), "resources", _logo_file)
+            if os.path.exists(_logo_path):
+                self._hdr_logo.setPixmap(
+                    QPixmap(_logo_path).scaledToHeight(64, Qt.TransformationMode.SmoothTransformation)
+                )
         if hasattr(self, "_hdr_tagline"):
             self._hdr_tagline.setStyleSheet(
                 f"color:{t.text_muted}; font-family:'Arial'; font-size:13px;"
@@ -851,23 +842,17 @@ class AayDocCapioApp(QMainWindow):
         vl.setContentsMargins(36, 28, 36, 28)
         vl.setSpacing(0)
 
-        # ── App logo + name ───────────────────────────────────────────────────
-        logo_row = QHBoxLayout(); logo_row.setSpacing(14)
-        icon_lbl = QLabel()
-        icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
-        if os.path.exists(icon_path):
-            icon_lbl.setPixmap(QPixmap(icon_path).scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio,
-                                                          Qt.TransformationMode.SmoothTransformation))
-        logo_row.addWidget(icon_lbl)
-        name_col = QVBoxLayout(); name_col.setSpacing(2)
-        name_lbl = QLabel(
-            f'<span style="color:{_ab.text_primary};font-family:\'Avenir Next\';font-size:22px;font-weight:700;">AayDoc </span>'
-            f'<span style="color:{_ab.accent};font-family:\'Avenir Next\';font-size:22px;font-weight:700;">Capio™</span>'
-        )
+        # ── App logo + version ─────────────────────────────────────────────────
+        logo_row = QVBoxLayout(); logo_row.setSpacing(6)
+        logo_lbl = QLabel()
+        _logo_file = "AayDoc_Header_Dark.png" if self._current_theme == "dark" else "AayDoc_Header_Light.png"
+        _logo_path = os.path.join(_bundled_dir(), "resources", _logo_file)
+        if os.path.exists(_logo_path):
+            logo_lbl.setPixmap(QPixmap(_logo_path).scaledToHeight(56, Qt.TransformationMode.SmoothTransformation))
+        logo_row.addWidget(logo_lbl)
         ver_lbl = QLabel(f"Version {APP_VERSION}")
         ver_lbl.setStyleSheet(f"color:{_ab.text_muted}; font-size:12px;")
-        name_col.addWidget(name_lbl); name_col.addWidget(ver_lbl)
-        logo_row.addLayout(name_col); logo_row.addStretch()
+        logo_row.addWidget(ver_lbl)
         vl.addLayout(logo_row)
         vl.addSpacing(14)
 
@@ -977,59 +962,27 @@ class AayDocCapioApp(QMainWindow):
         hl.setContentsMargins(32, 0, 32, 0)
         hl.setSpacing(0)
 
-        # App icon — large enough to anchor the header
-        icon_label = QLabel()
-        icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
-        if os.path.exists(icon_path):
-            icon_label.setPixmap(
-                QPixmap(icon_path).scaled(106, 106, Qt.AspectRatioMode.KeepAspectRatio,
-                                          Qt.TransformationMode.SmoothTransformation)
-            )
-        hl.addWidget(icon_label)
+        # Combined logo (icon + "aaydoc CAPIO" wordmark) — swapped Light/Dark
+        # per theme in _repaint_theme(), since each variant is coloured for
+        # its own background contrast.
+        logo_label = QLabel()
+        self._hdr_logo = logo_label
+        hl.addWidget(logo_label)
         hl.addSpacing(18)
 
-        # Name + tagline stacked
+        # Tagline, stacked below the logo's baseline
         name_block = QWidget()
         name_block.setStyleSheet("background:transparent;")
         vl = QVBoxLayout(name_block)
         vl.setContentsMargins(0, 0, 0, 0)
         vl.setSpacing(3)
 
-        title_row = QWidget()
-        title_row.setStyleSheet("background:transparent;")
-        tl = QHBoxLayout(title_row)
-        tl.setContentsMargins(0, 0, 0, 0)
-        tl.setSpacing(0)
-        tl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-
-        aay = QLabel("AayDoc ")
-        self._hdr_aay = aay
-        tl.addWidget(aay)
-
-        capio = QLabel("Capio")
-        self._hdr_capio = capio
-        tl.addWidget(capio)
-
-        tm = QLabel("™")
-        self._hdr_tm = tm
-        tl.addWidget(tm)
-
-        # Separator + tagline inline with title
-        sep = QLabel("  |  ")
-        self._hdr_sep = sep
-        sep.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        tl.addWidget(sep)
-
         tagline = QLabel("Tax Documents. Delivered to You.")
         self._hdr_tagline = tagline
         tagline.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        tl.addWidget(tagline)
-        tl.addStretch()
-
-        title = title_row
 
         vl.addStretch()
-        vl.addWidget(title)
+        vl.addWidget(tagline)
         vl.addStretch()
 
         hl.addWidget(name_block)

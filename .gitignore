@@ -73,3 +73,7 @@ Documentation/AIS_JSON_Schema.xlsx
 Documentation/AIS_JSON_Tree.html
 Documentation/AIS_JSON_Structure.md
 BatchReports/
+
+
+# Claude Code agent worktree scaffolding (local only, never committed)
+.claude/
