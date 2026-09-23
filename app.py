@@ -34,6 +34,7 @@ from config import _app_dir, _default_download_dir, _bundled_dir
 from utils import get_timestamp, notify_windows
 from ui._theme import _t
 from ui.helpers import _btn, _lbl, _shadow
+from ui.nav_shell import NavShell
 from ui.widgets import StyledComboBox, CheckableComboBox
 from ui.dialogs import (
     ManageYearsDialog, BatchProgressDialog, DownloadPickerDialog,
@@ -584,8 +585,23 @@ class AayDocCapioApp(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
 
         root.addWidget(self._mk_header())
-        root.addWidget(self._mk_main_panel(), 1)
+
+        # F-77a Phase 1 (PR 2/4): Home, Settings, Help hubs wired into the
+        # new rail. Income Tax/Mail/Activity Log/GST/TDS/MCA/Team follow in
+        # PR 3 — the menu bar above stays fully functional in parallel
+        # throughout, so every action remains reachable both ways.
+        self._nav_shell = NavShell()
+        self._nav_shell.add_hub("home", "Home / Clients", self._mk_main_panel(),
+                                 accent_key="accent_home", section="top")
+        self._nav_shell.add_hub("settings", "Settings", self._mk_settings_page(),
+                                 icon="menu_appearance.png", accent_key="accent_home", section="bottom")
+        self._nav_shell.add_hub("help", "Help", self._mk_help_page(),
+                                 icon="menu_about.png", accent_key="accent_home", section="bottom")
+        root.addWidget(self._nav_shell, 1)
+
         root.addWidget(self._mk_footer())
+
+        self._nav_shell.go("home")
 
     def _apply_theme(self, theme: str):
         """Switch theme by name and persist the choice."""
@@ -641,6 +657,10 @@ class AayDocCapioApp(QMainWindow):
                 lbl.setStyleSheet(
                     f"color:{t.text_muted}; font-family:'Arial'; font-size:11px;"
                     f" background:transparent; border:none;")
+
+        # ── Nav shell (rail + breadcrumb, F-77a) ──────────────────────────────
+        if hasattr(self, "_nav_shell"):
+            self._nav_shell.repaint_theme(t)
 
         # ── Main panel + settings/control bar backgrounds ─────────────────────
         if hasattr(self, "_main_panel"):
@@ -1432,33 +1452,11 @@ class AayDocCapioApp(QMainWindow):
         hl = QHBoxLayout(bar)
         hl.setContentsMargins(22, 0, 16, 0)
 
-        # Headless toggle — when checked, the automation browser runs hidden.
-        # Default ON; uncheck to watch progress or handle a CAPTCHA.
-        self.chk_headless = QCheckBox("Run in background (hide browser)")
-        self.chk_headless.setChecked(True)
-        self.chk_headless.setToolTip(
-            "When ON, the automation Chrome window is hidden (headless).\n"
-            "Keep OFF to watch progress or handle any CAPTCHA.")
-        _ck = _t()
-        self.chk_headless.setStyleSheet(
-            f"QCheckBox{{font-size:12px;color:{_ck.text_muted};background:transparent;spacing:6px;}}"
-            f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {_ck.border};"
-            f"border-radius:3px;background:{_ck.bg_checkbox};}}"
-            f"QCheckBox::indicator:checked{{background:{_ck.accent};border-color:{_ck.accent};}}")
-        hl.addWidget(self.chk_headless)
-
-        _auto_min_saved = self.vault.get_setting("auto_minimise", False) if hasattr(self, "vault") else False
-        self.chk_auto_minimise = QCheckBox("Send to system tray when download starts")
-        self.chk_auto_minimise.setChecked(bool(_auto_min_saved))
-        self.chk_auto_minimise.setToolTip(
-            "Hide the app to the system tray when a batch download begins.\n"
-            "Click the tray icon or right-click → Restore to bring it back.\n"
-            "The app restores automatically when the batch finishes.")
-        self.chk_auto_minimise.setStyleSheet(self.chk_headless.styleSheet())
-        self.chk_auto_minimise.stateChanged.connect(
-            lambda v: self.vault.update_setting("auto_minimise", bool(v)))
-        hl.addWidget(self.chk_auto_minimise)
-
+        # F-77a: "Run in background (hide browser)" and "Send to system tray"
+        # checkboxes now live in the Settings hub (see _mk_settings_page) —
+        # they're app-global behavior, not Home-specific. Still constructed
+        # as self.chk_headless / self.chk_auto_minimise so every existing
+        # read site (automation call sites, _repaint_theme) is unaffected.
         hl.addStretch()
 
 
@@ -1562,6 +1560,111 @@ class AayDocCapioApp(QMainWindow):
         col.addWidget(bar)
         col.addWidget(self.ais_status_bar)
         return container
+
+    def _mk_settings_page(self):
+        """F-77a Settings hub page — General/Email/Appearance grouped on one
+        page (not the mockup's tabbed dialog; that consolidation is a later
+        phase). Buttons open the same dialogs/handlers the old Settings menu
+        used, unchanged."""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(16)
+
+        def _section(title):
+            layout.addWidget(_lbl(title, 10, bold=True, color=_t().text_muted))
+
+        _section("GENERAL")
+        row1 = QHBoxLayout()
+        row1.setSpacing(8)
+        btn_yr = _btn("Manage Assessment Years", "secondary", height=34, icon="btn_scan.png")
+        btn_yr.clicked.connect(self.open_manage_years)
+        row1.addWidget(btn_yr)
+        btn_groups = _btn("Manage Groups…", "secondary", height=34, icon="btn_scan.png")
+        btn_groups.clicked.connect(self.open_manage_groups)
+        row1.addWidget(btn_groups)
+        row1.addStretch()
+        layout.addLayout(row1)
+
+        row2 = QHBoxLayout()
+        row2.setSpacing(8)
+        btn_change_dir = _btn("Change Output Folder", "secondary", height=34, icon="btn_browse_folder.png")
+        btn_change_dir.clicked.connect(self.browse_output_dir)
+        row2.addWidget(btn_change_dir)
+        btn_open_dir = _btn("Open Output Folder", "secondary", height=34, icon="btn_browse.png")
+        btn_open_dir.clicked.connect(self._open_output_folder)
+        row2.addWidget(btn_open_dir)
+        row2.addStretch()
+        layout.addLayout(row2)
+
+        # Relocated from _mk_control_bar (F-77a) — same attribute names,
+        # same vault-persisted keys, only the parent page changed.
+        self.chk_headless = QCheckBox("Run in background (hide browser)")
+        self.chk_headless.setChecked(True)
+        self.chk_headless.setToolTip(
+            "When ON, the automation Chrome window is hidden (headless).\n"
+            "Keep OFF to watch progress or handle any CAPTCHA.")
+        _ck = _t()
+        self.chk_headless.setStyleSheet(
+            f"QCheckBox{{font-size:12px;color:{_ck.text_muted};background:transparent;spacing:6px;}}"
+            f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {_ck.border};"
+            f"border-radius:3px;background:{_ck.bg_checkbox};}}"
+            f"QCheckBox::indicator:checked{{background:{_ck.accent};border-color:{_ck.accent};}}")
+        layout.addWidget(self.chk_headless)
+
+        _auto_min_saved = self.vault.get_setting("auto_minimise", False) if hasattr(self, "vault") else False
+        self.chk_auto_minimise = QCheckBox("Send to system tray when download starts")
+        self.chk_auto_minimise.setChecked(bool(_auto_min_saved))
+        self.chk_auto_minimise.setToolTip(
+            "Hide the app to the system tray when a batch download begins.\n"
+            "Click the tray icon or right-click → Restore to bring it back.\n"
+            "The app restores automatically when the batch finishes.")
+        self.chk_auto_minimise.setStyleSheet(self.chk_headless.styleSheet())
+        self.chk_auto_minimise.stateChanged.connect(
+            lambda v: self.vault.update_setting("auto_minimise", bool(v)))
+        layout.addWidget(self.chk_auto_minimise)
+
+        _section("EMAIL")
+        btn_email = _btn("Email Settings…", "secondary", height=34, icon="icon_email.png")
+        btn_email.clicked.connect(self._open_email_settings)
+        layout.addWidget(btn_email)
+
+        _section("APPEARANCE")
+        theme_row = QHBoxLayout()
+        theme_row.setSpacing(8)
+        _icons = {"light": "☀", "dark": "🌙"}
+        for theme_key, theme_colors in THEMES.items():
+            icon = _icons.get(theme_key, "●")
+            b = _btn(f"{icon}  {theme_colors.name}", "outline", height=34)
+            b.clicked.connect(lambda _, k=theme_key: self._apply_theme(k))
+            theme_row.addWidget(b)
+        theme_row.addStretch()
+        layout.addLayout(theme_row)
+
+        layout.addStretch(1)
+        return page
+
+    def _mk_help_page(self):
+        """F-77a Help hub page — same handlers the old Help menu used."""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(8)
+
+        items = [
+            ("User Manual", "menu_about.png", self._open_user_manual),
+            ("Email Setup Help…", "btn_send_test.png", self._open_smtp_help),
+            ("Report Bug / Request Feature…", "btn_view_log.png", self._open_feedback_picker),
+            ("Check for Updates…", "menu_about.png", lambda: self._check_for_update(manual=True)),
+            ("About AayDocCapio", "menu_about.png", self._show_about),
+        ]
+        for label, icon, handler in items:
+            b = _btn(label, "secondary", height=34, icon=icon)
+            b.clicked.connect(handler)
+            layout.addWidget(b)
+
+        layout.addStretch(1)
+        return page
 
     _LOG_PANEL_HEIGHT = 190
     _LOG_HEADER_HEIGHT = 32
