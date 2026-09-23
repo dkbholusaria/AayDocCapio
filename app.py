@@ -617,8 +617,6 @@ class AayDocCapioApp(QMainWindow):
                                  accent_key="accent_home", section="bottom")
         root.addWidget(self._nav_shell, 1)
 
-        root.addWidget(self._mk_footer())
-
         self._nav_shell.go("home")
 
     def _apply_theme(self, theme: str):
@@ -1668,7 +1666,7 @@ class AayDocCapioApp(QMainWindow):
     def _mk_activity_log_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setContentsMargins(24, 20, 24, 0)
         layout.setSpacing(10)
         b = _btn("View Email Log…", "secondary", height=34, icon="btn_view_log.png")
         b.clicked.connect(self._open_activity_log)
@@ -1676,7 +1674,11 @@ class AayDocCapioApp(QMainWindow):
         layout.addWidget(_lbl(
             "Per-client download history is available by right-clicking a client row on the Home hub.",
             11, color=_t().text_muted))
-        layout.addStretch(1)
+        layout.addSpacing(6)
+        # F-77a: Live Logs now lives here instead of as a permanent bottom
+        # strip on every hub — self.log_box keeps receiving updates from
+        # background batch runs regardless of which hub is on screen.
+        layout.addWidget(self._mk_footer(), 1)
         return page
 
     def _mk_placeholder_page(self, title: str, body: str):
@@ -1751,8 +1753,14 @@ class AayDocCapioApp(QMainWindow):
 
     def _set_log_panel_collapsed(self, collapsed: bool, persist: bool = True):
         self.log_box.setVisible(not collapsed)
-        self._log_footer.setFixedHeight(
-            self._LOG_HEADER_HEIGHT if collapsed else self._LOG_PANEL_HEIGHT)
+        if collapsed:
+            self._log_footer.setFixedHeight(self._LOG_HEADER_HEIGHT)
+        else:
+            # Embedded in the Activity Log page's layout with a stretch
+            # factor — undo the collapsed fixed height so it can fill the
+            # page again instead of staying pinned to a small strip.
+            self._log_footer.setMinimumHeight(0)
+            self._log_footer.setMaximumHeight(16777215)
         self._log_toggle_btn.setText("▸ Show" if collapsed else "▾ Hide")
         if persist:
             self.vault.update_setting("log_panel_collapsed", collapsed)
