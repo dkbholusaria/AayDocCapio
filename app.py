@@ -592,22 +592,23 @@ class AayDocCapioApp(QMainWindow):
         # later phase, per the approved plan).
         self._nav_shell = NavShell()
         self._nav_shell.add_hub("home", "Home / Clients", self._mk_main_panel(),
-                                 accent_key="accent_home", section="top", rail_label="HOME")
+                                 icon="rail_home.png", accent_key="accent_home", section="top",
+                                 rail_label="HOME")
         self._nav_shell.add_hub("it", "Income Tax", self._mk_income_tax_page(),
-                                 icon="icon_person.png", accent_key="accent_it", section="top",
+                                 icon="rail_income_tax.png", accent_key="accent_it", section="top",
                                  rail_label="INCOME\nTAX")
         self._nav_shell.add_hub("gst", "GST", self._mk_placeholder_page(
             "GST", "Coming soon — see F-70 for the GST vs. Income Tax turnover reconciliation roadmap."),
-            accent_key="accent_gst", section="top", rail_label="GST")
+            icon="rail_gst.png", accent_key="accent_gst", section="top", rail_label="GST")
         self._nav_shell.add_hub("tds", "TDS", self._mk_placeholder_page(
             "TDS", "Coming soon — see F-71 for the TAN-based deductor-side automation roadmap."),
-            accent_key="accent_tds", section="top", rail_label="TDS")
+            icon="rail_tds.png", accent_key="accent_tds", section="top", rail_label="TDS")
         self._nav_shell.add_hub("mca", "MCA", self._mk_placeholder_page(
             "MCA / ROC", "Coming soon — see F-72 for the MCA/ROC filings roadmap."),
             accent_key="accent_mca", section="top", rail_label="MCA")
         self._nav_shell.add_hub("team", "Team", self._mk_placeholder_page(
             "Team", "Coming soon — see F-74 for CA staff / client-assignment management."),
-            accent_key="accent_home", section="bottom", glyph="👥", rail_label="TEAM")
+            icon="rail_team.png", accent_key="accent_home", section="bottom", rail_label="TEAM")
         self._nav_shell.add_hub("mail", "Mail Docs to Clients", self._mk_mail_docs_page(),
                                  icon="btn_send.png", accent_key="accent_home", section="bottom",
                                  rail_label="MAIL\nDOCS")
@@ -615,10 +616,10 @@ class AayDocCapioApp(QMainWindow):
                                  icon="btn_view_log.png", accent_key="accent_home", section="bottom",
                                  rail_label="ACTIVITY\nLOG")
         self._nav_shell.add_hub("settings", "Settings", self._mk_settings_page(),
-                                 icon="menu_appearance.png", accent_key="accent_home", section="bottom",
+                                 icon="rail_settings.png", accent_key="accent_home", section="bottom",
                                  rail_label="SETTINGS")
         self._nav_shell.add_hub("help", "Help", self._mk_help_page(),
-                                 icon="menu_about.png", accent_key="accent_home", section="bottom",
+                                 icon="rail_help.png", accent_key="accent_home", section="bottom",
                                  rail_label="HELP")
         root.addWidget(self._nav_shell, 1)
 
