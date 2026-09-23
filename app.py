@@ -652,7 +652,7 @@ class AayDocCapioApp(QMainWindow):
         # ── Header ────────────────────────────────────────────────────────────
         if hasattr(self, "_hdr_frame"):
             self._hdr_frame.setStyleSheet(
-                f"QFrame#header {{ background: {t.bg_window}; border: none; }}"
+                f"QFrame#header {{ background: {t.bg_menubar}; border: none; }}"
                 f" QLabel {{ border: none; text-decoration: none; }}"
             )
         if hasattr(self, "_hdr_logo"):
