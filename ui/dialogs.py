@@ -698,7 +698,7 @@ class BatchProgressDialog(QDialog):
             f"QProgressBar{{border:1px solid {_bt.border};border-radius:9px;"
             f"background:{_bt.scrollbar_handle};text-align:center;font-size:11px;"
             f"font-weight:600;color:{_bt.accent_text};}}"
-            f"QProgressBar::chunk{{background:#16A34A;border-radius:9px;}}")
+            f"QProgressBar::chunk{{background:{_bt.success};border-radius:9px;}}")
         layout.addWidget(self._progress_bar)
 
         # ── Footer ────────────────────────────────────────────────────────────
@@ -770,10 +770,10 @@ class BatchProgressDialog(QDialog):
         self._stop_btn.setFixedHeight(32)
         self._stop_btn.setMinimumWidth(90)
         self._stop_btn.setStyleSheet(
-            "QPushButton{background:#EF4444;color:#FFFFFF;border:none;"
-            "border-radius:6px;font-size:12px;font-weight:600;padding:0 12px;}"
-            "QPushButton:hover{background:#DC2626;}"
-            "QPushButton:disabled{background:#E2E8F0;color:#94A3B8;}")
+            f"QPushButton{{background:{_bt.error};color:{_bt.accent_text};border:none;"
+            f"border-radius:6px;font-size:12px;font-weight:600;padding:0 12px;}}"
+            f"QPushButton:hover{{background:{_bt.error};}}"
+            f"QPushButton:disabled{{background:{_bt.border};color:{_bt.text_muted};}}")
         self._stop_btn.clicked.connect(self._on_stop_clicked)
         footer.addWidget(self._stop_btn)
 
@@ -782,9 +782,9 @@ class BatchProgressDialog(QDialog):
         self._resume_btn.setMinimumWidth(100)
         self._resume_btn.setVisible(False)
         self._resume_btn.setStyleSheet(
-            "QPushButton{background:#16A34A;color:#FFFFFF;border:none;"
-            "border-radius:6px;font-size:12px;font-weight:600;padding:0 12px;}"
-            "QPushButton:hover{background:#15803D;}")
+            f"QPushButton{{background:{_bt.success};color:{_bt.accent_text};border:none;"
+            f"border-radius:6px;font-size:12px;font-weight:600;padding:0 12px;}}"
+            f"QPushButton:hover{{background:{_bt.success};}}")
         self._resume_btn.clicked.connect(self._on_resume_clicked)
         footer.addWidget(self._resume_btn)
 
@@ -903,7 +903,7 @@ class BatchProgressDialog(QDialog):
         lbl = self._table.cellWidget(row, self._COL_PATH)
         if isinstance(lbl, QLabel):
             lbl.setText(
-                f'<a href="{folder}" style="color:#2563EB;text-decoration:underline;">'
+                f'<a href="{folder}" style="color:{_t().accent};text-decoration:underline;">'
                 f'{folder}</a>')
             lbl.setToolTip(folder)
             lbl.setStyleSheet("font-size:11px;padding:0 8px;background:transparent;")
@@ -1154,49 +1154,52 @@ class BatchProgressDialog(QDialog):
 
 
 # ── SMTP provider presets ─────────────────────────────────────────────────────
+# Note: "icon_color" values below are each provider's real brand color and are
+# intentionally left as literal hex — not theme-dependent. See individual
+# comments for confirmation.
 
 _SMTP_PRESETS = [
     {
         "name": "Gmail",
-        "icon": "G", "icon_color": "#EA4335", "icon_file": "email_gmail.png",
+        "icon": "G", "icon_color": "#EA4335", "icon_file": "email_gmail.png",  # Intentional: real brand color, not theme-dependent
         "host": "smtp.gmail.com",
         "port": 587,
         "encryption": "STARTTLS",
         "help": (
             "Gmail requires an App Password — not your Google account password.<br>"
-            "Go to: <a href='https://myaccount.google.com/apppasswords' style='color:#2563EB;'>myaccount.google.com → Security → 2-Step Verification → App Passwords</a> → Mail."
+            f"Go to: <a href='https://myaccount.google.com/apppasswords' style='color:{_t().accent};'>myaccount.google.com → Security → 2-Step Verification → App Passwords</a> → Mail."
         ),
     },
     {
         "name": "Outlook.com",
-        "icon": "O", "icon_color": "#0078D4", "icon_file": "email_outlook.png",
+        "icon": "O", "icon_color": "#0078D4", "icon_file": "email_outlook.png",  # Intentional: real brand color, not theme-dependent
         "host": "smtp-mail.outlook.com",
         "port": 587,
         "encryption": "STARTTLS",
         "help": (
             "Use your Outlook.com / Hotmail password.<br>"
-            "If MFA is on, create an App Password at <a href='https://account.microsoft.com/security' style='color:#2563EB;'>account.microsoft.com → Security</a>."
+            f"If MFA is on, create an App Password at <a href='https://account.microsoft.com/security' style='color:{_t().accent};'>account.microsoft.com → Security</a>."
         ),
     },
     {
         "name": "Office 365",
-        "icon": "365", "icon_color": "#D83B01", "icon_file": "email_office365.png",
+        "icon": "365", "icon_color": "#D83B01", "icon_file": "email_office365.png",  # Intentional: real brand color, not theme-dependent
         "host": "smtp.office365.com",
         "port": 587,
         "encryption": "STARTTLS",
         "help": (
             "⚠ MFA enabled? Your regular password will NOT work — use an App Password instead.<br><br>"
             "To create an App Password:<br>"
-            "1. Go to <a href='https://mysignins.microsoft.com/security-info' style='color:#2563EB;'>mysignins.microsoft.com/security-info</a><br>"
+            f"1. Go to <a href='https://mysignins.microsoft.com/security-info' style='color:{_t().accent};'>mysignins.microsoft.com/security-info</a><br>"
             "2. Click '+ Add sign-in method' → choose 'App password' → Next<br>"
             "3. Enter a name (e.g. AayDocCapio) → copy the generated password → paste it here<br><br>"
-            "No MFA? Enable Authenticated SMTP in <a href='https://admin.microsoft.com' style='color:#2563EB;'>Microsoft 365 Admin Centre</a>:<br>"
+            f"No MFA? Enable Authenticated SMTP in <a href='https://admin.microsoft.com' style='color:{_t().accent};'>Microsoft 365 Admin Centre</a>:<br>"
             "Users → [your user] → Mail → Manage email apps → tick Authenticated SMTP."
         ),
     },
     {
         "name": "Exchange",
-        "icon": "Ex", "icon_color": "#0F6CBD", "icon_file": "email_exchange.png",
+        "icon": "Ex", "icon_color": "#0F6CBD", "icon_file": "email_exchange.png",  # Intentional: real brand color, not theme-dependent
         "host": "",
         "port": 587,
         "encryption": "STARTTLS",
@@ -1207,29 +1210,29 @@ _SMTP_PRESETS = [
     },
     {
         "name": "Yahoo",
-        "icon": "Y!", "icon_color": "#6001D2", "icon_file": "email_yahoo.png",
+        "icon": "Y!", "icon_color": "#6001D2", "icon_file": "email_yahoo.png",  # Intentional: real brand color, not theme-dependent
         "host": "smtp.mail.yahoo.com",
         "port": 587,
         "encryption": "STARTTLS",
         "help": (
             "Yahoo requires an App Password.<br>"
-            "Go to: <a href='https://login.yahoo.com/account/security' style='color:#2563EB;'>Yahoo Account Security</a> → Generate app password → select 'Other app'."
+            f"Go to: <a href='https://login.yahoo.com/account/security' style='color:{_t().accent};'>Yahoo Account Security</a> → Generate app password → select 'Other app'."
         ),
     },
     {
         "name": "iCloud",
-        "icon": "iC", "icon_color": "#3478F6", "icon_file": "email_icloud.png",
+        "icon": "iC", "icon_color": "#3478F6", "icon_file": "email_icloud.png",  # Intentional: real brand color, not theme-dependent
         "host": "smtp.mail.me.com",
         "port": 587,
         "encryption": "STARTTLS",
         "help": (
-            "Use an App-Specific Password from <a href='https://appleid.apple.com' style='color:#2563EB;'>appleid.apple.com</a><br>"
+            f"Use an App-Specific Password from <a href='https://appleid.apple.com' style='color:{_t().accent};'>appleid.apple.com</a><br>"
             "→ Sign-In and Security → App-Specific Passwords → Generate."
         ),
     },
     {
         "name": "Custom",
-        "icon": "⚙", "icon_color": "#64748B", "icon_file": "email_custom.png",
+        "icon": "⚙", "icon_color": _t().text_muted, "icon_file": "email_custom.png",
         "host": None,
         "port": None,
         "encryption": None,
@@ -1579,9 +1582,9 @@ class SmtpSettingsDialog(QDialog):
         self._help_note.setOpenExternalLinks(True)
         self._help_note.setTextFormat(Qt.TextFormat.RichText)
         self._help_note.setStyleSheet(
-            f"background:#EFF6FF;color:#1E3A5F;"
-            f"border-left:4px solid #2563EB;border-top:1px solid #BFDBFE;"
-            f"border-right:1px solid #BFDBFE;border-bottom:1px solid #BFDBFE;"
+            f"background:{_t().accent_light};color:{_t().accent};"
+            f"border-left:4px solid {_t().accent};border-top:1px solid {_t().accent_light};"
+            f"border-right:1px solid {_t().accent_light};border-bottom:1px solid {_t().accent_light};"
             f"border-radius:0 6px 6px 0;padding:10px 14px;"
             f"font-size:11px;line-height:160%;")
         self._help_note.hide()
@@ -2449,7 +2452,7 @@ class SmtpSettingsDialog(QDialog):
         # Re-apply stylesheet via _btn helper logic — simplest is to swap icon/style directly
         t = _t()
         self._save_close_btn.setStyleSheet(
-            f"QPushButton{{background:{t.accent};color:#FFFFFF;border:none;"
+            f"QPushButton{{background:{t.accent};color:{t.accent_text};border:none;"
             f"border-radius:8px;font-size:13px;font-weight:600;padding:0 18px;}}"
             f"QPushButton:hover{{background:{t.accent_hover};}}")
 
@@ -2804,7 +2807,7 @@ class ChallanRowDetailDialog(QDialog):
         layout.addWidget(self._drawee_widget)
 
         self._cash_warning = QLabel("")
-        self._cash_warning.setStyleSheet(f"color:{getattr(_bt, 'warning', '#D97706')};font-size:11px;background:transparent;")
+        self._cash_warning.setStyleSheet(f"color:{_bt.warning};font-size:11px;background:transparent;")
         self._cash_warning.setWordWrap(True)
         layout.addWidget(self._cash_warning)
 
@@ -2868,7 +2871,7 @@ class ChallanRowDetailDialog(QDialog):
         _bt = _t()
         if pan and not matched:
             self._name_label.setText("⚠ Unknown PAN — not in Client Master")
-            self._name_label.setStyleSheet(f"color:{getattr(_bt, 'warning', '#D97706')};font-size:11px;background:transparent;")
+            self._name_label.setStyleSheet(f"color:{_bt.warning};font-size:11px;background:transparent;")
         elif matched:
             self._name_label.setText(matched.get("name", ""))
             self._name_label.setStyleSheet(f"color:{_bt.text_muted};font-size:11px;background:transparent;")
@@ -3694,7 +3697,7 @@ class GenerateChallansDialog(QDialog):
                 f"Saves to: {base}\\{{PAN}}-{{Name}}\\{year_dir}\\Tax Challans (Payable)\\")
         except Exception as e:
             _bt = _t()
-            warn = getattr(_bt, "warning", "#D97706")
+            warn = _bt.warning
             self._type_label.setText(f"→ {e}")
             self._type_label.setStyleSheet(
                 f"color:{warn};background:transparent;font-size:12px;font-weight:normal;padding:0;")
@@ -3766,7 +3769,7 @@ class GenerateChallansDialog(QDialog):
             name_item = QTableWidgetItem()
             if pan and not matched:
                 name_item.setText("⚠ Unknown PAN")
-                name_item.setForeground(QColor(getattr(_bt, "warning", "#D97706")))
+                name_item.setForeground(QColor(_bt.warning))
             elif matched:
                 name_item.setText(matched.get("name", ""))
                 name_item.setForeground(QColor(_bt.text_primary))
@@ -3776,7 +3779,7 @@ class GenerateChallansDialog(QDialog):
             total_item = QTableWidgetItem(f"{total:g}")
             total_item.setForeground(QColor(_bt.text_primary))
             if self._cash_limit_exceeded(row.get("payment_mode", ""), row.get("bank", ""), total):
-                total_item.setForeground(QColor(getattr(_bt, "warning", "#D97706")))
+                total_item.setForeground(QColor(_bt.warning))
             self._table.setItem(i, self._COL_TOTAL, total_item)
 
             mode = row.get("payment_mode", "")
@@ -3785,7 +3788,7 @@ class GenerateChallansDialog(QDialog):
             # the row detail dialog), so a problem with it surfaces here
             # too rather than staying invisible until the row is opened.
             problem = self._row_bank_problem(row) or self._row_drawee_problem(row)
-            warn_color = QColor(getattr(_bt, "warning", "#D97706"))
+            warn_color = QColor(_bt.warning)
             normal_color = QColor(_bt.text_primary)
 
             mode_item = QTableWidgetItem(mode)
@@ -4200,7 +4203,7 @@ class ChallanGenerationProgressDialog(QDialog):
             f"QProgressBar{{border:1px solid {_bt.border};border-radius:9px;"
             f"background:{_bt.scrollbar_handle};text-align:center;font-size:11px;"
             f"font-weight:600;color:{_bt.accent_text};}}"
-            f"QProgressBar::chunk{{background:#16A34A;border-radius:9px;}}")
+            f"QProgressBar::chunk{{background:{_bt.success};border-radius:9px;}}")
         layout.addWidget(self._progress_bar)
 
         footer = QHBoxLayout()
@@ -4266,7 +4269,7 @@ class ChallanGenerationProgressDialog(QDialog):
             # pattern (_on_path_update) so clicking it actually opens the
             # file/folder via _open_row_path.
             lbl.setText(
-                f'<a href="{path}" style="color:#2563EB;text-decoration:underline;">'
+                f'<a href="{path}" style="color:{_t().accent};text-decoration:underline;">'
                 f'{path}</a>')
             lbl.setToolTip(path)
 
@@ -4905,11 +4908,11 @@ class MailDocsDialog(QDialog):
             if restored and restored not in (f"{n_files} file{'s' if n_files != 1 else ''}", "⚠ No files"):
                 files_item = QTableWidgetItem(restored)
                 if "✅" in restored:
-                    files_item.setForeground(QColor("#15803D"))
+                    files_item.setForeground(QColor(t.success))
                 elif "❌" in restored:
-                    files_item.setForeground(QColor("#EF4444"))
+                    files_item.setForeground(QColor(t.error))
                 elif "⚠" in restored:
-                    files_item.setForeground(QColor("#D97706"))
+                    files_item.setForeground(QColor(t.warning))
                 else:
                     files_item.setForeground(QColor(t.text_primary))
             elif has_files:
@@ -4919,7 +4922,7 @@ class MailDocsDialog(QDialog):
                 files_item.setToolTip(tip)
             else:
                 files_item = QTableWidgetItem("⚠ No files")
-                files_item.setForeground(QColor("#EF4444"))
+                files_item.setForeground(QColor(t.error))
             files_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
             self._table.setItem(row, self._COL_FILES, files_item)
 
@@ -5050,8 +5053,8 @@ class MailDocsDialog(QDialog):
             if not email:
                 missing_email.append(client["name"])
                 self._email_edits[pan].setStyleSheet(
-                    "QLineEdit{border:1.5px solid #EF4444;border-radius:4px;"
-                    "background:#FEF2F2;color:#B91C1C;font-size:11px;padding:0 4px;}")
+                    f"QLineEdit{{border:1.5px solid {_t().error};border-radius:4px;"
+                    f"background:{_t().error_bg};color:{_t().error};font-size:11px;padding:0 4px;}}")
                 continue
             cc = self._cc_edits[pan].text().strip()
             attachments = [a for a in client["attachments"] if self._keep(a)]
@@ -5078,7 +5081,7 @@ class MailDocsDialog(QDialog):
                 row = self._pan_to_row(pan)
                 if row >= 0:
                     item = QTableWidgetItem("❌ Docs not found")
-                    item.setForeground(QColor("#EF4444"))
+                    item.setForeground(QColor(t.error))
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
                     self._table.setItem(row, self._COL_FILES, item)
             self._status_lbl.setText("No matching documents found for the selected template.")
@@ -5107,7 +5110,7 @@ class MailDocsDialog(QDialog):
             row = self._pan_to_row(pan)
             if row >= 0:
                 item = QTableWidgetItem("❌ Docs not found")
-                item.setForeground(QColor("#EF4444"))
+                item.setForeground(QColor(t.error))
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
                 self._table.setItem(row, self._COL_FILES, item)
 
@@ -5117,7 +5120,7 @@ class MailDocsDialog(QDialog):
             row = self._pan_to_row(pan)
             if row >= 0:
                 item = QTableWidgetItem("⏳ Sending…")
-                item.setForeground(QColor("#92400E" if t.name != "light" else "#D97706"))
+                item.setForeground(QColor(t.warning))
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
                 self._table.setItem(row, self._COL_FILES, item)
 
@@ -5186,9 +5189,9 @@ class MailDocsDialog(QDialog):
         t = _t()
         item = QTableWidgetItem(status)
         if status.startswith("✅"):
-            item.setForeground(QColor("#16A34A"))
+            item.setForeground(QColor(t.success))
         elif status.startswith("❌"):
-            item.setForeground(QColor("#EF4444"))
+            item.setForeground(QColor(t.error))
         else:
             item.setForeground(QColor(t.text_muted))
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
@@ -5288,7 +5291,7 @@ class ReturnStatusProgressDialog(QDialog):
             f"QProgressBar{{border:1px solid {_bt.border};border-radius:9px;"
             f"background:{_bt.scrollbar_handle};text-align:center;font-size:11px;"
             f"font-weight:600;color:{_bt.accent_text};}}"
-            f"QProgressBar::chunk{{background:#16A34A;border-radius:9px;}}")
+            f"QProgressBar::chunk{{background:{_bt.success};border-radius:9px;}}")
         layout.addWidget(self._progress_bar)
 
         footer = QHBoxLayout()
@@ -5557,7 +5560,7 @@ class ReturnStatusDialog(QDialog):
 
             name_item = QTableWidgetItem(r["name"] or "⚠ Unknown PAN")
             name_item.setForeground(QColor(_bt.text_primary if r["name"] else
-                                            getattr(_bt, "warning", "#D97706")))
+                                            _bt.warning))
             self._table.setItem(i, self._COL_NAME, name_item)
 
             ay_item = QTableWidgetItem(r["ay"])
@@ -5570,7 +5573,7 @@ class ReturnStatusDialog(QDialog):
                 status_text = "⚠ Not yet checked"
             status_item = QTableWidgetItem(status_text)
             status_item.setForeground(QColor(_bt.text_primary if r["status"] else
-                                              getattr(_bt, "warning", "#D97706")))
+                                              _bt.warning))
             self._table.setItem(i, self._COL_STATUS, status_item)
 
             ts_item = QTableWidgetItem(r["ts"] or "—")
