@@ -653,7 +653,7 @@ class AayDocCapioApp(QMainWindow):
             _logo_path = os.path.join(_bundled_dir(), "resources", _logo_file)
             if os.path.exists(_logo_path):
                 self._hdr_logo.setPixmap(
-                    QPixmap(_logo_path).scaledToHeight(44, Qt.TransformationMode.SmoothTransformation)
+                    QPixmap(_logo_path).scaledToHeight(66, Qt.TransformationMode.SmoothTransformation)
                 )
         for lbl in (getattr(self, "_hdr_version", None), getattr(self, "_hdr_copy", None)):
             if lbl:
@@ -949,7 +949,7 @@ class AayDocCapioApp(QMainWindow):
 
     def _mk_header(self):
         hdr = QFrame()
-        hdr.setFixedHeight(68)
+        hdr.setFixedHeight(84)
         hdr.setObjectName("header")
         self._hdr_frame = hdr
         hl = QHBoxLayout(hdr)
