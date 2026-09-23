@@ -67,9 +67,10 @@ class NavRail(QWidget):
         target.addLayout(wrap)
 
     def add_hub(self, key: str, label: str, icon: str = "", accent_key: str = "accent_home",
-                section: str = "top"):
-        """Add a rail button. `icon` is a resources/icons/<name> filename, or
-        falls back to the first letter of `label` as a glyph if not found."""
+                section: str = "top", glyph: str = ""):
+        """Add a rail button. `icon` is a resources/icons/<name> filename; if
+        not found, falls back to `glyph` (or the first letter of `label` if
+        `glyph` is not given)."""
         btn = QToolButton()
         btn.setCheckable(True)
         btn.setFixedSize(42, 42)
@@ -83,7 +84,7 @@ class NavRail(QWidget):
             btn.setIcon(QIcon(px))
             btn.setIconSize(QSize(19, 19))
         else:
-            btn.setText(label[:1])
+            btn.setText(glyph or label[:1])
 
         btn.clicked.connect(lambda checked, k=key: self._on_clicked(k))
 
@@ -193,8 +194,8 @@ class NavShell(QWidget):
         self._rail.hubSelected.connect(self.go)
 
     def add_hub(self, key: str, label: str, page_widget: QWidget, icon: str = "",
-                accent_key: str = "accent_home", section: str = "top"):
-        self._rail.add_hub(key, label, icon=icon, accent_key=accent_key, section=section)
+                accent_key: str = "accent_home", section: str = "top", glyph: str = ""):
+        self._rail.add_hub(key, label, icon=icon, accent_key=accent_key, section=section, glyph=glyph)
         self._hub_labels[key] = label
         self._hub_pages[key] = page_widget
         self._stack.addWidget(page_widget)

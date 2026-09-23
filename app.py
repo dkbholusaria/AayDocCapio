@@ -39,7 +39,7 @@ from ui.widgets import StyledComboBox, CheckableComboBox
 from ui.dialogs import (
     ManageYearsDialog, BatchProgressDialog, DownloadPickerDialog,
     GenerateChallansDialog, ChallanGenerationProgressDialog,
-    ReturnStatusDialog, ReturnStatusProgressDialog,
+    ReturnStatusDialog, ReturnStatusProgressDialog, EmailLogDialog,
 )
 from ui.log_history import LogHistoryDialog, LogStore
 from automation.errors import _friendly_error
@@ -586,13 +586,32 @@ class AayDocCapioApp(QMainWindow):
 
         root.addWidget(self._mk_header())
 
-        # F-77a Phase 1 (PR 2/4): Home, Settings, Help hubs wired into the
-        # new rail. Income Tax/Mail/Activity Log/GST/TDS/MCA/Team follow in
-        # PR 3 — the menu bar above stays fully functional in parallel
-        # throughout, so every action remains reachable both ways.
+        # F-77a Phase 1: rail hubs wired around the existing functionality.
+        # The menu bar above stays fully functional in parallel throughout,
+        # so every action remains reachable both ways (full retirement is a
+        # later phase, per the approved plan).
         self._nav_shell = NavShell()
         self._nav_shell.add_hub("home", "Home / Clients", self._mk_main_panel(),
                                  accent_key="accent_home", section="top")
+        self._nav_shell.add_hub("it", "Income Tax", self._mk_income_tax_page(),
+                                 icon="icon_person.png", accent_key="accent_it", section="top")
+        self._nav_shell.add_hub("gst", "GST", self._mk_placeholder_page(
+            "GST", "Coming soon — see F-70 for the GST vs. Income Tax turnover reconciliation roadmap."),
+            accent_key="accent_gst", section="top")
+        self._nav_shell.add_hub("tds", "TDS", self._mk_placeholder_page(
+            "TDS", "Coming soon — see F-71 for the TAN-based deductor-side automation roadmap."),
+            accent_key="accent_tds", section="top")
+        self._nav_shell.add_hub("mca", "MCA", self._mk_placeholder_page(
+            "MCA / ROC", "Coming soon — see F-72 for the MCA/ROC filings roadmap."),
+            accent_key="accent_mca", section="top")
+        self._nav_shell.add_divider("bottom")
+        self._nav_shell.add_hub("team", "Team", self._mk_placeholder_page(
+            "Team", "Coming soon — see F-74 for CA staff / client-assignment management."),
+            accent_key="accent_home", section="bottom", glyph="👥")
+        self._nav_shell.add_hub("mail", "Mail Docs to Clients", self._mk_mail_docs_page(),
+                                 icon="btn_send.png", accent_key="accent_home", section="bottom")
+        self._nav_shell.add_hub("activity", "Activity Log", self._mk_activity_log_page(),
+                                 icon="btn_view_log.png", accent_key="accent_home", section="bottom")
         self._nav_shell.add_hub("settings", "Settings", self._mk_settings_page(),
                                  icon="menu_appearance.png", accent_key="accent_home", section="bottom")
         self._nav_shell.add_hub("help", "Help", self._mk_help_page(),
@@ -1663,6 +1682,86 @@ class AayDocCapioApp(QMainWindow):
             b.clicked.connect(handler)
             layout.addWidget(b)
 
+        layout.addStretch(1)
+        return page
+
+    def _mk_income_tax_page(self):
+        """F-77a Income Tax hub page — a plain button list opening the exact
+        same dialogs the old E-Pay Tax/Return Status menus and Downloads/
+        E-Pay Tax control-bar buttons used. Not the mockup's action-card
+        grid — that's a later phase (F-77b)."""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(10)
+
+        items = [
+            ("Download Documents…", "btn_run.png", self._open_download_picker),
+            ("Generate Tax Challans (E-Pay Tax)…", "", self._open_generate_challans_dialog),
+            ("Download Challan Import Template…", "", self._download_challan_template),
+            ("Check Processing Status…", "", self._open_return_status_dialog),
+            ("Convert 26AS TXT → Excel + HTML…", "menu_export.png", self._convert_26as_manual),
+            ("Convert AIS JSON → Excel…", "menu_template.png", self._convert_ais_json_manual),
+        ]
+        for label, icon, handler in items:
+            b = _btn(label, "secondary", height=34, icon=icon)
+            b.clicked.connect(handler)
+            layout.addWidget(b)
+
+        layout.addStretch(1)
+        return page
+
+    def _mk_mail_docs_page(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(10)
+        b = _btn("Mail Docs to Clients…", "secondary", height=34, icon="btn_send.png")
+        b.clicked.connect(self._open_mail_docs)
+        layout.addWidget(b)
+        layout.addStretch(1)
+        return page
+
+    def _open_activity_log(self):
+        """Activity Log hub's primary entry point — the email send log.
+        Per-client download-run history stays reachable the existing way
+        (right-click a client row → View Log → _show_log_history)."""
+        from automation.emailer import _email_log_path
+        path = _email_log_path()
+        if not os.path.exists(path):
+            QMessageBox.information(self, "No Log Yet",
+                "No email activity has been logged yet.\n"
+                "Send documents to a client first, then check the log.")
+            return
+        EmailLogDialog(self, path).exec()
+
+    def _mk_activity_log_page(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(10)
+        b = _btn("View Email Log…", "secondary", height=34, icon="btn_view_log.png")
+        b.clicked.connect(self._open_activity_log)
+        layout.addWidget(b)
+        layout.addWidget(_lbl(
+            "Per-client download history is available by right-clicking a client row on the Home hub.",
+            11, color=_t().text_muted))
+        layout.addStretch(1)
+        return page
+
+    def _mk_placeholder_page(self, title: str, body: str):
+        """Static empty-state page for hubs with no real feature yet
+        (GST/TDS/MCA, Team) — validates rail/ribbon accent-color theming
+        end-to-end without pretending the feature exists."""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(24, 40, 24, 20)
+        layout.setSpacing(8)
+        layout.addWidget(_lbl(title, 15, bold=True))
+        lbl_body = QLabel(body)
+        lbl_body.setWordWrap(True)
+        lbl_body.setStyleSheet(f"color:{_t().text_muted}; font-size:12px; background:transparent;")
+        layout.addWidget(lbl_body)
         layout.addStretch(1)
         return page
 
