@@ -1073,8 +1073,8 @@ class AayDocCapioApp(QMainWindow):
         about_btn.setFixedSize(32, 32)
         about_btn.setToolTip("About AayDocCapio")
         about_btn.setStyleSheet(
-            "QPushButton { background:transparent; border:none; font-size:20px; color:#DC2626; }"
-            "QPushButton:hover { color:#B91C1C; }")
+            f"QPushButton {{ background:transparent; border:none; font-size:20px; color:{_t().error}; }}"
+            f"QPushButton:hover {{ color:{_t().error}; }}")
         about_btn.clicked.connect(self._show_about)
         hl.addWidget(about_btn, 0, Qt.AlignmentFlag.AlignVCenter)
 
@@ -1512,11 +1512,11 @@ class AayDocCapioApp(QMainWindow):
             self.btn_run.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.btn_run.setStyleSheet(
             "QToolButton{"
-            "  background:#16A34A; color:#FFFFFF; border:none;"
+            f"  background:{_t().success}; color:{_t().accent_text}; border:none;"
             "  border-radius:8px; font-size:13px; font-weight:600; padding:0 14px;"
             "}"
-            "QToolButton:hover{ background:#15803D; }"
-            "QToolButton:disabled{ background:#D1FAE5; color:#6EE7B7; }"
+            f"QToolButton:hover{{ background:{_t().success}; }}"
+            f"QToolButton:disabled{{ background:{_t().success_bg}; color:{_t().text_muted}; }}"
         )
         self.btn_run.clicked.connect(self._open_download_picker)
         hl.addWidget(self.btn_run)
@@ -1531,11 +1531,11 @@ class AayDocCapioApp(QMainWindow):
         self.btn_epay.setMinimumWidth(130)
         self.btn_epay.setStyleSheet(
             "QToolButton{"
-            "  background:#2563EB; color:#FFFFFF; border:none;"
+            f"  background:{_t().accent}; color:{_t().accent_text}; border:none;"
             "  border-radius:8px; font-size:13px; font-weight:600; padding:0 14px;"
             "}"
-            "QToolButton:hover{ background:#1D4ED8; }"
-            "QToolButton:disabled{ background:#BFDBFE; color:#EFF6FF; }"
+            f"QToolButton:hover{{ background:{_t().accent_hover}; }}"
+            f"QToolButton:disabled{{ background:{_t().accent_light}; color:{_t().text_muted}; }}"
         )
         self.btn_epay.clicked.connect(self._open_generate_challans_dialog)
         hl.addWidget(self.btn_epay)
@@ -1551,21 +1551,21 @@ class AayDocCapioApp(QMainWindow):
         self.ais_status_bar = QFrame()
         self.ais_status_bar.setFixedHeight(28)
         self.ais_status_bar.setStyleSheet(
-            "QFrame{background:#FFF7ED;border-top:1px solid #FED7AA;}")
+            f"QFrame{{background:{_t().warning_bg};border-top:1px solid {_t().warning};}}")
         self.ais_status_bar.setVisible(False)
         asl = QHBoxLayout(self.ais_status_bar)
         asl.setContentsMargins(22, 0, 16, 0)
         self.ais_status_lbl = QLabel()
         self.ais_status_lbl.setStyleSheet(
-            "color:#92400E; font-size:11px; background:transparent;")
+            f"color:{_t().warning}; font-size:11px; background:transparent;")
         asl.addWidget(self.ais_status_lbl)
         asl.addStretch()
         ais_dismiss = QPushButton("✕")
         ais_dismiss.setFixedSize(18, 18)
         ais_dismiss.setStyleSheet(
             "QPushButton{background:transparent;border:none;"
-            "color:#92400E;font-size:10px;}"
-            "QPushButton:hover{color:#78350F;}")
+            f"color:{_t().warning};font-size:10px;}}"
+            f"QPushButton:hover{{color:{_t().warning};}}")
         ais_dismiss.clicked.connect(lambda: self.ais_status_bar.setVisible(False))
         asl.addWidget(ais_dismiss)
 
@@ -1769,6 +1769,7 @@ class AayDocCapioApp(QMainWindow):
 
     def _mk_footer(self):
         footer = QFrame()
+        # Intentional: Live Logs panel is deliberately dark regardless of theme
         footer.setStyleSheet("QFrame{background:#0F172A;}")
         fl = QVBoxLayout(footer)
         fl.setContentsMargins(0, 0, 0, 0)
@@ -1780,9 +1781,9 @@ class AayDocCapioApp(QMainWindow):
         log_hdr.setStyleSheet("QFrame{background:#1E293B;}")
         hhl = QHBoxLayout(log_hdr); hhl.setContentsMargins(16, 0, 12, 0)
         dot = QLabel("●")
-        dot.setStyleSheet("color:#22C55E; font-size:9px; margin-right:4px;")
+        dot.setStyleSheet(f"color:{_t().success}; font-size:9px; margin-right:4px;")
         hhl.addWidget(dot)
-        hhl.addWidget(_lbl("LIVE LOGS", 10, bold=True, color="#64748B"))
+        hhl.addWidget(_lbl("LIVE LOGS", 10, bold=True, color=_t().text_muted))
         hhl.addStretch()
         copy_btn = QPushButton("Copy")
         copy_btn.setFixedHeight(22)
@@ -1807,7 +1808,7 @@ class AayDocCapioApp(QMainWindow):
         self.log_box.setStyleSheet(
             "QTextEdit{background:#0F172A;border:none;"
             f"font-family:'{_MONO_FONT}',monospace;"
-            "font-size:11px;color:#7DD3FC;padding:8px 16px;}")
+            "font-size:11px;color:#7DD3FC;padding:8px 16px;}")  # noqa: hardcoded colors intentional — Live Logs panel is deliberately dark regardless of theme
         fl.addWidget(self.log_box)
 
         collapsed = self.vault.get_setting("log_panel_collapsed", False)
@@ -2038,20 +2039,20 @@ class AayDocCapioApp(QMainWindow):
                 tooltip_text = status_text
             status_item.setToolTip(tooltip_text)
             if status_text.startswith("✅"):
-                status_item.setForeground(QColor("#15803D"))
+                status_item.setForeground(QColor(_t().success))
             elif status_text.startswith("❌"):
-                status_item.setForeground(QColor("#DC2626"))
+                status_item.setForeground(QColor(_t().error))
             elif status_text.startswith("⚠"):
-                status_item.setForeground(QColor("#D97706"))
+                status_item.setForeground(QColor(_t().warning))
             else:
-                status_item.setForeground(QColor("#64748B"))
+                status_item.setForeground(QColor(_t().text_muted))
             self.client_table.setItem(i, self._TC_STATUS, status_item)
 
             # Col 5: Last Download Time
             ts_text = hist.get("ts", "")
             ts_item = QTableWidgetItem(ts_text if ts_text else "—")
             ts_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            ts_item.setForeground(QColor("#64748B"))
+            ts_item.setForeground(QColor(_t().text_muted))
             self.client_table.setItem(i, self._TC_TS, ts_item)
 
             # Col 6: Last Saved Location (hyperlink QLabel)
@@ -2061,21 +2062,21 @@ class AayDocCapioApp(QMainWindow):
             path_lbl.setStyleSheet("background:transparent; border:none; font-size:11px;")
             if saved_path and os.path.exists(saved_path):
                 path_lbl.setText(
-                    f'<a href="{saved_path}" style="color:#1D4ED8;text-decoration:underline;">'
+                    f'<a href="{saved_path}" style="color:{_t().accent_hover};text-decoration:underline;">'
                     f'{saved_path}</a>'
                 )
                 path_lbl.setToolTip(saved_path)
                 path_lbl.linkActivated.connect(
                     lambda p=saved_path: self._open_saved_path(p))
             else:
-                path_lbl.setText('<span style="color:#94A3B8;">—</span>')
+                path_lbl.setText(f'<span style="color:{_t().text_muted};">—</span>')
             self.client_table.setCellWidget(i, self._TC_PATH, path_lbl)
 
             # Col 6: Actions
             dots_item = QTableWidgetItem("• • •")
             dots_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             dots_item.setToolTip("Click for actions")
-            dots_item.setForeground(QColor("#64748B"))
+            dots_item.setForeground(QColor(_t().text_muted))
             f = dots_item.font()
             f.setPointSize(9)
             f.setBold(True)
@@ -2374,18 +2375,18 @@ class AayDocCapioApp(QMainWindow):
             normed = _smart_normalise(raw)
             if _DOB_RE.match(normed):
                 dob_hint.setText(f"✓  Will save as: {normed}")
-                dob_hint.setStyleSheet("font-size:10px;color:#16A34A;background:transparent;border:none;")
+                dob_hint.setStyleSheet(f"font-size:10px;color:{t.success};background:transparent;border:none;")
                 dob_edit.setStyleSheet(
-                    f"QLineEdit{{border:1.5px solid #16A34A;border-radius:6px;"
+                    f"QLineEdit{{border:1.5px solid {t.success};border-radius:6px;"
                     f"padding:6px 10px;font-size:12px;background:{t.bg_input};color:{t.text_primary};}}"
-                    f"QLineEdit:focus{{border-color:#16A34A;}}")
+                    f"QLineEdit:focus{{border-color:{t.success};}}")
             else:
                 dob_hint.setText("✗  Use DDMMYYYY or DD-MM-YYYY  e.g. 06071974")
-                dob_hint.setStyleSheet("font-size:10px;color:#EF4444;background:transparent;border:none;")
+                dob_hint.setStyleSheet(f"font-size:10px;color:{t.error};background:transparent;border:none;")
                 dob_edit.setStyleSheet(
-                    f"QLineEdit{{border:1.5px solid #EF4444;border-radius:6px;"
+                    f"QLineEdit{{border:1.5px solid {t.error};border-radius:6px;"
                     f"padding:6px 10px;font-size:12px;background:{t.bg_input};color:{t.text_primary};}}"
-                    f"QLineEdit:focus{{border-color:#EF4444;}}")
+                    f"QLineEdit:focus{{border-color:{t.error};}}")
 
         def _on_dob_commit():
             """On Tab/Enter/focus-out, rewrite the field to canonical DD-MM-YYYY."""
@@ -2934,7 +2935,7 @@ class AayDocCapioApp(QMainWindow):
             # Stop any existing blink timer before starting a new one
             if hasattr(self, "_update_blink_timer"):
                 self._update_blink_timer.stop()
-            self._update_link_text = f'<a href="#" style="color:#2563EB;font-size:11px;">&#11015; v{tag} available</a>'
+            self._update_link_text = f'<a href="#" style="color:{_t().accent};font-size:11px;">&#11015; v{tag} available</a>'
             self._update_link_visible = True
             self._hdr_update_lnk.setText(self._update_link_text)
             self._update_blink_timer = QTimer(self)
@@ -4235,7 +4236,7 @@ class _SplashScreen(QWidget):
         # Soft gold glow (brand accent) behind the logo — pulses via the
         # blurRadius animation below rather than sitting static.
         self._glow = QGraphicsDropShadowEffect(self)
-        self._glow.setColor(QColor("#E8B84B"))
+        self._glow.setColor(QColor(_t().warning))
         self._glow.setOffset(0, 0)
         self._glow.setBlurRadius(20)
         logo_label.setGraphicsEffect(self._glow)
@@ -4244,7 +4245,7 @@ class _SplashScreen(QWidget):
         self._status_label = QLabel("Starting AayDocCapio")
         self._status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._status_label.setStyleSheet(
-            "color:#5B6472;font-size:13px;background:transparent;")
+            f"color:{_t().text_muted};font-size:13px;background:transparent;")
         outer.addWidget(self._status_label)
 
         self.setFixedSize(pixmap.width() + 80, pixmap.height() + 96)
