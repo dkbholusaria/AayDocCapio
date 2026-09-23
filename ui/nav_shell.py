@@ -1,13 +1,12 @@
 """
 ui/nav_shell.py — F-77a Phase 1: left-rail + breadcrumb navigation shell.
 
-Visual design follows KarOrbis's HubSidebar (portals/common/components.py):
-a 100px rail of icon-above-label buttons, square corners, zero gap between
-buttons, and a thin left accent bar (not a filled pill) marking the active
-hub. AayDocCapio's rail is a single persistent strip spanning every hub
-(KarOrbis instead opens one colored sidebar per hub window), so the rail
-background stays a fixed theme color and each hub's own accent colors the
-active bar/hover tint instead of the whole rail.
+Ports the approved HTML/CSS Artifact mockup's rail as closely as Qt/QSS
+allows: a 64px icon-only rail, 42x42 rounded buttons, tooltip on hover,
+and a tinted pill (not a left bar) marking the active hub. Icons are the
+mockup's own inline SVG paths, rendered via QSvgRenderer and tinted per
+theme/state at runtime (muted when inactive, the hub's accent color when
+active) — not flat PNG art, so they always match the current theme.
 
 Provides three reusable widgets:
 
@@ -24,42 +23,93 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QToolButton, QButtonGroup,
     QLabel, QStackedWidget,
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QSize
-from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QFont
+from PyQt6.QtCore import Qt, pyqtSignal, QSize, QByteArray
+from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor
 
 from ui._theme import _t
-from ui.helpers import _icon_path
 
-RAIL_WIDTH = 100
-BUTTON_HEIGHT = 60
-ICON_SIZE = 26
+try:
+    from PyQt6.QtSvg import QSvgRenderer
+    _HAVE_SVG = True
+except ImportError:
+    _HAVE_SVG = False
+
+RAIL_WIDTH = 64
+BUTTON_SIZE = 42
+ICON_SIZE = 20
+
+# Same path data as the approved HTML mockup's rail icons (Lucide-style,
+# 24x24 viewBox, stroke-based). Keying by icon name, not per-hub, so any
+# hub can reuse an icon if needed.
+_ICON_SVGS = {
+    "home": '<path d="M17 21v-8H7v8M3 10l9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+    "document": ('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>'
+                 '<polyline points="14 2 14 8 20 8"/>'),
+    "building": ('<rect x="3" y="7" width="18" height="13" rx="2"/>'
+                 '<path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'
+                 '<line x1="3" y1="12" x2="21" y2="12"/>'),
+    "rupee": '<path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+    "columns": ('<path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1m-6 4h1m4 0h1m-6 4h1m4 0h1"/>'),
+    "people": ('<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>'
+               '<circle cx="9" cy="7" r="4"/>'
+               '<path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>'),
+    "mail": '<path d="M4 4h16v16H4z"/><path d="m4 6 8 7 8-7"/>',
+    "list": ('<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>'
+             '<line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/>'
+             '<line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>'),
+    "gear": ('<circle cx="12" cy="12" r="3"/>'
+             '<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 '
+             '1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
+    "help": ('<circle cx="12" cy="12" r="10"/>'
+             '<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>'
+             '<line x1="12" y1="17" x2="12.01" y2="17"/>'),
+}
+
+# Which icon each hub uses — matches the approved mockup's rail 1:1.
+HUB_ICONS = {
+    "home": "home", "it": "document", "gst": "building", "tds": "rupee",
+    "mca": "columns", "team": "people", "mail": "mail", "activity": "list",
+    "settings": "gear", "help": "help",
+}
 
 
-def _badge_icon(text: str, color: str, size: int = ICON_SIZE) -> QIcon:
-    """A small filled-circle monogram, used when a hub has no real icon
-    asset yet — replaces the old "one giant letter as the whole button"
-    look with a real icon-shaped element plus a label below it."""
+def _svg_pixmap(icon_key: str, color: str, size: int) -> QPixmap:
     px = QPixmap(size, size)
     px.fill(Qt.GlobalColor.transparent)
-    p = QPainter(px)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    p.setBrush(QColor(color))
-    p.setPen(Qt.PenStyle.NoPen)
-    p.drawEllipse(0, 0, size, size)
-    p.setPen(QColor("#FFFFFF"))
-    f = QFont()
-    f.setPointSize(max(7, int(size * 0.34)))
-    f.setBold(True)
-    p.setFont(f)
-    p.drawText(px.rect(), Qt.AlignmentFlag.AlignCenter, text[:2].upper())
-    p.end()
-    return QIcon(px)
+    body = _ICON_SVGS.get(icon_key, "")
+    if _HAVE_SVG and body:
+        svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
+               f'stroke="{color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{body}</svg>')
+        renderer = QSvgRenderer(QByteArray(svg.encode("utf-8")))
+        p = QPainter(px)
+        renderer.render(p)
+        p.end()
+    else:
+        # No QtSvg available — fall back to a plain tinted circle so the
+        # rail still renders sensibly rather than showing nothing.
+        p = QPainter(px)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setBrush(QColor(color))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.drawEllipse(2, 2, size - 4, size - 4)
+        p.end()
+    return px
+
+
+def _hub_icon(icon_key: str, muted_color: str, accent_color: str, size: int = ICON_SIZE) -> QIcon:
+    """QIcon with two states: muted (Off, i.e. inactive) and accent-tinted
+    (On, i.e. checked/active) — QToolButton picks the right one automatically
+    from its checked state, no manual icon-swapping needed."""
+    icon = QIcon()
+    icon.addPixmap(_svg_pixmap(icon_key, muted_color, size), QIcon.Mode.Normal, QIcon.State.Off)
+    icon.addPixmap(_svg_pixmap(icon_key, accent_color, size), QIcon.Mode.Normal, QIcon.State.On)
+    return icon
 
 
 class NavRail(QWidget):
-    """100px-wide rail of icon-above-label buttons (KarOrbis HubSidebar
-    proportions). Top group + bottom group, exclusive selection, no
-    dividers — matches KarOrbis's flush edge-to-edge button stacking."""
+    """64px-wide icon-only rail — proportions and interaction match the
+    approved HTML mockup: 42x42 rounded buttons, tooltip on hover, a
+    tinted pill (not a bar) for the active hub."""
 
     hubSelected = pyqtSignal(str)
 
@@ -67,59 +117,48 @@ class NavRail(QWidget):
         super().__init__(parent)
         self.setFixedWidth(RAIL_WIDTH)
         self._buttons: dict[str, QToolButton] = {}
-        self._accent_keys: dict[str, str] = {}  # hub key -> ThemeColors attr name
+        self._accent_keys: dict[str, str] = {}
+        self._icon_keys: dict[str, str] = {}
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(0)
+        outer.setContentsMargins(0, 14, 0, 14)
+        outer.setSpacing(4)
 
         self._top = QVBoxLayout()
-        self._top.setSpacing(0)
+        self._top.setSpacing(4)
         outer.addLayout(self._top)
 
         outer.addStretch(1)
 
         self._bottom = QVBoxLayout()
-        self._bottom.setSpacing(0)
+        self._bottom.setSpacing(4)
         outer.addLayout(self._bottom)
 
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
 
-    def add_hub(self, key: str, label: str, icon: str = "", accent_key: str = "accent_home",
-                section: str = "top", glyph: str = "", rail_label: str = ""):
-        """Add a rail button. `icon` is a resources/icons/<name> filename; if
-        not found, a colored monogram badge is drawn instead (using `glyph`
-        or the first two letters of `label`). `rail_label` is the short
-        (optionally two-line, via "\\n") text shown under the icon — falls
-        back to `label` if not given."""
+    def add_hub(self, key: str, label: str, accent_key: str = "accent_home", section: str = "top"):
+        """Add a rail button. The icon is looked up from HUB_ICONS[key]
+        (falling back to a plain circle if the key isn't mapped)."""
         btn = QToolButton()
         btn.setCheckable(True)
-        btn.setFixedSize(RAIL_WIDTH, BUTTON_HEIGHT)
+        btn.setFixedSize(BUTTON_SIZE, BUTTON_SIZE)
         btn.setToolTip(label)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-        btn.setText(rail_label or label)
         btn.setIconSize(QSize(ICON_SIZE, ICON_SIZE))
-
-        icon_path = _icon_path(icon) if icon else ""
-        accent = getattr(_t(), accent_key, _t().accent)
-        if icon_path:
-            px = QPixmap(icon_path).scaled(ICON_SIZE, ICON_SIZE, Qt.AspectRatioMode.KeepAspectRatio,
-                                            Qt.TransformationMode.SmoothTransformation)
-            btn.setIcon(QIcon(px))
-        else:
-            btn.setIcon(_badge_icon(glyph or label, accent))
-
-        btn.clicked.connect(lambda checked, k=key: self._on_clicked(k))
 
         self._group.addButton(btn)
         self._buttons[key] = btn
         self._accent_keys[key] = accent_key
+        self._icon_keys[key] = HUB_ICONS.get(key, "home")
 
         target = self._top if section == "top" else self._bottom
-        target.addWidget(btn)
+        wrap = QHBoxLayout()
+        wrap.setContentsMargins(11, 0, 11, 0)
+        wrap.addWidget(btn)
+        target.addLayout(wrap)
 
+        btn.clicked.connect(lambda checked, k=key: self._on_clicked(k))
         self.repaint_theme(_t())
         return btn
 
@@ -134,20 +173,19 @@ class NavRail(QWidget):
     def repaint_theme(self, t):
         """Re-apply per-button colours for the current theme (mirrors
         AayDocCapioApp._repaint_theme's pattern of imperative re-styling)."""
-        self.setStyleSheet(f"background:{t.bg_menubar}; border-right:1px solid {t.border};")
+        self.setStyleSheet(f"background:{t.bg_menubar};")
         for key, btn in self._buttons.items():
             accent = getattr(t, self._accent_keys.get(key, "accent_home"), t.accent)
+            btn.setIcon(_hub_icon(self._icon_keys.get(key, "home"), t.text_muted, accent))
             btn.setStyleSheet(
                 "QToolButton {"
-                "  background: transparent; border: none; border-left: 4px solid transparent;"
-                f"  color: {t.text_muted}; font-size: 9px; font-weight: 700;"
+                "  background: transparent; border: none; border-radius: 10px;"
                 "}"
                 "QToolButton:hover {"
-                f"  background: {accent}1A; color: {t.text_primary};"
+                f"  background: {accent}1A;"
                 "}"
                 "QToolButton:checked {"
-                f"  background: {accent}26; color: {t.text_primary};"
-                f"  border-left: 4px solid {accent};"
+                f"  background: {accent}29;"
                 "}"
             )
 
@@ -216,11 +254,9 @@ class NavShell(QWidget):
 
         self._rail.hubSelected.connect(self.go)
 
-    def add_hub(self, key: str, label: str, page_widget: QWidget, icon: str = "",
-                accent_key: str = "accent_home", section: str = "top", glyph: str = "",
-                rail_label: str = ""):
-        self._rail.add_hub(key, label, icon=icon, accent_key=accent_key, section=section,
-                            glyph=glyph, rail_label=rail_label)
+    def add_hub(self, key: str, label: str, page_widget: QWidget,
+                accent_key: str = "accent_home", section: str = "top"):
+        self._rail.add_hub(key, label, accent_key=accent_key, section=section)
         self._hub_labels[key] = label
         self._hub_pages[key] = page_widget
         self._stack.addWidget(page_widget)
