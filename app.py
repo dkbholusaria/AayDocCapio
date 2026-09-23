@@ -4,7 +4,7 @@ Run:  python3 app.py
 """
 from version import __version__ as APP_VERSION
 
-import sys, os, json, asyncio, threading, datetime, logging, time
+import sys, os, json, asyncio, threading, datetime, logging, time, re, html
 from urllib.parse import urlencode
 
 # Force XCB (X11) backend on Linux/WSL2 — must be set before Qt initialises.
@@ -27,15 +27,15 @@ from PyQt6.QtCore import (
     Qt, pyqtSignal, pyqtSlot, QTimer, QMetaObject, Q_ARG, QUrl,
     QPropertyAnimation, QEasingCurve,
 )
-from PyQt6.QtGui import QFont, QTextCursor, QColor, QRegularExpressionValidator, QPalette, QAction, QIcon, QPixmap, QDesktopServices
+from PyQt6.QtGui import QFont, QTextCursor, QColor, QRegularExpressionValidator, QPalette, QAction, QIcon, QPixmap, QDesktopServices, QCursor
 from PyQt6.QtCore import QRegularExpression
 
 from config import _app_dir, _default_download_dir, _bundled_dir
 from utils import get_timestamp, notify_windows
 from ui._theme import _t
 from ui.helpers import _btn, _lbl, _shadow
-from ui.nav_shell import NavShell
-from ui.widgets import StyledComboBox, CheckableComboBox
+from ui.nav_shell import NavShell, _svg_pixmap
+from ui.widgets import StyledComboBox, CheckableComboBox, ClickableCard
 from ui.dialogs import (
     ManageYearsDialog, BatchProgressDialog, DownloadPickerDialog,
     GenerateChallansDialog, ChallanGenerationProgressDialog,
@@ -1635,30 +1635,82 @@ class AayDocCapioApp(QMainWindow):
         layout.addStretch(1)
         return page
 
+    def _mk_action_card(self, title: str, desc: str, icon_key: str, handler):
+        """Icon + title + description card, matching the approved mockup's
+        Income Tax landing screen. Reuses the rail's own SVG icon set
+        (ui.nav_shell._svg_pixmap) for visual consistency."""
+        t = _t()
+        accent = t.accent_it
+
+        card = ClickableCard()
+        card.setMinimumWidth(200)
+        card.setStyleSheet(
+            f"QFrame{{background:{t.bg_panel};border:1px solid {t.border};border-radius:12px;}}"
+            f"QFrame:hover{{border-color:{accent};}}"
+        )
+        cl = QVBoxLayout(card)
+        cl.setContentsMargins(18, 18, 18, 16)
+        cl.setSpacing(10)
+
+        icon_lbl = QLabel()
+        icon_lbl.setFixedSize(40, 40)
+        icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_lbl.setPixmap(_svg_pixmap(icon_key, accent, 20))
+        icon_lbl.setStyleSheet(f"background:{accent}22; border-radius:10px;")
+        cl.addWidget(icon_lbl)
+
+        title_lbl = _lbl(title, 13, bold=True)
+        cl.addWidget(title_lbl)
+
+        desc_lbl = QLabel(desc)
+        desc_lbl.setWordWrap(True)
+        desc_lbl.setStyleSheet(f"color:{t.text_muted}; font-size:11px; background:transparent;")
+        cl.addWidget(desc_lbl)
+        cl.addStretch(1)
+
+        card.clicked.connect(handler)
+        return card
+
+    def _open_it_tools_menu(self):
+        menu = QMenu(self)
+        act1 = menu.addAction("Convert 26AS TXT → Excel + HTML…")
+        act1.triggered.connect(self._convert_26as_manual)
+        act2 = menu.addAction("Convert AIS JSON → Excel…")
+        act2.triggered.connect(self._convert_ais_json_manual)
+        menu.exec(QCursor.pos())
+
     def _mk_income_tax_page(self):
-        """F-77a Income Tax hub page — a plain button list opening the exact
-        same dialogs the old E-Pay Tax/Return Status menus and Downloads/
-        E-Pay Tax control-bar buttons used. Not the mockup's action-card
-        grid — that's a later phase (F-77b)."""
+        """F-77b: Income Tax hub landing screen — the mockup's action-card
+        grid. Each card opens the same dialog the old plain-button-list
+        version did; Tools groups the two converters behind one card
+        (opens a small popup menu) since they're not full sub-pages."""
         page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(24, 20, 24, 20)
-        layout.setSpacing(10)
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(24, 20, 24, 20)
+        outer.setSpacing(14)
 
-        items = [
-            ("Download Documents…", "btn_run.png", self._open_download_picker),
-            ("Generate Tax Challans (E-Pay Tax)…", "", self._open_generate_challans_dialog),
-            ("Download Challan Import Template…", "", self._download_challan_template),
-            ("Check Processing Status…", "", self._open_return_status_dialog),
-            ("Convert 26AS TXT → Excel + HTML…", "menu_export.png", self._convert_26as_manual),
-            ("Convert AIS JSON → Excel…", "menu_template.png", self._convert_ais_json_manual),
-        ]
-        for label, icon, handler in items:
-            b = _btn(label, "secondary", height=34, icon=icon)
-            b.clicked.connect(handler)
-            layout.addWidget(b)
+        outer.addWidget(_lbl("What do you want to do?", 11, bold=True, color=_t().text_muted))
 
-        layout.addStretch(1)
+        grid = QHBoxLayout()
+        grid.setSpacing(14)
+        grid.addWidget(self._mk_action_card(
+            "Download Documents",
+            "26AS, Form 168, AIS, TIS & Filed Returns — bulk, unattended, for every selected client.",
+            "document", self._open_download_picker))
+        grid.addWidget(self._mk_action_card(
+            "E-Pay Tax",
+            "Generate tax payment challans against the ITD portal, or import a prepared batch.",
+            "rupee", self._open_generate_challans_dialog))
+        grid.addWidget(self._mk_action_card(
+            "Check Processing Status",
+            "See where every client's return actually stands, straight from the portal.",
+            "list", self._open_return_status_dialog))
+        grid.addWidget(self._mk_action_card(
+            "Tools",
+            "Convert an already-downloaded 26AS or AIS file to Excel, outside a full batch run.",
+            "gear", self._open_it_tools_menu))
+        outer.addLayout(grid)
+        outer.addStretch(1)
         return page
 
     def _mk_mail_docs_page(self):
@@ -1719,13 +1771,18 @@ class AayDocCapioApp(QMainWindow):
         layout.addStretch(1)
         return page
 
-    _LOG_PANEL_HEIGHT = 190
     _LOG_HEADER_HEIGHT = 32
 
     def _mk_footer(self):
+        """Live Logs — embedded in the Activity Log hub page, styled to
+        match iBench's Activity Log view (WindowsProject/iBench App.tsx):
+        dark #0F1923 panel, #1A2636 header, per-line severity colouring
+        instead of icons, no wrap (horizontal scroll), always-on
+        auto-scroll. No hide/show toggle — it already lives on its own
+        dedicated page, so there's nothing to collapse it against."""
         footer = QFrame()
         # Intentional: Live Logs panel is deliberately dark regardless of theme
-        footer.setStyleSheet("QFrame{background:#0F172A;}")
+        footer.setStyleSheet("QFrame{background:#0F1923;}")
         fl = QVBoxLayout(footer)
         fl.setContentsMargins(0, 0, 0, 0)
         fl.setSpacing(0)
@@ -1733,59 +1790,47 @@ class AayDocCapioApp(QMainWindow):
 
         log_hdr = QFrame()
         log_hdr.setFixedHeight(self._LOG_HEADER_HEIGHT)
-        log_hdr.setStyleSheet("QFrame{background:#1E293B;}")
+        log_hdr.setStyleSheet("QFrame{background:#1A2636;border-bottom:1px solid #1E293B;}")
         hhl = QHBoxLayout(log_hdr); hhl.setContentsMargins(16, 0, 12, 0)
-        dot = QLabel("●")
-        dot.setStyleSheet(f"color:{_t().success}; font-size:9px; margin-right:4px;")
-        hhl.addWidget(dot)
-        hhl.addWidget(_lbl("LIVE LOGS", 10, bold=True, color=_t().text_muted))
+        hhl.addWidget(_lbl("Activity Log", 11, bold=True, color="#CBD5E1"))
         hhl.addStretch()
-        copy_btn = QPushButton("Copy")
-        copy_btn.setFixedHeight(22)
-        copy_btn.setStyleSheet(
-            f"QPushButton{{background:transparent;color:{_t().text_muted};border:1px solid {_t().border};"
-            f"border-radius:4px;padding:0 10px;font-size:10px;}}"
-            f"QPushButton:hover{{color:{_t().text_primary};border-color:{_t().text_muted};}}")
+        self._log_count_lbl = QLabel("0 lines")
+        self._log_count_lbl.setStyleSheet("color:#64748B;font-size:10px;background:transparent;")
+        hhl.addWidget(self._log_count_lbl)
+        hhl.addSpacing(12)
+
+        def _hdr_btn(text):
+            b = QPushButton(text)
+            b.setFixedHeight(22)
+            b.setStyleSheet(
+                "QPushButton{background:#1E293B;color:#94A3B8;border:none;"
+                "border-radius:4px;padding:0 10px;font-size:10px;}"
+                "QPushButton:hover{background:#334155;color:#E2E8F0;}")
+            return b
+
+        open_folder_btn = _hdr_btn("Open Logs Folder")
+        open_folder_btn.clicked.connect(self._open_logs_folder)
+        hhl.addWidget(open_folder_btn)
+        copy_btn = _hdr_btn("Copy")
+        copy_btn.setStyleSheet(copy_btn.styleSheet() + "QPushButton{margin-left:6px;}")
         copy_btn.clicked.connect(self.copy_logs_to_clipboard)
         hhl.addWidget(copy_btn)
-        self._log_toggle_btn = QPushButton("▾ Hide")
-        self._log_toggle_btn.setFixedHeight(22)
-        self._log_toggle_btn.setStyleSheet(
-            f"QPushButton{{background:transparent;color:{_t().text_muted};border:1px solid {_t().border};"
-            f"border-radius:4px;padding:0 10px;font-size:10px;margin-left:6px;}}"
-            f"QPushButton:hover{{color:{_t().text_primary};border-color:{_t().text_muted};}}")
-        self._log_toggle_btn.clicked.connect(self._toggle_log_panel)
-        hhl.addWidget(self._log_toggle_btn)
         fl.addWidget(log_hdr)
 
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
+        self.log_box.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         self.log_box.setStyleSheet(
-            "QTextEdit{background:#0F172A;border:none;"
+            "QTextEdit{background:#0F1923;border:none;"
             f"font-family:'{_MONO_FONT}',monospace;"
-            "font-size:11px;color:#7DD3FC;padding:8px 16px;}")  # noqa: hardcoded colors intentional — Live Logs panel is deliberately dark regardless of theme
+            "font-size:12px;padding:8px 16px;}")  # noqa: hardcoded colors intentional — Live Logs panel is deliberately dark regardless of theme
         fl.addWidget(self.log_box)
+        self._log_line_count = 0
 
-        collapsed = self.vault.get_setting("log_panel_collapsed", False)
-        self._set_log_panel_collapsed(collapsed, persist=False)
         return footer
 
-    def _toggle_log_panel(self):
-        self._set_log_panel_collapsed(self.log_box.isVisible())
-
-    def _set_log_panel_collapsed(self, collapsed: bool, persist: bool = True):
-        self.log_box.setVisible(not collapsed)
-        if collapsed:
-            self._log_footer.setFixedHeight(self._LOG_HEADER_HEIGHT)
-        else:
-            # Embedded in the Activity Log page's layout with a stretch
-            # factor — undo the collapsed fixed height so it can fill the
-            # page again instead of staying pinned to a small strip.
-            self._log_footer.setMinimumHeight(0)
-            self._log_footer.setMaximumHeight(16777215)
-        self._log_toggle_btn.setText("▸ Show" if collapsed else "▾ Hide")
-        if persist:
-            self.vault.update_setting("log_panel_collapsed", collapsed)
+    def _open_logs_folder(self):
+        QDesktopServices.openUrl(QUrl.fromLocalFile(_app_dir()))
 
     # ── Grid ──────────────────────────────────────────────────────────────────
 
@@ -2782,9 +2827,45 @@ class AayDocCapioApp(QMainWindow):
         except Exception:
             pass
 
+    _LOG_TS_RE = re.compile(r"^\[(\d{2}:\d{2}:\d{2})\]\s*(.*)$", re.S)
+
+    def _log_level_color(self, message: str) -> str:
+        """Classify a log line the same way iBench does — by scanning for
+        a status marker already present in the message text — and return
+        the matching iBench severity colour."""
+        m = message.lower()
+        if "✅" in message or "done" in m:
+            return "#34D399"   # ok / success
+        if "❌" in message or "error" in m or "failed" in m or "timeout" in m:
+            return "#F87171"   # err
+        if "⚠" in message or "🕐" in message or "warn" in m:
+            return "#FBBF24"   # warn
+        if "[debug]" in m:
+            return "#64748B"   # debug
+        return "#7DD3FC"       # info (default)
+
     def _append_log(self, text):
-        self.log_box.append(text)
+        m = self._LOG_TS_RE.match(text)
+        ts, message = (m.group(1), m.group(2)) if m else ("", text)
+        color = self._log_level_color(message)
+        row = (
+            '<div style="white-space:pre;line-height:20px;">'
+            f'<span style="color:#475569;">{html.escape(ts)}</span>'
+            '<span style="color:#475569;">&nbsp;&nbsp;</span>'
+            f'<span style="color:{color};">{html.escape(message)}</span>'
+            '</div>'
+        )
+        self.log_box.append(row)
         self.log_box.moveCursor(QTextCursor.MoveOperation.End)
+        self._log_line_count += 1
+        if hasattr(self, "_log_count_lbl"):
+            self._log_count_lbl.setText(f"{self._log_line_count} line{'s' if self._log_line_count != 1 else ''}")
+
+    def _clear_log(self):
+        self.log_box.clear()
+        self._log_line_count = 0
+        if hasattr(self, "_log_count_lbl"):
+            self._log_count_lbl.setText("0 lines")
 
     def copy_logs_to_clipboard(self):
         QApplication.clipboard().setText(self.log_box.toPlainText())
@@ -3001,7 +3082,7 @@ class AayDocCapioApp(QMainWindow):
         self._batch_aborted = False
         self._batch_filing_scope = self.vault.get_setting("filed_returns_scope", "all")
         self._lock_ui(True)
-        self.log_box.clear()
+        self._clear_log()
 
         targets = [a for a in self.assessee_list if a.get("id") in self.selected_ids]
         output_dir = self.dir_lbl.text()
@@ -3102,7 +3183,7 @@ class AayDocCapioApp(QMainWindow):
 
         self._challan_running = True
         self._challan_aborted = False
-        self.log_box.clear()
+        self._clear_log()
         if hasattr(self, "_tray_send_act"):
             self._tray_send_act.setVisible(True)
 
