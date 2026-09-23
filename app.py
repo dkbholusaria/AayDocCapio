@@ -861,7 +861,9 @@ class AayDocCapioApp(QMainWindow):
         vl.addLayout(logo_row)
         vl.addSpacing(14)
 
-        desc = QLabel("Automates the secure bulk retrieval of Form 26AS, AIS and TIS directly from the Income Tax e-Filing Portal.")
+        desc = QLabel("Automates day-to-day Income Tax compliance work for CAs — bulk document retrieval, "
+                      "E-Pay Tax challans, return processing status and client document delivery — all from "
+                      "one secure desktop app, directly against the e-Filing Portal.")
         desc.setStyleSheet(f"color:{_ab.text_primary}; font-size:13px;")
         desc.setWordWrap(True)
         vl.addWidget(desc)
@@ -881,8 +883,9 @@ class AayDocCapioApp(QMainWindow):
             f'<b style="color:{_ab.accent};">Capio</b> <span style="color:{_ab.text_muted};">(Latin: To Obtain)</span>'
         )
         name_exp.setStyleSheet("font-size:13px; background:transparent; border:none;")
-        name_sub = QLabel("AayDoc Capio is designed to securely retrieve and deliver income tax documents, "
-                          "eliminating repetitive manual downloads and improving efficiency for tax professionals.")
+        name_sub = QLabel("AayDoc Capio automates the repetitive, manual side of Income Tax portal work — "
+                          "so tax professionals spend less time on downloads and data entry, and more time "
+                          "on the advisory work that actually needs them.")
         name_sub.setStyleSheet(f"color:{_ab.text_primary}; font-size:12px; background:transparent; border:none;")
         name_sub.setWordWrap(True)
         nb_l.addWidget(name_head)
