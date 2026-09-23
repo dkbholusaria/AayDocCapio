@@ -99,7 +99,7 @@ class NavRail(QWidget):
         btn.setToolTip(label)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-        btn.setText(rail_label or label.upper())
+        btn.setText(rail_label or label)
         btn.setIconSize(QSize(ICON_SIZE, ICON_SIZE))
 
         icon_path = _icon_path(icon) if icon else ""

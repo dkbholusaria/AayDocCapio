@@ -85,10 +85,10 @@ class PreviewWindow(QMainWindow):
         ns = self._nav_shell
         ns.add_hub("home", "Home / Clients",
                    _placeholder_page("Home / Clients", "Real app: client grid + settings bar."),
-                   icon="rail_home.png", accent_key="accent_home", section="top", rail_label="HOME")
+                   icon="rail_home.png", accent_key="accent_home", section="top", rail_label="Home")
         ns.add_hub("it", "Income Tax",
                    _placeholder_page("Income Tax", "Real app: Download Documents, E-Pay Tax, Return Status, Tools."),
-                   icon="rail_income_tax.png", accent_key="accent_it", section="top", rail_label="INCOME\nTAX")
+                   icon="rail_income_tax.png", accent_key="accent_it", section="top", rail_label="Income\nTax")
         ns.add_hub("gst", "GST",
                    _placeholder_page("GST", "Coming soon — F-70."),
                    icon="rail_gst.png", accent_key="accent_gst", section="top", rail_label="GST")
@@ -100,19 +100,19 @@ class PreviewWindow(QMainWindow):
                    accent_key="accent_mca", section="top", rail_label="MCA")
         ns.add_hub("team", "Team",
                    _placeholder_page("Team", "Coming soon — F-74."),
-                   icon="rail_team.png", accent_key="accent_home", section="bottom", rail_label="TEAM")
+                   icon="rail_team.png", accent_key="accent_home", section="bottom", rail_label="Team")
         ns.add_hub("mail", "Mail Docs to Clients",
                    _placeholder_page("Mail Docs to Clients", "Real app: MailDocsDialog."),
-                   icon="btn_send.png", accent_key="accent_home", section="bottom", rail_label="MAIL\nDOCS")
+                   icon="btn_send.png", accent_key="accent_home", section="bottom", rail_label="Mail\nDocs")
         ns.add_hub("activity", "Activity Log",
                    _placeholder_page("Activity Log", "Real app: email send log."),
-                   icon="btn_view_log.png", accent_key="accent_home", section="bottom", rail_label="ACTIVITY\nLOG")
+                   icon="btn_view_log.png", accent_key="accent_home", section="bottom", rail_label="Activity\nLog")
         ns.add_hub("settings", "Settings",
                    _placeholder_page("Settings", "Real app: Manage Years/Groups, Output Folder, Email, Appearance."),
-                   icon="rail_settings.png", accent_key="accent_home", section="bottom", rail_label="SETTINGS")
+                   icon="rail_settings.png", accent_key="accent_home", section="bottom", rail_label="Settings")
         ns.add_hub("help", "Help",
                    _placeholder_page("Help", "Real app: User Manual, Email Setup Help, Report Bug, Updates, About."),
-                   icon="rail_help.png", accent_key="accent_home", section="bottom", rail_label="HELP")
+                   icon="rail_help.png", accent_key="accent_home", section="bottom", rail_label="Help")
 
     def _toggle_theme(self):
         self._apply_theme("light" if self._current_theme == "dark" else "dark")

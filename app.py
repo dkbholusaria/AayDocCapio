@@ -593,10 +593,10 @@ class AayDocCapioApp(QMainWindow):
         self._nav_shell = NavShell()
         self._nav_shell.add_hub("home", "Home / Clients", self._mk_main_panel(),
                                  icon="rail_home.png", accent_key="accent_home", section="top",
-                                 rail_label="HOME")
+                                 rail_label="Home")
         self._nav_shell.add_hub("it", "Income Tax", self._mk_income_tax_page(),
                                  icon="rail_income_tax.png", accent_key="accent_it", section="top",
-                                 rail_label="INCOME\nTAX")
+                                 rail_label="Income\nTax")
         self._nav_shell.add_hub("gst", "GST", self._mk_placeholder_page(
             "GST", "Coming soon — see F-70 for the GST vs. Income Tax turnover reconciliation roadmap."),
             icon="rail_gst.png", accent_key="accent_gst", section="top", rail_label="GST")
@@ -608,19 +608,19 @@ class AayDocCapioApp(QMainWindow):
             accent_key="accent_mca", section="top", rail_label="MCA")
         self._nav_shell.add_hub("team", "Team", self._mk_placeholder_page(
             "Team", "Coming soon — see F-74 for CA staff / client-assignment management."),
-            icon="rail_team.png", accent_key="accent_home", section="bottom", rail_label="TEAM")
+            icon="rail_team.png", accent_key="accent_home", section="bottom", rail_label="Team")
         self._nav_shell.add_hub("mail", "Mail Docs to Clients", self._mk_mail_docs_page(),
                                  icon="btn_send.png", accent_key="accent_home", section="bottom",
-                                 rail_label="MAIL\nDOCS")
+                                 rail_label="Mail\nDocs")
         self._nav_shell.add_hub("activity", "Activity Log", self._mk_activity_log_page(),
                                  icon="btn_view_log.png", accent_key="accent_home", section="bottom",
-                                 rail_label="ACTIVITY\nLOG")
+                                 rail_label="Activity\nLog")
         self._nav_shell.add_hub("settings", "Settings", self._mk_settings_page(),
                                  icon="rail_settings.png", accent_key="accent_home", section="bottom",
-                                 rail_label="SETTINGS")
+                                 rail_label="Settings")
         self._nav_shell.add_hub("help", "Help", self._mk_help_page(),
                                  icon="rail_help.png", accent_key="accent_home", section="bottom",
-                                 rail_label="HELP")
+                                 rail_label="Help")
         root.addWidget(self._nav_shell, 1)
 
         root.addWidget(self._mk_footer())
