@@ -82,6 +82,15 @@ class ThemeColors:
     accent_tds:  str   # TDS (placeholder hub)
     accent_mca:  str   # MCA (placeholder hub)
 
+    # Semantic status colours (B-01) — text colour + light background per
+    # status, mirroring the accent/accent_light pattern above.
+    success:    str
+    success_bg: str
+    error:      str
+    error_bg:   str
+    warning:    str
+    warning_bg: str
+
 
 # ── Theme definitions ─────────────────────────────────────────────────────────
 
@@ -130,6 +139,13 @@ THEMES: dict[str, ThemeColors] = {
         accent_gst      = "#15803D",
         accent_tds      = "#0F766E",
         accent_mca      = "#7E22CE",
+
+        success         = "#16A34A",
+        success_bg      = "#D1FAE5",
+        error           = "#DC2626",
+        error_bg        = "#FEF2F2",
+        warning         = "#D97706",
+        warning_bg      = "#FFF7ED",
     ),
 
     "dark": ThemeColors(
@@ -175,6 +191,13 @@ THEMES: dict[str, ThemeColors] = {
         accent_gst      = "#4ADE80",
         accent_tds      = "#2DD4BF",
         accent_mca      = "#C084FC",
+
+        success         = "#16A34A",
+        success_bg      = "#0F2B1C",
+        error           = "#EF4444",
+        error_bg        = "#2E1414",
+        warning         = "#D97706",
+        warning_bg      = "#2E2107",
     ),
 }
 
