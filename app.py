@@ -655,12 +655,8 @@ class AayDocCapioApp(QMainWindow):
             _logo_path = os.path.join(_bundled_dir(), "resources", _logo_file)
             if os.path.exists(_logo_path):
                 self._hdr_logo.setPixmap(
-                    QPixmap(_logo_path).scaledToHeight(64, Qt.TransformationMode.SmoothTransformation)
+                    QPixmap(_logo_path).scaledToHeight(44, Qt.TransformationMode.SmoothTransformation)
                 )
-        if hasattr(self, "_hdr_tagline"):
-            self._hdr_tagline.setStyleSheet(
-                f"color:{t.text_muted}; font-family:'Arial'; font-size:13px;"
-                f" font-weight:400; background:transparent; border:none;")
         for lbl in (getattr(self, "_hdr_version", None), getattr(self, "_hdr_copy", None)):
             if lbl:
                 lbl.setStyleSheet(
@@ -955,7 +951,7 @@ class AayDocCapioApp(QMainWindow):
 
     def _mk_header(self):
         hdr = QFrame()
-        hdr.setFixedHeight(110)
+        hdr.setFixedHeight(68)
         hdr.setObjectName("header")
         self._hdr_frame = hdr
         hl = QHBoxLayout(hdr)
@@ -968,24 +964,6 @@ class AayDocCapioApp(QMainWindow):
         logo_label = QLabel()
         self._hdr_logo = logo_label
         hl.addWidget(logo_label)
-        hl.addSpacing(18)
-
-        # Tagline, stacked below the logo's baseline
-        name_block = QWidget()
-        name_block.setStyleSheet("background:transparent;")
-        vl = QVBoxLayout(name_block)
-        vl.setContentsMargins(0, 0, 0, 0)
-        vl.setSpacing(3)
-
-        tagline = QLabel("Tax Documents. Delivered to You.")
-        self._hdr_tagline = tagline
-        tagline.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-
-        vl.addStretch()
-        vl.addWidget(tagline)
-        vl.addStretch()
-
-        hl.addWidget(name_block)
         hl.addStretch()
 
         # Copyright + version on the right
