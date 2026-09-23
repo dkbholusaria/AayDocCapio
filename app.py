@@ -617,7 +617,14 @@ class AayDocCapioApp(QMainWindow):
                                  accent_key="accent_home", section="bottom")
         root.addWidget(self._nav_shell, 1)
 
+        self._nav_shell.hubChanged.connect(self._on_hub_changed)
         self._nav_shell.go("home")
+
+    def _on_hub_changed(self, hub_label: str, sub_label: str):
+        """NavShell.hubChanged handler — breadcrumb lives on the header
+        itself (self._hdr_crumb), not a separate ribbon strip."""
+        if hasattr(self, "_hdr_crumb"):
+            self._hdr_crumb.setText(f"{hub_label} › {sub_label}" if sub_label else hub_label)
 
     def _apply_theme(self, theme: str):
         """Switch theme by name and persist the choice."""
@@ -655,6 +662,10 @@ class AayDocCapioApp(QMainWindow):
                 self._hdr_logo.setPixmap(
                     QPixmap(_logo_path).scaledToHeight(66, Qt.TransformationMode.SmoothTransformation)
                 )
+        if hasattr(self, "_hdr_crumb"):
+            self._hdr_crumb.setStyleSheet(
+                f"color:{t.text_muted}; font-size:13px; font-weight:600;"
+                f" background:transparent; border:none;")
         for lbl in (getattr(self, "_hdr_version", None), getattr(self, "_hdr_copy", None)):
             if lbl:
                 lbl.setStyleSheet(
@@ -962,6 +973,14 @@ class AayDocCapioApp(QMainWindow):
         logo_label = QLabel()
         self._hdr_logo = logo_label
         hl.addWidget(logo_label)
+        hl.addSpacing(24)
+
+        # Breadcrumb — updated from NavShell.hubChanged once the nav shell
+        # exists (see _build_ui()); lives on the header itself, not a
+        # separate ribbon strip below it.
+        crumb = QLabel("")
+        self._hdr_crumb = crumb
+        hl.addWidget(crumb)
         hl.addStretch()
 
         # Copyright + version on the right

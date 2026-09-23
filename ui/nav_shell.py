@@ -8,11 +8,13 @@ mockup's own inline SVG paths, rendered via QSvgRenderer and tinted per
 theme/state at runtime (muted when inactive, the hub's accent color when
 active) — not flat PNG art, so they always match the current theme.
 
-Provides three reusable widgets:
+Provides two reusable pieces:
 
-  NavRail          — the rail of hub buttons described above.
-  BreadcrumbRibbon — thin "Hub / Sub-label" breadcrumb bar.
-  NavShell         — composes the two above around a QStackedWidget.
+  NavRail   — the rail of hub buttons described above.
+  NavShell  — composes NavRail with a QStackedWidget; emits `hubChanged`
+              (hub_label, sub_label) on navigation so the host window can
+              show a breadcrumb wherever it likes (the main header, per
+              user preference — not a separate ribbon strip here).
 
 Existing screens/dialogs are unchanged by this module — hubs registered
 via NavShell.add_hub() just decide what to show; this file only owns
@@ -21,7 +23,7 @@ navigation chrome.
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QToolButton, QButtonGroup,
-    QLabel, QStackedWidget,
+    QStackedWidget,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QSize, QByteArray
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor
@@ -190,51 +192,17 @@ class NavRail(QWidget):
             )
 
 
-class BreadcrumbRibbon(QWidget):
-    """Thin breadcrumb bar: 'Hub / Sub-label'. No tab strip in Phase 1."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setFixedHeight(32)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(22, 0, 22, 0)
-        layout.setSpacing(7)
-
-        self._hub_lbl = QLabel("")
-        self._sep_lbl = QLabel("›")
-        self._sub_lbl = QLabel("")
-        self._sep_lbl.setVisible(False)
-        self._sub_lbl.setVisible(False)
-
-        layout.addWidget(self._hub_lbl)
-        layout.addWidget(self._sep_lbl)
-        layout.addWidget(self._sub_lbl)
-        layout.addStretch(1)
-
-        self.repaint_theme(_t())
-
-    def setPath(self, hub: str, sub: str | None = None):
-        self._hub_lbl.setText(hub)
-        has_sub = bool(sub)
-        self._sep_lbl.setVisible(has_sub)
-        self._sub_lbl.setVisible(has_sub)
-        self._sub_lbl.setText(sub or "")
-
-    def repaint_theme(self, t):
-        self.setStyleSheet(f"background:{t.bg_panel}; border-bottom:1px solid {t.border};")
-        self._hub_lbl.setStyleSheet(f"color:{t.text_primary}; font-size:12px; font-weight:600; background:transparent;")
-        self._sep_lbl.setStyleSheet(f"color:{t.border_menu}; font-size:11px; background:transparent;")
-        self._sub_lbl.setStyleSheet(f"color:{t.text_muted}; font-size:12px; font-weight:600; background:transparent;")
-
-
 class NavShell(QWidget):
-    """Composes NavRail + BreadcrumbRibbon + QStackedWidget."""
+    """Composes NavRail + QStackedWidget. Emits `hubChanged(hub_label,
+    sub_label)` on navigation — the host window owns where/how that's
+    displayed (the main header, per user preference)."""
+
+    hubChanged = pyqtSignal(str, str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
 
         self._rail = NavRail(self)
-        self._ribbon = BreadcrumbRibbon(self)
         self._stack = QStackedWidget(self)
 
         self._hub_labels: dict[str, str] = {}
@@ -244,13 +212,7 @@ class NavShell(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
         root.addWidget(self._rail)
-
-        right = QVBoxLayout()
-        right.setContentsMargins(0, 0, 0, 0)
-        right.setSpacing(0)
-        right.addWidget(self._ribbon)
-        right.addWidget(self._stack, 1)
-        root.addLayout(right, 1)
+        root.addWidget(self._stack, 1)
 
         self._rail.hubSelected.connect(self.go)
 
@@ -267,8 +229,7 @@ class NavShell(QWidget):
             return
         self._stack.setCurrentWidget(page)
         self._rail.set_active(key)
-        self._ribbon.setPath(self._hub_labels.get(key, key), sub)
+        self.hubChanged.emit(self._hub_labels.get(key, key), sub or "")
 
     def repaint_theme(self, t):
         self._rail.repaint_theme(t)
-        self._ribbon.repaint_theme(t)
