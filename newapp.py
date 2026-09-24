@@ -68,6 +68,9 @@ class PreviewWindow(QMainWindow):
         strip_l.setContentsMargins(16, 0, 16, 0)
         note = QLabel("Nav shell preview — placeholder pages only, not the real app")
         strip_l.addWidget(note)
+        strip_l.addSpacing(16)
+        self._crumb = QLabel("")
+        strip_l.addWidget(self._crumb)
         strip_l.addStretch(1)
         self._theme_btn = QPushButton("☀ Light / 🌙 Dark")
         self._theme_btn.clicked.connect(self._toggle_theme)
@@ -78,6 +81,8 @@ class PreviewWindow(QMainWindow):
         self._build_hubs()
         outer.addWidget(self._nav_shell, 1)
 
+        self._nav_shell.hubChanged.connect(
+            lambda hub, sub: self._crumb.setText(f"{hub} › {sub}" if sub else hub))
         self._nav_shell.go("home")
         self._apply_theme(self._current_theme)
 

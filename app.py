@@ -4,7 +4,7 @@ Run:  python3 app.py
 """
 from version import __version__ as APP_VERSION
 
-import sys, os, json, asyncio, threading, datetime, logging, time
+import sys, os, json, asyncio, threading, datetime, logging, time, re, html
 from urllib.parse import urlencode
 
 # Force XCB (X11) backend on Linux/WSL2 — must be set before Qt initialises.
@@ -21,7 +21,8 @@ from PyQt6.QtWidgets import (
     QMessageBox, QTextEdit, QDialog, QSizePolicy,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QToolButton, QMenu, QCalendarWidget, QSystemTrayIcon,
-    QGraphicsDropShadowEffect,
+    QGraphicsDropShadowEffect, QStackedWidget, QRadioButton,
+    QGridLayout,
 )
 from PyQt6.QtCore import (
     Qt, pyqtSignal, pyqtSlot, QTimer, QMetaObject, Q_ARG, QUrl,
@@ -34,8 +35,8 @@ from config import _app_dir, _default_download_dir, _bundled_dir
 from utils import get_timestamp, notify_windows
 from ui._theme import _t
 from ui.helpers import _btn, _lbl, _shadow
-from ui.nav_shell import NavShell
-from ui.widgets import StyledComboBox, CheckableComboBox
+from ui.nav_shell import NavShell, _svg_pixmap
+from ui.widgets import StyledComboBox, CheckableComboBox, ClickableCard
 from ui.dialogs import (
     ManageYearsDialog, BatchProgressDialog, DownloadPickerDialog,
     GenerateChallansDialog, ChallanGenerationProgressDialog,
@@ -617,9 +618,14 @@ class AayDocCapioApp(QMainWindow):
                                  accent_key="accent_home", section="bottom")
         root.addWidget(self._nav_shell, 1)
 
-        root.addWidget(self._mk_footer())
-
+        self._nav_shell.hubChanged.connect(self._on_hub_changed)
         self._nav_shell.go("home")
+
+    def _on_hub_changed(self, hub_label: str, sub_label: str):
+        """NavShell.hubChanged handler — breadcrumb lives on the header
+        itself (self._hdr_crumb), not a separate ribbon strip."""
+        if hasattr(self, "_hdr_crumb"):
+            self._hdr_crumb.setText(f"{hub_label} › {sub_label}" if sub_label else hub_label)
 
     def _apply_theme(self, theme: str):
         """Switch theme by name and persist the choice."""
@@ -647,29 +653,20 @@ class AayDocCapioApp(QMainWindow):
         # ── Header ────────────────────────────────────────────────────────────
         if hasattr(self, "_hdr_frame"):
             self._hdr_frame.setStyleSheet(
-                f"QFrame#header {{ background: {t.bg_window}; border: none; }}"
+                f"QFrame#header {{ background: {t.bg_menubar}; border: none; }}"
                 f" QLabel {{ border: none; text-decoration: none; }}"
             )
-        if hasattr(self, "_hdr_aay"):
-            self._hdr_aay.setStyleSheet(
-                f"color:{t.text_primary}; font-family:'Avenir Next'; font-size:36px;"
-                f" font-weight:700; background:transparent; text-decoration:none; border:none;")
-        if hasattr(self, "_hdr_capio"):
-            self._hdr_capio.setStyleSheet(
-                f"color:{t.accent}; font-family:'Avenir Next'; font-size:36px;"
-                f" font-weight:700; background:transparent; text-decoration:none; border:none;")
-        if hasattr(self, "_hdr_tm"):
-            self._hdr_tm.setStyleSheet(
-                f"color:{t.accent}; font-family:'Avenir Next'; font-size:14px;"
-                f" font-weight:700; background:transparent; padding-bottom:18px;"
-                f" text-decoration:none; border:none;")
-        if hasattr(self, "_hdr_sep"):
-            self._hdr_sep.setStyleSheet(
-                f"color:{t.border}; font-size:22px; background:transparent; border:none;")
-        if hasattr(self, "_hdr_tagline"):
-            self._hdr_tagline.setStyleSheet(
-                f"color:{t.text_muted}; font-family:'Arial'; font-size:13px;"
-                f" font-weight:400; background:transparent; border:none;")
+        if hasattr(self, "_hdr_logo"):
+            _logo_file = "AayDoc_Header_Dark.png" if self._current_theme == "dark" else "AayDoc_Header_Light.png"
+            _logo_path = os.path.join(_bundled_dir(), "resources", _logo_file)
+            if os.path.exists(_logo_path):
+                self._hdr_logo.setPixmap(
+                    QPixmap(_logo_path).scaledToHeight(66, Qt.TransformationMode.SmoothTransformation)
+                )
+        if hasattr(self, "_hdr_crumb"):
+            self._hdr_crumb.setStyleSheet(
+                f"color:{t.text_muted}; font-size:13px; font-weight:600;"
+                f" background:transparent; border:none;")
         for lbl in (getattr(self, "_hdr_version", None), getattr(self, "_hdr_copy", None)):
             if lbl:
                 lbl.setStyleSheet(
@@ -851,27 +848,23 @@ class AayDocCapioApp(QMainWindow):
         vl.setContentsMargins(36, 28, 36, 28)
         vl.setSpacing(0)
 
-        # ── App logo + name ───────────────────────────────────────────────────
-        logo_row = QHBoxLayout(); logo_row.setSpacing(14)
-        icon_lbl = QLabel()
-        icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
-        if os.path.exists(icon_path):
-            icon_lbl.setPixmap(QPixmap(icon_path).scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio,
-                                                          Qt.TransformationMode.SmoothTransformation))
-        logo_row.addWidget(icon_lbl)
-        name_col = QVBoxLayout(); name_col.setSpacing(2)
-        name_lbl = QLabel(
-            f'<span style="color:{_ab.text_primary};font-family:\'Avenir Next\';font-size:22px;font-weight:700;">AayDoc </span>'
-            f'<span style="color:{_ab.accent};font-family:\'Avenir Next\';font-size:22px;font-weight:700;">Capio™</span>'
-        )
+        # ── App logo + version ─────────────────────────────────────────────────
+        logo_row = QVBoxLayout(); logo_row.setSpacing(6)
+        logo_lbl = QLabel()
+        _logo_file = "AayDoc_Header_Dark.png" if self._current_theme == "dark" else "AayDoc_Header_Light.png"
+        _logo_path = os.path.join(_bundled_dir(), "resources", _logo_file)
+        if os.path.exists(_logo_path):
+            logo_lbl.setPixmap(QPixmap(_logo_path).scaledToHeight(56, Qt.TransformationMode.SmoothTransformation))
+        logo_row.addWidget(logo_lbl)
         ver_lbl = QLabel(f"Version {APP_VERSION}")
         ver_lbl.setStyleSheet(f"color:{_ab.text_muted}; font-size:12px;")
-        name_col.addWidget(name_lbl); name_col.addWidget(ver_lbl)
-        logo_row.addLayout(name_col); logo_row.addStretch()
+        logo_row.addWidget(ver_lbl)
         vl.addLayout(logo_row)
         vl.addSpacing(14)
 
-        desc = QLabel("Automates the secure bulk retrieval of Form 26AS, AIS and TIS directly from the Income Tax e-Filing Portal.")
+        desc = QLabel("Automates day-to-day Income Tax compliance work for CAs — bulk document retrieval, "
+                      "E-Pay Tax challans, return processing status and client document delivery — all from "
+                      "one secure desktop app, directly against the e-Filing Portal.")
         desc.setStyleSheet(f"color:{_ab.text_primary}; font-size:13px;")
         desc.setWordWrap(True)
         vl.addWidget(desc)
@@ -891,8 +884,9 @@ class AayDocCapioApp(QMainWindow):
             f'<b style="color:{_ab.accent};">Capio</b> <span style="color:{_ab.text_muted};">(Latin: To Obtain)</span>'
         )
         name_exp.setStyleSheet("font-size:13px; background:transparent; border:none;")
-        name_sub = QLabel("AayDoc Capio is designed to securely retrieve and deliver income tax documents, "
-                          "eliminating repetitive manual downloads and improving efficiency for tax professionals.")
+        name_sub = QLabel("AayDoc Capio automates the repetitive, manual side of Income Tax portal work — "
+                          "so tax professionals spend less time on downloads and data entry, and more time "
+                          "on the advisory work that actually needs them.")
         name_sub.setStyleSheet(f"color:{_ab.text_primary}; font-size:12px; background:transparent; border:none;")
         name_sub.setWordWrap(True)
         nb_l.addWidget(name_head)
@@ -970,69 +964,27 @@ class AayDocCapioApp(QMainWindow):
 
     def _mk_header(self):
         hdr = QFrame()
-        hdr.setFixedHeight(110)
+        hdr.setFixedHeight(84)
         hdr.setObjectName("header")
         self._hdr_frame = hdr
         hl = QHBoxLayout(hdr)
         hl.setContentsMargins(32, 0, 32, 0)
         hl.setSpacing(0)
 
-        # App icon — large enough to anchor the header
-        icon_label = QLabel()
-        icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
-        if os.path.exists(icon_path):
-            icon_label.setPixmap(
-                QPixmap(icon_path).scaled(106, 106, Qt.AspectRatioMode.KeepAspectRatio,
-                                          Qt.TransformationMode.SmoothTransformation)
-            )
-        hl.addWidget(icon_label)
-        hl.addSpacing(18)
+        # Combined logo (icon + "aaydoc CAPIO" wordmark) — swapped Light/Dark
+        # per theme in _repaint_theme(), since each variant is coloured for
+        # its own background contrast.
+        logo_label = QLabel()
+        self._hdr_logo = logo_label
+        hl.addWidget(logo_label)
+        hl.addSpacing(24)
 
-        # Name + tagline stacked
-        name_block = QWidget()
-        name_block.setStyleSheet("background:transparent;")
-        vl = QVBoxLayout(name_block)
-        vl.setContentsMargins(0, 0, 0, 0)
-        vl.setSpacing(3)
-
-        title_row = QWidget()
-        title_row.setStyleSheet("background:transparent;")
-        tl = QHBoxLayout(title_row)
-        tl.setContentsMargins(0, 0, 0, 0)
-        tl.setSpacing(0)
-        tl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-
-        aay = QLabel("AayDoc ")
-        self._hdr_aay = aay
-        tl.addWidget(aay)
-
-        capio = QLabel("Capio")
-        self._hdr_capio = capio
-        tl.addWidget(capio)
-
-        tm = QLabel("™")
-        self._hdr_tm = tm
-        tl.addWidget(tm)
-
-        # Separator + tagline inline with title
-        sep = QLabel("  |  ")
-        self._hdr_sep = sep
-        sep.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        tl.addWidget(sep)
-
-        tagline = QLabel("Tax Documents. Delivered to You.")
-        self._hdr_tagline = tagline
-        tagline.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        tl.addWidget(tagline)
-        tl.addStretch()
-
-        title = title_row
-
-        vl.addStretch()
-        vl.addWidget(title)
-        vl.addStretch()
-
-        hl.addWidget(name_block)
+        # Breadcrumb — updated from NavShell.hubChanged once the nav shell
+        # exists (see _build_ui()); lives on the header itself, not a
+        # separate ribbon strip below it.
+        crumb = QLabel("")
+        self._hdr_crumb = crumb
+        hl.addWidget(crumb)
         hl.addStretch()
 
         # Copyright + version on the right
@@ -1684,30 +1636,447 @@ class AayDocCapioApp(QMainWindow):
         layout.addStretch(1)
         return page
 
-    def _mk_income_tax_page(self):
-        """F-77a Income Tax hub page — a plain button list opening the exact
-        same dialogs the old E-Pay Tax/Return Status menus and Downloads/
-        E-Pay Tax control-bar buttons used. Not the mockup's action-card
-        grid — that's a later phase (F-77b)."""
+    def _mk_action_card(self, title: str, desc: str, icon_key: str, handler):
+        """Icon + title + description card, matching the approved mockup's
+        Income Tax landing screen. Reuses the rail's own SVG icon set
+        (ui.nav_shell._svg_pixmap) for visual consistency."""
+        t = _t()
+        accent = t.accent_it
+
+        card = ClickableCard()
+        card.setMinimumWidth(200)
+        # Scoped to #actionCard, NOT a bare "QFrame" type selector — QLabel
+        # is itself a QFrame subclass, so an unscoped "QFrame{border:...}"
+        # rule cascades onto every child label inside this card too,
+        # individually boxing each one instead of just the card itself.
+        card.setObjectName("actionCard")
+        card.setStyleSheet(
+            f"QFrame#actionCard{{background:{t.bg_panel};border:1px solid {t.border};border-radius:12px;}}"
+            f"QFrame#actionCard:hover{{border-color:{accent};}}"
+        )
+        cl = QVBoxLayout(card)
+        cl.setContentsMargins(18, 18, 18, 16)
+        cl.setSpacing(10)
+
+        icon_lbl = QLabel()
+        icon_lbl.setFixedSize(40, 40)
+        icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_lbl.setPixmap(_svg_pixmap(icon_key, accent, 20))
+        icon_lbl.setStyleSheet(f"background:{accent}22; border-radius:10px;")
+        cl.addWidget(icon_lbl)
+
+        title_lbl = _lbl(title, 12, bold=True)
+        cl.addWidget(title_lbl)
+
+        desc_lbl = QLabel(desc)
+        desc_lbl.setWordWrap(True)
+        desc_lbl.setStyleSheet(f"color:{t.text_muted}; font-size:11px; background:transparent;")
+        cl.addWidget(desc_lbl)
+        cl.addStretch(1)
+
+        card.clicked.connect(handler)
+        return card
+
+    def _mk_it_tab_btn(self, label: str, idx: int):
+        t = _t()
+        btn = QPushButton(label)
+        btn.setCheckable(True)
+        btn.setFixedHeight(30)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setStyleSheet(
+            "QPushButton{background:transparent;border:none;border-radius:7px;"
+            f"padding:0 14px;font-size:12px;font-weight:600;color:{t.text_muted};}}"
+            f"QPushButton:hover{{background:rgba(255,255,255,0.04);color:{t.text_primary};}}"
+            f"QPushButton:checked{{color:{t.accent_it};background:{t.accent_it}22;}}"
+        )
+        btn.clicked.connect(lambda: self._switch_it_tab(idx))
+        return btn
+
+    def _switch_it_tab(self, idx: int):
+        self._it_stack.setCurrentIndex(idx)
+        for i, b in enumerate(self._it_tab_btns):
+            b.setChecked(i == idx)
+        if idx > 0 and hasattr(self, "_it_tab_btns"):
+            self._on_hub_changed("Income Tax", self._it_tab_btns[idx].text())
+        else:
+            self._on_hub_changed("Income Tax", "")
+
+    def _mk_it_dialog_tab(self, title: str, desc: str, btn_text: str, icon_key: str, handler):
+        """Sub-tab for an action that still opens its existing modal dialog
+        (Download Documents / E-Pay Tax / Return Status) rather than being
+        embedded inline — that's a larger later phase (F-77c)."""
+        t = _t()
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(10)
-
-        items = [
-            ("Download Documents…", "btn_run.png", self._open_download_picker),
-            ("Generate Tax Challans (E-Pay Tax)…", "", self._open_generate_challans_dialog),
-            ("Download Challan Import Template…", "", self._download_challan_template),
-            ("Check Processing Status…", "", self._open_return_status_dialog),
-            ("Convert 26AS TXT → Excel + HTML…", "menu_export.png", self._convert_26as_manual),
-            ("Convert AIS JSON → Excel…", "menu_template.png", self._convert_ais_json_manual),
-        ]
-        for label, icon, handler in items:
-            b = _btn(label, "secondary", height=34, icon=icon)
-            b.clicked.connect(handler)
-            layout.addWidget(b)
-
+        layout.addWidget(_lbl(title, 16, bold=True))
+        desc_lbl = QLabel(desc)
+        desc_lbl.setWordWrap(True)
+        desc_lbl.setStyleSheet(f"color:{t.text_muted}; font-size:12px; background:transparent;")
+        layout.addWidget(desc_lbl)
+        layout.addSpacing(6)
+        btn = _btn(btn_text, "primary", height=36, icon=icon_key)
+        btn.setMaximumWidth(260)
+        btn.clicked.connect(handler)
+        layout.addWidget(btn)
         layout.addStretch(1)
+        return page
+
+    def _mk_dl_doc_card(self, key: str, title: str, sub: str) -> QFrame:
+        """One checkable document-type card for the Download Documents tab —
+        clicking anywhere on the card toggles its checkbox, matching the
+        mockup's doc-card interaction."""
+        t = _t()
+        card = QFrame()
+        card.setCursor(Qt.CursorShape.PointingHandCursor)
+        card.setMinimumHeight(72)
+        card.setObjectName("docCard")  # scoped selector — see _mk_action_card for why
+        card.setStyleSheet(
+            f"QFrame#docCard{{background:{t.bg_panel};border:1px solid {t.border};border-radius:10px;}}"
+        )
+        hl = QHBoxLayout(card)
+        hl.setContentsMargins(14, 12, 14, 12)
+        hl.setSpacing(10)
+
+        cb = QCheckBox()
+        cb.setStyleSheet(
+            f"QCheckBox::indicator{{width:16px;height:16px;border:1.5px solid {t.border};"
+            f"border-radius:4px;background:{t.bg_checkbox};}}"
+            f"QCheckBox::indicator:checked{{background:{t.accent_it};border-color:{t.accent_it};}}")
+        hl.addWidget(cb, 0, Qt.AlignmentFlag.AlignTop)
+
+        text_col = QVBoxLayout()
+        text_col.setSpacing(2)
+        title_lbl = _lbl(title, 12, bold=True)
+        text_col.addWidget(title_lbl)
+        sub_lbl = QLabel(sub)
+        sub_lbl.setWordWrap(True)
+        sub_lbl.setStyleSheet(f"color:{t.text_muted}; font-size:11px; background:transparent;")
+        text_col.addWidget(sub_lbl)
+        hl.addLayout(text_col, 1)
+
+        def _toggle_border(checked):
+            card.setStyleSheet(
+                f"QFrame#docCard{{background:{t.bg_panel};"
+                f"border:1px solid {t.accent_it if checked else t.border};border-radius:10px;}}")
+        cb.toggled.connect(_toggle_border)
+
+        def _mouse_press(event):
+            if event.button() == Qt.MouseButton.LeftButton:
+                cb.toggle()
+            QFrame.mousePressEvent(card, event)
+        card.mousePressEvent = _mouse_press
+
+        self._dl_doc_cbs[key] = cb
+        return card
+
+    def _dl_toggle_all_clients(self, checked: bool):
+        for cb in self._dl_client_cbs.values():
+            cb.setChecked(checked)
+
+    def _dl_refresh_clients(self):
+        """(Re)build Section A's client rows from self.assessee_list. Called
+        once when the tab is first built (assessee_list doesn't exist yet
+        at that point — _build_ui() runs before the first refresh_grid())
+        and again every time refresh_grid() runs (including on every theme
+        switch, since _repaint_theme() calls refresh_grid() for the main
+        client_table too), so add/edit/delete/import stay reflected here.
+
+        Uses a real QTableWidget — matching self.client_table's own
+        pattern exactly (QTableWidgetItem cells + a WA_StyledBackground
+        checkbox container) — rather than hand-rolled QLabel/QFrame rows.
+        The earlier hand-rolled version rendered every cell wrapped in a
+        stray bordered box in practice: plain QWidget/QFrame children only
+        honour a stylesheet `background` once WA_StyledBackground is set,
+        which client_table's own checkbox cells already do (see
+        refresh_grid()) and the old version of this method didn't.
+        QTableWidgetItem sidesteps the whole issue — its painting isn't
+        stylesheet-cascaded child-widget painting at all. This is also
+        far cheaper to rebuild than ~400 individual QWidgets, which is
+        what made theme switches feel like a hang before."""
+        if not hasattr(self, "_dl_table"):
+            return
+        t = _t()
+        table = self._dl_table
+        table.setRowCount(0)
+        self._dl_client_cbs = {}
+        assessees = getattr(self, "assessee_list", [])
+        table.setRowCount(len(assessees))
+        for i, a in enumerate(assessees):
+            cb_container = QWidget()
+            cb_container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            cb_container.setStyleSheet(f"QWidget{{background:{t.bg_table};}}")
+            cl = QHBoxLayout(cb_container)
+            cl.setContentsMargins(0, 0, 0, 0)
+            cl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            cb = QCheckBox()
+            cb.setStyleSheet(
+                f"QCheckBox{{background:transparent;}}"
+                f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {t.border};"
+                f"border-radius:3px;background:{t.bg_checkbox};}}"
+                f"QCheckBox::indicator:checked{{background:{t.accent_it};border-color:{t.accent_it};}}")
+            cb.setChecked(True)
+            cb.toggled.connect(self._dl_update_summary)
+            self._dl_client_cbs[a.get("id")] = cb
+            cl.addWidget(cb)
+            table.setCellWidget(i, 0, cb_container)
+
+            name_item = QTableWidgetItem(a.get("name", ""))
+            table.setItem(i, 1, name_item)
+            pan_item = QTableWidgetItem(a.get("pan", "—"))
+            table.setItem(i, 2, pan_item)
+            group_item = QTableWidgetItem(a.get("group") or "—")
+            table.setItem(i, 3, group_item)
+        if hasattr(self, "_dl_summary_lbl"):
+            self._dl_update_summary()
+
+    def _dl_update_summary(self):
+        n_clients = sum(1 for cb in self._dl_client_cbs.values() if cb.isChecked())
+        n_docs = sum(1 for cb in self._dl_doc_cbs.values() if cb.isChecked())
+        self._dl_summary_lbl.setText(
+            f"{n_clients} client{'s' if n_clients != 1 else ''} × "
+            f"{n_docs} document{'s' if n_docs != 1 else ''} selected")
+        if hasattr(self, "_dl_scope_panel"):
+            self._dl_scope_panel.setVisible(self._dl_doc_cbs["filed_returns"].isChecked())
+
+    def _dl_run(self):
+        n_docs = sum(1 for cb in self._dl_doc_cbs.values() if cb.isChecked())
+        if n_docs == 0:
+            QMessageBox.warning(self, "Nothing Selected", "Please select at least one document type.")
+            return
+        checked_ids = {a_id for a_id, cb in self._dl_client_cbs.items() if cb.isChecked()}
+        if not checked_ids:
+            QMessageBox.warning(self, "Selection Required", "Please select at least one client.")
+            return
+        self.selected_ids = checked_ids
+        scope = "latest" if getattr(self, "_dl_rb_latest", None) and self._dl_rb_latest.isChecked() else "all"
+        self.vault.update_setting("filed_returns_scope", scope)
+        selected_docs = {key for key, cb in self._dl_doc_cbs.items() if cb.isChecked()}
+        self.start_automation(selected_docs)
+
+    def _mk_it_download_tab(self):
+        """Download Documents tab — the mockup's real 3-section form
+        (Select Clients / Select Documents / Execute), inline instead of
+        the DownloadPickerDialog modal. Feeds the exact same
+        self.selected_ids + start_automation(selected_docs) pipeline the
+        Home hub's grid + dialog already use — this is a new front end
+        for that pipeline, not a parallel implementation of it. Document
+        types and their keys match DownloadPickerDialog exactly (26as/
+        request_ais/ais_tis/filed_returns/challans), including the
+        conditional Filing Scope panel."""
+        t = _t()
+        self._dl_client_cbs: dict[str, QCheckBox] = {}
+        self._dl_doc_cbs: dict[str, QCheckBox] = {}
+
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(24, 24, 24, 20)
+        outer.setSpacing(18)
+
+        outer.addWidget(_lbl("Download Documents", 16, bold=True))
+        sub = QLabel("Pick clients, pick documents, then run — one batch, unattended.")
+        sub.setStyleSheet(f"color:{t.text_muted}; font-size:12px; background:transparent;")
+        outer.addWidget(sub)
+
+        # ── Section A: Select Clients ────────────────────────────────────────
+        sec_a = QVBoxLayout()
+        sec_a.setSpacing(8)
+        a_hdr = QHBoxLayout()
+        a_hdr.addWidget(_lbl("A   Select Clients", 12, bold=True, color=t.accent_it))
+        a_hdr.addStretch(1)
+        select_all_cb = QCheckBox("Select all")
+        select_all_cb.setChecked(True)
+        select_all_cb.toggled.connect(self._dl_toggle_all_clients)
+        a_hdr.addWidget(select_all_cb)
+        sec_a.addLayout(a_hdr)
+
+        self._dl_table = QTableWidget()
+        self._dl_table.setColumnCount(4)
+        self._dl_table.setHorizontalHeaderLabels(["", "Name", "PAN", "Group"])
+        self._dl_table.verticalHeader().setVisible(False)
+        self._dl_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._dl_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self._dl_table.setShowGrid(False)
+        self._dl_table.setMaximumHeight(220)
+        self._dl_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self._dl_table.setColumnWidth(0, 34)
+        self._dl_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self._dl_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self._dl_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self._dl_table.setStyleSheet(
+            f"QTableWidget{{border:1px solid {t.border};border-radius:10px;"
+            f"background:{t.bg_table};outline:0;gridline-color:{t.grid};}}"
+            f"QTableWidget::item{{border-bottom:1px solid {t.grid};padding:6px;color:{t.text_primary};}}")
+        self._dl_table.horizontalHeader().setStyleSheet(
+            f"QHeaderView::section{{background-color:{t.bg_header};border:none;"
+            f"border-bottom:1px solid {t.border};font-weight:bold;color:{t.text_muted};"
+            f"font-size:10.5px;height:28px;padding-left:4px;}}")
+        sec_a.addWidget(self._dl_table)
+        outer.addLayout(sec_a)
+        self._dl_refresh_clients()
+
+        # ── Section B: Select Documents ──────────────────────────────────────
+        sec_b = QVBoxLayout()
+        sec_b.setSpacing(8)
+        sec_b.addWidget(_lbl("B   Select Documents", 12, bold=True, color=t.accent_it))
+        doc_grid = QGridLayout()
+        doc_grid.setHorizontalSpacing(12)
+        doc_grid.setVerticalSpacing(12)
+        doc_cards = [
+            self._mk_dl_doc_card("26as", "26AS / Form 168", "PDF + Excel/TXT — form picked automatically by year"),
+            self._mk_dl_doc_card("request_ais", "AIS + TIS", "Requests generation if not ready yet, downloads instantly if it is"),
+            self._mk_dl_doc_card("ais_tis", "Previously Requested AIS", "For AIS requested earlier that should be ready now"),
+            self._mk_dl_doc_card("filed_returns", "ITR Return + Intimation", "Form, Receipt/ITR-V, JSON, and any Intimation Orders"),
+            self._mk_dl_doc_card("challans", "Tax Payment Challans", "From e-Pay Tax Payment History for the selected year"),
+        ]
+        for i, card in enumerate(doc_cards):
+            doc_grid.addWidget(card, i // 3, i % 3)
+        for col in range(3):
+            doc_grid.setColumnStretch(col, 1)
+        sec_b.addLayout(doc_grid)
+        for cb in self._dl_doc_cbs.values():
+            cb.toggled.connect(self._dl_update_summary)
+
+        # Filing scope — only relevant once "ITR Return + Intimation" is checked
+        scope_panel = QFrame()
+        self._dl_scope_panel = scope_panel
+        scope_panel.setObjectName("scopePanel")  # scoped selector — see _mk_action_card
+        scope_panel.setStyleSheet(
+            f"QFrame#scopePanel{{background:{t.bg_table_alt};border:1px solid {t.border};"
+            f"border-left:3px solid {t.accent_it};border-radius:6px;}}")
+        scope_v = QVBoxLayout(scope_panel)
+        scope_v.setContentsMargins(12, 10, 12, 10)
+        scope_v.setSpacing(4)
+        scope_v.addWidget(_lbl("FILING SCOPE", 10.5, bold=True, color=t.text_muted))
+        self._dl_rb_all = QRadioButton("All filings for the year")
+        self._dl_rb_latest = QRadioButton("Latest filing only")
+        saved_scope = self.vault.get_setting("filed_returns_scope", "all")
+        (self._dl_rb_latest if saved_scope == "latest" else self._dl_rb_all).setChecked(True)
+        scope_v.addWidget(self._dl_rb_all)
+        scope_v.addWidget(self._dl_rb_latest)
+        scope_panel.setVisible(False)
+        sec_b.addWidget(scope_panel)
+        outer.addLayout(sec_b)
+
+        # ── Section C: Execute ───────────────────────────────────────────────
+        sec_c = QFrame()
+        sec_c.setObjectName("execBar")  # scoped selector — see _mk_action_card
+        sec_c.setStyleSheet(
+            f"QFrame#execBar{{background:{t.bg_panel};border:1px solid {t.border};border-radius:10px;}}")
+        c_layout = QHBoxLayout(sec_c)
+        c_layout.setContentsMargins(16, 12, 16, 12)
+        c_layout.addWidget(_lbl("C", 12, bold=True, color=t.accent_it))
+        c_layout.addSpacing(10)
+        self._dl_summary_lbl = _lbl("", 12, bold=True)
+        c_layout.addWidget(self._dl_summary_lbl)
+        c_layout.addStretch(1)
+        run_btn = _btn("Download Selected", "primary", height=36, icon="btn_run.png")
+        run_btn.clicked.connect(self._dl_run)
+        c_layout.addWidget(run_btn)
+        outer.addWidget(sec_c)
+
+        self._dl_update_summary()
+        return page
+
+    def _mk_it_tools_tab(self):
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(24, 24, 24, 24)
+        outer.setSpacing(14)
+        outer.addWidget(_lbl("Tools", 16, bold=True))
+        desc = QLabel("Manual conversions for when a full batch run isn't what you need.")
+        desc.setStyleSheet(f"color:{_t().text_muted}; font-size:12px; background:transparent;")
+        outer.addWidget(desc)
+        grid = QHBoxLayout()
+        grid.setSpacing(14)
+        grid.addWidget(self._mk_action_card(
+            "Convert 26AS to Excel",
+            "Turn a downloaded 26AS/168 TXT into the same Excel + HTML report a batch run produces.",
+            "document", self._convert_26as_manual))
+        grid.addWidget(self._mk_action_card(
+            "Convert AIS JSON to Excel",
+            "Per-category sheets, capital market consolidation, auto-computed STCG & LTCG.",
+            "document", self._convert_ais_json_manual))
+        outer.addLayout(grid)
+        outer.addStretch(1)
+        return page
+
+    def _mk_income_tax_page(self):
+        """F-77b: Income Tax hub — mockup's tab-row navigation (Actions /
+        Download Documents / E-Pay Tax / Return Status / Tools) over a
+        QStackedWidget. The Actions tab is the action-card landing screen;
+        clicking a card switches tabs (mirrors the mockup's
+        onclick="activeTabIdx=N; render()") instead of opening a dialog
+        directly. Download Documents/E-Pay Tax/Return Status tabs still
+        open their existing modal dialogs — full inline embedding is a
+        later phase (F-77c). Tools is fully inline since it's just two
+        one-shot conversions, no client/year selection needed."""
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        tab_row = QWidget()
+        tab_row.setFixedHeight(46)
+        tr = QHBoxLayout(tab_row)
+        tr.setContentsMargins(24, 8, 24, 8)
+        tr.setSpacing(4)
+        labels = ["Actions", "Download Documents", "E-Pay Tax", "Return Status", "Tools"]
+        self._it_tab_btns = [self._mk_it_tab_btn(l, i) for i, l in enumerate(labels)]
+        for b in self._it_tab_btns:
+            tr.addWidget(b)
+        tr.addStretch(1)
+        outer.addWidget(tab_row)
+
+        self._it_stack = QStackedWidget()
+        outer.addWidget(self._it_stack, 1)
+
+        # ── Tab 0: Actions (card grid) ──────────────────────────────────────
+        actions_page = QWidget()
+        av = QVBoxLayout(actions_page)
+        av.setContentsMargins(24, 20, 24, 20)
+        av.setSpacing(14)
+        av.addWidget(_lbl("What do you want to do?", 11, bold=True, color=_t().text_muted))
+        grid = QHBoxLayout()
+        grid.setSpacing(14)
+        grid.addWidget(self._mk_action_card(
+            "Download Documents",
+            "26AS, Form 168, AIS, TIS & Filed Returns — bulk, unattended, for every selected client.",
+            "document", lambda: self._switch_it_tab(1)))
+        grid.addWidget(self._mk_action_card(
+            "E-Pay Tax",
+            "Generate tax payment challans against the ITD portal, or import a prepared batch.",
+            "rupee", lambda: self._switch_it_tab(2)))
+        grid.addWidget(self._mk_action_card(
+            "Check Processing Status",
+            "See where every client's return actually stands, straight from the portal.",
+            "list", lambda: self._switch_it_tab(3)))
+        grid.addWidget(self._mk_action_card(
+            "Tools",
+            "Convert an already-downloaded 26AS or AIS file to Excel, outside a full batch run.",
+            "gear", lambda: self._switch_it_tab(4)))
+        av.addLayout(grid)
+        av.addStretch(1)
+        self._it_stack.addWidget(actions_page)
+
+        # ── Tab 1: Download Documents — inline 3-section form ────────────────
+        self._it_stack.addWidget(self._mk_it_download_tab())
+
+        # ── Tabs 2-3: still open their existing modal dialogs ────────────────
+        self._it_stack.addWidget(self._mk_it_dialog_tab(
+            "E-Pay Tax",
+            "Generate tax payment challans against the ITD portal, or import a prepared batch.",
+            "Generate Tax Challans…", "", self._open_generate_challans_dialog))
+        self._it_stack.addWidget(self._mk_it_dialog_tab(
+            "Return Status",
+            "See where every client's return actually stands, straight from the portal.",
+            "Check Processing Status…", "", self._open_return_status_dialog))
+
+        # ── Tab 4: Tools (fully inline) ──────────────────────────────────────
+        self._it_stack.addWidget(self._mk_it_tools_tab())
+
+        self._switch_it_tab(0)
         return page
 
     def _mk_mail_docs_page(self):
@@ -1737,7 +2106,7 @@ class AayDocCapioApp(QMainWindow):
     def _mk_activity_log_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setContentsMargins(24, 20, 24, 0)
         layout.setSpacing(10)
         b = _btn("View Email Log…", "secondary", height=34, icon="btn_view_log.png")
         b.clicked.connect(self._open_activity_log)
@@ -1745,7 +2114,11 @@ class AayDocCapioApp(QMainWindow):
         layout.addWidget(_lbl(
             "Per-client download history is available by right-clicking a client row on the Home hub.",
             11, color=_t().text_muted))
-        layout.addStretch(1)
+        layout.addSpacing(6)
+        # F-77a: Live Logs now lives here instead of as a permanent bottom
+        # strip on every hub — self.log_box keeps receiving updates from
+        # background batch runs regardless of which hub is on screen.
+        layout.addWidget(self._mk_footer(), 1)
         return page
 
     def _mk_placeholder_page(self, title: str, body: str):
@@ -1764,13 +2137,18 @@ class AayDocCapioApp(QMainWindow):
         layout.addStretch(1)
         return page
 
-    _LOG_PANEL_HEIGHT = 190
     _LOG_HEADER_HEIGHT = 32
 
     def _mk_footer(self):
+        """Live Logs — embedded in the Activity Log hub page, styled to
+        match iBench's Activity Log view (WindowsProject/iBench App.tsx):
+        dark #0F1923 panel, #1A2636 header, per-line severity colouring
+        instead of icons, no wrap (horizontal scroll), always-on
+        auto-scroll. No hide/show toggle — it already lives on its own
+        dedicated page, so there's nothing to collapse it against."""
         footer = QFrame()
         # Intentional: Live Logs panel is deliberately dark regardless of theme
-        footer.setStyleSheet("QFrame{background:#0F172A;}")
+        footer.setStyleSheet("QFrame{background:#0F1923;}")
         fl = QVBoxLayout(footer)
         fl.setContentsMargins(0, 0, 0, 0)
         fl.setSpacing(0)
@@ -1778,53 +2156,47 @@ class AayDocCapioApp(QMainWindow):
 
         log_hdr = QFrame()
         log_hdr.setFixedHeight(self._LOG_HEADER_HEIGHT)
-        log_hdr.setStyleSheet("QFrame{background:#1E293B;}")
+        log_hdr.setStyleSheet("QFrame{background:#1A2636;border-bottom:1px solid #1E293B;}")
         hhl = QHBoxLayout(log_hdr); hhl.setContentsMargins(16, 0, 12, 0)
-        dot = QLabel("●")
-        dot.setStyleSheet(f"color:{_t().success}; font-size:9px; margin-right:4px;")
-        hhl.addWidget(dot)
-        hhl.addWidget(_lbl("LIVE LOGS", 10, bold=True, color=_t().text_muted))
+        hhl.addWidget(_lbl("Activity Log", 11, bold=True, color="#CBD5E1"))
         hhl.addStretch()
-        copy_btn = QPushButton("Copy")
-        copy_btn.setFixedHeight(22)
-        copy_btn.setStyleSheet(
-            f"QPushButton{{background:transparent;color:{_t().text_muted};border:1px solid {_t().border};"
-            f"border-radius:4px;padding:0 10px;font-size:10px;}}"
-            f"QPushButton:hover{{color:{_t().text_primary};border-color:{_t().text_muted};}}")
+        self._log_count_lbl = QLabel("0 lines")
+        self._log_count_lbl.setStyleSheet("color:#64748B;font-size:10px;background:transparent;")
+        hhl.addWidget(self._log_count_lbl)
+        hhl.addSpacing(12)
+
+        def _hdr_btn(text):
+            b = QPushButton(text)
+            b.setFixedHeight(22)
+            b.setStyleSheet(
+                "QPushButton{background:#1E293B;color:#94A3B8;border:none;"
+                "border-radius:4px;padding:0 10px;font-size:10px;}"
+                "QPushButton:hover{background:#334155;color:#E2E8F0;}")
+            return b
+
+        open_folder_btn = _hdr_btn("Open Logs Folder")
+        open_folder_btn.clicked.connect(self._open_logs_folder)
+        hhl.addWidget(open_folder_btn)
+        copy_btn = _hdr_btn("Copy")
+        copy_btn.setStyleSheet(copy_btn.styleSheet() + "QPushButton{margin-left:6px;}")
         copy_btn.clicked.connect(self.copy_logs_to_clipboard)
         hhl.addWidget(copy_btn)
-        self._log_toggle_btn = QPushButton("▾ Hide")
-        self._log_toggle_btn.setFixedHeight(22)
-        self._log_toggle_btn.setStyleSheet(
-            f"QPushButton{{background:transparent;color:{_t().text_muted};border:1px solid {_t().border};"
-            f"border-radius:4px;padding:0 10px;font-size:10px;margin-left:6px;}}"
-            f"QPushButton:hover{{color:{_t().text_primary};border-color:{_t().text_muted};}}")
-        self._log_toggle_btn.clicked.connect(self._toggle_log_panel)
-        hhl.addWidget(self._log_toggle_btn)
         fl.addWidget(log_hdr)
 
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
+        self.log_box.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         self.log_box.setStyleSheet(
-            "QTextEdit{background:#0F172A;border:none;"
+            "QTextEdit{background:#0F1923;border:none;"
             f"font-family:'{_MONO_FONT}',monospace;"
-            "font-size:11px;color:#7DD3FC;padding:8px 16px;}")  # noqa: hardcoded colors intentional — Live Logs panel is deliberately dark regardless of theme
+            "font-size:12px;padding:8px 16px;}")  # noqa: hardcoded colors intentional — Live Logs panel is deliberately dark regardless of theme
         fl.addWidget(self.log_box)
+        self._log_line_count = 0
 
-        collapsed = self.vault.get_setting("log_panel_collapsed", False)
-        self._set_log_panel_collapsed(collapsed, persist=False)
         return footer
 
-    def _toggle_log_panel(self):
-        self._set_log_panel_collapsed(self.log_box.isVisible())
-
-    def _set_log_panel_collapsed(self, collapsed: bool, persist: bool = True):
-        self.log_box.setVisible(not collapsed)
-        self._log_footer.setFixedHeight(
-            self._LOG_HEADER_HEIGHT if collapsed else self._LOG_PANEL_HEIGHT)
-        self._log_toggle_btn.setText("▸ Show" if collapsed else "▾ Hide")
-        if persist:
-            self.vault.update_setting("log_panel_collapsed", collapsed)
+    def _open_logs_folder(self):
+        QDesktopServices.openUrl(QUrl.fromLocalFile(_app_dir()))
 
     # ── Grid ──────────────────────────────────────────────────────────────────
 
@@ -1931,6 +2303,7 @@ class AayDocCapioApp(QMainWindow):
         self._id_to_row.clear()
         self.assessee_list = self.vault.get_all_assessees()
         self._refresh_group_filter()
+        self._dl_refresh_clients()
 
         if not hasattr(self, "client_table"):
             return
@@ -2821,9 +3194,45 @@ class AayDocCapioApp(QMainWindow):
         except Exception:
             pass
 
+    _LOG_TS_RE = re.compile(r"^\[(\d{2}:\d{2}:\d{2})\]\s*(.*)$", re.S)
+
+    def _log_level_color(self, message: str) -> str:
+        """Classify a log line the same way iBench does — by scanning for
+        a status marker already present in the message text — and return
+        the matching iBench severity colour."""
+        m = message.lower()
+        if "✅" in message or "done" in m:
+            return "#34D399"   # ok / success
+        if "❌" in message or "error" in m or "failed" in m or "timeout" in m:
+            return "#F87171"   # err
+        if "⚠" in message or "🕐" in message or "warn" in m:
+            return "#FBBF24"   # warn
+        if "[debug]" in m:
+            return "#64748B"   # debug
+        return "#7DD3FC"       # info (default)
+
     def _append_log(self, text):
-        self.log_box.append(text)
+        m = self._LOG_TS_RE.match(text)
+        ts, message = (m.group(1), m.group(2)) if m else ("", text)
+        color = self._log_level_color(message)
+        row = (
+            '<div style="white-space:pre;line-height:20px;">'
+            f'<span style="color:#475569;">{html.escape(ts)}</span>'
+            '<span style="color:#475569;">&nbsp;&nbsp;</span>'
+            f'<span style="color:{color};">{html.escape(message)}</span>'
+            '</div>'
+        )
+        self.log_box.append(row)
         self.log_box.moveCursor(QTextCursor.MoveOperation.End)
+        self._log_line_count += 1
+        if hasattr(self, "_log_count_lbl"):
+            self._log_count_lbl.setText(f"{self._log_line_count} line{'s' if self._log_line_count != 1 else ''}")
+
+    def _clear_log(self):
+        self.log_box.clear()
+        self._log_line_count = 0
+        if hasattr(self, "_log_count_lbl"):
+            self._log_count_lbl.setText("0 lines")
 
     def copy_logs_to_clipboard(self):
         QApplication.clipboard().setText(self.log_box.toPlainText())
@@ -3040,7 +3449,7 @@ class AayDocCapioApp(QMainWindow):
         self._batch_aborted = False
         self._batch_filing_scope = self.vault.get_setting("filed_returns_scope", "all")
         self._lock_ui(True)
-        self.log_box.clear()
+        self._clear_log()
 
         targets = [a for a in self.assessee_list if a.get("id") in self.selected_ids]
         output_dir = self.dir_lbl.text()
@@ -3141,7 +3550,7 @@ class AayDocCapioApp(QMainWindow):
 
         self._challan_running = True
         self._challan_aborted = False
-        self.log_box.clear()
+        self._clear_log()
         if hasattr(self, "_tray_send_act"):
             self._tray_send_act.setVisible(True)
 
