@@ -14,7 +14,7 @@ from dataclasses import dataclass
 # ── Font stacks (platform-aware) ──────────────────────────────────────────────
 
 if sys.platform == "win32":
-    UI_FONT   = "'Segoe UI', Arial, sans-serif"
+    UI_FONT   = "Arial, 'Segoe UI', sans-serif"
     MONO_FONT = "'Cascadia Code', 'Consolas', monospace"
 elif sys.platform == "darwin":
     UI_FONT   = "'Avenir Next', Arial"
@@ -24,7 +24,7 @@ else:
     MONO_FONT = "monospace"
 
 # Single-name versions used for QFont() calls in Python code
-UI_FONT_NAME   = "Segoe UI"   if sys.platform == "win32" else "Avenir Next"
+UI_FONT_NAME   = "Arial"      if sys.platform == "win32" else "Avenir Next"
 MONO_FONT_NAME = "Cascadia Code" if sys.platform == "win32" else "Menlo"
 
 

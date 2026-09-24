@@ -669,8 +669,12 @@ class AayDocCapioApp(QMainWindow):
                 f" background:transparent; border:none;")
         for lbl in (getattr(self, "_hdr_version", None), getattr(self, "_hdr_copy", None)):
             if lbl:
+                # No font-family override — inherits the app's theme font
+                # (UI_FONT, themes.py) like every other label, instead of
+                # hardcoding Arial and rendering in a visibly different
+                # typeface from the rest of the header.
                 lbl.setStyleSheet(
-                    f"color:{t.text_muted}; font-family:'Arial'; font-size:11px;"
+                    f"color:{t.text_muted}; font-size:11px;"
                     f" background:transparent; border:none;")
 
         # ── Nav shell (rail + breadcrumb, F-77a) ──────────────────────────────
