@@ -1594,6 +1594,16 @@ class AayDocCapioApp(QMainWindow):
             lambda v: self.vault.update_setting("auto_minimise", bool(v)))
         layout.addWidget(self.chk_auto_minimise)
 
+        _show_splash_saved = self.vault.get_setting("show_splash", True)
+        self.chk_show_splash = QCheckBox("Show splash screen on startup")
+        self.chk_show_splash.setChecked(bool(_show_splash_saved))
+        self.chk_show_splash.setToolTip(
+            "The AayDoc Capio logo screen shown briefly while the app starts up.")
+        self.chk_show_splash.setStyleSheet(self.chk_headless.styleSheet())
+        self.chk_show_splash.stateChanged.connect(
+            lambda v: self.vault.update_setting("show_splash", bool(v)))
+        layout.addWidget(self.chk_show_splash)
+
         _section("EMAIL")
         btn_email = _btn("Email Settings…", "secondary", height=34, icon="icon_email.png")
         btn_email.clicked.connect(self._open_email_settings)
@@ -4793,8 +4803,16 @@ if __name__ == "__main__":
         splash = None
         _splash_shown_at = None
         try:
+            # Read the "show splash screen" setting before AayDocCapioApp()
+            # (and its own VaultManager) exists yet — a throwaway early
+            # VaultManager just for this one read; harmless to construct
+            # twice (idempotent _ensure_vault() migration check).
+            _show_splash = VaultManager().get_setting("show_splash", True)
+        except Exception:
+            _show_splash = True
+        try:
             _splash_logo_path = os.path.join(_bundled_dir(), "resources", "AayDoc_FullLogo.png")
-            if os.path.exists(_splash_logo_path):
+            if _show_splash and os.path.exists(_splash_logo_path):
                 _splash_pix = QPixmap(_splash_logo_path).scaledToWidth(
                     560, Qt.TransformationMode.SmoothTransformation)
                 splash = _SplashScreen(_splash_pix)
