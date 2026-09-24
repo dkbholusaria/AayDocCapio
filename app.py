@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (
     QMessageBox, QTextEdit, QDialog, QSizePolicy,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QToolButton, QMenu, QCalendarWidget, QSystemTrayIcon,
-    QGraphicsDropShadowEffect, QStackedWidget,
+    QGraphicsDropShadowEffect, QStackedWidget, QScrollArea, QRadioButton,
 )
 from PyQt6.QtCore import (
     Qt, pyqtSignal, pyqtSlot, QTimer, QMetaObject, Q_ARG, QUrl,
@@ -1713,6 +1713,234 @@ class AayDocCapioApp(QMainWindow):
         layout.addStretch(1)
         return page
 
+    def _mk_dl_doc_card(self, key: str, title: str, sub: str) -> QFrame:
+        """One checkable document-type card for the Download Documents tab —
+        clicking anywhere on the card toggles its checkbox, matching the
+        mockup's doc-card interaction."""
+        t = _t()
+        card = QFrame()
+        card.setCursor(Qt.CursorShape.PointingHandCursor)
+        card.setStyleSheet(
+            f"QFrame{{background:{t.bg_panel};border:1px solid {t.border};border-radius:10px;}}"
+        )
+        hl = QHBoxLayout(card)
+        hl.setContentsMargins(12, 10, 12, 10)
+        hl.setSpacing(9)
+
+        cb = QCheckBox()
+        cb.setStyleSheet(
+            f"QCheckBox::indicator{{width:16px;height:16px;border:1.5px solid {t.border};"
+            f"border-radius:4px;background:{t.bg_checkbox};}}"
+            f"QCheckBox::indicator:checked{{background:{t.accent_it};border-color:{t.accent_it};}}")
+        hl.addWidget(cb, 0, Qt.AlignmentFlag.AlignTop)
+
+        text_col = QVBoxLayout()
+        text_col.setSpacing(2)
+        title_lbl = _lbl(title, 12, bold=True)
+        text_col.addWidget(title_lbl)
+        sub_lbl = QLabel(sub)
+        sub_lbl.setWordWrap(True)
+        sub_lbl.setStyleSheet(f"color:{t.text_muted}; font-size:10.5px; background:transparent;")
+        text_col.addWidget(sub_lbl)
+        hl.addLayout(text_col, 1)
+
+        def _toggle_border(checked):
+            card.setStyleSheet(
+                f"QFrame{{background:{t.bg_panel};"
+                f"border:1px solid {t.accent_it if checked else t.border};border-radius:10px;}}")
+        cb.toggled.connect(_toggle_border)
+
+        def _mouse_press(event):
+            if event.button() == Qt.MouseButton.LeftButton:
+                cb.toggle()
+            QFrame.mousePressEvent(card, event)
+        card.mousePressEvent = _mouse_press
+
+        self._dl_doc_cbs[key] = cb
+        return card
+
+    def _dl_toggle_all_clients(self, checked: bool):
+        for cb in self._dl_client_cbs.values():
+            cb.setChecked(checked)
+
+    def _dl_refresh_clients(self):
+        """(Re)build Section A's client rows from self.assessee_list. Called
+        once when the tab is first built (assessee_list doesn't exist yet
+        at that point — _build_ui() runs before the first refresh_grid())
+        and again every time refresh_grid() runs, so add/edit/delete/import
+        stay reflected here too."""
+        if not hasattr(self, "_dl_client_list_layout"):
+            return
+        t = _t()
+        layout = self._dl_client_list_layout
+        while layout.count():
+            item = layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+        self._dl_client_cbs = {}
+        for a in getattr(self, "assessee_list", []):
+            row = QFrame()
+            row.setStyleSheet(f"QFrame{{border-bottom:1px solid {t.grid};}}")
+            rl = QHBoxLayout(row)
+            rl.setContentsMargins(10, 6, 10, 6)
+            rl.setSpacing(10)
+            cb = QCheckBox()
+            cb.setChecked(True)
+            cb.toggled.connect(self._dl_update_summary)
+            self._dl_client_cbs[a.get("id")] = cb
+            rl.addWidget(cb)
+            rl.addWidget(_lbl(a.get("name", ""), 11), 2)
+            pan_lbl = QLabel(a.get("pan", "—"))
+            pan_lbl.setStyleSheet(f"color:{t.text_muted}; font-size:10.5px; background:transparent;")
+            rl.addWidget(pan_lbl, 1)
+            group_lbl = QLabel(a.get("group") or "—")
+            group_lbl.setStyleSheet(f"color:{t.text_muted}; font-size:10.5px; background:transparent;")
+            rl.addWidget(group_lbl, 1)
+            layout.addWidget(row)
+        layout.addStretch(1)
+        if hasattr(self, "_dl_summary_lbl"):
+            self._dl_update_summary()
+
+    def _dl_update_summary(self):
+        n_clients = sum(1 for cb in self._dl_client_cbs.values() if cb.isChecked())
+        n_docs = sum(1 for cb in self._dl_doc_cbs.values() if cb.isChecked())
+        self._dl_summary_lbl.setText(
+            f"{n_clients} client{'s' if n_clients != 1 else ''} × "
+            f"{n_docs} document{'s' if n_docs != 1 else ''} selected")
+        if hasattr(self, "_dl_scope_panel"):
+            self._dl_scope_panel.setVisible(self._dl_doc_cbs["filed_returns"].isChecked())
+
+    def _dl_run(self):
+        n_docs = sum(1 for cb in self._dl_doc_cbs.values() if cb.isChecked())
+        if n_docs == 0:
+            QMessageBox.warning(self, "Nothing Selected", "Please select at least one document type.")
+            return
+        checked_ids = {a_id for a_id, cb in self._dl_client_cbs.items() if cb.isChecked()}
+        if not checked_ids:
+            QMessageBox.warning(self, "Selection Required", "Please select at least one client.")
+            return
+        self.selected_ids = checked_ids
+        scope = "latest" if getattr(self, "_dl_rb_latest", None) and self._dl_rb_latest.isChecked() else "all"
+        self.vault.update_setting("filed_returns_scope", scope)
+        selected_docs = {key for key, cb in self._dl_doc_cbs.items() if cb.isChecked()}
+        self.start_automation(selected_docs)
+
+    def _mk_it_download_tab(self):
+        """Download Documents tab — the mockup's real 3-section form
+        (Select Clients / Select Documents / Execute), inline instead of
+        the DownloadPickerDialog modal. Feeds the exact same
+        self.selected_ids + start_automation(selected_docs) pipeline the
+        Home hub's grid + dialog already use — this is a new front end
+        for that pipeline, not a parallel implementation of it. Document
+        types and their keys match DownloadPickerDialog exactly (26as/
+        request_ais/ais_tis/filed_returns/challans), including the
+        conditional Filing Scope panel."""
+        t = _t()
+        self._dl_client_cbs: dict[str, QCheckBox] = {}
+        self._dl_doc_cbs: dict[str, QCheckBox] = {}
+
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(24, 24, 24, 20)
+        outer.setSpacing(18)
+
+        outer.addWidget(_lbl("Download Documents", 16, bold=True))
+        sub = QLabel("Pick clients, pick documents, then run — one batch, unattended.")
+        sub.setStyleSheet(f"color:{t.text_muted}; font-size:12px; background:transparent;")
+        outer.addWidget(sub)
+
+        # ── Section A: Select Clients ────────────────────────────────────────
+        sec_a = QVBoxLayout()
+        sec_a.setSpacing(8)
+        a_hdr = QHBoxLayout()
+        a_hdr.addWidget(_lbl("A   Select Clients", 12, bold=True, color=t.accent_it))
+        a_hdr.addStretch(1)
+        select_all_cb = QCheckBox("Select all")
+        select_all_cb.setChecked(True)
+        select_all_cb.toggled.connect(self._dl_toggle_all_clients)
+        a_hdr.addWidget(select_all_cb)
+        sec_a.addLayout(a_hdr)
+
+        client_box = QFrame()
+        client_box.setStyleSheet(
+            f"QFrame{{background:{t.bg_panel};border:1px solid {t.border};border-radius:10px;}}")
+        client_box.setMaximumHeight(220)
+        cb_layout = QVBoxLayout(client_box)
+        cb_layout.setContentsMargins(0, 0, 0, 0)
+        cb_layout.setSpacing(0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_body = QWidget()
+        self._dl_client_list_layout = QVBoxLayout(scroll_body)
+        self._dl_client_list_layout.setContentsMargins(4, 4, 4, 4)
+        self._dl_client_list_layout.setSpacing(0)
+        scroll.setWidget(scroll_body)
+        cb_layout.addWidget(scroll)
+        sec_a.addWidget(client_box)
+        outer.addLayout(sec_a)
+        self._dl_refresh_clients()
+
+        # ── Section B: Select Documents ──────────────────────────────────────
+        sec_b = QVBoxLayout()
+        sec_b.setSpacing(8)
+        sec_b.addWidget(_lbl("B   Select Documents", 12, bold=True, color=t.accent_it))
+        doc_grid = QHBoxLayout()
+        doc_grid.setSpacing(10)
+        doc_grid.addWidget(self._mk_dl_doc_card(
+            "26as", "26AS / Form 168", "PDF + Excel/TXT — form picked automatically by year"))
+        doc_grid.addWidget(self._mk_dl_doc_card(
+            "request_ais", "AIS + TIS", "Requests generation if not ready yet, downloads instantly if it is"))
+        doc_grid.addWidget(self._mk_dl_doc_card(
+            "ais_tis", "Previously Requested AIS", "For AIS requested earlier that should be ready now"))
+        doc_grid.addWidget(self._mk_dl_doc_card(
+            "filed_returns", "ITR Return + Intimation", "Form, Receipt/ITR-V, JSON, and any Intimation Orders"))
+        doc_grid.addWidget(self._mk_dl_doc_card(
+            "challans", "Tax Payment Challans", "From e-Pay Tax Payment History for the selected year"))
+        sec_b.addLayout(doc_grid)
+        for cb in self._dl_doc_cbs.values():
+            cb.toggled.connect(self._dl_update_summary)
+
+        # Filing scope — only relevant once "ITR Return + Intimation" is checked
+        scope_panel = QFrame()
+        self._dl_scope_panel = scope_panel
+        scope_panel.setStyleSheet(
+            f"QFrame{{background:{t.bg_table_alt};border:1px solid {t.border};"
+            f"border-left:3px solid {t.accent_it};border-radius:6px;}}")
+        scope_v = QVBoxLayout(scope_panel)
+        scope_v.setContentsMargins(12, 10, 12, 10)
+        scope_v.setSpacing(4)
+        scope_v.addWidget(_lbl("FILING SCOPE", 10, bold=True, color=t.text_muted))
+        self._dl_rb_all = QRadioButton("All filings for the year")
+        self._dl_rb_latest = QRadioButton("Latest filing only")
+        saved_scope = self.vault.get_setting("filed_returns_scope", "all")
+        (self._dl_rb_latest if saved_scope == "latest" else self._dl_rb_all).setChecked(True)
+        scope_v.addWidget(self._dl_rb_all)
+        scope_v.addWidget(self._dl_rb_latest)
+        scope_panel.setVisible(False)
+        sec_b.addWidget(scope_panel)
+        outer.addLayout(sec_b)
+
+        # ── Section C: Execute ───────────────────────────────────────────────
+        sec_c = QFrame()
+        sec_c.setStyleSheet(
+            f"QFrame{{background:{t.bg_panel};border:1px solid {t.border};border-radius:10px;}}")
+        c_layout = QHBoxLayout(sec_c)
+        c_layout.setContentsMargins(16, 12, 16, 12)
+        c_layout.addWidget(_lbl("C", 12, bold=True, color=t.accent_it))
+        c_layout.addSpacing(10)
+        self._dl_summary_lbl = _lbl("", 12, bold=True)
+        c_layout.addWidget(self._dl_summary_lbl)
+        c_layout.addStretch(1)
+        run_btn = _btn("Download Selected", "primary", height=36, icon="btn_run.png")
+        run_btn.clicked.connect(self._dl_run)
+        c_layout.addWidget(run_btn)
+        outer.addWidget(sec_c)
+
+        self._dl_update_summary()
+        return page
+
     def _mk_it_tools_tab(self):
         page = QWidget()
         outer = QVBoxLayout(page)
@@ -1794,12 +2022,10 @@ class AayDocCapioApp(QMainWindow):
         av.addStretch(1)
         self._it_stack.addWidget(actions_page)
 
-        # ── Tabs 1-3: still open their existing modal dialogs ───────────────
-        self._it_stack.addWidget(self._mk_it_dialog_tab(
-            "Download Documents",
-            "26AS, Form 168, AIS, TIS & Filed Returns — bulk, unattended, for every selected client "
-            "checked on the Home hub.",
-            "Download Documents…", "btn_run.png", self._open_download_picker))
+        # ── Tab 1: Download Documents — inline 3-section form ────────────────
+        self._it_stack.addWidget(self._mk_it_download_tab())
+
+        # ── Tabs 2-3: still open their existing modal dialogs ────────────────
         self._it_stack.addWidget(self._mk_it_dialog_tab(
             "E-Pay Tax",
             "Generate tax payment challans against the ITD portal, or import a prepared batch.",
@@ -2039,6 +2265,7 @@ class AayDocCapioApp(QMainWindow):
         self._id_to_row.clear()
         self.assessee_list = self.vault.get_all_assessees()
         self._refresh_group_filter()
+        self._dl_refresh_clients()
 
         if not hasattr(self, "client_table"):
             return
