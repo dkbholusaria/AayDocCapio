@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (
     QComboBox, QListView, QStyledItemDelegate, QStyle,
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame, QAbstractItemView,
 )
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QStandardItemModel, QStandardItem
 
 
@@ -277,3 +277,19 @@ class CheckableComboBox(QWidget):
         else:
             text = f"{len(labels)} years selected"
         self._label.setText(text)
+
+
+class ClickableCard(QFrame):
+    """A QFrame that acts as a click target — the base for action-card
+    style buttons (icon + title + description) used on hub landing pages."""
+
+    clicked = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)

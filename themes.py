@@ -109,7 +109,7 @@ THEMES: dict[str, ThemeColors] = {
         bg_log          = "#0F172A",
         bg_log_hdr      = "#1E293B",
         bg_menu         = "#FFFFFF",
-        bg_menubar      = "#FFFFFF",
+        bg_menubar      = "#F5F7FA",
         bg_checkbox     = "#FFFFFF",
 
         text_primary    = "#0F172A",
@@ -161,7 +161,7 @@ THEMES: dict[str, ThemeColors] = {
         bg_log          = "#060F1E",
         bg_log_hdr      = "#0F2040",
         bg_menu         = "#0F2040",
-        bg_menubar      = "#060F1E",
+        bg_menubar      = "#122036",
         bg_checkbox     = "#0F2040",
 
         text_primary    = "#E2E8F0",
