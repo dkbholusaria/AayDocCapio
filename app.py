@@ -21,13 +21,13 @@ from PyQt6.QtWidgets import (
     QMessageBox, QTextEdit, QDialog, QSizePolicy,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QToolButton, QMenu, QCalendarWidget, QSystemTrayIcon,
-    QGraphicsDropShadowEffect,
+    QGraphicsDropShadowEffect, QStackedWidget,
 )
 from PyQt6.QtCore import (
     Qt, pyqtSignal, pyqtSlot, QTimer, QMetaObject, Q_ARG, QUrl,
     QPropertyAnimation, QEasingCurve,
 )
-from PyQt6.QtGui import QFont, QTextCursor, QColor, QRegularExpressionValidator, QPalette, QAction, QIcon, QPixmap, QDesktopServices, QCursor
+from PyQt6.QtGui import QFont, QTextCursor, QColor, QRegularExpressionValidator, QPalette, QAction, QIcon, QPixmap, QDesktopServices
 from PyQt6.QtCore import QRegularExpression
 
 from config import _app_dir, _default_download_dir, _bundled_dir
@@ -1671,46 +1671,148 @@ class AayDocCapioApp(QMainWindow):
         card.clicked.connect(handler)
         return card
 
-    def _open_it_tools_menu(self):
-        menu = QMenu(self)
-        act1 = menu.addAction("Convert 26AS TXT → Excel + HTML…")
-        act1.triggered.connect(self._convert_26as_manual)
-        act2 = menu.addAction("Convert AIS JSON → Excel…")
-        act2.triggered.connect(self._convert_ais_json_manual)
-        menu.exec(QCursor.pos())
+    def _mk_it_tab_btn(self, label: str, idx: int):
+        t = _t()
+        btn = QPushButton(label)
+        btn.setCheckable(True)
+        btn.setFixedHeight(30)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setStyleSheet(
+            "QPushButton{background:transparent;border:none;border-radius:7px;"
+            f"padding:0 14px;font-size:12px;font-weight:600;color:{t.text_muted};}}"
+            f"QPushButton:hover{{background:rgba(255,255,255,0.04);color:{t.text_primary};}}"
+            f"QPushButton:checked{{color:{t.accent_it};background:{t.accent_it}22;}}"
+        )
+        btn.clicked.connect(lambda: self._switch_it_tab(idx))
+        return btn
 
-    def _mk_income_tax_page(self):
-        """F-77b: Income Tax hub landing screen — the mockup's action-card
-        grid. Each card opens the same dialog the old plain-button-list
-        version did; Tools groups the two converters behind one card
-        (opens a small popup menu) since they're not full sub-pages."""
+    def _switch_it_tab(self, idx: int):
+        self._it_stack.setCurrentIndex(idx)
+        for i, b in enumerate(self._it_tab_btns):
+            b.setChecked(i == idx)
+
+    def _mk_it_dialog_tab(self, title: str, desc: str, btn_text: str, icon_key: str, handler):
+        """Sub-tab for an action that still opens its existing modal dialog
+        (Download Documents / E-Pay Tax / Return Status) rather than being
+        embedded inline — that's a larger later phase (F-77c)."""
+        t = _t()
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(10)
+        layout.addWidget(_lbl(title, 16, bold=True))
+        desc_lbl = QLabel(desc)
+        desc_lbl.setWordWrap(True)
+        desc_lbl.setStyleSheet(f"color:{t.text_muted}; font-size:12px; background:transparent;")
+        layout.addWidget(desc_lbl)
+        layout.addSpacing(6)
+        btn = _btn(btn_text, "primary", height=36, icon=icon_key)
+        btn.setMaximumWidth(260)
+        btn.clicked.connect(handler)
+        layout.addWidget(btn)
+        layout.addStretch(1)
+        return page
+
+    def _mk_it_tools_tab(self):
         page = QWidget()
         outer = QVBoxLayout(page)
-        outer.setContentsMargins(24, 20, 24, 20)
+        outer.setContentsMargins(24, 24, 24, 24)
         outer.setSpacing(14)
+        outer.addWidget(_lbl("Tools", 16, bold=True))
+        desc = QLabel("Manual conversions for when a full batch run isn't what you need.")
+        desc.setStyleSheet(f"color:{_t().text_muted}; font-size:12px; background:transparent;")
+        outer.addWidget(desc)
+        grid = QHBoxLayout()
+        grid.setSpacing(14)
+        grid.addWidget(self._mk_action_card(
+            "Convert 26AS to Excel",
+            "Turn a downloaded 26AS/168 TXT into the same Excel + HTML report a batch run produces.",
+            "document", self._convert_26as_manual))
+        grid.addWidget(self._mk_action_card(
+            "Convert AIS JSON to Excel",
+            "Per-category sheets, capital market consolidation, auto-computed STCG & LTCG.",
+            "document", self._convert_ais_json_manual))
+        outer.addLayout(grid)
+        outer.addStretch(1)
+        return page
 
-        outer.addWidget(_lbl("What do you want to do?", 11, bold=True, color=_t().text_muted))
+    def _mk_income_tax_page(self):
+        """F-77b: Income Tax hub — mockup's tab-row navigation (Actions /
+        Download Documents / E-Pay Tax / Return Status / Tools) over a
+        QStackedWidget. The Actions tab is the action-card landing screen;
+        clicking a card switches tabs (mirrors the mockup's
+        onclick="activeTabIdx=N; render()") instead of opening a dialog
+        directly. Download Documents/E-Pay Tax/Return Status tabs still
+        open their existing modal dialogs — full inline embedding is a
+        later phase (F-77c). Tools is fully inline since it's just two
+        one-shot conversions, no client/year selection needed."""
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
+        tab_row = QWidget()
+        tab_row.setFixedHeight(46)
+        tr = QHBoxLayout(tab_row)
+        tr.setContentsMargins(24, 8, 24, 8)
+        tr.setSpacing(4)
+        labels = ["Actions", "Download Documents", "E-Pay Tax", "Return Status", "Tools"]
+        self._it_tab_btns = [self._mk_it_tab_btn(l, i) for i, l in enumerate(labels)]
+        for b in self._it_tab_btns:
+            tr.addWidget(b)
+        tr.addStretch(1)
+        outer.addWidget(tab_row)
+
+        self._it_stack = QStackedWidget()
+        outer.addWidget(self._it_stack, 1)
+
+        # ── Tab 0: Actions (card grid) ──────────────────────────────────────
+        actions_page = QWidget()
+        av = QVBoxLayout(actions_page)
+        av.setContentsMargins(24, 20, 24, 20)
+        av.setSpacing(14)
+        av.addWidget(_lbl("What do you want to do?", 11, bold=True, color=_t().text_muted))
         grid = QHBoxLayout()
         grid.setSpacing(14)
         grid.addWidget(self._mk_action_card(
             "Download Documents",
             "26AS, Form 168, AIS, TIS & Filed Returns — bulk, unattended, for every selected client.",
-            "document", self._open_download_picker))
+            "document", lambda: self._switch_it_tab(1)))
         grid.addWidget(self._mk_action_card(
             "E-Pay Tax",
             "Generate tax payment challans against the ITD portal, or import a prepared batch.",
-            "rupee", self._open_generate_challans_dialog))
+            "rupee", lambda: self._switch_it_tab(2)))
         grid.addWidget(self._mk_action_card(
             "Check Processing Status",
             "See where every client's return actually stands, straight from the portal.",
-            "list", self._open_return_status_dialog))
+            "list", lambda: self._switch_it_tab(3)))
         grid.addWidget(self._mk_action_card(
             "Tools",
             "Convert an already-downloaded 26AS or AIS file to Excel, outside a full batch run.",
-            "gear", self._open_it_tools_menu))
-        outer.addLayout(grid)
-        outer.addStretch(1)
+            "gear", lambda: self._switch_it_tab(4)))
+        av.addLayout(grid)
+        av.addStretch(1)
+        self._it_stack.addWidget(actions_page)
+
+        # ── Tabs 1-3: still open their existing modal dialogs ───────────────
+        self._it_stack.addWidget(self._mk_it_dialog_tab(
+            "Download Documents",
+            "26AS, Form 168, AIS, TIS & Filed Returns — bulk, unattended, for every selected client "
+            "checked on the Home hub.",
+            "Download Documents…", "btn_run.png", self._open_download_picker))
+        self._it_stack.addWidget(self._mk_it_dialog_tab(
+            "E-Pay Tax",
+            "Generate tax payment challans against the ITD portal, or import a prepared batch.",
+            "Generate Tax Challans…", "", self._open_generate_challans_dialog))
+        self._it_stack.addWidget(self._mk_it_dialog_tab(
+            "Return Status",
+            "See where every client's return actually stands, straight from the portal.",
+            "Check Processing Status…", "", self._open_return_status_dialog))
+
+        # ── Tab 4: Tools (fully inline) ──────────────────────────────────────
+        self._it_stack.addWidget(self._mk_it_tools_tab())
+
+        self._switch_it_tab(0)
         return page
 
     def _mk_mail_docs_page(self):
