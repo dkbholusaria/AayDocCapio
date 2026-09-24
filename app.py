@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (
     QMessageBox, QTextEdit, QDialog, QSizePolicy,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QToolButton, QMenu, QCalendarWidget, QSystemTrayIcon,
-    QGraphicsDropShadowEffect, QStackedWidget, QScrollArea, QRadioButton,
+    QGraphicsDropShadowEffect, QStackedWidget, QRadioButton,
     QGridLayout,
 )
 from PyQt6.QtCore import (
@@ -1645,9 +1645,14 @@ class AayDocCapioApp(QMainWindow):
 
         card = ClickableCard()
         card.setMinimumWidth(200)
+        # Scoped to #actionCard, NOT a bare "QFrame" type selector — QLabel
+        # is itself a QFrame subclass, so an unscoped "QFrame{border:...}"
+        # rule cascades onto every child label inside this card too,
+        # individually boxing each one instead of just the card itself.
+        card.setObjectName("actionCard")
         card.setStyleSheet(
-            f"QFrame{{background:{t.bg_panel};border:1px solid {t.border};border-radius:12px;}}"
-            f"QFrame:hover{{border-color:{accent};}}"
+            f"QFrame#actionCard{{background:{t.bg_panel};border:1px solid {t.border};border-radius:12px;}}"
+            f"QFrame#actionCard:hover{{border-color:{accent};}}"
         )
         cl = QVBoxLayout(card)
         cl.setContentsMargins(18, 18, 18, 16)
@@ -1660,7 +1665,7 @@ class AayDocCapioApp(QMainWindow):
         icon_lbl.setStyleSheet(f"background:{accent}22; border-radius:10px;")
         cl.addWidget(icon_lbl)
 
-        title_lbl = _lbl(title, 13, bold=True)
+        title_lbl = _lbl(title, 12, bold=True)
         cl.addWidget(title_lbl)
 
         desc_lbl = QLabel(desc)
@@ -1691,6 +1696,10 @@ class AayDocCapioApp(QMainWindow):
         self._it_stack.setCurrentIndex(idx)
         for i, b in enumerate(self._it_tab_btns):
             b.setChecked(i == idx)
+        if idx > 0 and hasattr(self, "_it_tab_btns"):
+            self._on_hub_changed("Income Tax", self._it_tab_btns[idx].text())
+        else:
+            self._on_hub_changed("Income Tax", "")
 
     def _mk_it_dialog_tab(self, title: str, desc: str, btn_text: str, icon_key: str, handler):
         """Sub-tab for an action that still opens its existing modal dialog
@@ -1722,8 +1731,9 @@ class AayDocCapioApp(QMainWindow):
         card = QFrame()
         card.setCursor(Qt.CursorShape.PointingHandCursor)
         card.setMinimumHeight(72)
+        card.setObjectName("docCard")  # scoped selector — see _mk_action_card for why
         card.setStyleSheet(
-            f"QFrame{{background:{t.bg_panel};border:1px solid {t.border};border-radius:10px;}}"
+            f"QFrame#docCard{{background:{t.bg_panel};border:1px solid {t.border};border-radius:10px;}}"
         )
         hl = QHBoxLayout(card)
         hl.setContentsMargins(14, 12, 14, 12)
@@ -1742,13 +1752,13 @@ class AayDocCapioApp(QMainWindow):
         text_col.addWidget(title_lbl)
         sub_lbl = QLabel(sub)
         sub_lbl.setWordWrap(True)
-        sub_lbl.setStyleSheet(f"color:{t.text_muted}; font-size:10.5px; background:transparent;")
+        sub_lbl.setStyleSheet(f"color:{t.text_muted}; font-size:11px; background:transparent;")
         text_col.addWidget(sub_lbl)
         hl.addLayout(text_col, 1)
 
         def _toggle_border(checked):
             card.setStyleSheet(
-                f"QFrame{{background:{t.bg_panel};"
+                f"QFrame#docCard{{background:{t.bg_panel};"
                 f"border:1px solid {t.accent_it if checked else t.border};border-radius:10px;}}")
         cb.toggled.connect(_toggle_border)
 
@@ -1769,45 +1779,55 @@ class AayDocCapioApp(QMainWindow):
         """(Re)build Section A's client rows from self.assessee_list. Called
         once when the tab is first built (assessee_list doesn't exist yet
         at that point — _build_ui() runs before the first refresh_grid())
-        and again every time refresh_grid() runs, so add/edit/delete/import
-        stay reflected here too."""
-        if not hasattr(self, "_dl_client_list_layout"):
+        and again every time refresh_grid() runs (including on every theme
+        switch, since _repaint_theme() calls refresh_grid() for the main
+        client_table too), so add/edit/delete/import stay reflected here.
+
+        Uses a real QTableWidget — matching self.client_table's own
+        pattern exactly (QTableWidgetItem cells + a WA_StyledBackground
+        checkbox container) — rather than hand-rolled QLabel/QFrame rows.
+        The earlier hand-rolled version rendered every cell wrapped in a
+        stray bordered box in practice: plain QWidget/QFrame children only
+        honour a stylesheet `background` once WA_StyledBackground is set,
+        which client_table's own checkbox cells already do (see
+        refresh_grid()) and the old version of this method didn't.
+        QTableWidgetItem sidesteps the whole issue — its painting isn't
+        stylesheet-cascaded child-widget painting at all. This is also
+        far cheaper to rebuild than ~400 individual QWidgets, which is
+        what made theme switches feel like a hang before."""
+        if not hasattr(self, "_dl_table"):
             return
         t = _t()
-        layout = self._dl_client_list_layout
-        while layout.count():
-            item = layout.takeAt(0)
-            w = item.widget()
-            if w:
-                w.deleteLater()
+        table = self._dl_table
+        table.setRowCount(0)
         self._dl_client_cbs = {}
-        for a in getattr(self, "assessee_list", []):
-            row = QFrame()
-            # Explicit background:transparent — without it, this app's global
-            # QWidget{} QSS rule makes an unstyled QFrame paint an opaque
-            # (usually white) fill instead of staying see-through, a known
-            # Qt/QSS quirk every other container in this file works around
-            # the same way.
-            row.setStyleSheet(f"QFrame{{background:transparent;border-bottom:1px solid {t.grid};}}")
-            rl = QHBoxLayout(row)
-            rl.setContentsMargins(10, 8, 10, 8)
-            rl.setSpacing(10)
+        assessees = getattr(self, "assessee_list", [])
+        table.setRowCount(len(assessees))
+        for i, a in enumerate(assessees):
+            cb_container = QWidget()
+            cb_container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            cb_container.setStyleSheet(f"QWidget{{background:{t.bg_table};}}")
+            cl = QHBoxLayout(cb_container)
+            cl.setContentsMargins(0, 0, 0, 0)
+            cl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             cb = QCheckBox()
+            cb.setStyleSheet(
+                f"QCheckBox{{background:transparent;}}"
+                f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {t.border};"
+                f"border-radius:3px;background:{t.bg_checkbox};}}"
+                f"QCheckBox::indicator:checked{{background:{t.accent_it};border-color:{t.accent_it};}}")
             cb.setChecked(True)
             cb.toggled.connect(self._dl_update_summary)
             self._dl_client_cbs[a.get("id")] = cb
-            rl.addWidget(cb)
-            name_lbl = _lbl(a.get("name", ""), 11)
-            name_lbl.setStyleSheet(name_lbl.styleSheet() + "background:transparent;")
-            rl.addWidget(name_lbl, 2)
-            pan_lbl = QLabel(a.get("pan", "—"))
-            pan_lbl.setStyleSheet(f"color:{t.text_muted}; font-size:10.5px; background:transparent;")
-            rl.addWidget(pan_lbl, 1)
-            group_lbl = QLabel(a.get("group") or "—")
-            group_lbl.setStyleSheet(f"color:{t.text_muted}; font-size:10.5px; background:transparent;")
-            rl.addWidget(group_lbl, 1)
-            layout.addWidget(row)
-        layout.addStretch(1)
+            cl.addWidget(cb)
+            table.setCellWidget(i, 0, cb_container)
+
+            name_item = QTableWidgetItem(a.get("name", ""))
+            table.setItem(i, 1, name_item)
+            pan_item = QTableWidgetItem(a.get("pan", "—"))
+            table.setItem(i, 2, pan_item)
+            group_item = QTableWidgetItem(a.get("group") or "—")
+            table.setItem(i, 3, group_item)
         if hasattr(self, "_dl_summary_lbl"):
             self._dl_update_summary()
 
@@ -1871,26 +1891,28 @@ class AayDocCapioApp(QMainWindow):
         a_hdr.addWidget(select_all_cb)
         sec_a.addLayout(a_hdr)
 
-        client_box = QFrame()
-        client_box.setStyleSheet(
-            f"QFrame{{background:{t.bg_panel};border:1px solid {t.border};border-radius:10px;}}")
-        client_box.setMaximumHeight(220)
-        cb_layout = QVBoxLayout(client_box)
-        cb_layout.setContentsMargins(0, 0, 0, 0)
-        cb_layout.setSpacing(0)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}")
-        scroll.viewport().setStyleSheet("background:transparent;")
-        scroll_body = QWidget()
-        scroll_body.setStyleSheet("background:transparent;")
-        self._dl_client_list_layout = QVBoxLayout(scroll_body)
-        self._dl_client_list_layout.setContentsMargins(4, 4, 4, 4)
-        self._dl_client_list_layout.setSpacing(0)
-        scroll.setWidget(scroll_body)
-        cb_layout.addWidget(scroll)
-        sec_a.addWidget(client_box)
+        self._dl_table = QTableWidget()
+        self._dl_table.setColumnCount(4)
+        self._dl_table.setHorizontalHeaderLabels(["", "Name", "PAN", "Group"])
+        self._dl_table.verticalHeader().setVisible(False)
+        self._dl_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._dl_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self._dl_table.setShowGrid(False)
+        self._dl_table.setMaximumHeight(220)
+        self._dl_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self._dl_table.setColumnWidth(0, 34)
+        self._dl_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self._dl_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self._dl_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self._dl_table.setStyleSheet(
+            f"QTableWidget{{border:1px solid {t.border};border-radius:10px;"
+            f"background:{t.bg_table};outline:0;gridline-color:{t.grid};}}"
+            f"QTableWidget::item{{border-bottom:1px solid {t.grid};padding:6px;color:{t.text_primary};}}")
+        self._dl_table.horizontalHeader().setStyleSheet(
+            f"QHeaderView::section{{background-color:{t.bg_header};border:none;"
+            f"border-bottom:1px solid {t.border};font-weight:bold;color:{t.text_muted};"
+            f"font-size:10.5px;height:28px;padding-left:4px;}}")
+        sec_a.addWidget(self._dl_table)
         outer.addLayout(sec_a)
         self._dl_refresh_clients()
 
@@ -1919,13 +1941,14 @@ class AayDocCapioApp(QMainWindow):
         # Filing scope — only relevant once "ITR Return + Intimation" is checked
         scope_panel = QFrame()
         self._dl_scope_panel = scope_panel
+        scope_panel.setObjectName("scopePanel")  # scoped selector — see _mk_action_card
         scope_panel.setStyleSheet(
-            f"QFrame{{background:{t.bg_table_alt};border:1px solid {t.border};"
+            f"QFrame#scopePanel{{background:{t.bg_table_alt};border:1px solid {t.border};"
             f"border-left:3px solid {t.accent_it};border-radius:6px;}}")
         scope_v = QVBoxLayout(scope_panel)
         scope_v.setContentsMargins(12, 10, 12, 10)
         scope_v.setSpacing(4)
-        scope_v.addWidget(_lbl("FILING SCOPE", 10, bold=True, color=t.text_muted))
+        scope_v.addWidget(_lbl("FILING SCOPE", 10.5, bold=True, color=t.text_muted))
         self._dl_rb_all = QRadioButton("All filings for the year")
         self._dl_rb_latest = QRadioButton("Latest filing only")
         saved_scope = self.vault.get_setting("filed_returns_scope", "all")
@@ -1938,8 +1961,9 @@ class AayDocCapioApp(QMainWindow):
 
         # ── Section C: Execute ───────────────────────────────────────────────
         sec_c = QFrame()
+        sec_c.setObjectName("execBar")  # scoped selector — see _mk_action_card
         sec_c.setStyleSheet(
-            f"QFrame{{background:{t.bg_panel};border:1px solid {t.border};border-radius:10px;}}")
+            f"QFrame#execBar{{background:{t.bg_panel};border:1px solid {t.border};border-radius:10px;}}")
         c_layout = QHBoxLayout(sec_c)
         c_layout.setContentsMargins(16, 12, 16, 12)
         c_layout.addWidget(_lbl("C", 12, bold=True, color=t.accent_it))
