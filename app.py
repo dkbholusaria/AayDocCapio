@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QToolButton, QMenu, QCalendarWidget, QSystemTrayIcon,
     QGraphicsDropShadowEffect, QStackedWidget, QScrollArea, QRadioButton,
+    QGridLayout,
 )
 from PyQt6.QtCore import (
     Qt, pyqtSignal, pyqtSlot, QTimer, QMetaObject, Q_ARG, QUrl,
@@ -1720,12 +1721,13 @@ class AayDocCapioApp(QMainWindow):
         t = _t()
         card = QFrame()
         card.setCursor(Qt.CursorShape.PointingHandCursor)
+        card.setMinimumHeight(72)
         card.setStyleSheet(
             f"QFrame{{background:{t.bg_panel};border:1px solid {t.border};border-radius:10px;}}"
         )
         hl = QHBoxLayout(card)
-        hl.setContentsMargins(12, 10, 12, 10)
-        hl.setSpacing(9)
+        hl.setContentsMargins(14, 12, 14, 12)
+        hl.setSpacing(10)
 
         cb = QCheckBox()
         cb.setStyleSheet(
@@ -1781,16 +1783,23 @@ class AayDocCapioApp(QMainWindow):
         self._dl_client_cbs = {}
         for a in getattr(self, "assessee_list", []):
             row = QFrame()
-            row.setStyleSheet(f"QFrame{{border-bottom:1px solid {t.grid};}}")
+            # Explicit background:transparent — without it, this app's global
+            # QWidget{} QSS rule makes an unstyled QFrame paint an opaque
+            # (usually white) fill instead of staying see-through, a known
+            # Qt/QSS quirk every other container in this file works around
+            # the same way.
+            row.setStyleSheet(f"QFrame{{background:transparent;border-bottom:1px solid {t.grid};}}")
             rl = QHBoxLayout(row)
-            rl.setContentsMargins(10, 6, 10, 6)
+            rl.setContentsMargins(10, 8, 10, 8)
             rl.setSpacing(10)
             cb = QCheckBox()
             cb.setChecked(True)
             cb.toggled.connect(self._dl_update_summary)
             self._dl_client_cbs[a.get("id")] = cb
             rl.addWidget(cb)
-            rl.addWidget(_lbl(a.get("name", ""), 11), 2)
+            name_lbl = _lbl(a.get("name", ""), 11)
+            name_lbl.setStyleSheet(name_lbl.styleSheet() + "background:transparent;")
+            rl.addWidget(name_lbl, 2)
             pan_lbl = QLabel(a.get("pan", "—"))
             pan_lbl.setStyleSheet(f"color:{t.text_muted}; font-size:10.5px; background:transparent;")
             rl.addWidget(pan_lbl, 1)
@@ -1872,7 +1881,10 @@ class AayDocCapioApp(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}")
+        scroll.viewport().setStyleSheet("background:transparent;")
         scroll_body = QWidget()
+        scroll_body.setStyleSheet("background:transparent;")
         self._dl_client_list_layout = QVBoxLayout(scroll_body)
         self._dl_client_list_layout.setContentsMargins(4, 4, 4, 4)
         self._dl_client_list_layout.setSpacing(0)
@@ -1886,18 +1898,20 @@ class AayDocCapioApp(QMainWindow):
         sec_b = QVBoxLayout()
         sec_b.setSpacing(8)
         sec_b.addWidget(_lbl("B   Select Documents", 12, bold=True, color=t.accent_it))
-        doc_grid = QHBoxLayout()
-        doc_grid.setSpacing(10)
-        doc_grid.addWidget(self._mk_dl_doc_card(
-            "26as", "26AS / Form 168", "PDF + Excel/TXT — form picked automatically by year"))
-        doc_grid.addWidget(self._mk_dl_doc_card(
-            "request_ais", "AIS + TIS", "Requests generation if not ready yet, downloads instantly if it is"))
-        doc_grid.addWidget(self._mk_dl_doc_card(
-            "ais_tis", "Previously Requested AIS", "For AIS requested earlier that should be ready now"))
-        doc_grid.addWidget(self._mk_dl_doc_card(
-            "filed_returns", "ITR Return + Intimation", "Form, Receipt/ITR-V, JSON, and any Intimation Orders"))
-        doc_grid.addWidget(self._mk_dl_doc_card(
-            "challans", "Tax Payment Challans", "From e-Pay Tax Payment History for the selected year"))
+        doc_grid = QGridLayout()
+        doc_grid.setHorizontalSpacing(12)
+        doc_grid.setVerticalSpacing(12)
+        doc_cards = [
+            self._mk_dl_doc_card("26as", "26AS / Form 168", "PDF + Excel/TXT — form picked automatically by year"),
+            self._mk_dl_doc_card("request_ais", "AIS + TIS", "Requests generation if not ready yet, downloads instantly if it is"),
+            self._mk_dl_doc_card("ais_tis", "Previously Requested AIS", "For AIS requested earlier that should be ready now"),
+            self._mk_dl_doc_card("filed_returns", "ITR Return + Intimation", "Form, Receipt/ITR-V, JSON, and any Intimation Orders"),
+            self._mk_dl_doc_card("challans", "Tax Payment Challans", "From e-Pay Tax Payment History for the selected year"),
+        ]
+        for i, card in enumerate(doc_cards):
+            doc_grid.addWidget(card, i // 3, i % 3)
+        for col in range(3):
+            doc_grid.setColumnStretch(col, 1)
         sec_b.addLayout(doc_grid)
         for cb in self._dl_doc_cbs.values():
             cb.toggled.connect(self._dl_update_summary)
