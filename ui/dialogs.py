@@ -69,7 +69,7 @@ class ManageYearsDialog(QDialog):
         hdr_row.addWidget(_icon_lbl)
         txt_col = QVBoxLayout()
         txt_col.setSpacing(2)
-        txt_col.addWidget(_lbl("Manage Assessment / Tax Years", 13, bold=True))
+        txt_col.addWidget(_lbl("Manage Assessment / Tax Years", 12, bold=True))
         txt_col.addWidget(_lbl("Toggle enabled/disabled or add new years.", 10, color=t.text_muted))
         hdr_row.addLayout(txt_col)
         hdr_row.addStretch()
@@ -228,7 +228,7 @@ class ManageGroupsDialog(QDialog):
         main.setContentsMargins(20, 16, 20, 16)
         main.setSpacing(8)
 
-        main.addWidget(_lbl("Manage Groups", 13, bold=True))
+        main.addWidget(_lbl("Manage Groups", 12, bold=True))
         main.addWidget(_lbl(
             "Select a group below to see and edit which clients belong to it. "
             "Deleting a group only un-groups its clients — it never deletes them.",
@@ -707,7 +707,7 @@ class BatchProgressDialog(QDialog):
         footer.setContentsMargins(0, 0, 0, 0)
 
         loc_cap = QLabel("📁")
-        loc_cap.setStyleSheet("font-size:13px;background:transparent;")
+        loc_cap.setStyleSheet("font-size:12px;background:transparent;")
         loc_cap.setFixedWidth(18)
         footer.addWidget(loc_cap)
 
@@ -1481,7 +1481,7 @@ class SmtpSettingsDialog(QDialog):
         hdr_lay.setSpacing(0)
 
         title_row = QHBoxLayout()
-        title_row.addWidget(_lbl("Email Settings", 15, bold=True))
+        title_row.addWidget(_lbl("Email Settings", 14, bold=True))
         title_row.addStretch()
         help_btn = QPushButton("? Help")
         help_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1769,7 +1769,7 @@ class SmtpSettingsDialog(QDialog):
         _hdr_lay.setContentsMargins(16, 10, 16, 10)
         self._tpl_header_lbl = QLabel("")
         self._tpl_header_lbl.setStyleSheet(
-            f"font-size:13px;font-weight:bold;color:{t.text_primary};background:transparent;")
+            f"font-size:12px;font-weight:bold;color:{t.text_primary};background:transparent;")
         self._tpl_default_lbl = QLabel("Default")
         self._tpl_default_lbl.setStyleSheet(
             f"font-size:10px;color:{t.accent};background:transparent;"
@@ -2453,7 +2453,7 @@ class SmtpSettingsDialog(QDialog):
         t = _t()
         self._save_close_btn.setStyleSheet(
             f"QPushButton{{background:{t.accent};color:{t.accent_text};border:none;"
-            f"border-radius:8px;font-size:13px;font-weight:600;padding:0 18px;}}"
+            f"border-radius:8px;font-size:12px;font-weight:600;padding:0 18px;}}"
             f"QPushButton:hover{{background:{t.accent_hover};}}")
 
     def _on_save_close_clicked(self):
@@ -2612,7 +2612,7 @@ class EmailLogDialog(QDialog):
             f"QWidget{{background:{t.bg_table_alt};border-bottom:1px solid {t.border};}}")
         tb = QHBoxLayout(title_bar)
         tb.setContentsMargins(20, 10, 16, 10)
-        tb.addWidget(_lbl("Email Activity Log", 13, bold=True))
+        tb.addWidget(_lbl("Email Activity Log", 12, bold=True))
         tb.addSpacing(8)
         tb.addWidget(_lbl(self._path, 10, color=t.text_muted))
         tb.addStretch()
@@ -3490,7 +3490,7 @@ class GenerateChallansDialog(QDialog):
         # muted caption, so it can't be missed.
         self._type_label = QLabel("")
         self._type_label.setStyleSheet(
-            f"color:{_bt.accent_text};background:{_bt.accent};font-size:13px;"
+            f"color:{_bt.accent_text};background:{_bt.accent};font-size:12px;"
             f"font-weight:bold;padding:4px 10px;border-radius:10px;")
         fy_row.addWidget(self._type_label)
         fy_row.addStretch(1)
@@ -3687,7 +3687,7 @@ class GenerateChallansDialog(QDialog):
             self._type_label.setText(f"→ {label}")
             _bt = _t()
             self._type_label.setStyleSheet(
-                f"color:{_bt.accent_text};background:{_bt.accent};font-size:13px;"
+                f"color:{_bt.accent_text};background:{_bt.accent};font-size:12px;"
                 f"font-weight:bold;padding:4px 10px;border-radius:10px;")
             self._tax_type_valid = True
             year_type = self._tax_types[tax_type]["act_year_type"]
@@ -4345,7 +4345,7 @@ class DownloadPickerDialog(QDialog):
             f"QDialog{{background:{t.bg_window};}}"
             f"QLabel{{color:{t.text_primary};background:transparent;}}"
             f"QCheckBox{{color:{t.text_primary};background:transparent;"
-            f"font-size:13px;font-weight:600;spacing:9px;}}"
+            f"font-size:12px;font-weight:600;spacing:9px;}}"
             f"QCheckBox::indicator{{width:16px;height:16px;border:1.5px solid {t.border};"
             f"border-radius:4px;background:{t.bg_checkbox};}}"
             f"QCheckBox::indicator:hover{{border-color:{t.border_focus};}}"
@@ -4403,7 +4403,7 @@ class DownloadPickerDialog(QDialog):
         scope_v.setContentsMargins(12, 10, 12, 10)
         scope_v.setSpacing(4)
         scope_title = QLabel("FILING SCOPE")
-        scope_title.setStyleSheet(f"font-size:10.5px;font-weight:700;color:{t.text_muted};letter-spacing:0.04em;")
+        scope_title.setStyleSheet(f"font-size:10px;font-weight:700;color:{t.text_muted};letter-spacing:0.04em;")
         scope_v.addWidget(scope_title)
 
         _scope_sub_ss = f"font-size:11px;color:{t.text_muted};margin-left:23px;"

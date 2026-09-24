@@ -665,7 +665,7 @@ class AayDocCapioApp(QMainWindow):
                 )
         if hasattr(self, "_hdr_crumb"):
             self._hdr_crumb.setStyleSheet(
-                f"color:{t.text_muted}; font-size:13px; font-weight:600;"
+                f"color:{t.text_muted}; font-size:12px; font-weight:600;"
                 f" background:transparent; border:none;")
         for lbl in (getattr(self, "_hdr_version", None), getattr(self, "_hdr_copy", None)):
             if lbl:
@@ -694,7 +694,7 @@ class AayDocCapioApp(QMainWindow):
         if hasattr(self, "search_box"):
             self.search_box.setStyleSheet(
                 f"QLineEdit{{background:{t.bg_input};border:1.5px solid {t.border};"
-                f"border-radius:6px;padding:4px 10px;font-size:13px;"
+                f"border-radius:6px;padding:4px 10px;font-size:12px;"
                 f"color:{t.text_primary};min-height:28px;}}"
                 f"QLineEdit:focus{{border-color:{t.border_focus};background:{t.bg_input_focus};}}"
                 f"QLineEdit::placeholder{{color:{t.text_muted};}}"
@@ -728,7 +728,7 @@ class AayDocCapioApp(QMainWindow):
         if hasattr(self, "btn_run"):
             self.btn_run.setStyleSheet(
                 f"QToolButton{{background:{t.accent};color:{t.accent_text};border:none;"
-                f"border-radius:6px;font-size:13px;font-weight:600;padding:0 14px;}}"
+                f"border-radius:6px;font-size:12px;font-weight:600;padding:0 14px;}}"
                 f"QToolButton:hover{{background:{t.accent_hover};}}"
                 f"QToolButton::menu-button{{border:none;width:20px;}}"
                 f"QToolButton:disabled{{background:{t.border};color:{t.text_muted};}}")
@@ -736,7 +736,7 @@ class AayDocCapioApp(QMainWindow):
                 self.btn_run.menu().setStyleSheet(
                     f"QMenu{{background:{t.bg_menu};border:1.5px solid {t.border_menu};"
                     f"border-radius:8px;padding:4px 0;}}"
-                    f"QMenu::item{{padding:8px 18px;font-size:13px;color:{t.text_primary};}}"
+                    f"QMenu::item{{padding:8px 18px;font-size:12px;color:{t.text_primary};}}"
                     f"QMenu::item:selected{{background:{t.accent};color:{t.accent_text};}}"
                     f"QMenu::separator{{height:1px;background:{t.border_menu};margin:4px 0;}}")
 
@@ -865,7 +865,7 @@ class AayDocCapioApp(QMainWindow):
         desc = QLabel("Automates day-to-day Income Tax compliance work for CAs — bulk document retrieval, "
                       "E-Pay Tax challans, return processing status and client document delivery — all from "
                       "one secure desktop app, directly against the e-Filing Portal.")
-        desc.setStyleSheet(f"color:{_ab.text_primary}; font-size:13px;")
+        desc.setStyleSheet(f"color:{_ab.text_primary}; font-size:12px;")
         desc.setWordWrap(True)
         vl.addWidget(desc)
         vl.addSpacing(12)
@@ -883,7 +883,7 @@ class AayDocCapioApp(QMainWindow):
             f'<b style="color:{_ab.text_primary};">Doc</b> (Documents) · '
             f'<b style="color:{_ab.accent};">Capio</b> <span style="color:{_ab.text_muted};">(Latin: To Obtain)</span>'
         )
-        name_exp.setStyleSheet("font-size:13px; background:transparent; border:none;")
+        name_exp.setStyleSheet("font-size:12px; background:transparent; border:none;")
         name_sub = QLabel("AayDoc Capio automates the repetitive, manual side of Income Tax portal work — "
                           "so tax professionals spend less time on downloads and data entry, and more time "
                           "on the advisory work that actually needs them.")
@@ -920,10 +920,10 @@ class AayDocCapioApp(QMainWindow):
             if url:
                 lbl = QLabel(f'<a href="{url}" style="color:{_ab.accent}; text-decoration:none;">{display_text}</a>')
                 lbl.setOpenExternalLinks(True)
-                lbl.setStyleSheet("background:transparent; border:none; font-size:13px;")
+                lbl.setStyleSheet("background:transparent; border:none; font-size:12px;")
             else:
                 lbl = QLabel(display_text)
-                lbl.setStyleSheet(f"color:{_ab.text_primary}; font-size:13px; font-weight:600; background:transparent; border:none;")
+                lbl.setStyleSheet(f"color:{_ab.text_primary}; font-size:12px; font-weight:600; background:transparent; border:none;")
             row.addWidget(lbl)
             row.addStretch()
             return row
@@ -954,7 +954,7 @@ class AayDocCapioApp(QMainWindow):
         close_btn = QPushButton("Close")
         close_btn.setFixedWidth(100)
         close_btn.setStyleSheet(
-            f"QPushButton {{ background:{_ab.accent}; color:{_ab.accent_text}; border:none; border-radius:6px; padding:8px 16px; font-size:13px; }}"
+            f"QPushButton {{ background:{_ab.accent}; color:{_ab.accent_text}; border:none; border-radius:6px; padding:8px 16px; font-size:12px; }}"
             f"QPushButton:hover {{ background:{_ab.accent_hover}; }}")
         close_btn.clicked.connect(dlg.accept)
         btn_row = QHBoxLayout(); btn_row.addStretch(); btn_row.addWidget(close_btn)
@@ -1025,6 +1025,7 @@ class AayDocCapioApp(QMainWindow):
         about_btn.setFixedSize(32, 32)
         about_btn.setToolTip("About AayDocCapio")
         about_btn.setStyleSheet(
+            # Icon glyph size, not part of the text type scale
             f"QPushButton {{ background:transparent; border:none; font-size:20px; color:{_t().error}; }}"
             f"QPushButton:hover {{ color:{_t().error}; }}")
         about_btn.clicked.connect(self._show_about)
@@ -1465,7 +1466,7 @@ class AayDocCapioApp(QMainWindow):
         self.btn_run.setStyleSheet(
             "QToolButton{"
             f"  background:{_t().success}; color:{_t().accent_text}; border:none;"
-            "  border-radius:8px; font-size:13px; font-weight:600; padding:0 14px;"
+            "  border-radius:8px; font-size:12px; font-weight:600; padding:0 14px;"
             "}"
             f"QToolButton:hover{{ background:{_t().success}; }}"
             f"QToolButton:disabled{{ background:{_t().success_bg}; color:{_t().text_muted}; }}"
@@ -1484,7 +1485,7 @@ class AayDocCapioApp(QMainWindow):
         self.btn_epay.setStyleSheet(
             "QToolButton{"
             f"  background:{_t().accent}; color:{_t().accent_text}; border:none;"
-            "  border-radius:8px; font-size:13px; font-weight:600; padding:0 14px;"
+            "  border-radius:8px; font-size:12px; font-weight:600; padding:0 14px;"
             "}"
             f"QToolButton:hover{{ background:{_t().accent_hover}; }}"
             f"QToolButton:disabled{{ background:{_t().accent_light}; color:{_t().text_muted}; }}"
@@ -1720,7 +1721,7 @@ class AayDocCapioApp(QMainWindow):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(10)
-        layout.addWidget(_lbl(title, 16, bold=True))
+        layout.addWidget(_lbl(title, 14, bold=True))
         desc_lbl = QLabel(desc)
         desc_lbl.setWordWrap(True)
         desc_lbl.setStyleSheet(f"color:{t.text_muted}; font-size:12px; background:transparent;")
@@ -1884,7 +1885,7 @@ class AayDocCapioApp(QMainWindow):
         outer.setContentsMargins(24, 24, 24, 20)
         outer.setSpacing(18)
 
-        outer.addWidget(_lbl("Download Documents", 16, bold=True))
+        outer.addWidget(_lbl("Download Documents", 14, bold=True))
         sub = QLabel("Pick clients, pick documents, then run — one batch, unattended.")
         sub.setStyleSheet(f"color:{t.text_muted}; font-size:12px; background:transparent;")
         outer.addWidget(sub)
@@ -1921,7 +1922,7 @@ class AayDocCapioApp(QMainWindow):
         self._dl_table.horizontalHeader().setStyleSheet(
             f"QHeaderView::section{{background-color:{t.bg_header};border:none;"
             f"border-bottom:1px solid {t.border};font-weight:bold;color:{t.text_muted};"
-            f"font-size:10.5px;height:28px;padding-left:4px;}}")
+            f"font-size:10px;height:28px;padding-left:4px;}}")
         sec_a.addWidget(self._dl_table)
         outer.addLayout(sec_a)
         self._dl_refresh_clients()
@@ -1958,7 +1959,7 @@ class AayDocCapioApp(QMainWindow):
         scope_v = QVBoxLayout(scope_panel)
         scope_v.setContentsMargins(12, 10, 12, 10)
         scope_v.setSpacing(4)
-        scope_v.addWidget(_lbl("FILING SCOPE", 10.5, bold=True, color=t.text_muted))
+        scope_v.addWidget(_lbl("FILING SCOPE", 10, bold=True, color=t.text_muted))
         self._dl_rb_all = QRadioButton("All filings for the year")
         self._dl_rb_latest = QRadioButton("Latest filing only")
         saved_scope = self.vault.get_setting("filed_returns_scope", "all")
@@ -1994,7 +1995,7 @@ class AayDocCapioApp(QMainWindow):
         outer = QVBoxLayout(page)
         outer.setContentsMargins(24, 24, 24, 24)
         outer.setSpacing(14)
-        outer.addWidget(_lbl("Tools", 16, bold=True))
+        outer.addWidget(_lbl("Tools", 14, bold=True))
         desc = QLabel("Manual conversions for when a full batch run isn't what you need.")
         desc.setStyleSheet(f"color:{_t().text_muted}; font-size:12px; background:transparent;")
         outer.addWidget(desc)
@@ -2139,7 +2140,7 @@ class AayDocCapioApp(QMainWindow):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(24, 40, 24, 20)
         layout.setSpacing(8)
-        layout.addWidget(_lbl(title, 15, bold=True))
+        layout.addWidget(_lbl(title, 14, bold=True))
         lbl_body = QLabel(body)
         lbl_body.setWordWrap(True)
         lbl_body.setStyleSheet(f"color:{_t().text_muted}; font-size:12px; background:transparent;")
@@ -2651,7 +2652,7 @@ class AayDocCapioApp(QMainWindow):
         vl.setSpacing(0)
 
         title_lbl = QLabel("Edit Client" if editing else "Add New Client")
-        title_lbl.setStyleSheet(f"font-size:16px;font-weight:700;color:{t.text_primary};")
+        title_lbl.setStyleSheet(f"font-size:14px;font-weight:700;color:{t.text_primary};")
         vl.addWidget(title_lbl)
         vl.addSpacing(18)
 
@@ -2708,7 +2709,7 @@ class AayDocCapioApp(QMainWindow):
         cal_btn.setToolTip("Pick date from calendar")
         cal_btn.setStyleSheet(
             f"QPushButton{{background:{t.bg_input};border:1px solid {t.border};"
-            f"border-radius:6px;font-size:15px;}}"
+            f"border-radius:6px;font-size:14px;}}"
             f"QPushButton:hover{{border-color:{t.border_focus};}}")
 
         dob_row.addWidget(dob_edit, 1)
@@ -3927,7 +3928,7 @@ class AayDocCapioApp(QMainWindow):
             f"QMessageBox{{background:{_sm.bg_window};color:{_sm.text_primary};}}"
             f"QLabel{{color:{_sm.text_primary};background:transparent;}}"
             f"QPushButton{{background:{_sm.accent};color:{_sm.accent_text};border:none;"
-            f"border-radius:5px;padding:6px 18px;font-size:13px;}}"
+            f"border-radius:5px;padding:6px 18px;font-size:12px;}}"
             f"QPushButton:hover{{background:{_sm.accent_hover};}}"
             f"QPushButton[text='No']{{background:{_sm.border};color:{_sm.text_primary};}}"
         )
@@ -4664,7 +4665,7 @@ class _SplashScreen(QWidget):
         self._status_label = QLabel("Starting AayDocCapio")
         self._status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._status_label.setStyleSheet(
-            f"color:{_t().text_muted};font-size:13px;background:transparent;")
+            f"color:{_t().text_muted};font-size:12px;background:transparent;")
         outer.addWidget(self._status_label)
 
         self.setFixedSize(pixmap.width() + 80, pixmap.height() + 96)
