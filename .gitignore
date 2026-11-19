@@ -64,6 +64,9 @@ checkmark.png
 Plans/
 PlansofThisProject/
 
+# Local test-download output (real client documents — never commit)
+Downloads-demo/
+
 # ICAI CA PRACTO submission drafts (not for version control)
 ICAI_Submission/
 

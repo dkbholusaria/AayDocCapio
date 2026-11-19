@@ -575,6 +575,7 @@ class BatchProgressDialog(QDialog):
             "ais_tis":        "AIS / TIS",
             "filed_returns":  "Filed Returns",
             "challans":       "Tax Challans",
+            "e_proceedings":  "e-Proceedings",
         }
         mode_label = " + ".join(
             _doc_labels.get(d, d) for d in sorted(selected_docs)
@@ -4394,6 +4395,9 @@ class DownloadPickerDialog(QDialog):
         add_option("challans", "Tax Payment Challans",
                     "Downloads challan PDFs from e-Pay Tax Payment History for the selected year")
 
+        add_option("e_proceedings", "e-Proceedings Documents",
+                    "Notices, orders and your submitted responses — all proceedings, both tabs")
+
         self._scope_panel = QFrame()
         self._scope_panel.setStyleSheet(
             f"QFrame{{background:{t.bg_table_alt};border:1px solid {t.border};"
@@ -4456,6 +4460,330 @@ class DownloadPickerDialog(QDialog):
         except Exception:
             pass
         self.accept()
+
+
+# ── e-Proceedings Viewer Dialog (F-60) ────────────────────────────────────────
+
+class EProceedingsDialog(QDialog):
+    """
+    Tools → View e-Proceedings (F-60 UI phase). Read-only viewer over the
+    documents the backend already downloaded under
+    <client_year_folder>/e-Proceedings/<NN>-<ProcName>/{notice-NN,response-NN}/
+    — pure local filesystem scanning, never touches Playwright/portal.
+
+    Launch paths: Tools menu (client taken from the grid selection, year
+    resolved the same way _execute_batch's _out_for_year does) and the grid's
+    right-click menu (client fixed by the clicked row). A missing root just
+    shows the empty state.
+    """
+
+    _FILE_EXTS = (".pdf", ".jpg", ".jpeg", ".png")
+
+    def __init__(self, parent, client_name: str, pan: str, eproc_root: str):
+        super().__init__(parent)
+        self._client_name = client_name
+        self._pan = pan
+        self._eproc_root = eproc_root
+        # [{"name","dir","num","files":[{"path","name","size","kind"}]}, ...]
+        # sorted by the NN prefix so the list order matches the portal's own.
+        self._proceedings = []
+
+        self.setWindowTitle("e-Proceedings")
+        self.setMinimumSize(880, 560)
+        self.resize(1000, 640)
+        self.setSizeGripEnabled(True)
+        self.setStyleSheet(f"QDialog{{background:{_t().bg_window};}}")
+
+        self._build_ui()
+        self._rescan()
+
+    # ── Scanning ──────────────────────────────���───────────────────────────────
+
+    @staticmethod
+    def _human_size(n: int) -> str:
+        if n >= 1024 * 1024:
+            return f"{n / (1024 * 1024):.1f} MB"
+        if n >= 1024:
+            return f"{n / 1024:.1f} KB"
+        return f"{n} B"
+
+    @classmethod
+    def _scan_proceedings(cls, eproc_root: str) -> list:
+        """One level of proceedings (NN-* dirs; tolerant of anything else),
+        then walk each one for PDF/image files. Kind comes from the first
+        subfolder component (notice-* → Notice, response-* → Response);
+        loose files inside the proceeding dir get "—". Unnumbered dirs sort
+        last so a stray folder can't jump ahead of 01-…"""
+        procs = []
+        try:
+            entries = os.listdir(eproc_root)
+        except OSError:
+            return procs
+        for name in entries:
+            pdir = os.path.join(eproc_root, name)
+            if not os.path.isdir(pdir):
+                continue
+            digits = ""
+            i = 0
+            while i < len(name) and name[i].isdigit():
+                digits += name[i]
+                i += 1
+            num = int(digits) if digits else 10 ** 6
+            label = name[i:].lstrip("-") if digits else name
+            files = []
+            for dirpath, _dirnames, filenames in os.walk(pdir):
+                first = os.path.relpath(dirpath, pdir).split(os.sep)[0].lower()
+                if first.startswith("notice"):
+                    kind = "Notice"
+                elif first.startswith("response"):
+                    kind = "Response"
+                else:
+                    kind = "—"
+                for fn in filenames:
+                    if not fn.lower().endswith(cls._FILE_EXTS):
+                        continue
+                    fp = os.path.join(dirpath, fn)
+                    try:
+                        size = os.path.getsize(fp)
+                    except OSError:
+                        size = 0
+                    files.append({"path": fp, "name": fn, "size": size, "kind": kind})
+            files.sort(key=lambda f: f["path"].lower())
+            procs.append({"name": name, "dir": pdir, "num": num, "files": files})
+        procs.sort(key=lambda p: (p["num"], p["name"].lower()))
+        return procs
+
+    # ── UI ────────────────────────────────────────────────────────────────────
+
+    def _build_ui(self):
+        from PyQt6.QtWidgets import QListWidget, QListWidgetItem, QStackedWidget
+        from PyQt6.QtCore import QSize
+        from config import _bundled_dir
+        t = _t()
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 14, 16, 12)
+        layout.setSpacing(8)
+
+        # Header: app icon + title + subtitle, same shape as ManageYearsDialog
+        hdr_row = QHBoxLayout()
+        hdr_row.setSpacing(12)
+        icon_lbl = QLabel()
+        icon_lbl.setStyleSheet("background:transparent;")
+        icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
+        if os.path.isfile(icon_path):
+            icon_lbl.setPixmap(QPixmap(icon_path).scaled(
+                40, 40, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation))
+        hdr_row.addWidget(icon_lbl)
+        txt_col = QVBoxLayout()
+        txt_col.setSpacing(2)
+        txt_col.addWidget(_lbl(f"e-Proceedings — {self._client_name}", 13, bold=True))
+        txt_col.addWidget(_lbl(f"PAN: {self._pan} • {self._eproc_root}", 10, color=t.text_muted))
+        hdr_row.addLayout(txt_col)
+        hdr_row.addStretch()
+        layout.addLayout(hdr_row)
+
+        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet(f"background:{t.border};border:none;max-height:1px;")
+        layout.addWidget(sep)
+
+        # Summary strip: proceedings / files / total size, recomputed on rescan
+        self._summary_lbl = _lbl("", 11, bold=True, color=t.text_muted)
+        layout.addWidget(self._summary_lbl)
+
+        self._stack = QStackedWidget()
+        layout.addWidget(self._stack, 1)
+
+        # Empty state — missing root or zero proceedings
+        empty_page = QWidget()
+        empty_v = QVBoxLayout(empty_page)
+        empty_v.addStretch()
+        msg = _lbl("No e-Proceedings downloaded yet for this client.", 12)
+        msg.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        empty_v.addWidget(msg)
+        hint = _lbl("Run Download → e-Proceedings Documents.", 11, color=t.text_muted)
+        hint.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        empty_v.addWidget(hint)
+        empty_v.addStretch()
+        self._stack.addWidget(empty_page)
+
+        # Main page: proceedings list (left) + files of the selected one (right)
+        body_page = QWidget()
+        body = QHBoxLayout(body_page)
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(10)
+
+        left_col = QVBoxLayout(); left_col.setSpacing(4)
+        left_col.addWidget(_lbl("PROCEEDINGS", 10, bold=True, color=t.text_muted))
+        self._proc_list = QListWidget()
+        self._proc_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._proc_list.setStyleSheet(
+            f"QListWidget{{background:{t.bg_table};border:1px solid {t.border};"
+            f"border-radius:8px;outline:0;padding:4px;color:{t.text_primary};}}"
+            f"QListWidget::item{{padding:8px 10px;margin:1px 0;border-radius:4px;}}"
+            f"QListWidget::item:selected{{background:{t.accent_light};color:{t.text_primary};}}"
+            f"QListWidget::item:hover{{background:{t.bg_table_alt};}}")
+        self._proc_list.currentItemChanged.connect(self._on_proc_selected)
+        self._proc_list.itemDoubleClicked.connect(lambda _it: self._open_selected_folder())
+        left_col.addWidget(self._proc_list, 1)
+        body.addLayout(left_col, 2)
+
+        right_col = QVBoxLayout(); right_col.setSpacing(4)
+        self._files_caption = _lbl("FILES", 10, bold=True, color=t.text_muted)
+        right_col.addWidget(self._files_caption)
+        self._file_list = QListWidget()
+        self._file_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._file_list.setStyleSheet(
+            f"QListWidget{{background:{t.bg_table};border:1px solid {t.border};"
+            f"border-radius:8px;outline:0;padding:4px;color:{t.text_primary};}}"
+            f"QListWidget::item{{padding:0;margin:1px 0;border-radius:4px;}}"
+            f"QListWidget::item:selected{{background:{t.accent_light};}}"
+            f"QListWidget::item:hover{{background:{t.bg_table_alt};}}")
+        self._file_list.itemDoubleClicked.connect(lambda _it: self._open_selected_file())
+        right_col.addWidget(self._file_list, 1)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+        self._btn_open_file = _btn("Open File", "primary", height=32, icon="icon_preview.png")
+        self._btn_open_file.clicked.connect(self._open_selected_file)
+        btn_row.addWidget(self._btn_open_file)
+        btn_row.addStretch()
+        self._btn_open_folder = _btn("Open Folder", "outline", height=32, icon="btn_open.png")
+        self._btn_open_folder.clicked.connect(self._open_selected_folder)
+        btn_row.addWidget(self._btn_open_folder)
+        right_col.addLayout(btn_row)
+        body.addLayout(right_col, 3)
+        self._stack.addWidget(body_page)
+
+        # Footer: hint + Refresh + Close (ReturnStatusDialog footer shape)
+        footer = QHBoxLayout()
+        self._hint_lbl = QLabel("Double-click a file to open it.")
+        self._hint_lbl.setStyleSheet(f"color:{t.text_muted};font-size:11px;background:transparent;")
+        footer.addWidget(self._hint_lbl, 1)
+        refresh_btn = _btn("Refresh", "outline", height=32, icon="btn_refresh.png")
+        refresh_btn.clicked.connect(self._rescan)
+        footer.addWidget(refresh_btn)
+        close_btn = _btn("Close", "outline", height=32)
+        close_btn.clicked.connect(self.accept)
+        footer.addWidget(close_btn)
+        layout.addLayout(footer)
+
+    def _make_file_row(self, f: dict) -> QWidget:
+        """Row widget for the file list: name (stretch) • size • kind tag."""
+        t = _t()
+        row = QWidget()
+        row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        row.setStyleSheet("QWidget{background:transparent;}")
+        hl = QHBoxLayout(row)
+        hl.setContentsMargins(10, 4, 10, 4)
+        hl.setSpacing(8)
+        name_lbl = QLabel(f["name"])
+        name_lbl.setStyleSheet(f"background:transparent;font-size:12px;color:{t.text_primary};")
+        hl.addWidget(name_lbl, 1)
+        size_lbl = QLabel(self._human_size(f["size"]))
+        size_lbl.setStyleSheet(f"background:transparent;font-size:11px;color:{t.text_muted};")
+        hl.addWidget(size_lbl)
+        kind_color = (t.accent_it if f["kind"] == "Notice"
+                      else t.success if f["kind"] == "Response"
+                      else t.text_muted)
+        kind_lbl = QLabel(f["kind"])
+        kind_lbl.setStyleSheet(
+            f"background:transparent;font-size:11px;font-weight:bold;color:{kind_color};")
+        hl.addWidget(kind_lbl)
+        return row
+
+    # ── Population / selection ────────────────────────────────────────────────
+
+    def _rescan(self):
+        self._proceedings = self._scan_proceedings(self._eproc_root)
+        n = len(self._proceedings)
+        n_files = sum(len(p["files"]) for p in self._proceedings)
+        total = sum(f["size"] for p in self._proceedings for f in p["files"])
+        self._summary_lbl.setText(
+            f"{n} proceeding{'s' if n != 1 else ''} • "
+            f"{n_files} file{'s' if n_files != 1 else ''} • {self._human_size(total)}")
+        self._refresh_proc_list()
+        self._stack.setCurrentIndex(1 if self._proceedings else 0)
+
+    def _refresh_proc_list(self):
+        from PyQt6.QtWidgets import QListWidgetItem
+        from PyQt6.QtCore import QSize
+        self._proc_list.blockSignals(True)
+        self._proc_list.clear()
+        for i, p in enumerate(self._proceedings):
+            n_files = len(p["files"])
+            item = QListWidgetItem(f"{p['name']} — {n_files} file{'s' if n_files != 1 else ''}")
+            item.setData(Qt.ItemDataRole.UserRole, i)
+            item.setSizeHint(QSize(0, 30))
+            self._proc_list.addItem(item)
+        self._proc_list.blockSignals(False)
+        if self._proceedings:
+            # Fires _on_proc_selected → _refresh_file_list with row 0 selected.
+            self._proc_list.setCurrentRow(0)
+        else:
+            self._refresh_file_list()
+
+    def _on_proc_selected(self, _current=None, _previous=None):
+        self._refresh_file_list()
+
+    def _current_proc(self):
+        it = self._proc_list.currentItem()
+        if not it:
+            return None
+        try:
+            idx = int(it.data(Qt.ItemDataRole.UserRole))
+        except (TypeError, ValueError):
+            return None
+        if 0 <= idx < len(self._proceedings):
+            return self._proceedings[idx]
+        return None
+
+    def _refresh_file_list(self):
+        from PyQt6.QtWidgets import QListWidgetItem
+        from PyQt6.QtCore import QSize
+        self._file_list.clear()
+        p = self._current_proc()
+        if not p:
+            self._files_caption.setText("FILES")
+            return
+        n_files = len(p["files"])
+        self._files_caption.setText(f"{p['name']} — {n_files} file{'s' if n_files != 1 else ''}")
+        for i, f in enumerate(p["files"]):
+            item = QListWidgetItem()
+            item.setData(Qt.ItemDataRole.UserRole, i)
+            item.setSizeHint(QSize(0, 28))
+            self._file_list.addItem(item)
+            self._file_list.setItemWidget(item, self._make_file_row(f))
+
+    def _current_file(self):
+        p = self._current_proc()
+        it = self._file_list.currentItem()
+        if not p or not it:
+            return None
+        try:
+            idx = int(it.data(Qt.ItemDataRole.UserRole))
+        except (TypeError, ValueError):
+            return None
+        if 0 <= idx < len(p["files"]):
+            return p["files"][idx]
+        return None
+
+    # ── Open actions ──────────────────────────────────────────────────────────
+
+    def _open_selected_file(self):
+        f = self._current_file()
+        if not f:
+            return
+        _log_open(f"[EProcViewer] Open file: {f['path']!r}")
+        _open_path(f["path"])
+
+    def _open_selected_folder(self):
+        p = self._current_proc()
+        if not p:
+            return
+        _log_open(f"[EProcViewer] Open folder: {p['dir']!r}")
+        _open_path(p["dir"])
 
 
 # ── Mail Docs to Clients Dialog ───────────────────────────────────────────────

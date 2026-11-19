@@ -2,6 +2,17 @@
 
 All notable changes to AayDocCapio are documented here.
 
+## [Unreleased]
+
+### New Features
+
+#### e-Proceedings Documents (F-60)
+- **Download every e-Proceedings document for a client in one pass** — all notices, letters and orders the department issued (via each notice's "Notice/Letter Pdf"), plus the client's own submitted responses: their attachments ("View Response") and acknowledgements. PDFs are not password-protected; any owner-encrypted client-uploaded attachments are unlocked automatically
+- **Everything is organized per proceeding** — files land in `e-Proceedings/<NN>-<Proceeding Name>/notice-…/response-…/` folders inside the client's year folder, keeping portal filenames
+- **A new "e-Proceedings Documents" checkbox** in the Download picker and the inline Download Documents tab, alongside the other document types; e-Proceedings is not year-scoped (the portal itself often shows "Assessment Year: Not Available"), so the result is recorded against every selected year
+- **A new "View e-Proceedings" window** (Tools menu, or right-click a client in the grid) — browse proceedings with file counts and sizes, see each file tagged as Notice or Response, and open any file or the whole proceeding folder with a double-click
+- **Clear per-client outcomes** — "✅ Downloaded (n file(s))", "⬜ No e-Proceedings found" when the portal shows no records, and partial-failure warnings instead of silent gaps
+
 ## [2.4.6] — 2026-09-22
 
 ### New Features
