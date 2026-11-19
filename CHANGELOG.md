@@ -13,6 +13,13 @@ All notable changes to AayDocCapio are documented here.
 - **A new "View e-Proceedings" window** (Tools menu, or right-click a client in the grid) — browse proceedings with file counts and sizes, see each file tagged as Notice or Response, and open any file or the whole proceeding folder with a double-click
 - **Clear per-client outcomes** — "✅ Downloaded (n file(s))", "⬜ No e-Proceedings found" when the portal shows no records, and partial-failure warnings instead of silent gaps
 
+### Bug Fixes
+
+#### Download Documents tab can now pick the year and run (B-1)
+- **Fixed downloads started from Income Tax ▸ Download Documents always being blocked** with "Please select at least one Assessment / Tax Year" — that tab had no year selector of its own, and the only one in the app lives on the Home screen, which isn't visible from the Income Tax hub
+- **The tab now has its own Assessment / Tax Year selector**, with the same multi-year picking and ⚙ Manage Years shortcut as Home; the two stay in step both ways, so a year chosen in either place applies everywhere
+- **The year selector is greyed out while a batch is running**, like the Home one already was
+
 ## [2.4.6] — 2026-09-22
 
 ### New Features
