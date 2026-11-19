@@ -1210,6 +1210,7 @@ class AayDocCapioApp(QMainWindow):
         self.ay_combo.setFixedWidth(220)
         self.ay_combo.model_.itemChanged.connect(lambda _item: self._log_ay_selection())
         self.ay_combo.model_.itemChanged.connect(lambda _item: self.refresh_grid())
+        self.ay_combo.model_.itemChanged.connect(lambda _item: self._sync_ay_to_dl())
 
         manage_btn = QPushButton("⚙")
         manage_btn.setFixedSize(24, 24)
@@ -1931,6 +1932,50 @@ class AayDocCapioApp(QMainWindow):
         if hasattr(self, "_dl_scope_panel"):
             self._dl_scope_panel.setVisible(self._dl_doc_cbs["filed_returns"].isChecked())
 
+    def _populate_dl_ay_combo(self):
+        """(Re)fill the Download Documents tab's AY/TY selector from the same
+        year list the Home selector uses, carrying over whatever is currently
+        checked there. Never re-checked from a saved setting — same
+        deliberate "starts empty every launch" rule as self.ay_combo."""
+        if not hasattr(self, "_dl_ay_combo"):
+            return
+        enabled = [e["label"] for e in self._load_ay_list() if e.get("enabled", True)]
+        current = set(self.ay_combo.checked_labels()) if hasattr(self, "ay_combo") else set()
+        self._dl_ay_combo.blockSignals(True)
+        self._dl_ay_combo.clear_items()
+        for _label in enabled:
+            self._dl_ay_combo.add_item(_label, checked=(_label in current))
+        self._dl_ay_combo.blockSignals(False)
+
+    def _sync_ay_to_dl(self):
+        """Mirror self.ay_combo's checked years onto the tab's selector.
+        Guarded against re-entrancy so the two selectors' itemChanged
+        signals can't ping-pong forever."""
+        if not hasattr(self, "_dl_ay_combo") or getattr(self, "_ay_syncing", False):
+            return
+        self._ay_syncing = True
+        try:
+            self._dl_ay_combo.blockSignals(True)
+            self._dl_ay_combo.set_checked_labels(self.ay_combo.checked_labels())
+            self._dl_ay_combo.blockSignals(False)
+        finally:
+            self._ay_syncing = False
+
+    def _sync_dl_to_ay(self):
+        """Mirror the tab selector's checked years back onto self.ay_combo,
+        which start_automation() reads as the source of truth."""
+        if not hasattr(self, "_dl_ay_combo") or getattr(self, "_ay_syncing", False):
+            return
+        self._ay_syncing = True
+        try:
+            self.ay_combo.blockSignals(True)
+            self.ay_combo.set_checked_labels(self._dl_ay_combo.checked_labels())
+            self.ay_combo.blockSignals(False)
+        finally:
+            self._ay_syncing = False
+        self._log_ay_selection()
+        self.refresh_grid()
+
     def _dl_run(self):
         n_docs = sum(1 for cb in self._dl_doc_cbs.values() if cb.isChecked())
         if n_docs == 0:
@@ -1981,6 +2026,32 @@ class AayDocCapioApp(QMainWindow):
         select_all_cb.toggled.connect(self._dl_toggle_all_clients)
         a_hdr.addWidget(select_all_cb)
         sec_a.addLayout(a_hdr)
+
+        # Assessment Year / Tax Year (B-1) — the Home hub's own selector is
+        # not reachable from this hub (hubs are one-per-screen), so this tab
+        # needs its own. Both selectors are kept mirror-identical via
+        # _sync_ay_to_dl / _sync_dl_to_ay so a year picked here also applies
+        # on Home (and vice versa), and start_automation() keeps reading
+        # self.ay_combo as the single source of truth.
+        ay_hdr = QHBoxLayout()
+        ay_hdr.setSpacing(8)
+        ay_cap = _lbl("ASSESSMENT / TAX YEAR", 10, bold=True, color=t.text_muted)
+        ay_hdr.addWidget(ay_cap)
+        self._dl_ay_combo = CheckableComboBox(placeholder="Select AY/TY")
+        self._dl_ay_combo.setFixedWidth(220)
+        self._dl_ay_combo.model_.itemChanged.connect(lambda _item: self._sync_dl_to_ay())
+        ay_hdr.addWidget(self._dl_ay_combo)
+        dl_manage_btn = QPushButton("⚙")
+        dl_manage_btn.setFixedSize(24, 24)
+        dl_manage_btn.setToolTip("Manage Years")
+        dl_manage_btn.setStyleSheet(
+            f"QPushButton{{background:transparent;border:none;font-size:14px;color:{t.text_muted};}}"
+            f"QPushButton:hover{{color:{t.accent_it};}}")
+        dl_manage_btn.clicked.connect(self.open_manage_years)
+        ay_hdr.addWidget(dl_manage_btn)
+        ay_hdr.addStretch(1)
+        sec_a.addLayout(ay_hdr)
+        self._populate_dl_ay_combo()
 
         self._dl_table = QTableWidget()
         self._dl_table.setColumnCount(4)
@@ -4121,6 +4192,7 @@ class AayDocCapioApp(QMainWindow):
         for _label in ay_labels:
             self.ay_combo.add_item(_label, checked=(_label in current))
         self.ay_combo.blockSignals(False)
+        self._populate_dl_ay_combo()
         self.log("[Settings] Assessment Year list refreshed.")
 
     def _log_ay_selection(self):
@@ -4325,6 +4397,8 @@ class AayDocCapioApp(QMainWindow):
 
     def _lock_ui(self, lock: bool):
         widgets = [self.ay_combo, self.btn_run, self.chk_headless]
+        if hasattr(self, "_dl_ay_combo"):
+            widgets.append(self._dl_ay_combo)
         for _act in (getattr(self, "_act_edit_cl", None), getattr(self, "_act_del_cl", None)):
             if _act:
                 _act.setEnabled(not lock)
