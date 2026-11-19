@@ -621,3 +621,91 @@ Following the layout overhaul, the user requested an expansion of the help manua
 - **SMTP Setup and Reference Panel:** Detailed the exact email setup flow, specifying Gmail App Passwords, Office 365 port settings (587 with STARTTLS), CC/BCC backups, and how to use placeholders like `{client_name}`, `{pan}`, and `{documents}` in the template editor.
 - **Auto-Update Documentation:** Included guidelines explaining the built-in auto-updater check on startup and manual update checks via the Help menu.
 - **Granular Sidebar Navigation & Sub-sections:** Extended the left sidebar layout to support 37 interactive sections and sub-sections, styling them with nested indentation, and updated the JavaScript scrollspy tracker to resolve target IDs dynamically.
+
+---
+
+## 22. e-Proceedings Documents Download & Viewer (F-60) (2026-11-18)
+
+### 22.1 Context
+The ITD e-Filing portal exposes an **e-Proceedings** section (top bar "Pending
+Actions" hover menu → "e-Proceedings") listing all notices/communications
+issued to a taxpayer — assessment notices, letters, orders — plus the
+taxpayer's own submitted responses with their attachments and acknowledgements.
+Until now the app ignored this section entirely, so a CA had to log in manually
+per client to collect these PDFs. F-60 adds it as a first-class document type
+with the uniform handler contract, and a viewer inside the app.
+
+Key facts confirmed live (Playwright exploration on 3 test PANs, 2026-11-18):
+
+- Navigation must click the hover-menu **button** (`.cdk-overlay-pane button`
+  containing "e-Proceedings"), not the `<span>` — the span does nothing.
+  In-page SPA route: `#/dashboard/eProceedings`.
+- Two tabs: "For your Action (n)" / "For your Information (n)"; proceeding
+  cards (`.mat-mdc-card`) render only for the active tab and re-render on
+  tab switch. Name `.heading5.mNoWrap.mEclipse`, AY
+  `.ass_yr_spacing .heading5`, status `.stepperStatus`. Mat-paginator
+  paginates at 10/page — must page through.
+- Per proceeding: "View Notices/Orders (n)" →
+  `#/dashboard/eProceedings/viewNotices/all` — one block per notice
+  (Reference ID, section, DIN, issued/due dates) with buttons
+  "Notice/Letter Pdf", optional "View Response", optional
+  "Seek/View Adjournment" (never clicked).
+- "Notice/Letter Pdf" → in-page `viewDetailedNotice` route; filename in
+  `.subtitle2.fileName`, download via `button.downloadPdf` (one per
+  attachment card). "View Response" → `viewResponse` route; attachments are
+  `span.hyperLink` entries plus an "Acknowledgement" button
+  (`aria-label="Download Acknowledgement"`).
+- **PDFs are NOT password-protected** — except a couple of client-uploaded
+  response attachments which are owner-encrypted; the downloader strips the
+  owner encryption in-place with pikepdf (`_strip_owner_encryption`).
+- AY is often "Not Available" on proceedings — e-Proceedings is not
+  year-scoped, so the download is one pass per client and the terminal status
+  is recorded against **every** selected year.
+- Empty state: "No e-Proceedings records are found" → ⬜ status.
+- Portal popups ("account deactivated", Outstanding Demand, Disclaimer) are
+  dismissed defensively during the flow.
+
+### 22.2 Fix
+- **`automation/downloader_e_proceedings.py`** (new):
+  `download_e_proceedings(page, download_root, log_callback, pan,
+  is_running=None) -> (ok, msg, saved[])` following the Filed Returns module
+  pattern (step logger, per-artifact download, never aborts the batch on one
+  failure). Both tabs are iterated, per-proceeding "View Notices/Orders"
+  opened, per-notice "Notice/Letter Pdf" → Detailed Notices →
+  `button.downloadPdf`, "View Response" → `span.hyperLink` attachments +
+  Acknowledgement. Files land in
+  `<client>/<AY>/e-Proceedings/<NN>-<ProcName>/notice-NN|response-NN/`
+  keeping portal-suggested filenames. Hardened during live testing:
+  `.card-container` anchoring, disabled-button filtering,
+  popup-vs-in-page viewer resolution (`_resolve_viewer_page`), and
+  `wait_for_selector` resilience for slow re-renders.
+- **`automation/batch_handlers.py`**: `handle_e_proceedings` (uniform handler
+  contract), registered in `HANDLERS["e_proceedings"]`; `HANDLER_ORDER` runs
+  it after Challans and before Request Previously-Filed AIS.
+- **`automation/doc_types.py`**: `e_proceedings_pdf` entry
+  (`emailable=False` until the emailer gains a 2-level glob).
+- **Statuses**: "✅ e-Proceedings Downloaded (n file(s))" / "⬜ e-Proceedings
+  — No e-Proceedings found" / "⚠ Partially Completed — <warn>" /
+  "❌ e-Proceedings Failed — <msg>".
+- **UI**: DownloadPickerDialog checkbox "e-Proceedings Documents"; inline
+  Download Documents tab card; BatchProgressDialog + grid tooltip label maps
+  updated.
+- **Viewer (`EProceedingsDialog`, `ui/dialogs.py` ~4467)**: header (icon +
+  "e-Proceedings — <client>" + PAN/root subtitle), summary strip
+  (proceedings/files/total size), left list of proceedings
+  ("NN-<Name> — N files"), right file list (name • human size •
+  Notice/Response tag from notice-*/response-* subfolders), Open File
+  (double-click) / Open Folder / Refresh, empty state with guidance.
+  Scanning is pure `os.walk` over *.pdf/*.jpg/*.jpeg/*.png; theme tokens
+  (`_t()`) only; opening via `config._open_path`. Wired into app.py:
+  Tools menu "View e-Proceedings" (app.py:539), client-grid right-click
+  entry (app.py:1374), launcher `_open_eproceedings_viewer` (app.py:3040)
+  resolving the year folder exactly like `_execute_batch`.
+- **Verification (live, 2026-11-18)**: [REDACTED_PAN] → ok, 73 files
+  (70 PDF + 3 JPG), 18 proceedings, ~15 MB, one portal data-gap warning
+  (a notice with no attachment); [REDACTED_PAN] → ok, 87 files, 7 proceedings,
+  clean; [REDACTED_PAN] → 1 proceeding (account changed since exploration);
+  the "No e-Proceedings records are found" → ⬜ branch verified. Offline:
+  `test_e_proceedings_parse.py` 9/9 PASS; viewer smoke test 27/27 PASS;
+  app restarted on DISPLAY=:1 with picker + viewer screenshots captured
+  against real downloaded data (18 proceedings • 73 files • 13.9 MB).

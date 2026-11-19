@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout, QVBoxLayout,
     QMessageBox, QTextEdit, QDialog, QSizePolicy,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
-    QToolButton, QMenu, QCalendarWidget, QSystemTrayIcon,
+    QToolButton, QMenu, QCalendarWidget, QSystemTrayIcon, QButtonGroup,
     QGraphicsDropShadowEffect, QStackedWidget, QRadioButton,
     QGridLayout,
 )
@@ -41,6 +41,7 @@ from ui.dialogs import (
     ManageYearsDialog, BatchProgressDialog, DownloadPickerDialog,
     GenerateChallansDialog, ChallanGenerationProgressDialog,
     ReturnStatusDialog, ReturnStatusProgressDialog, EmailLogDialog,
+    EProceedingsDialog,
 )
 from ui.log_history import LogHistoryDialog, LogStore
 from automation.errors import _friendly_error
@@ -534,6 +535,10 @@ class AayDocCapioApp(QMainWindow):
         act_mail = QAction(_micon("btn_send.png"), "Mail Docs to Clients…", self)
         act_mail.triggered.connect(self._open_mail_docs)
         tools_menu.addAction(act_mail)
+        tools_menu.addSeparator()
+        act_eproc = QAction(_micon("icon_preview.png"), "View e-Proceedings", self)
+        act_eproc.triggered.connect(self._open_eproceedings_viewer)
+        tools_menu.addAction(act_eproc)
         self._tools_menu = tools_menu
 
         # E-Pay Tax menu (F-64) — home for challan-generation features;
@@ -616,10 +621,76 @@ class AayDocCapioApp(QMainWindow):
                                  accent_key="accent_home", section="bottom")
         self._nav_shell.add_hub("help", "Help", self._mk_help_page(),
                                  accent_key="accent_home", section="bottom")
+        root.addWidget(self._build_eproc_dashboard_strip())
         root.addWidget(self._nav_shell, 1)
 
         self._nav_shell.hubChanged.connect(self._on_hub_changed)
         self._nav_shell.go("home")
+        # Populate the global e-Proceedings dashboard once the vault/assessees
+        # are available (deferred — tabs are built before the vault loads).
+        QTimer.singleShot(0, self._eproc_update_dashboard)
+
+    def _build_eproc_dashboard_strip(self):
+        """GLOBAL e-Proceedings dashboard: Last Sync / Failed Clients / Latest
+        Fetched cards, visible on every hub and tab (sits above the nav
+        stack). Clicking a card jumps to the e-Proceedings tab of the Income
+        Tax hub; the Latest Fetched card opens the newest file's folder."""
+        t = _t()
+        strip = QFrame()
+        strip.setStyleSheet(
+            f"QFrame#eprocDash{{background:{t.bg_panel};border:none;"
+            f"border-bottom:1px solid {t.border};}}")
+        strip.setObjectName("eprocDash")
+        row = QHBoxLayout(strip)
+        row.setContentsMargins(24, 6, 24, 6)
+        row.setSpacing(10)
+
+        self._eproc_dash = {}
+        for key, caption in (("sync", "Last Sync"), ("failed", "Failed Clients"),
+                             ("latest", "Latest Fetched")):
+            card = QFrame()
+            card.setObjectName("eprocDashCard")
+            card.setCursor(Qt.CursorShape.PointingHandCursor)
+            card.setStyleSheet(
+                f"QFrame#eprocDashCard{{background:{t.bg_table_alt};"
+                f"border:1px solid {t.border};border-radius:8px;}}"
+                f"QFrame#eprocDashCard:hover{{border-color:{t.accent_it};}}")
+            cv = QVBoxLayout(card)
+            cv.setContentsMargins(10, 4, 10, 4)
+            cv.setSpacing(0)
+            cv.addWidget(_lbl(caption, 9, color=t.text_muted))
+            val = _lbl("—", 12, bold=True)
+            cv.addWidget(val)
+            row.addWidget(card, 1 if key != "latest" else 2)
+            self._eproc_dash[key] = {"card": card, "value": val}
+
+            def _card_click(event, _k=key):
+                if event.button() == Qt.MouseButton.LeftButton:
+                    if _k == "latest":
+                        self._eproc_open_latest_folder()
+                    else:
+                        self._goto_eproceedings_tab()
+
+            card.mousePressEvent = _card_click
+        row.addStretch(0)
+        return strip
+
+    def _goto_eproceedings_tab(self):
+        """Jump to Income Tax hub ▸ e-Proceedings (dashboard card click)."""
+        try:
+            self._nav_shell.go("it")
+            self._switch_it_tab(5)
+        except Exception:
+            pass
+
+    def _eproc_scan_all_only(self):
+        """Populate self._eproc_cases without touching any widgets — used by
+        the global dashboard refresh (the tab may never have been opened)."""
+        root = self.vault.get_setting("download_root_dir", "")
+        if not (root and os.path.isdir(root)):
+            self._eproc_cases = []
+            return
+        self._eproc_rescan_into_cases(root)
 
     def _on_hub_changed(self, hub_label: str, sub_label: str):
         """NavShell.hubChanged handler — breadcrumb lives on the header
@@ -1366,6 +1437,8 @@ class AayDocCapioApp(QMainWindow):
             menu.addSeparator()
             act_log = menu.addAction(_cicon("btn_scan.png"), "View Log")
             act_log.triggered.connect(lambda checked=False, _a=a: self._show_log_history(_a))
+            act_eproc = menu.addAction(_cicon("icon_preview.png"), "View e-Proceedings")
+            act_eproc.triggered.connect(lambda checked=False, _a=a: self._open_eproceedings_viewer(_a))
             # Right-align menu: top-right of menu anchored to bottom-right of … cell
             from PyQt6.QtCore import QPoint
             rect    = self.client_table.visualItemRect(item)
@@ -1711,6 +1784,9 @@ class AayDocCapioApp(QMainWindow):
         self._it_stack.setCurrentIndex(idx)
         for i, b in enumerate(self._it_tab_btns):
             b.setChecked(i == idx)
+        if idx == 5:
+            # Refresh the all-clients scan each time the tab is shown
+            self._eproc_rescan()
         if idx > 0 and hasattr(self, "_it_tab_btns"):
             self._on_hub_changed("Income Tax", self._it_tab_btns[idx].text())
         else:
@@ -1944,6 +2020,7 @@ class AayDocCapioApp(QMainWindow):
             self._mk_dl_doc_card("ais_tis", "Previously Requested AIS", "For AIS requested earlier that should be ready now"),
             self._mk_dl_doc_card("filed_returns", "ITR Return + Intimation", "Form, Receipt/ITR-V, JSON, and any Intimation Orders"),
             self._mk_dl_doc_card("challans", "Tax Payment Challans", "From e-Pay Tax Payment History for the selected year"),
+            self._mk_dl_doc_card("e_proceedings", "e-Proceedings Documents", "Notices, orders and submitted responses — all proceedings"),
         ]
         for i, card in enumerate(doc_cards):
             doc_grid.addWidget(card, i // 3, i % 3)
@@ -2017,16 +2094,809 @@ class AayDocCapioApp(QMainWindow):
         outer.addStretch(1)
         return page
 
+    def _mk_it_eproceedings_tab(self):
+        """Income Tax hub ▸ e-Proceedings (F-60 v2). One grouped table of
+        every downloaded notice/response file across ALL clients and ALL
+        year folders (AY_* and TY_*) under the download root — assessment
+        year deliberately NOT a criterion. Scanning reuses the approach of
+        ui.dialogs.EProceedingsDialog._scan_proceedings (proceeding dirs
+        NN-*, notice-*/response-* subfolders decide the Kind tag) but walks
+        <root>/<PAN>-<NameSafe>/<year>/e-Proceedings/… so every client and
+        every year shows up in one place. Per-proceeding _meta.json (written
+        by automation/downloader_e_proceedings.py) supplies notice metadata
+        (issue/due dates, responded flag, orders); legacy trees without it
+        are inferred from the folder layout + filename dates. Dashboard
+        cards above the table show Last Sync / Failed Clients / Latest
+        Fetched; filter chips narrow the table to open notices, dues and
+        orders. Double-click a row to open the file; double-click the
+        Folder cell to open the year folder; click a group header row to
+        collapse/expand it."""
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(24, 24, 24, 24)
+        outer.setSpacing(10)
+        t = _t()
+
+        # ── Header: title left, View/Open + Refresh right ────────────────────
+        hdr = QHBoxLayout()
+        hdr.addWidget(_lbl("e-Proceedings — All Clients", 14, bold=True))
+        hdr.addStretch(1)
+        self._eproc_view_btn = _btn("View / Open", "outline", height=32, icon="icon_preview.png")
+        self._eproc_view_btn.clicked.connect(self._eproc_open_selected)
+        hdr.addWidget(self._eproc_view_btn)
+        refresh_btn = _btn("Refresh", "outline", height=32, icon="btn_refresh.png")
+        refresh_btn.clicked.connect(self._eproc_rescan)
+        hdr.addWidget(refresh_btn)
+        outer.addLayout(hdr)
+
+        # NOTE: the Last Sync / Failed Clients / Latest Fetched dashboard is
+        # GLOBAL now — built by _build_eproc_dashboard_strip() above the nav
+        # stack so it stays visible on every hub and tab. The tab itself
+        # keeps only the summary strip + filter chips below.
+
+        # ── Summary strip (recomputed on every scan) ─────────────────────────
+        self._eproc_summary = _lbl("", 11, color=t.text_muted)
+        outer.addWidget(self._eproc_summary)
+
+        # ── Filter chips: checkable buttons, exclusive group, counts set on scan ─
+        chips_row = QHBoxLayout()
+        chips_row.setSpacing(6)
+        self._eproc_chip = "all"
+        self._eproc_chip_group = QButtonGroup(self)
+        self._eproc_chip_group.setExclusive(True)
+        self._eproc_chips = {}
+        for key, label in (("all", "All"), ("open", "Open Notices"), ("due7", "Due ≤7d"),
+                           ("due15", "Due ≤15d"), ("orders", "Orders"),
+                           ("appeal", "Appeal Filed"), ("noappeal", "No Appeal")):
+            chip = QPushButton(label)
+            chip.setCheckable(True)
+            chip.setCursor(Qt.CursorShape.PointingHandCursor)
+            chip.setStyleSheet(
+                f"QPushButton{{border:1px solid {t.border};border-radius:12px;"
+                f"padding:3px 12px;font-size:11px;background:transparent;color:{t.text_muted};}}"
+                f"QPushButton:checked{{background:{t.accent_light};color:{t.accent_it};"
+                f"font-weight:bold;border-color:{t.accent_light};}}")
+            chip.clicked.connect(lambda _c=False, k=key: self._eproc_set_chip(k))
+            self._eproc_chip_group.addButton(chip)
+            chips_row.addWidget(chip)
+            self._eproc_chips[key] = chip
+        self._eproc_chips["all"].setChecked(True)
+        chips_row.addStretch(1)
+        outer.addLayout(chips_row)
+
+        # ── Search box — filters the already-loaded rows live (no rescan) ────
+        self._eproc_search = QLineEdit()
+        self._eproc_search.setPlaceholderText("Search PAN, client, proceeding, or file…")
+        self._eproc_search.setClearButtonEnabled(True)
+        self._eproc_search.setFixedHeight(30)
+        self._eproc_search.setStyleSheet(
+            f"QLineEdit{{border:1px solid {t.border};border-radius:6px;padding:4px 10px;"
+            f"font-size:12px;background:{t.bg_table};color:{t.text_primary};}}")
+        self._eproc_search.textChanged.connect(self._eproc_apply_filter)
+        outer.addWidget(self._eproc_search)
+
+        # ── Stacked: empty state ↔ table ─────────────────────────────────────
+        self._eproc_stack = QStackedWidget()
+        outer.addWidget(self._eproc_stack, 1)
+
+        empty_page = QWidget()
+        empty_v = QVBoxLayout(empty_page)
+        empty_v.addStretch(1)
+        self._eproc_empty_lbl = _lbl(
+            "No e-Proceedings downloaded yet.\nRun Download → e-Proceedings Documents first.",
+            12, color=t.text_muted)
+        self._eproc_empty_lbl.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        empty_v.addWidget(self._eproc_empty_lbl)
+        empty_v.addStretch(1)
+        self._eproc_stack.addWidget(empty_page)
+
+        self._eproc_table = QTableWidget()
+        self._eproc_table.setColumnCount(11)
+        self._eproc_table.setHorizontalHeaderLabels(
+            ["Client", "PAN", "Proceeding", "Document", "Kind", "Issue Date",
+             "Due Date", "Responded", "Appeal", "Size", "Folder"])
+        self._eproc_table.verticalHeader().setVisible(False)
+        self._eproc_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._eproc_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._eproc_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._eproc_table.setShowGrid(False)
+        self._eproc_table.setAlternatingRowColors(True)
+        self._eproc_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self._eproc_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self._eproc_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self._eproc_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self._eproc_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self._eproc_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        self._eproc_table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        self._eproc_table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
+        self._eproc_table.horizontalHeader().setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents)
+        self._eproc_table.horizontalHeader().setSectionResizeMode(9, QHeaderView.ResizeMode.ResizeToContents)
+        self._eproc_table.horizontalHeader().setSectionResizeMode(10, QHeaderView.ResizeMode.Stretch)
+        self._eproc_table.setStyleSheet(
+            f"QTableWidget{{border:1px solid {t.border};border-radius:10px;"
+            f"background:{t.bg_table};alternate-background-color:{t.bg_table_alt};"
+            f"outline:0;gridline-color:{t.grid};}}"
+            f"QTableWidget::item{{border-bottom:1px solid {t.grid};padding:6px;color:{t.text_primary};}}"
+            f"QTableWidget::item:selected{{background:{t.accent_light};}}")
+        self._eproc_table.horizontalHeader().setStyleSheet(
+            f"QHeaderView::section{{background-color:{t.bg_header};border:none;"
+            f"border-bottom:1px solid {t.border};font-weight:bold;color:{t.text_muted};"
+            f"font-size:10px;height:28px;padding-left:4px;}}")
+        self._eproc_table.cellClicked.connect(self._eproc_on_group_click)
+        self._eproc_table.cellDoubleClicked.connect(self._eproc_on_double_click)
+        self._eproc_stack.addWidget(self._eproc_table)
+
+        # State: _eproc_cases (per-proceeding dicts with notices), _eproc_rows
+        # (flat file/group row dicts feeding the table), _eproc_chip (active
+        # chip key), _eproc_collapsed (proc_dir → bool), _eproc_groups (row idx
+        # per group header).
+        self._eproc_rows = []
+        self._eproc_cases = []
+        self._eproc_collapsed = {}
+        self._eproc_groups = []
+        return page
+
+    # ── e-Proceedings tab: chips / dashboard cards ────────────────────────────
+
+    def _eproc_set_chip(self, key: str):
+        """Chip clicked → remember state, re-apply the row filter. Exclusive
+        QButtonGroup keeps only one chip checked; state drives the predicate
+        in _eproc_apply_filter."""
+        self._eproc_chip = key
+        self._eproc_apply_filter()
+
+    def _eproc_update_dashboard(self):
+        """Refresh the GLOBAL dashboard cards (shown above the nav stack, so
+        they stay visible on every hub/tab — not just e-Proceedings).
+        Last Sync = newest downloaded_at across all _meta.json files (or
+        newest file mtime); Failed Clients = union of vault download_history
+        entries whose worst status looks failed; Latest Fetched = newest
+        file across all e-Proceedings downloads with click-through to its
+        folder."""
+        cards = getattr(self, "_eproc_dash", None)
+        if not cards:
+            return
+        t = _t()
+        today = datetime.date.today()
+        now = datetime.datetime.now()
+
+        if not getattr(self, "_eproc_cases", None):
+            self._eproc_scan_all_only()
+
+        # Last Sync: max downloaded_at across cases, fallback newest mtime.
+        latest_dt = None
+        newest_file = None
+        for c in self._eproc_cases:
+            if c.get("downloaded_at"):
+                try:
+                    dt = datetime.datetime.strptime(c["downloaded_at"],
+                                                    "%Y-%m-%d %H:%M:%S")
+                    if latest_dt is None or dt > latest_dt:
+                        latest_dt = dt
+                except ValueError:
+                    pass
+            for r in c.get("_file_rows", []):
+                try:
+                    m = datetime.datetime.fromtimestamp(os.path.getmtime(r["path"]))
+                except OSError:
+                    continue
+                if latest_dt is None or m > latest_dt:
+                    latest_dt = m
+                    newest_file = r
+        sync_lbl = self._eproc_dash["sync"]["value"]
+        if latest_dt is None:
+            sync_lbl.setText("—")
+            sync_lbl.setStyleSheet(f"color:{t.text_primary}; font-size:13px; font-weight:bold;")
+            sync_lbl.setToolTip("")
+        else:
+            delta = now - latest_dt
+            days = delta.days
+            rel = ("just now" if delta < datetime.timedelta(minutes=1)
+                   else f"{int(delta.total_seconds() // 60)}m ago" if delta < datetime.timedelta(hours=1)
+                   else f"{days}d ago" if days < 7
+                   else f"{days // 7}w ago" if days < 30
+                   else f"{days // 30}mo ago")
+            sync_text = f"{rel} · {latest_dt.strftime('%d %b %Y')}"
+            sync_lbl.setText(sync_text)
+            stale = latest_dt.date() < today - datetime.timedelta(days=7)
+            sync_lbl.setStyleSheet(
+                f"color:{t.warning if stale else t.text_primary}; "
+                f"font-size:13px; font-weight:bold;")
+            if newest_file:
+                sync_lbl.setToolTip(newest_file["path"])
+
+        # Failed Clients: for every AY label present in the scanned rows, ask
+        # the vault's download history which clients failed — union across
+        # years, dedupe by PAN.
+        failed = {}   # pan → worst status text
+        for c in self._eproc_cases:
+            m = re.match(r"^(A[YZ]|TY)_(\d{4})_(\d{2})$", c["year_dir"])
+            if not m:
+                continue
+            ay_label = f"{m.group(1)[0]}Y {m.group(2)[-2:]}-{m.group(3)}"
+            try:
+                summary = self.vault.get_download_history_summary(ay_label)
+            except Exception:
+                continue
+            for pan, info in summary.items():
+                status = (info or {}).get("status", "")
+                if "❌" in status or "failed" in status.lower():
+                    if pan not in failed or self.vault._status_rank(status) > \
+                            self.vault._status_rank(failed[pan]):
+                        failed[pan] = status
+        fail_lbl = self._eproc_dash["failed"]["value"]
+        if failed:
+            fail_lbl.setText(str(len(failed)))
+            fail_lbl.setStyleSheet(
+                f"color:{t.error}; font-size:13px; font-weight:bold;")
+            lines = [f"{pan} — {failed[pan]}" for pan in sorted(failed)]
+            fail_lbl.setToolTip("\n".join(lines[:10]))
+        else:
+            fail_lbl.setText("0")
+            fail_lbl.setStyleSheet(
+                f"color:{t.success}; font-size:13px; font-weight:bold;")
+            fail_lbl.setToolTip("")
+
+        # Latest Fetched: 3 newest files (newest first).
+        latest_lbl = self._eproc_dash["latest"]["value"]
+        all_files = [r for c in self._eproc_cases for r in c.get("_file_rows", [])]
+        all_files.sort(key=lambda r: r.get("_dt") or datetime.datetime.min, reverse=True)
+        if all_files:
+            first = all_files[0]
+            name = first["file"]
+            shown = name if len(name) <= 28 else name[:27] + "…"
+            latest_lbl.setText(f"{shown}" + (f" +{len(all_files) - 1} more"
+                                             if len(all_files) > 1 else ""))
+            latest_lbl.setStyleSheet(
+                f"color:{t.text_primary}; font-size:13px; font-weight:bold;")
+            tips = [f"{r['client']} — {r['file']}" for r in all_files[:10]]
+            latest_lbl.setToolTip("\n".join(tips))
+        else:
+            latest_lbl.setText("—")
+            latest_lbl.setStyleSheet(
+                f"color:{t.text_muted}; font-size:13px; font-weight:bold;")
+            latest_lbl.setToolTip("")
+
+    def _eproc_open_latest_folder(self):
+        """Latest Fetched card click → open the folder holding the newest
+        file (or its year folder when the file itself is gone)."""
+        if not self._eproc_cases:
+            return
+        all_files = [r for c in self._eproc_cases for r in c.get("_file_rows", [])]
+        if not all_files:
+            return
+        newest = max(all_files, key=lambda r: r.get("_dt") or datetime.datetime.min)
+        folder = os.path.dirname(newest["path"]) or newest.get("folder", "")
+        self._eproc_open_path(folder if os.path.isdir(folder) else newest.get("folder"))
+
+    # ── e-Proceedings tab: scan / populate / filter / open ────────────────────
+
+    @staticmethod
+    def _eproc_human_size(n: int) -> str:
+        """Same formatting as EProceedingsDialog._human_size."""
+        if n >= 1024 * 1024:
+            return f"{n / (1024 * 1024):.1f} MB"
+        if n >= 1024:
+            return f"{n / 1024:.1f} KB"
+        return f"{n} B"
+
+    def _eproc_rescan_into_cases(self, root: str):
+        """Filesystem walk shared by the tab and the global dashboard: builds
+        self._eproc_cases (+ per-case _file_rows) with no widget side effects.
+        <root>/<PAN>-<NameSafe>/<AY_*|TY_*>/e-Proceedings/<NN>-<Proc>/{notice-*,response-*}/<files>.
+        Each proceeding dir with a _meta.json contributes its parsed notices;
+        legacy trees are inferred (kind from subfolder, responded = any
+        response file, issue date from a trailing _DDMMYYYY in the filename).
+        Year is NOT a filter — every year folder counts."""
+        from ui.dialogs import EProceedingsDialog
+        by_pan = {a.get("pan", "").upper(): a for a in self.assessee_list}
+        cases = []
+        if root and os.path.isdir(root):
+            for entry in sorted(os.listdir(root)):
+                client_dir = os.path.join(root, entry)
+                if not os.path.isdir(client_dir) or "-" not in entry:
+                    continue
+                pan = entry.split("-", 1)[0].strip().upper()
+                match = by_pan.get(pan)
+                client_name = (match or {}).get("name") or entry
+                for year_name in sorted(os.listdir(client_dir)):
+                    year_dir = os.path.join(client_dir, year_name)
+                    if not os.path.isdir(year_dir):
+                        continue
+                    if not (year_name.startswith("AY_") or year_name.startswith("TY_")):
+                        continue
+                    eproc_root = os.path.join(year_dir, "e-Proceedings")
+                    if not os.path.isdir(eproc_root):
+                        continue
+                    for proc in EProceedingsDialog._scan_proceedings(eproc_root):
+                        pname = proc["name"]
+                        nd = 0
+                        while nd < len(pname) and pname[nd].isdigit():
+                            nd += 1
+                        proc_display = pname[nd:].lstrip("-").strip() if nd else pname
+                        meta = self._eproc_load_proc_meta(proc["dir"])
+                        notices = self._eproc_case_notices(
+                            proc, meta, proc_display or proc["name"])
+                        case = {
+                            "client": client_name,
+                            "pan": pan,
+                            "year_dir": year_dir,
+                            "year_name": year_name,
+                            "proc_dir": proc["dir"],
+                            "proc_display": proc_display or proc["name"],
+                            "proc_raw": proc["name"],
+                            "proc_num": proc["num"],
+                            "meta": meta,
+                            "notices": notices,
+                            "downloaded_at": (meta or {}).get("downloaded_at", ""),
+                            "_proc_files": proc["files"],
+                            "_file_rows": [],
+                        }
+                        cases.append(case)
+        cases.sort(key=lambda c: (c["client"].lower(), c["proc_num"],
+                                  c["proc_raw"].lower()))
+        for case in cases:
+            self._eproc_build_file_rows(case)
+            self._eproc_classify_case(case)
+        self._eproc_cases = cases
+
+    def _eproc_rescan(self):
+        """Refresh the GLOBAL dashboard + the tab's chips/summary/table after
+        a fresh disk scan (Refresh button, or opening the tab)."""
+        root = self.vault.get_setting("download_root_dir", "")
+        self._eproc_rescan_into_cases(root)
+        cases = self._eproc_cases
+
+        self._eproc_update_dashboard()
+        self._eproc_update_chip_counts()
+        n_clients = len({c["pan"] for c in cases})
+        n_procs = len(cases)
+        n_notices = sum(len(c["notices"]) for c in cases)
+        n_resp = sum(1 for c in cases for n in c["notices"] if n["responded"])
+        n_files = 0
+        total_size = 0
+        for c in cases:
+            for r in c.get("_file_rows", []):
+                n_files += 1
+                total_size += r["size"]
+        self._eproc_summary.setText(
+            f"{n_clients} client{'s' if n_clients != 1 else ''} • "
+            f"{n_procs} proceeding{'s' if n_procs != 1 else ''} • "
+            f"{n_notices} notice{'s' if n_notices != 1 else ''} "
+            f"({n_resp} responded) • "
+            f"{n_files} file{'s' if n_files != 1 else ''} • "
+            f"{self._eproc_human_size(total_size)}")
+        self._eproc_populate()
+        self._eproc_apply_filter()
+        return
+
+    # ── e-Proceedings tab: metadata helpers ───────────────────────────────────
+
+    @staticmethod
+    def _eproc_load_proc_meta(proc_dir: str):
+        """Read <proc_dir>/_meta.json (schema written by
+        automation/downloader_e_proceedings._build_proc_meta). Returns {} when
+        absent/unreadable — callers then fall back to legacy inference."""
+        path = os.path.join(proc_dir, "_meta.json")
+        if not os.path.isfile(path):
+            return {}
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, ValueError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    @staticmethod
+    def _eproc_parse_ddmmyyyy(name: str):
+        """Trailing _DDMMYYYY in a filename → datetime.date (display
+        DD-Mon-YYYY), else None. Legacy inference only."""
+        m = re.search(r"_(\d{2})(\d{2})(\d{4})(?:\.\w+)?$", name)
+        if not m:
+            return None
+        try:
+            return datetime.date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _eproc_fmt_date(d) -> str:
+        if isinstance(d, str):
+            return d or "—"
+        return d.strftime("%d-%b-%Y") if isinstance(d, datetime.date) else "—"
+
+    @staticmethod
+    def _eproc_parse_disp_date(s: str):
+        """DD-Mon-YYYY (portal style, e.g. '26-Nov-2024') → date, else None."""
+        try:
+            return datetime.datetime.strptime(s, "%d-%b-%Y").date()
+        except (ValueError, TypeError):
+            return None
+
+    @classmethod
+    def _eproc_case_notices(cls, proc: dict, meta: dict, proc_display: str) -> list:
+        """Build the notice list for one proceeding. With _meta.json the
+        portal metadata is authoritative; without it (legacy download) each
+        file becomes its own synthesized notice — kind from subfolder,
+        responded = any response-* file exists in the proceeding, issue date
+        from a trailing _DDMMYYYY, due/section unknown → '—', is_order from
+        the filename. Every notice carries a files/response_files list so
+        each file row can find its notice metadata."""
+        if meta:
+            out = []
+            for n in meta.get("notices", []):
+                entry = {
+                    "index": n.get("index", 0),
+                    "ref_id": n.get("ref_id", ""),
+                    "description": n.get("description", ""),
+                    "issued_on": n.get("issued_on", ""),
+                    "response_due": n.get("response_due", ""),
+                    "responded": bool(n.get("responded", False)),
+                    "section": n.get("section", ""),
+                    "viewed_by_ao": n.get("viewed_by_ao", ""),
+                    "is_order": bool(n.get("is_order", False)),
+                    "files": list(n.get("files", [])),
+                    "response_files": list(n.get("response_files", [])),
+                    "legacy": False,
+                }
+                out.append(entry)
+            return out
+        # Legacy: infer per file. responded = ANY response file in proc.
+        has_response = any(
+            os.path.dirname(os.path.relpath(f["path"], proc["dir"])).lower().startswith("response")
+            for f in proc["files"])
+        out = []
+        for f in proc["files"]:
+            rel = os.path.relpath(f["path"], proc["dir"]).replace(os.sep, "/")
+            issued = cls._eproc_parse_ddmmyyyy(f["name"])
+            out.append({
+                "index": 0,
+                "ref_id": "",
+                "description": "",
+                "issued_on": cls._eproc_fmt_date(issued),
+                "response_due": "",
+                "responded": has_response if f["kind"] == "Notice" else True,
+                "section": "",
+                "viewed_by_ao": "",
+                "is_order": "order" in f["name"].lower(),
+                "files": [rel] if f["kind"] != "Response" else [],
+                "response_files": [rel] if f["kind"] == "Response" else [],
+                "legacy": True,
+            })
+        return out
+
+    def _eproc_build_file_rows(self, case: dict):
+        """Materialise the flat file rows for one case: every scanned file
+        joins its notice (files/response_files membership by relative path;
+        legacy notices each own exactly one file) and its computed display
+        fields. Row dicts feed _eproc_populate and the dashboard cards."""
+        rows = []
+        for f in case.get("_proc_files", []):
+            rel = os.path.relpath(f["path"], case["proc_dir"]).replace(os.sep, "/")
+            notice = None
+            for n in case["notices"]:
+                if rel in n["files"] or rel in n["response_files"]:
+                    notice = n
+                    break
+            if notice is None:
+                continue
+            kind = f["kind"]
+            if kind == "Notice" and notice["is_order"]:
+                kind = "Order"
+            issue = notice["issued_on"] or "—"
+            due = notice["response_due"] or "—"
+            responded_txt = ("Yes" if notice["responded"] else
+                             "No" if f["kind"] != "Response" else "Yes")
+            appeal_filed, appeal_none = self._eproc_classify_case(case)
+            appeal_txt = ("Appeal" if appeal_filed else
+                          "None" if appeal_none else "—")
+            try:
+                mtime = datetime.datetime.fromtimestamp(os.path.getmtime(f["path"]))
+            except OSError:
+                mtime = datetime.datetime.min
+            dl = None
+            if case.get("downloaded_at"):
+                try:
+                    dl = datetime.datetime.strptime(
+                        case["downloaded_at"], "%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    dl = None
+            rows.append({
+                "client": case["client"],
+                "pan": case["pan"],
+                "proc": case["proc_display"],
+                "file": f["name"],
+                "kind": kind,
+                "size": f["size"],
+                "folder": case["year_dir"],
+                "path": f["path"],
+                "notice": notice,
+                "issue": issue,
+                "due": due,
+                "responded_txt": responded_txt,
+                "appeal_txt": appeal_txt,
+                "_dt": dl or mtime,
+                "_mtime": mtime,
+                "_from_meta": bool(case.get("meta")),
+            })
+        rows.sort(key=lambda r: r["path"].lower())
+        case["_file_rows"] = rows
+
+    def _eproc_classify_case(self, case: dict):
+        """Appeal classification for one case (spec):
+        appeal_case  — proceeding display name or any notice description
+                       matches r"appeal" (re.I);
+        appeal_filed — appeal_case AND the case has any response file;
+        appeal_none  — appeal_case AND no response files.
+        Orders-without-appeal are NOT counted in the appeal chips. Returns
+        (appeal_filed, appeal_none)."""
+        name_hit = re.search(r"appeal", case["proc_display"] or "", re.I)
+        desc_hit = any(re.search(r"appeal", n["description"] or "", re.I)
+                       for n in case["notices"])
+        appeal_case = bool(name_hit or desc_hit)
+        has_resp = any(n["response_files"] for n in case["notices"])
+        return (appeal_case and has_resp, appeal_case and not has_resp)
+
+    def _eproc_update_chip_counts(self):
+        """Recount notice-level hits for every chip and set the labels:
+        'Open Notices (n)' etc. Counts are at NOTICE level (a notice with 3
+        files counts once), per spec."""
+        today = datetime.date.today()
+
+        def due_within(n, days):
+            d = self._eproc_parse_disp_date(n["response_due"])
+            if d is None:
+                return False
+            delta = (d - today).days
+            return 0 <= delta <= days
+
+        counts = {"all": 0, "open": 0, "due7": 0, "due15": 0,
+                  "orders": 0, "appeal": 0, "noappeal": 0}
+        for case in self._eproc_cases:
+            appeal_filed, appeal_none = self._eproc_classify_case(case)
+            for n in case["notices"]:
+                counts["all"] += 1
+                if not n["responded"]:
+                    counts["open"] += 1
+                    if due_within(n, 7):
+                        counts["due7"] += 1
+                    if due_within(n, 15):
+                        counts["due15"] += 1
+                if n["is_order"] or "order" in (n["description"] or "").lower():
+                    counts["orders"] += 1
+            if appeal_filed:
+                counts["appeal"] += sum(1 for _n in case["notices"])
+            if appeal_none:
+                counts["noappeal"] += sum(1 for _n in case["notices"])
+        labels = {"all": "All", "open": "Open Notices", "due7": "Due ≤7d",
+                  "due15": "Due ≤15d", "orders": "Orders",
+                  "appeal": "Appeal Filed", "noappeal": "No Appeal"}
+        for key, chip in self._eproc_chips.items():
+            chip.setText(f"{labels[key]} ({counts[key]})")
+
+    def _eproc_populate(self):
+        """Build the grouped table: one spanned group header row per case
+        (proceeding), then one file row per file. File rows carry their
+        notice metadata (dates/responded/appeal classification); group rows
+        toggle collapse on single click. Chip/search filtering is applied
+        afterwards by _eproc_apply_filter."""
+        t = _t()
+        self._eproc_table.setRowCount(0)
+        self._eproc_groups = []          # group header row index per case
+        self._eproc_row_meta = {}        # row idx → row dict
+        for case in self._eproc_cases:
+            g_idx = self._eproc_table.rowCount()
+            self._eproc_table.insertRow(g_idx)
+            self._eproc_table.setSpan(g_idx, 0, 1, 11)
+            collapsed = self._eproc_collapsed.get(case["proc_dir"], False)
+            chevron = "▸" if collapsed else "▾"
+            g_item = QTableWidgetItem(
+                f"{chevron} {case['proc_display']} — {case['client']} "
+                f"({self._eproc_ay_label(case)})")
+            font = g_item.font()
+            font.setBold(True)
+            g_item.setFont(font)
+            g_item.setForeground(QColor(t.text_primary))
+            g_item.setData(Qt.ItemDataRole.UserRole + 1, "group")
+            self._eproc_table.setItem(g_idx, 0, g_item)
+            self._eproc_groups.append(g_idx)
+            self._eproc_row_meta[g_idx] = {
+                "type": "group", "case": case,
+                "file_row_idxs": [], "children": []}
+            for r in case.get("_file_rows", []):
+                row_idx = self._eproc_table.rowCount()
+                self._eproc_table.insertRow(row_idx)
+                self._eproc_row_meta[row_idx] = {
+                    "type": "file", "row": r, "case": case}
+                self._eproc_row_meta[g_idx]["children"].append(row_idx)
+                self._eproc_table.setItem(row_idx, 0, QTableWidgetItem(r["client"]))
+                self._eproc_table.setItem(row_idx, 1, QTableWidgetItem(r["pan"]))
+                self._eproc_table.setItem(row_idx, 2, QTableWidgetItem(r["proc"]))
+                doc_item = QTableWidgetItem(r["file"])
+                doc_item.setData(Qt.ItemDataRole.UserRole, r["path"])
+                self._eproc_table.setItem(row_idx, 3, doc_item)
+                # Kind colours: Notice=accent_it, Response=success, Order
+                # (notice that is an order)=warning, none=text_muted.
+                kind_item = QTableWidgetItem(r["kind"])
+                kind_item.setForeground(QColor(
+                    t.accent_it if r["kind"] == "Notice"
+                    else t.success if r["kind"] == "Response"
+                    else t.warning if r["kind"] == "Order"
+                    else t.text_muted))
+                self._eproc_table.setItem(row_idx, 4, kind_item)
+                self._eproc_table.setItem(row_idx, 5, QTableWidgetItem(r["issue"]))
+                due_item = QTableWidgetItem(r["due"])
+                n = r["notice"]
+                if r["due"] != "—":
+                    due_date = self._eproc_parse_disp_date(r["due"])
+                    overdue = (due_date is not None and due_date < datetime.date.today()
+                               and not n["responded"])
+                    soon = (due_date is not None and not n["responded"] and
+                            0 <= (due_date - datetime.date.today()).days <= 7)
+                    due_item.setForeground(QColor(
+                        t.error if overdue else t.warning if soon else t.text_primary))
+                self._eproc_table.setItem(row_idx, 6, due_item)
+                resp_item = QTableWidgetItem(r["responded_txt"])
+                resp_item.setForeground(QColor(
+                    t.success if r["responded_txt"] == "Yes"
+                    else t.warning if r["responded_txt"] == "No"
+                    else t.text_muted))
+                if r["responded_txt"] == "No":
+                    rf = resp_item.font()
+                    rf.setBold(True)
+                    resp_item.setFont(rf)
+                self._eproc_table.setItem(row_idx, 7, resp_item)
+                ap_item = QTableWidgetItem(r["appeal_txt"])
+                ap_item.setForeground(QColor(
+                    t.accent_it if r["appeal_txt"] == "Appeal"
+                    else t.text_muted if r["appeal_txt"] == "None"
+                    else t.text_primary))
+                self._eproc_table.setItem(row_idx, 8, ap_item)
+                self._eproc_table.setItem(row_idx, 9, QTableWidgetItem(
+                    self._eproc_human_size(r["size"])))
+                folder_text = ("…" + r["folder"][-60:]) if len(r["folder"]) > 60 else r["folder"]
+                folder_item = QTableWidgetItem(folder_text)
+                folder_item.setToolTip(r["folder"])
+                folder_item.setData(Qt.ItemDataRole.UserRole, r["folder"])
+                self._eproc_table.setItem(row_idx, 10, folder_item)
+        self._eproc_stack.setCurrentIndex(1 if self._eproc_cases else 0)
+
+    @staticmethod
+    def _eproc_ay_label(case) -> str:
+        """AY_2025_26 → 'AY 2025-26' (TY_* → 'TY …') for group headers and
+        vault lookups."""
+        m = re.match(r"^(A[YZ]|TY)_(\d{4})_(\d{2})$", case["year_name"])
+        if not m:
+            return case["year_name"].replace("_", " ")
+        return f"{m.group(1)} {m.group(2)[-2:]}-{m.group(3)}"
+
+    def _eproc_apply_filter(self, *_):
+        """Hide/show rows already loaded — never rescans. Composes the active
+        chip predicate, the search text, and group collapse: file rows hide
+        unless notice+search match AND their group is expanded; group header
+        rows hide when ALL their file rows are hidden."""
+        query = self._eproc_search.text().strip().lower()
+        today = datetime.date.today()
+
+        def notice_matches(n) -> bool:
+            chip = self._eproc_chip
+            if chip == "all":
+                return True
+            if chip == "open":
+                return not n["responded"]
+            if chip in ("due7", "due15"):
+                if n["responded"]:
+                    return False
+                d = self._eproc_parse_disp_date(n["response_due"])
+                if d is None:
+                    return False
+                delta = (d - today).days
+                return 0 <= delta <= (7 if chip == "due7" else 15)
+            if chip == "orders":
+                return bool(n["is_order"]) or "order" in (n["description"] or "").lower()
+            # appeal / noappeal chips are decided per case below.
+            return True
+
+        # Pre-compute per-case appeal flags once.
+        case_flags = {}
+        for case in self._eproc_cases:
+            case_flags[id(case)] = self._eproc_classify_case(case)
+
+        for row_idx in range(self._eproc_table.rowCount()):
+            meta = self._eproc_row_meta.get(row_idx)
+            if not meta:
+                continue
+            if meta["type"] == "group":
+                continue   # groups decided after their children
+            r = meta["row"]
+            case = meta["case"]
+            n = r["notice"]
+            hay = " ".join((r["pan"], r["client"], r["proc"], r["file"],
+                            r["kind"], r["folder"])).lower()
+            visible = query in hay if query else True
+            if visible:
+                if self._eproc_chip in ("appeal", "noappeal"):
+                    af, an = case_flags[id(case)]
+                    visible = af if self._eproc_chip == "appeal" else an
+                elif not notice_matches(n):
+                    visible = False
+            # Collapse: expanded group keeps children; collapsed hides all.
+            collapsed = self._eproc_collapsed.get(case["proc_dir"], False)
+            visible = visible and not collapsed
+            self._eproc_table.setRowHidden(row_idx, not visible)
+            meta["visible"] = visible
+        # Group header visible only when at least one child row is visible;
+        # a collapsed group with all-children-hidden is still shown so the
+        # user can find and re-expand it.
+        for g_idx in self._eproc_groups:
+            meta = self._eproc_row_meta.get(g_idx)
+            if not meta:
+                continue
+            kids = meta["children"]
+            collapsed = self._eproc_collapsed.get(meta["case"]["proc_dir"], False)
+            any_visible = any(not self._eproc_table.isRowHidden(k) for k in kids)
+            hide = not (any_visible or (collapsed and bool(kids)))
+            self._eproc_table.setRowHidden(g_idx, hide)
+
+    def _eproc_on_group_click(self, row: int, _column: int):
+        """Single click on a group header row toggles collapse (chevron
+        ▸/▾) and re-applies the filter so hidden children follow."""
+        meta = self._eproc_row_meta.get(row)
+        if not meta or meta["type"] != "group":
+            return
+        case = meta["case"]
+        collapsed = not self._eproc_collapsed.get(case["proc_dir"], False)
+        self._eproc_collapsed[case["proc_dir"]] = collapsed
+        item = self._eproc_table.item(row, 0)
+        if item:
+            txt = item.text()
+            item.setText(("▸ " if collapsed else "▾ ") + txt[2:])
+        self._eproc_apply_filter()
+
+    def _eproc_on_double_click(self, row: int, column: int):
+        """Double-click Folder cell → open the year folder; any other cell →
+        open the document itself. Group rows open nothing."""
+        meta = self._eproc_row_meta.get(row)
+        if not meta or meta["type"] != "file":
+            return
+        if column == 10:
+            folder = self._eproc_table.item(row, 10)
+            if folder:
+                self._eproc_open_path(folder.data(Qt.ItemDataRole.UserRole))
+            return
+        doc = self._eproc_table.item(row, 3)
+        if doc:
+            self._eproc_open_path(doc.data(Qt.ItemDataRole.UserRole))
+
+    def _eproc_open_selected(self):
+        row = self._eproc_table.currentRow()
+        if row < 0:
+            return
+        doc = self._eproc_table.item(row, 3)
+        if doc and self._eproc_row_meta.get(row, {}).get("type") == "file":
+            self._eproc_open_path(doc.data(Qt.ItemDataRole.UserRole))
+
+    def _eproc_open_path(self, path):
+        from config import _open_path
+        if not path or not os.path.exists(path):
+            QMessageBox.warning(self, "Not Found",
+                f"This file or folder no longer exists:\n{path or '(unknown)'}\n\n"
+                "It may have been moved or deleted — try Refresh.")
+            return
+        _open_path(path)
+
     def _mk_income_tax_page(self):
         """F-77b: Income Tax hub — mockup's tab-row navigation (Actions /
-        Download Documents / E-Pay Tax / Return Status / Tools) over a
-        QStackedWidget. The Actions tab is the action-card landing screen;
-        clicking a card switches tabs (mirrors the mockup's
-        onclick="activeTabIdx=N; render()") instead of opening a dialog
-        directly. Download Documents/E-Pay Tax/Return Status tabs still
-        open their existing modal dialogs — full inline embedding is a
+        Download Documents / E-Pay Tax / Return Status / Tools /
+        e-Proceedings) over a QStackedWidget. The Actions tab is the
+        action-card landing screen; clicking a card switches tabs (mirrors
+        the mockup's onclick="activeTabIdx=N; render()") instead of opening
+        a dialog directly. Download Documents/E-Pay Tax/Return Status tabs
+        still open their existing modal dialogs — full inline embedding is a
         later phase (F-77c). Tools is fully inline since it's just two
-        one-shot conversions, no client/year selection needed."""
+        one-shot conversions, no client/year selection needed; e-Proceedings
+        (F-60) is inline too — one flat table of every downloaded notice /
+        response across ALL clients and ALL year folders."""
         page = QWidget()
         outer = QVBoxLayout(page)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -2037,7 +2907,7 @@ class AayDocCapioApp(QMainWindow):
         tr = QHBoxLayout(tab_row)
         tr.setContentsMargins(24, 8, 24, 8)
         tr.setSpacing(4)
-        labels = ["Actions", "Download Documents", "E-Pay Tax", "Return Status", "Tools"]
+        labels = ["Actions", "Download Documents", "E-Pay Tax", "Return Status", "Tools", "e-Proceedings"]
         self._it_tab_btns = [self._mk_it_tab_btn(l, i) for i, l in enumerate(labels)]
         for b in self._it_tab_btns:
             tr.addWidget(b)
@@ -2053,24 +2923,33 @@ class AayDocCapioApp(QMainWindow):
         av.setContentsMargins(24, 20, 24, 20)
         av.setSpacing(14)
         av.addWidget(_lbl("What do you want to do?", 11, bold=True, color=_t().text_muted))
-        grid = QHBoxLayout()
-        grid.setSpacing(14)
+        # 5 cards now → QGridLayout 2x3 (with 3 stretches so rows share width
+        # evenly) instead of the old 4-card QHBoxLayout.
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(14)
+        grid.setVerticalSpacing(14)
         grid.addWidget(self._mk_action_card(
             "Download Documents",
             "26AS, Form 168, AIS, TIS & Filed Returns — bulk, unattended, for every selected client.",
-            "document", lambda: self._switch_it_tab(1)))
+            "document", lambda: self._switch_it_tab(1)), 0, 0)
         grid.addWidget(self._mk_action_card(
             "E-Pay Tax",
             "Generate tax payment challans against the ITD portal, or import a prepared batch.",
-            "rupee", lambda: self._switch_it_tab(2)))
+            "rupee", lambda: self._switch_it_tab(2)), 0, 1)
         grid.addWidget(self._mk_action_card(
             "Check Processing Status",
             "See where every client's return actually stands, straight from the portal.",
-            "list", lambda: self._switch_it_tab(3)))
+            "list", lambda: self._switch_it_tab(3)), 0, 2)
         grid.addWidget(self._mk_action_card(
             "Tools",
             "Convert an already-downloaded 26AS or AIS file to Excel, outside a full batch run.",
-            "gear", lambda: self._switch_it_tab(4)))
+            "gear", lambda: self._switch_it_tab(4)), 1, 0)
+        grid.addWidget(self._mk_action_card(
+            "e-Proceedings",
+            "All notices and responses downloaded for every client, in one place.",
+            "list", lambda: self._switch_it_tab(5)), 1, 1)
+        for col in range(3):
+            grid.setColumnStretch(col, 1)
         av.addLayout(grid)
         av.addStretch(1)
         self._it_stack.addWidget(actions_page)
@@ -2090,6 +2969,9 @@ class AayDocCapioApp(QMainWindow):
 
         # ── Tab 4: Tools (fully inline) ──────────────────────────────────────
         self._it_stack.addWidget(self._mk_it_tools_tab())
+
+        # ── Tab 5: e-Proceedings (F-60) — all clients, all years, one table ──
+        self._it_stack.addWidget(self._mk_it_eproceedings_tab())
 
         self._switch_it_tab(0)
         return page
@@ -2419,7 +3301,8 @@ class AayDocCapioApp(QMainWindow):
             if len(breakdown) > 1:
                 _doc_labels = {"26as": "26AS/Form 168", "request_ais": "AIS Request",
                                "ais_tis": "AIS/TIS", "filed_returns": "Filed Returns",
-                               "challans": "Tax Challans", "legacy": "Download"}
+                               "challans": "Tax Challans", "legacy": "Download",
+                               "e_proceedings": "e-Proceedings"}
                 tooltip_text = "\n".join(
                     f"{_doc_labels.get(dt, dt)}: {st}" for dt, st in breakdown
                 )
@@ -3027,6 +3910,53 @@ class AayDocCapioApp(QMainWindow):
         _checked = self.ay_combo.checked_labels() if hasattr(self, "ay_combo") else []
         ay_label = _checked[0] if _checked else ""
         MailDocsDialog(self, self.vault, ay_label).exec()
+
+    def _open_eproceedings_viewer(self, a=None):
+        """Tools > View e-Proceedings, and the grid row context menu's own
+        "View e-Proceedings" entry (which passes the clicked client in `a`).
+
+        `a` is the clicked client dict from the grid context menu — OR the
+        QAction `checked` boolean when triggered from the Tools menu
+        (Qt passes it as the first positional arg), so anything that isn't
+        a dict is treated as "no explicit client" and the grid selection is
+        used instead.
+
+        Client comes from the grid selection (self.selected_ids, same source
+        of truth every other single-client flow uses) unless a row was
+        explicitly clicked. Year folder is resolved exactly like
+        _execute_batch's _out_for_year: <root>/<PAN>-<name_safe>/<AY|TY_value>,
+        using the first checked year of the combo (e-Proceedings downloads are
+        not year-scoped — batch_handlers.handle_e_proceedings anchors them to
+        the FIRST selected year's folder too). A missing folder still opens
+        the dialog; it shows its own empty state."""
+        if not isinstance(a, dict):
+            a = None
+        if a is None:
+            if not self.selected_ids:
+                QMessageBox.warning(self, "Selection Required",
+                    "Please select at least one client.")
+                return
+            matches = [x for x in self.assessee_list if x.get("id") in self.selected_ids]
+            if not matches:
+                QMessageBox.warning(self, "Selection Required",
+                    "Please select at least one client.")
+                return
+            a = matches[0]
+        pan = a.get("pan", "")
+        name = a.get("name", "")
+        _checked = self.ay_combo.checked_labels() if hasattr(self, "ay_combo") else []
+        ay_label = _checked[0] if _checked else ""
+        _ay, _fy, year_type, _form = self._resolve_ay_fy(ay_label) if ay_label else (None, None, "AY", None)
+        value = _ay if year_type == "AY" else (_fy if year_type == "TY" else None)
+        if not value:
+            QMessageBox.warning(self, "Selection Required",
+                "Please select at least one Assessment / Tax Year.")
+            return
+        name_safe = "".join(c if c.isalnum() or c in " _-" else "" for c in name)
+        root_dir = self.dir_lbl.text()
+        year_dir = os.path.join(root_dir, f"{pan}-{name_safe}", f"{year_type}_{value.replace('-','_')}")
+        eproc_root = os.path.join(year_dir, "e-Proceedings")
+        EProceedingsDialog(self, name or pan, pan, eproc_root).exec()
 
     def _show_log_history(self, a: dict):
         history  = self.log_store.get(a.get("pan", ""))
