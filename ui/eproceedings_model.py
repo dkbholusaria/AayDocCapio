@@ -676,6 +676,33 @@ def _build_meta_docs(case_id: str, proc_name: str, meta: dict) -> list[Doc]:
             docs.append(reply)
             doc.responded = True
 
+    # Orders recorded against the CARD (e.g. a "Download Closure Order" on a
+    # closed appeal). They are separate documents the portal serves outside
+    # the notice list, so add them as first-class docs — this is what makes
+    # the Orders chip, the appeal link and the closed-case state work.
+    for position, order in enumerate(meta.get("orders") or [], start=1):
+        title = (order.get("title") or "Order").strip()
+        files = list(order.get("files") or [])
+        if not files:
+            continue
+        order_section = _section_from_text(title)
+        # Inside an appeal proceeding a closure order IS the appellate order;
+        # otherwise it is the assessment order that closes the case.
+        kind = "appeal-order" if "appeal" in proc_name.lower() else "order"
+        issued = _trailing_date(order.get("filename") or "")
+        docs.append(Doc(
+            id=_doc_id(case_id, kind, 900 + position),
+            kind=kind,
+            title=title,
+            section=order_section,
+            issued=_fmt_date(issued) if issued else "",
+            served=_fmt_date(issued) if issued else "",
+            reply_deadline="",
+            urg="",
+            files=files,
+            responded=False,
+        ))
+
     return docs
 
 
@@ -881,8 +908,17 @@ def _case_ays(year_name: str, proc_ay: str) -> list[str]:
 
 
 def _case_open_from_meta(meta: dict) -> bool:
-    """Portal status -> open flag.  Only explicit terminal states close it."""
+    """Portal status -> open flag.
 
+    A proceeding whose download recorded order documents (closure order /
+    assessment order) is a CLOSED case even when the status text is blank —
+    confirmed live: closed appeal cards carry a "Download Closure Order"
+    button while showing no explicit status."""
+
+    if meta.get("closed") is True:
+        return False
+    if any(o.get("files") for o in (meta.get("orders") or [])):
+        return False
     status = ((meta.get("proceeding") or {}).get("status") or "").strip().lower()
     if not status:
         return True

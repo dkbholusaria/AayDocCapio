@@ -309,7 +309,8 @@ def _merge_rel_files(old: list[str], new: list[str]) -> list[str]:
 def _diff_build_meta(proc_meta: dict, notices: list[dict],
                      notice_files: dict[int, list[str]],
                      response_files: dict[int, list[str]],
-                     old_meta: dict, downloaded_at: str) -> dict:
+                     old_meta: dict, downloaded_at: str,
+                     orders: list[dict] | None = None) -> dict:
     """Build `_meta.json` by merging the portal's CURRENT notice list with the
     previous run's meta. Only entries whose ref_id/issued_on are new (or whose
     files vanished) carry freshly downloaded paths; already-synced entries
@@ -356,21 +357,69 @@ def _diff_build_meta(proc_meta: dict, notices: list[dict],
         kept["index"] = len(notices) + offset
         entries.append(kept)
 
+    # Orders: merge the freshly downloaded entries with previously recorded
+    # ones (matched by title) so a cached order keeps its file paths.
+    old_orders = { (o.get("title") or "").strip(): o
+                   for o in (old_meta.get("orders") or []) }
+    merged_orders: list[dict] = []
+    seen_titles: set[str] = set()
+    for order in (orders or []):
+        title = (order.get("title") or "").strip()
+        prev = old_orders.get(title)
+        files = list(order.get("files") or [])
+        if not files and prev:
+            files = list(prev.get("files") or [])
+        # De-duplicate file entries defensively (older runs could record the
+        # same portal document more than once inside one order block).
+        uniq_files: list[str] = []
+        seen_rel: set[str] = set()
+        for rel in files:
+            base = os.path.basename(rel)
+            if base in seen_rel:
+                continue
+            seen_rel.add(base)
+            uniq_files.append(rel)
+        files = uniq_files
+        merged_orders.append({
+            "title": order.get("title", ""),
+            "filename": order.get("filename") or (prev or {}).get("filename", ""),
+            "files": files,
+        })
+        seen_titles.add(title)
+    seen_files = {os.path.basename(rel)
+                  for o in merged_orders for rel in (o.get("files") or [])}
+    for title, prev in old_orders.items():
+        prev_files = [rel for rel in (prev.get("files") or [])
+                      if os.path.basename(rel) not in seen_files]
+        if prev_files:
+            kept = dict(prev)
+            kept["files"] = prev_files
+            merged_orders.append(kept)
+
+    # A proceeding with an order (closure order / assessment order) is a
+    # CLOSED case — the UI uses this to separate open vs closed matters.
+    has_order = any(o.get("files") for o in merged_orders)
+    status = proc_meta.get("status", "")
+    closed = has_order or "clos" in (status or "").lower()
+
     return {
         "proceeding": {
             "name": proc_meta.get("name", ""),
             "ay": proc_meta.get("ay", ""),
-            "status": proc_meta.get("status", ""),
+            "status": status,
         },
+        "closed": closed,
         "downloaded_at": downloaded_at,
         "notices": entries,
+        "orders": merged_orders,
     }
 
 
 def _build_proc_meta(proc_meta: dict, notices: list[dict],
                      notice_files: dict[int, list[str]],
                      response_files: dict[int, list[str]],
-                     downloaded_at: str) -> dict:
+                     downloaded_at: str,
+                     orders: list[dict] | None = None) -> dict:
     """Assemble the per-proceeding `_meta.json` payload. Pure function
     (unit-testable). notice_files/response_files map the download loop
     index k (0-based) to that notice's saved basenames; notice k falls
@@ -398,14 +447,19 @@ def _build_proc_meta(proc_meta: dict, notices: list[dict],
                                for p in response_files.get(k, [])],
         }
         entries.append(entry)
+    merged_orders = [o for o in (orders or []) if o.get("files")]
+    has_order = bool(merged_orders)
+    status = proc_meta.get("status", "")
     return {
         "proceeding": {
             "name": proc_meta.get("name", ""),
             "ay": proc_meta.get("ay", ""),
-            "status": proc_meta.get("status", ""),
+            "status": status,
         },
+        "closed": has_order or "clos" in (status or "").lower(),
         "downloaded_at": downloaded_at,
         "notices": entries,
+        "orders": merged_orders,
     }
 
 
@@ -428,6 +482,8 @@ async def _read_proceedings_on_active_tab(page: Page, step) -> list[dict]:
             .filter(b => b.getBoundingClientRect().width > 0
                          && !b.disabled
                          && /View Notices\\/Orders/.test(b.innerText || ''));
+        const allCards = [...document.querySelectorAll('.card-container')]
+            .filter(c => c.getBoundingClientRect().width > 0);
         for (let bi = 0; bi < viewBtns.length; bi++) {
             let card = viewBtns[bi].closest('.card-container')
                        || viewBtns[bi].closest('mat-card');
@@ -436,19 +492,28 @@ async def _read_proceedings_on_active_tab(page: Page, step) -> list[dict]:
             const txt = card.innerText || '';
             const statusM = txt.match(/Proceeding Status\\s*:?\\s*\\n?\\s*([^\\n]+)/);
             const ayM = txt.match(/Assessment Year\\s*:?\\s*\\n?\\s*([^\\n]+)/);
+            const orderBtns = [...card.querySelectorAll('button')]
+                .map(b => (b.innerText || '').trim())
+                .filter(t => t && /order/i.test(t)
+                             && !/view notices/i.test(t));
             out.push({
                 button_index: bi,
+                card_index: allCards.indexOf(card),
                 name: nameEl ? (nameEl.innerText || '').trim() : '',
                 ay: ayM ? ayM[1].trim() : '',
                 status: statusM ? statusM[1].trim() : '',
+                order_buttons: orderBtns,
             });
         }
         return out;
     }"""
     )
     return [
-        {"button_index": c.get("button_index", i), "name": c.get("name", ""),
-         "ay": c.get("ay", ""), "status": c.get("status", "")}
+        {"button_index": c.get("button_index", i),
+         "card_index": c.get("card_index", -1),
+         "name": c.get("name", ""),
+         "ay": c.get("ay", ""), "status": c.get("status", ""),
+         "order_buttons": c.get("order_buttons", [])}
         for i, c in enumerate(cards)
     ]
 
@@ -597,9 +662,178 @@ async def _close_extra_pages(page: Page) -> None:
         pass
 
 
+def _order_title(modal_title: str, filename: str) -> str:
+    """Prefer the document type encoded in the portal filename — assessment
+    and penalty closures publish an Order, a Computation sheet and a Demand
+    notice together, all under one 'Closure Order' modal caption."""
+    low = (filename or "").lower()
+    if "computation" in low:
+        return "Computation Sheet"
+    if "demand" in low:
+        return "Demand Notice"
+    if "order" in low:
+        section = ""
+        m = re.search(r"order\s*(?:pass\s*)?u/?s\s*([0-9]{1,3}[A-Za-z]?(?:\([^)]*\))?)",
+                      low)
+        if m:
+            section = f" u/s {m.group(1).upper()}"
+        return f"Order{section}"
+    return (modal_title or "Order").strip()
+
+
+async def _visible_download_button(page: Page):
+    """Return the first VISIBLE 'Download' button inside a portal overlay
+    (the Closure/Order modal renders one). None when no overlay is open."""
+    try:
+        btns = page.locator(
+            ".cdk-overlay-pane button:has-text('Download'), "
+            ".modal.show button:has-text('Download')")
+        for i in range(await btns.count()):
+            candidate = btns.nth(i)
+            try:
+                if await candidate.is_visible(timeout=800):
+                    return candidate
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
+
+async def _download_proceeding_orders(page: Page, card_index: int, proc_dir: str,
+                                      proc_label: str, old_orders: list[dict],
+                                      step) -> tuple[list[str], list[dict], list[str]]:
+    """Download order documents attached to a proceeding CARD (e.g. the
+    'Download Closure Order' button on a closed appeal). Confirmed live:
+    clicking it opens a modal titled e.g. 'Closure Order' with the order PDF
+    name and a Download button; the PDF is then a normal browser download.
+
+    Orders already recorded in `_meta.json` with their file still on disk are
+    skipped (incremental sync), same as notices.
+
+    Returns (saved_paths, order_entries, warnings). Each order entry is
+    {"title", "filename", "files": ["order-NN/<name>"]}.
+    """
+    saved: list[str] = []
+    entries: list[dict] = []
+    warns: list[str] = []
+    if card_index < 0:
+        return saved, entries, warns
+
+    card = page.locator(".card-container").nth(card_index)
+    try:
+        buttons = await card.evaluate(
+            """c => [...c.querySelectorAll('button')]
+                .map((b, i) => ({i, t: (b.innerText || '').trim(), d: b.disabled}))
+                .filter(x => x.t && /order/i.test(x.t) && !/view notices/i.test(x.t)
+                             && !x.d)"""
+        )
+    except Exception as e:
+        step(f"[Warning] Order button scan failed: {e}")
+        return saved, entries, warns
+
+    if not buttons:
+        return saved, entries, warns
+    step(f"Order button(s) on this proceeding: {[b['t'] for b in buttons]}")
+
+    known_files = {os.path.basename(rel)
+                   for o in (old_orders or [])
+                   for rel in (o.get("files") or [])}
+
+    for n, b in enumerate(buttons, start=1):
+        label = b["t"]
+        try:
+            await card.locator("button").nth(b["i"]).click(timeout=12000)
+        except Exception as e:
+            step(f"[Warning] Could not click order button '{label}': {e}")
+            warns.append(f"{proc_label}: order '{label}' click failed")
+            continue
+        await asyncio.sleep(4)
+
+        dl_btn = await _visible_download_button(page)
+        if dl_btn is None:
+            step(f"[Warning] No Download button appeared for order '{label}'")
+            warns.append(f"{proc_label}: order '{label}' modal did not open")
+            await _dismiss_portal_popups(page, step)
+            continue
+
+        # Overlay text carries the title and full portal filename.
+        overlay_text = ""
+        try:
+            overlay_text = await page.locator(
+                ".cdk-overlay-pane, .modal.show").last.inner_text()
+        except Exception:
+            pass
+        modal_title = (overlay_text.splitlines() or [label])[0].strip() or label
+
+        # The modal can carry MORE THAN ONE document (order + computation
+        # sheet + demand notice are published together on assessment/penalty
+        # closures). Click every visible Download button rather than only the
+        # first, and name each record from its own portal filename.
+        order_dir = os.path.join(proc_dir, f"order-{n:02d}")
+        os.makedirs(order_dir, exist_ok=True)
+        downloads_here = []
+        seen_this_modal: set[str] = set()
+        for _ in range(6):
+            btn = await _visible_download_button(page)
+            if btn is None:
+                break
+            try:
+                async with page.expect_download(timeout=45000) as dl_info:
+                    await btn.click(timeout=10000)
+                download = await dl_info.value
+                fname = _sanitize_name(download.suggested_filename or "order.pdf")
+                staging = os.path.join(proc_dir, ".staging_order.pdf")
+                await download.save_as(staging)
+                # The Download button remains enabled after it fires, so a
+                # naive loop re-clicks it. Stop as soon as the same portal
+                # document comes back twice.
+                if fname in seen_this_modal:
+                    os.remove(staging)
+                    break
+                seen_this_modal.add(fname)
+                if fname in known_files:
+                    os.remove(staging)
+                    step(f"Cached (unchanged): order document '{fname}'")
+                    downloads_here.append(fname)
+                    continue
+                path = _dedupe_path(order_dir, fname)
+                os.replace(staging, path)
+                saved.append(path)
+                downloads_here.append(os.path.basename(path))
+                step(f"[Victory] Saved order document: {os.path.basename(path)}")
+            except Exception as e:
+                step(f"[Warning] Order download failed: {e}")
+                warns.append(f"{proc_label}: order download failed")
+                break
+            await asyncio.sleep(2)
+
+        if downloads_here:
+            entries.append({
+                "title": _order_title(modal_title, downloads_here[0]),
+                "filename": downloads_here[0],
+                "files": [f"order-{n:02d}/{f}" for f in downloads_here],
+            })
+        # Close the modal so the next button is clickable.
+        for sel in (".cdk-overlay-pane button:has-text('Cancel')",
+                    ".modal.show button:has-text('Cancel')",
+                    ".cdk-overlay-pane button:has-text('close')"):
+            try:
+                loc = page.locator(sel).first
+                if await loc.count() and await loc.is_visible(timeout=800):
+                    await loc.click(timeout=4000)
+                    break
+            except Exception:
+                continue
+        await asyncio.sleep(2)
+        await _dismiss_portal_popups(page, step)
+
+    return saved, entries, warns
+
+
 async def _process_proceeding(page: Page, button_index: int, proc_meta: dict,
                               download_root: str, log_callback, pan: str,
-                              step) -> tuple[list[str], list[str], int]:
+                              step, card_index: int = -1) -> tuple[list[str], list[str], int, dict]:
     """Open one proceeding's View Notices/Orders and sync its documents.
 
     Diff-first: notices/responses whose (ref_id, issued_on) already exist in
@@ -622,12 +856,23 @@ async def _process_proceeding(page: Page, button_index: int, proc_meta: dict,
         step(f"Previous sync: {len(synced_notices)} notice(s), "
              f"{len(synced_responses)} response(s) already on disk")
 
+    # Order documents hang off the proceeding CARD itself (e.g. "Download
+    # Closure Order" on a closed appeal) — grab them while the list is still
+    # on screen, before navigating away.
+    order_paths, order_entries, order_warns = await _download_proceeding_orders(
+        page, card_index, proc_dir, proc_label,
+        old_meta.get("orders") or [], step)
+    saved.extend(order_paths)
+    warns.extend(order_warns)
+    if order_entries:
+        step(f"Orders on this proceeding: {len(order_entries)}")
+
     try:
         btn = page.locator("button:has-text('View Notices/Orders')").nth(button_index)
         await btn.click(timeout=15000)
     except Exception as e:
         step(f"[Warning] Could not open proceeding {button_index + 1}: {e}")
-        return [], [f"{proc_label}: could not open ({str(e)[:60]})"], 0
+        return [], [f"{proc_label}: could not open ({str(e)[:60]})"], 0, {}
     await asyncio.sleep(5)
     await _dismiss_portal_popups(page, step)
     await _close_extra_pages(page)
@@ -689,7 +934,7 @@ async def _process_proceeding(page: Page, button_index: int, proc_meta: dict,
         except Exception as e:
             step(f"[Warning] Back from detailed notice {k + 1} failed: {e}")
             warns.append(f"{proc_label}: navigation lost after notice {k + 1}")
-            return saved, warns, skipped
+            return saved, warns, skipped, {}
 
     # Per-notice View Response (client's submitted response + attachments).
     # Only RESPONDED notices render a View Response button, so button k maps
@@ -738,7 +983,7 @@ async def _process_proceeding(page: Page, button_index: int, proc_meta: dict,
         except Exception as e:
             step(f"[Warning] Back from response {j + 1} failed: {e}")
             warns.append(f"{proc_label}: navigation lost after response {j + 1}")
-            return saved, warns, skipped
+            return saved, warns, skipped, {}
 
     # Persist per-proceeding metadata for the UI (issue dates, due dates,
     # responded status, orders). MERGED with the previous run so unchanged
@@ -747,7 +992,8 @@ async def _process_proceeding(page: Page, button_index: int, proc_meta: dict,
     try:
         meta = _diff_build_meta(proc_meta, notices, notice_files,
                                 response_files, old_meta,
-                                datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                orders=order_entries)
         meta_path = os.path.join(proc_dir, "_meta.json")
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump(meta, f, ensure_ascii=False, indent=2)
@@ -764,7 +1010,7 @@ async def _process_proceeding(page: Page, button_index: int, proc_meta: dict,
     except Exception as e:
         step(f"[Warning] Back to proceedings list failed: {e}")
         warns.append(f"{proc_label}: could not return to list")
-    return saved, warns, skipped
+    return saved, warns, skipped, {"orders": order_entries}
 
 
 async def download_e_proceedings(page: Page, download_root: str, log_callback,
@@ -835,8 +1081,9 @@ async def download_e_proceedings(page: Page, download_root: str, log_callback,
             meta = _parse_proceeding_card_text(f"Proceeding Name :\n{proc['name']}\n"
                                                f"Assessment Year :\n{proc['ay']}\n"
                                                f"Proceeding Status\n{proc['status']}")
-            saved, warns, skipped = await _process_proceeding(
-                page, proc["button_index"], meta or proc, download_root, log_callback, pan, step)
+            saved, warns, skipped, extra = await _process_proceeding(
+                page, proc["button_index"], meta or proc, download_root,
+                log_callback, pan, step, card_index=proc.get("card_index", -1))
             saved_files.extend(
                 {"path": p, "proceeding": proc["name"], "kind": kind} for p in saved)
             warnings.extend(warns)
