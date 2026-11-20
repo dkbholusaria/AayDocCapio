@@ -812,3 +812,31 @@ TAN credentials — no portal-flow changes.
 - `BatchProgressDialog` takes an `id_label` so the identity column reads TAN.
 - Files land in `{TAN}-{Name}/{AY|TY}_{year}/Tax Challans (Paid)/`, exactly
   like the Income Tax challan download.
+
+---
+
+## 26. View Saved Challans (F-12)
+
+Adds a read-only way to reopen challans already saved in earlier sessions.
+The vault is deliberately not the source of truth: `record_download()` is
+only written by the batch download pipeline, and both challan generators
+(F-64 and F-4) never record their artifacts. The filesystem therefore backs
+the index.
+
+- `automation/challan_index.py` walks the configured download root and
+  classifies files by their containing folder: `Tax Challans (Paid)` (and
+  legacy `Challans` / `Tax Challans`) -> Paid; `Tax Challans (Payable)` (and
+  legacy `Tax Challans (Generated)`) -> Unpaid. Client identity comes from the
+  `{PAN|TAN}-{Name}` folder and is resolved to the current vault name; year
+  comes from the `AY_/TY_` path segment, with a filename fallback for
+  downloaded challans.
+- `ui/challan_viewer.py` — `ViewChallansDialog`: client / status / year
+  filters plus a search box, table (client, year, status, type, file, date,
+  size), double-click to open, Open Folder, Refresh, and an empty state.
+  Nothing is written and no portal login happens.
+- `app.py` — entry points: E-Pay Tax menu -> View Challans..., Income Tax ->
+  E-Pay Tax tab (secondary button), and the TDS hub (action card).
+- `test_challan_viewer.py` — 5 test functions, all passing: folder
+  classification, legacy names, TDS vs Income Tax filenames, year/identity
+  parsing, sort order, filters, empty state, and open-file/open-folder
+  routing (with `_open_path` patched).
