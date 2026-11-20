@@ -54,6 +54,12 @@ Not Available"), so this module downloads everything found in one pass and
 ignores the batch's year selection — the handler records the same terminal
 status against every selected year row so the grid/progress stay consistent.
 
+Incremental sync: before downloading, each proceeding's `_meta.json` is
+matched against the portal's current notice list by (ref_id, issued_on).
+Notices/responses already recorded there whose files still exist on disk are
+SKIPPED — only new/changed documents are fetched. A repeat run over unchanged
+data downloads nothing and reports "Up to date".
+
 Never aborts the whole run for one failed artifact: every download is
 individually try/except'd (same pattern as downloader_filed_returns).
 """
@@ -239,6 +245,126 @@ def _parse_notices_page_text(raw: str) -> list[dict]:
             "is_order": "order" in description.lower(),
         })
     return notices
+
+
+def _notice_key(notice: dict) -> str:
+    """Stable diff key for one notice: '<ref_id>|<issued_on>'. Empty string
+    when the portal gave no reference id — an unknown notice is never
+    treated as already-synced (safe fallback: always re-fetch)."""
+    ref = (notice.get("ref_id") or "").strip()
+    issued = (notice.get("issued_on") or "").strip()
+    return f"{ref}|{issued}" if ref else ""
+
+
+def _load_existing_meta(proc_dir: str) -> dict:
+    """Read a proceeding's `_meta.json`; {} on anything missing/corrupt."""
+    try:
+        with open(os.path.join(proc_dir, "_meta.json"), "r", encoding="utf-8") as f:
+            meta = json.load(f)
+        return meta if isinstance(meta, dict) else {}
+    except Exception:
+        return {}
+
+
+def _meta_entries_by_key(meta: dict) -> dict[str, dict]:
+    """Map diff key -> existing meta entry (last wins on duplicates)."""
+    out: dict[str, dict] = {}
+    for entry in (meta.get("notices") or []):
+        key = _notice_key(entry)
+        if key:
+            out[key] = entry
+    return out
+
+
+def _files_present(proc_dir: str, rel_files) -> bool:
+    """True when every relative path in `rel_files` exists on disk."""
+    rels = rel_files or []
+    if not rels:
+        return False
+    return all(os.path.exists(os.path.join(proc_dir, r)) for r in rels)
+
+
+def _synced_keys(proc_dir: str, meta: dict, field: str) -> set[str]:
+    """Keys already synced AND still on disk for `field` ('files' for the
+    notice PDF, 'response_files' for the client's response)."""
+    out: set[str] = set()
+    for entry in (meta.get("notices") or []):
+        key = _notice_key(entry)
+        if key and _files_present(proc_dir, entry.get(field)):
+            out.add(key)
+    return out
+
+
+def _merge_rel_files(old: list[str], new: list[str]) -> list[str]:
+    """Keep old relative paths and append genuinely new basenames."""
+    merged = list(old or [])
+    seen = {os.path.basename(p) for p in merged}
+    for path in new or []:
+        if os.path.basename(path) not in seen:
+            merged.append(path)
+            seen.add(os.path.basename(path))
+    return merged
+
+
+def _diff_build_meta(proc_meta: dict, notices: list[dict],
+                     notice_files: dict[int, list[str]],
+                     response_files: dict[int, list[str]],
+                     old_meta: dict, downloaded_at: str) -> dict:
+    """Build `_meta.json` by merging the portal's CURRENT notice list with the
+    previous run's meta. Only entries whose ref_id/issued_on are new (or whose
+    files vanished) carry freshly downloaded paths; already-synced entries
+    reuse their old files. Old entries no longer shown by the portal are
+    preserved (the portal hides history; local documents are not deleted)."""
+    old_by_key = _meta_entries_by_key(old_meta)
+    entries: list[dict] = []
+    used: set[str] = set()
+
+    for k, src in enumerate(notices):
+        key = _notice_key(src)
+        old = old_by_key.get(key) if key else None
+        files = old.get("files", []) if old else []
+        files = _merge_rel_files(
+            files,
+            [f"notice-{k + 1:02d}/{os.path.basename(p)}"
+             for p in notice_files.get(k, [])])
+        resp = old.get("response_files", []) if old else []
+        resp = _merge_rel_files(
+            resp,
+            [f"response-{k + 1:02d}/{os.path.basename(p)}"
+             for p in response_files.get(k, [])])
+        entries.append({
+            "index": k + 1,
+            "ref_id": src.get("ref_id", ""),
+            "description": src.get("description", ""),
+            "issued_on": src.get("issued_on", ""),
+            "response_due": src.get("response_due", ""),
+            "responded": bool(src.get("responded", False)),
+            "section": src.get("section", ""),
+            "viewed_by_ao": src.get("viewed_by_ao", ""),
+            "is_order": bool(src.get("is_order", False)),
+            "files": files,
+            "response_files": resp,
+        })
+        if key:
+            used.add(key)
+
+    for offset, (key, old) in enumerate(
+            (kv for kv in old_by_key.items() if kv[0] not in used), start=1):
+        kept = dict(old)
+        # Renumber past the current portal list so doc ids stay unique even
+        # though the notice is no longer rendered by the portal.
+        kept["index"] = len(notices) + offset
+        entries.append(kept)
+
+    return {
+        "proceeding": {
+            "name": proc_meta.get("name", ""),
+            "ay": proc_meta.get("ay", ""),
+            "status": proc_meta.get("status", ""),
+        },
+        "downloaded_at": downloaded_at,
+        "notices": entries,
+    }
 
 
 def _build_proc_meta(proc_meta: dict, notices: list[dict],
@@ -473,23 +599,35 @@ async def _close_extra_pages(page: Page) -> None:
 
 async def _process_proceeding(page: Page, button_index: int, proc_meta: dict,
                               download_root: str, log_callback, pan: str,
-                              step) -> tuple[list[str], list[str]]:
-    """Open one proceeding's View Notices/Orders and download every
-    document reachable from it. Returns (saved_paths, warnings)."""
+                              step) -> tuple[list[str], list[str], int]:
+    """Open one proceeding's View Notices/Orders and sync its documents.
+
+    Diff-first: notices/responses whose (ref_id, issued_on) already exist in
+    this proceeding's `_meta.json` AND whose files are still on disk are
+    skipped — no portal click, no download. Returns
+    (saved_paths, warnings, skipped_count)."""
     saved: list[str] = []
     warns: list[str] = []
+    skipped = 0
     notice_files: dict[int, list[str]] = {}
     response_files: dict[int, list[str]] = {}
     proc_label = _sanitize_name(proc_meta.get("name") or f"Proceeding {button_index + 1}")
     proc_dir = os.path.join(download_root, f"{button_index + 1:02d}-{proc_label}")
     os.makedirs(proc_dir, exist_ok=True)
 
+    old_meta = _load_existing_meta(proc_dir)
+    synced_notices = _synced_keys(proc_dir, old_meta, "files")
+    synced_responses = _synced_keys(proc_dir, old_meta, "response_files")
+    if synced_notices or synced_responses:
+        step(f"Previous sync: {len(synced_notices)} notice(s), "
+             f"{len(synced_responses)} response(s) already on disk")
+
     try:
         btn = page.locator("button:has-text('View Notices/Orders')").nth(button_index)
         await btn.click(timeout=15000)
     except Exception as e:
         step(f"[Warning] Could not open proceeding {button_index + 1}: {e}")
-        return [], [f"{proc_label}: could not open ({str(e)[:60]})"]
+        return [], [f"{proc_label}: could not open ({str(e)[:60]})"], 0
     await asyncio.sleep(5)
     await _dismiss_portal_popups(page, step)
     await _close_extra_pages(page)
@@ -503,11 +641,16 @@ async def _process_proceeding(page: Page, button_index: int, proc_meta: dict,
     notices = _parse_notices_page_text(body_text)
     step(f"Proceeding '{proc_label}': {len(notices)} notice block(s)")
 
-    # Each notice has its own 'Notice/Letter Pdf' button — download each
+    # Each notice has its own 'Notice/Letter Pdf' button — sync each
     pdf_btns = page.locator("button:has-text('Notice/Letter Pdf')")
     n_pdfs = await pdf_btns.count()
     step(f"Notice/Letter Pdf buttons: {n_pdfs}")
     for k in range(n_pdfs):
+        key = _notice_key(notices[k]) if k < len(notices) else ""
+        if key and key in synced_notices:
+            step(f"Cached (unchanged): notice {k + 1} [{key}]")
+            skipped += 1
+            continue
         try:
             await pdf_btns.nth(k).click(timeout=15000)
         except Exception as e:
@@ -546,17 +689,28 @@ async def _process_proceeding(page: Page, button_index: int, proc_meta: dict,
         except Exception as e:
             step(f"[Warning] Back from detailed notice {k + 1} failed: {e}")
             warns.append(f"{proc_label}: navigation lost after notice {k + 1}")
-            return saved, warns
+            return saved, warns, skipped
 
-    # Per-notice View Response (client's submitted response + attachments)
+    # Per-notice View Response (client's submitted response + attachments).
+    # Only RESPONDED notices render a View Response button, so button k maps
+    # to the k-th notice flagged `responded` — not to notices[k].
     vr_btns = page.locator("button:has-text('View Response')")
     n_vr = await vr_btns.count()
     step(f"View Response buttons: {n_vr}")
-    for k in range(n_vr):
+    responded_indices = [i for i, n in enumerate(notices) if n.get("responded")]
+    for j in range(n_vr):
+        notice_index = (responded_indices[j]
+                        if j < len(responded_indices) else j)
+        key = (_notice_key(notices[notice_index])
+               if notice_index < len(notices) else "")
+        if key and key in synced_responses:
+            step(f"Cached (unchanged): response {j + 1} [{key}]")
+            skipped += 1
+            continue
         try:
-            await vr_btns.nth(k).click(timeout=15000)
+            await vr_btns.nth(j).click(timeout=15000)
         except Exception as e:
-            step(f"[Warning] View Response {k} click failed: {e}")
+            step(f"[Warning] View Response {j} click failed: {e}")
             continue
         await asyncio.sleep(5)
         await _dismiss_portal_popups(page, step)
@@ -568,13 +722,13 @@ async def _process_proceeding(page: Page, button_index: int, proc_meta: dict,
                 state="visible", timeout=10000)
         except Exception:
             pass  # keep going — the download loop logs what it finds
-        resp_dir = os.path.join(proc_dir, f"response-{k + 1:02d}")
+        resp_dir = os.path.join(proc_dir, f"response-{notice_index + 1:02d}")
         got = await _download_attachments_on_page(viewer, step, resp_dir,
-                                                  f"{proc_label}-response{k + 1}")
+                                                  f"{proc_label}-response{notice_index + 1}")
         saved.extend(got)
-        # k may exceed the parsed notice blocks (portal data gaps) — the
-        # meta builder guards unmapped indices, keep the files regardless.
-        response_files[k] = list(got)
+        # The mapped notice index may exceed the parsed blocks (portal data
+        # gaps) — the meta builder guards unmapped indices, keep the files.
+        response_files[notice_index] = list(got)
         try:
             if viewer is not page:
                 await _close_extra_pages(page)
@@ -582,21 +736,23 @@ async def _process_proceeding(page: Page, button_index: int, proc_meta: dict,
                 await page.locator("button:has-text('Back')").first.click(timeout=8000)
                 await asyncio.sleep(4)
         except Exception as e:
-            step(f"[Warning] Back from response {k + 1} failed: {e}")
-            warns.append(f"{proc_label}: navigation lost after response {k + 1}")
-            return saved, warns
+            step(f"[Warning] Back from response {j + 1} failed: {e}")
+            warns.append(f"{proc_label}: navigation lost after response {j + 1}")
+            return saved, warns, skipped
 
     # Persist per-proceeding metadata for the UI (issue dates, due dates,
-    # responded status, orders). Best-effort — a write failure must never
-    # abort the run.
+    # responded status, orders). MERGED with the previous run so unchanged
+    # notices keep their existing file paths. Best-effort — a write failure
+    # must never abort the run.
     try:
-        meta = _build_proc_meta(proc_meta, notices, notice_files,
-                                response_files,
+        meta = _diff_build_meta(proc_meta, notices, notice_files,
+                                response_files, old_meta,
                                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         meta_path = os.path.join(proc_dir, "_meta.json")
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump(meta, f, ensure_ascii=False, indent=2)
-        step(f"Saved metadata: {os.path.basename(meta_path)}")
+        step(f"Saved metadata: {os.path.basename(meta_path)} "
+             f"({len(saved)} new, {skipped} unchanged)")
     except Exception as e:
         step(f"[Warning] Could not write _meta.json for '{proc_label}': {e}")
         warns.append(f"{proc_label}: metadata save failed")
@@ -608,22 +764,30 @@ async def _process_proceeding(page: Page, button_index: int, proc_meta: dict,
     except Exception as e:
         step(f"[Warning] Back to proceedings list failed: {e}")
         warns.append(f"{proc_label}: could not return to list")
-    return saved, warns
+    return saved, warns, skipped
 
 
 async def download_e_proceedings(page: Page, download_root: str, log_callback,
                                  pan: str = "", is_running=None) -> tuple[bool, str, list[dict]]:
-    """F-60 entry point. Downloads every document under e-Proceedings (both
-    tabs, all proceedings) for the already-logged-in client on `page`.
+    """F-60 entry point. Syncs e-Proceedings documents (both tabs, all
+    proceedings) for the already-logged-in client on `page`.
+
+    Incremental: a notice/response already recorded in the proceeding's
+    `_meta.json` (matched by portal ref_id + issued_on) with its files still
+    on disk is skipped — only new/changed documents are downloaded.
 
     Returns (ok, msg, saved_files) where saved_files is a list of
     {"path", "proceeding", "kind"} dicts — the same broad (ok, msg, saved)
     contract handle_challans/handle_filed_returns hand back to the caller.
     ok=False means nothing could be fetched at all (nav failure / empty).
-    Partial failures keep ok=True with a warning in msg."""
+    When everything was already synced, returns
+    ok=True, msg="Up to date (N unchanged)", saved=[] so the caller shows
+    "up to date" rather than a failure. Partial failures keep ok=True with a
+    warning in msg."""
     step = make_step_logger(log_callback, "EPROC")
     saved_files: list[dict] = []
     warnings: list[str] = []
+    skipped_total = 0
 
     def _stopped():
         return (is_running is not None and not is_running())
@@ -671,18 +835,22 @@ async def download_e_proceedings(page: Page, download_root: str, log_callback,
             meta = _parse_proceeding_card_text(f"Proceeding Name :\n{proc['name']}\n"
                                                f"Assessment Year :\n{proc['ay']}\n"
                                                f"Proceeding Status\n{proc['status']}")
-            saved, warns = await _process_proceeding(
+            saved, warns, skipped = await _process_proceeding(
                 page, proc["button_index"], meta or proc, download_root, log_callback, pan, step)
             saved_files.extend(
                 {"path": p, "proceeding": proc["name"], "kind": kind} for p in saved)
             warnings.extend(warns)
+            skipped_total += skipped
 
-    await update_browser_status(page, "e-Proceedings: Download Complete!")
-    step(f"Done: {len(saved_files)} file(s), {len(warnings)} warning(s)")
+    await update_browser_status(page, "e-Proceedings: Sync Complete!")
+    step(f"Sync summary: {len(saved_files)} new file(s), "
+         f"{skipped_total} unchanged (skipped), {len(warnings)} warning(s)")
 
     if not saved_files:
         if warnings:
             return False, "; ".join(warnings), []
+        if skipped_total:
+            return True, f"Up to date ({skipped_total} unchanged)", []
         return False, "No e-Proceedings found", []
     if warnings:
         return True, "; ".join(warnings), saved_files

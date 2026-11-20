@@ -13,6 +13,11 @@ All notable changes to AayDocCapio are documented here.
 - **A new "View e-Proceedings" window** (Tools menu, or right-click a client in the grid) — browse proceedings with file counts and sizes, see each file tagged as Notice or Response, and open any file or the whole proceeding folder with a double-click
 - **Clear per-client outcomes** — "✅ Downloaded (n file(s))", "⬜ No e-Proceedings found" when the portal shows no records, and partial-failure warnings instead of silent gaps
 
+### Improvements
+
+#### e-Proceedings now syncs incrementally (F-2)
+- **Repeat downloads no longer re-fetch everything** — each sync compares the portal's notices against what's already saved (by reference ID and issue date) and downloads **only new or changed documents**. A run over unchanged data finishes instantly with "✅ e-Proceedings — Up to date (N unchanged)" and creates no duplicates. Unchanged notices are still listed and viewable from the saved data.
+
 ### Bug Fixes
 
 #### Download Documents tab can now pick the year and run (B-1)

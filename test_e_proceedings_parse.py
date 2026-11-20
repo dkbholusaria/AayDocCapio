@@ -11,6 +11,13 @@ from automation.downloader_e_proceedings import (
     _parse_notices_page_text,
     _sanitize_name,
     _dedupe_path,
+    _notice_key,
+    _load_existing_meta,
+    _meta_entries_by_key,
+    _files_present,
+    _synced_keys,
+    _merge_rel_files,
+    _diff_build_meta,
 )
 
 F60 = "/tmp/f60_explore"
@@ -134,6 +141,103 @@ def test_dedupe_path():
         assert _dedupe_path(d, "Notice.pdf").endswith("Notice (2).pdf")
         # different extension does not collide
         assert _dedupe_path(d, "Notice.txt").endswith("Notice.txt")
+
+
+# ------------------------------------------------------- incremental sync diff
+
+def _notice(ref, issued, desc="Notice"):
+    return {"ref_id": ref, "issued_on": issued, "description": desc,
+            "response_due": "", "responded": False, "section": "",
+            "viewed_by_ao": "", "is_order": False}
+
+
+def test_notice_key():
+    assert _notice_key(_notice("100", "26-Nov-2024")) == "100|26-Nov-2024"
+    assert _notice_key(_notice("", "26-Nov-2024")) == ""     # unknown -> never skip
+    assert _notice_key({}) == ""
+
+
+def test_load_existing_meta_missing_or_corrupt():
+    with tempfile.TemporaryDirectory() as d:
+        assert _load_existing_meta(d) == {}
+        with open(os.path.join(d, "_meta.json"), "w") as f:
+            f.write("{not json")
+        assert _load_existing_meta(d) == {}
+        with open(os.path.join(d, "_meta.json"), "w") as f:
+            f.write("[1, 2]")
+        assert _load_existing_meta(d) == {}
+
+
+def test_files_present_and_synced_keys():
+    with tempfile.TemporaryDirectory() as d:
+        os.makedirs(os.path.join(d, "notice-01"))
+        open(os.path.join(d, "notice-01", "a.pdf"), "w").close()
+        assert _files_present(d, ["notice-01/a.pdf"]) is True
+        assert _files_present(d, ["notice-01/missing.pdf"]) is False
+        assert _files_present(d, []) is False
+        meta = {"notices": [
+            dict(_notice("1", "d1"), index=1, files=["notice-01/a.pdf"]),
+            dict(_notice("2", "d2"), index=2, files=[]),
+        ]}
+        assert _synced_keys(d, meta, "files") == {"1|d1"}
+        assert _synced_keys(d, meta, "response_files") == set()
+
+
+def test_meta_entries_by_key():
+    meta = {"notices": [dict(_notice("1", "d1"), index=1)]}
+    by = _meta_entries_by_key(meta)
+    assert set(by) == {"1|d1"}
+
+
+def test_merge_rel_files_keeps_old_appends_new():
+    assert _merge_rel_files([], []) == []
+    assert _merge_rel_files(["notice-01/a.pdf"],
+                            ["notice-03/a.pdf", "notice-03/b.pdf"]) == \
+        ["notice-01/a.pdf", "notice-03/b.pdf"]
+
+
+def test_diff_build_meta_downloads_only_new_and_preserves_old():
+    old = {
+        "proceeding": {"name": "P", "ay": "2020-21", "status": "Open"},
+        "downloaded_at": "old",
+        "notices": [
+            dict(_notice("1", "d1", "Old seen"), index=1,
+                 files=["notice-01/old.pdf"], response_files=["response-01/r.pdf"]),
+            dict(_notice("9", "d9", "Hidden now"), index=9,
+                 files=["notice-09/hidden.pdf"]),
+        ],
+    }
+    current = [_notice("1", "d1", "Old seen"), _notice("2", "d2", "Brand new")]
+    meta = _diff_build_meta(
+        {"name": "P", "ay": "2020-21", "status": "Open"},
+        current,
+        notice_files={1: ["/tmp/new-notice.pdf"]},   # only notice #2 downloaded
+        response_files={},
+        old_meta=old,
+        downloaded_at="now",
+    )
+    by_key = {_notice_key(e): e for e in meta["notices"]}
+    # reused notice keeps its old file paths
+    assert by_key["1|d1"]["files"] == ["notice-01/old.pdf"]
+    assert by_key["1|d1"]["response_files"] == ["response-01/r.pdf"]
+    # new notice carries the fresh download, numbered by its position
+    assert by_key["2|d2"]["files"] == ["notice-02/new-notice.pdf"]
+    # portal-hidden notice is preserved (renumbered past current portal list)
+    assert "9|d9" in by_key
+    assert by_key["9|d9"]["index"] == 3
+    # metadata refreshed from portal
+    assert by_key["1|d1"]["description"] == "Old seen"
+    assert meta["downloaded_at"] == "now"
+
+
+def test_diff_build_meta_merges_new_response_attachment():
+    old = {"notices": [dict(_notice("1", "d1"), index=1,
+                            files=["notice-01/a.pdf"],
+                            response_files=["response-01/r1.pdf"])]}
+    meta = _diff_build_meta({}, [_notice("1", "d1")], {},
+                            {0: ["/tmp/r2.pdf"]}, old, "now")
+    assert meta["notices"][0]["response_files"] == [
+        "response-01/r1.pdf", "response-01/r2.pdf"]
 
 
 # --------------------------------------------------- real captured fixtures

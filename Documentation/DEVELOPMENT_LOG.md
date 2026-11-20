@@ -709,3 +709,47 @@ Key facts confirmed live (Playwright exploration on 3 test PANs, 2026-11-18):
   `test_e_proceedings_parse.py` 9/9 PASS; viewer smoke test 27/27 PASS;
   app restarted on DISPLAY=:1 with picker + viewer screenshots captured
   against real downloaded data (18 proceedings • 73 files • 13.9 MB).
+
+---
+
+## 23. e-Proceedings Incremental (Diff) Sync (F-2) (2026-11-19)
+
+### 23.1 Context
+The F-60 downloader re-downloaded **every** e-Proceedings notice and response
+on each run (`_process_proceeding` clicked every "Notice/Letter Pdf" and
+"View Response" button unconditionally), and `_dedupe_path` only avoided
+overwriting — repeated syncs wasted time and accumulated duplicate files
+("Notice (1).pdf", "Notice (2).pdf"…).
+
+### 23.2 Fix
+- **Diff-first sync** (`automation/downloader_e_proceedings.py`): before
+  downloading, each proceeding's `_meta.json` is loaded and compared to the
+  portal's current notice list by `(ref_id, issued_on)`. A notice/response
+  already recorded there **and** still present on disk is skipped — no portal
+  click, no download. Unknown/blank `ref_id` is never treated as present, so
+  it always re-fetches (safe fallback).
+- **New pure helpers** (stdlib only, unit-tested): `_notice_key`,
+  `_load_existing_meta`, `_meta_entries_by_key`, `_files_present`,
+  `_synced_keys`, `_merge_rel_files`, `_diff_build_meta`.
+- **Merged `_meta.json`**: `_diff_build_meta` preserves previously-synced
+  entries (existing file paths, plus `response_files`) and only fills in the
+  fresh paths for new/changed notices. Entries the portal no longer shows are
+  kept (renumbered past the current list so doc ids stay unique).
+- **Correct response mapping**: "View Response" buttons render only for
+  responded notices, so button `j` now maps to the `j`-th responded notice
+  and files land in `response-NN/` keyed by the matching notice — previously
+  the loop used the raw button index, which could mismatch folders when not
+  every notice had a response.
+- **Entry point / handler**: `download_e_proceedings` returns
+  `ok=True, msg="Up to date (N unchanged)", saved=[]` when nothing new was
+  fetched; `handle_e_proceedings` shows
+  `✅ e-Proceedings — Up to date (N unchanged)` instead of a failure.
+- **Log line**: `Sync summary: X new file(s), Y unchanged (skipped), Z warning(s)`.
+
+### 23.3 Verification
+- `test_e_proceedings_parse.py` → 16/16 PASS (7 new tests: notice key,
+  corrupt/missing meta, files-present, synced keys, merge, diff-build for
+  new+reused+hidden notices and appended response attachment).
+- Simulated two-run scenario against a fake tree: run 2 over unchanged data
+  queued **0** downloads; run 3 with one new notice queued **only** that
+  notice's `ref_id`. `py_compile` clean on all touched files.
