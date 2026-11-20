@@ -9,8 +9,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import (
     QFont, QColor, QPixmap, QPainter, QBrush, QPen,
-    QTextCharFormat, QIcon,
+    QTextCharFormat, QIcon, QDoubleValidator,
 )
+from automation.challan_fields import TDS_SECTION_FIELDS, TDS_OTHER_FIELDS
 
 from ui._theme import _t
 from ui.helpers import _btn, _lbl, _status_style, _UI_FONT, _icon_path
@@ -4088,6 +4089,417 @@ class GenerateChallansDialog(QDialog):
 
         self.rows = rows
         self.accept()
+class TdsSectionEditDialog(QDialog):
+    """Add/edit ONE section line (code + Tax + Surcharge + Cess)."""
+
+    def __init__(self, parent, section: dict | None = None):
+        super().__init__(parent)
+        from automation.tds_sections import SECTIONS
+        bt = _t()
+        self.section = dict(section or {})
+        self.setWindowTitle("TDS Section")
+        self.setFixedWidth(520)
+        self.setStyleSheet(f"QDialog{{background:{bt.bg_window};}}")
+
+        vl = QVBoxLayout(self)
+        vl.setContentsMargins(20, 18, 20, 16)
+        vl.setSpacing(8)
+
+        vl.addWidget(_lbl("Section", 11, bold=True))
+        self._code_combo = QComboBox()
+        # The portal's section labels are long paragraphs. Left unbounded, the
+        # combo sizes itself (and its popup list) to the longest label and
+        # covers the whole screen. Show a trimmed label, keep the full text as
+        # a tooltip, and cap the popup to a normal modal width with elision.
+        self._code_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self._code_combo.setMinimumContentsLength(34)
+        self._code_combo.setMaxVisibleItems(12)
+        self._code_combo.setMaximumWidth(470)
+        self._code_combo.view().setTextElideMode(Qt.TextElideMode.ElideRight)
+        self._code_combo.view().setMinimumWidth(440)
+        self._code_combo.view().setMaximumWidth(560)
+        for s in SECTIONS:
+            full = f"{s['code']} — {s['label']}"
+            short = full if len(full) <= 88 else full[:85].rstrip() + "…"
+            self._code_combo.addItem(short, s["code"])
+            self._code_combo.setItemData(
+                self._code_combo.count() - 1, full, Qt.ItemDataRole.ToolTipRole)
+        if self.section.get("section_code"):
+            idx = self._code_combo.findData(str(self.section["section_code"]))
+            if idx >= 0:
+                self._code_combo.setCurrentIndex(idx)
+        vl.addWidget(self._code_combo)
+
+        self._amounts = {}
+        for key, label, _kind in TDS_SECTION_FIELDS:
+            if key == "section_code":
+                continue
+            vl.addWidget(_lbl(label, 11, bold=True))
+            box = QLineEdit(str(self.section.get(key, "") or ""))
+            box.setPlaceholderText("0")
+            box.setFixedHeight(32)
+            validator = QDoubleValidator(0, 999999999, 2, box)
+            validator.setNotation(QDoubleValidator.Notation.StandardNotation)
+            box.setValidator(validator)
+            self._amounts[key] = box
+            vl.addWidget(box)
+
+        row = QHBoxLayout()
+        row.addStretch(1)
+        cancel = _btn("Cancel", "secondary")
+        ok = _btn("Save", "primary")
+        row.addWidget(cancel)
+        row.addWidget(ok)
+        vl.addLayout(row)
+        cancel.clicked.connect(self.reject)
+        ok.clicked.connect(self._accept)
+
+    def _accept(self):
+        for box in self._amounts.values():
+            if box.text().strip() and not box.hasAcceptableInput():
+                QMessageBox.critical(self, "Invalid amount", "Enter a non-negative number.")
+                return
+        self.section = {
+            "section_code": self._code_combo.currentData(),
+            **{k: float(b.text() or 0) for k, b in self._amounts.items()},
+        }
+        self.accept()
+
+
+class TdsChallanRowDetailDialog(QDialog):
+    """Full editor for ONE TDS challan row."""
+
+    def __init__(self, parent, tan_clients: list, row: dict | None = None):
+        super().__init__(parent)
+        from automation.challan_generator import (
+            PAYMENT_MODES, all_bank_options, DEFAULT_PAYMENT_MODE,
+        )
+        bt = _t()
+        self.row = dict(row or {})
+        self.row.setdefault("deductee_type", "other_than_company")
+        self.row.setdefault("residence", "resident")
+        self.row.setdefault("sections", [])
+        self.row.setdefault("payment_mode", DEFAULT_PAYMENT_MODE)
+        self.row.setdefault("bank", "Cheque")
+        self.setWindowTitle("TDS / TCS Challan Row")
+        self.setMinimumSize(720, 600)
+        self.setStyleSheet(f"QDialog{{background:{bt.bg_window};}}")
+
+        vl = QVBoxLayout(self)
+        vl.setContentsMargins(18, 16, 18, 14)
+        vl.setSpacing(8)
+
+        vl.addWidget(_lbl("Deductor (TAN)", 11, bold=True))
+        self._tan_combo = QComboBox()
+        for c in tan_clients:
+            self._tan_combo.addItem(f"{c['pan']} — {c['name']}", c["pan"])
+        if self.row.get("tan"):
+            idx = self._tan_combo.findData(self.row["tan"])
+            if idx >= 0:
+                self._tan_combo.setCurrentIndex(idx)
+        vl.addWidget(self._tan_combo)
+
+        # Deductee type + residence (v1: one supported value each, shown
+        # disabled so the constraint is visible rather than hidden).
+        type_row = QHBoxLayout()
+        self._type_combo = QComboBox()
+        self._type_combo.addItem("Other than Company Deductee(s)", "other_than_company")
+        self._type_combo.addItem("Company Deductee(s) — not supported yet", "company")
+        self._type_combo.setCurrentIndex(
+            max(0, self._type_combo.findData(self.row["deductee_type"])))
+        self._type_combo.setEnabled(False)
+        type_row.addWidget(_lbl("Deductee type", 11, bold=True))
+        type_row.addWidget(self._type_combo, 1)
+        self._res_combo = QComboBox()
+        self._res_combo.addItem("Resident Deductee(s)", "resident")
+        self._res_combo.addItem("Non-Resident Deductee(s) — not supported yet", "non_resident")
+        self._res_combo.setCurrentIndex(max(0, self._res_combo.findData(self.row["residence"])))
+        self._res_combo.setEnabled(False)
+        type_row.addWidget(_lbl("Residence", 11, bold=True))
+        type_row.addWidget(self._res_combo, 1)
+        vl.addLayout(type_row)
+
+        vl.addWidget(_lbl("Section-wise details (max 20)", 11, bold=True))
+        self._sec_table = QTableWidget(0, 5)
+        self._sec_table.setHorizontalHeaderLabels(
+            ["Code", "Section", "Tax", "Surcharge", "Cess"])
+        self._sec_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._sec_table.verticalHeader().setVisible(False)
+        self._sec_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._sec_table.doubleClicked.connect(lambda *_: self._edit_section())
+        vl.addWidget(self._sec_table, 1)
+
+        sec_btns = QHBoxLayout()
+        add_sec = _btn("➕ Add Section", "primary")
+        edit_sec = _btn("Edit", "secondary")
+        del_sec = _btn("Remove", "danger")
+        sec_btns.addWidget(add_sec)
+        sec_btns.addWidget(edit_sec)
+        sec_btns.addWidget(del_sec)
+        sec_btns.addStretch(1)
+        vl.addLayout(sec_btns)
+        add_sec.clicked.connect(self._add_section)
+        edit_sec.clicked.connect(self._edit_section)
+        del_sec.clicked.connect(self._remove_section)
+
+        vl.addWidget(_lbl("Other payments (common to the challan)", 11, bold=True))
+        self._other = {}
+        other_row = QHBoxLayout()
+        for key, label, _kind in TDS_OTHER_FIELDS:
+            col = QVBoxLayout()
+            col.addWidget(_lbl(label, 10))
+            box = QLineEdit(str(self.row.get(key, "") or ""))
+            box.setPlaceholderText("0")
+            box.setFixedHeight(30)
+            box.setValidator(QDoubleValidator(0, 999999999, 2, box))
+            self._other[key] = box
+            col.addWidget(box)
+            other_row.addLayout(col)
+        vl.addLayout(other_row)
+
+        mode_row = QHBoxLayout()
+        self._mode_combo = QComboBox()
+        self._mode_combo.addItems(list(PAYMENT_MODES.keys()))
+        self._mode_combo.setCurrentText(self.row["payment_mode"])
+        self._mode_combo.currentTextChanged.connect(self._refresh_banks)
+        mode_row.addWidget(_lbl("Payment Mode", 11, bold=True))
+        mode_row.addWidget(self._mode_combo, 1)
+        self._bank_combo = QComboBox()
+        mode_row.addWidget(_lbl("Bank / Sub-Mode", 11, bold=True))
+        mode_row.addWidget(self._bank_combo, 1)
+        vl.addLayout(mode_row)
+
+        bank_row = QHBoxLayout()
+        self._drawee = QLineEdit(self.row.get("drawee_bank", ""))
+        self._drawee.setPlaceholderText("Drawn on Bank (Pay at Bank Counter only)")
+        self._drawee.setFixedHeight(30)
+        bank_row.addWidget(_lbl("Drawn on Bank", 11, bold=True))
+        bank_row.addWidget(self._drawee, 1)
+        vl.addLayout(bank_row)
+
+        self._hint = QLabel("")
+        self._hint.setWordWrap(True)
+        self._hint.setStyleSheet(f"color:{bt.text_muted};font-size:11px;background:transparent;")
+        vl.addWidget(self._hint)
+
+        footer = QHBoxLayout()
+        footer.addStretch(1)
+        cancel = _btn("Cancel", "secondary")
+        ok = _btn("Save Row", "primary")
+        footer.addWidget(cancel)
+        footer.addWidget(ok)
+        vl.addLayout(footer)
+        cancel.clicked.connect(self.reject)
+        ok.clicked.connect(self._accept)
+
+        self._refresh_banks(self._mode_combo.currentText())
+        if self.row.get("bank"):
+            idx = self._bank_combo.findText(self.row["bank"])
+            if idx >= 0:
+                self._bank_combo.setCurrentIndex(idx)
+        self._fill_sections()
+        self._drawee.textChanged.connect(self._update_hint)
+
+    def _refresh_banks(self, mode: str):
+        from automation.challan_generator import all_bank_options
+        current = self._bank_combo.currentText()
+        self._bank_combo.clear()
+        self._bank_combo.addItems(all_bank_options(mode))
+        if current:
+            idx = self._bank_combo.findText(current)
+            if idx >= 0:
+                self._bank_combo.setCurrentIndex(idx)
+        self._update_hint()
+
+    def _fill_sections(self):
+        from automation.tds_sections import description_for
+        secs = self.row.get("sections", [])
+        self._sec_table.setRowCount(len(secs))
+        for r, sec in enumerate(secs):
+            code = str(sec.get("section_code", ""))
+            vals = [code, description_for(code),
+                    str(sec.get("tax", 0)), str(sec.get("surcharge", 0)), str(sec.get("cess", 0))]
+            for c, v in enumerate(vals):
+                self._sec_table.setItem(r, c, QTableWidgetItem(v))
+        self._update_hint()
+
+    def _add_section(self):
+        if len(self.row.get("sections", [])) >= 20:
+            QMessageBox.warning(self, "Limit Reached",
+                                "The portal allows at most 20 section codes per challan.")
+            return
+        dlg = TdsSectionEditDialog(self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self.row.setdefault("sections", []).append(dlg.section)
+            self._fill_sections()
+
+    def _edit_section(self):
+        r = self._sec_table.currentRow()
+        if r < 0:
+            return
+        dlg = TdsSectionEditDialog(self, self.row["sections"][r])
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self.row["sections"][r] = dlg.section
+            self._fill_sections()
+
+    def _remove_section(self):
+        r = self._sec_table.currentRow()
+        if r < 0:
+            return
+        del self.row["sections"][r]
+        self._fill_sections()
+
+    def _row_from_widgets(self) -> dict:
+        row = dict(self.row)
+        row["tan"] = self._tan_combo.currentData() or ""
+        row["payment_mode"] = self._mode_combo.currentText()
+        row["bank"] = self._bank_combo.currentText()
+        row["drawee_bank"] = self._drawee.text().strip()
+        for k, box in self._other.items():
+            try:
+                row[k] = float(box.text() or 0)
+            except ValueError:
+                row[k] = 0
+        return row
+
+    def _update_hint(self):
+        from automation.challan_generator_tds import tds_row_total
+        self._hint.setText(f"Total: ₹{tds_row_total(self._row_from_widgets()):,.2f}")
+
+    def _accept(self):
+        from automation.challan_generator_tds import validate_tds_row
+        row = self._row_from_widgets()
+        row["name"] = self._tan_combo.currentText().split(" — ", 1)[-1]
+        problem = validate_tds_row(row)
+        if problem:
+            QMessageBox.warning(self, "Check This Row", f"This row {problem}.")
+            return
+        self.row = row
+        self.accept()
+
+
+class GenerateTdsChallansDialog(QDialog):
+    """Bulk TDS/TCS challan builder — one TY for the run, manual rows."""
+
+    def __init__(self, parent, vault, ay_entries, output_dir: str = ""):
+        super().__init__(parent)
+        from vault import identify_type
+        bt = _t()
+        self._vault = vault
+        self._ay_entries = ay_entries
+        self._output_dir = output_dir
+        self.year_label = None
+        self.rows = []
+        self._row_data = []
+
+        tan_clients = [c for c in vault.get_all_assessees()
+                       if identify_type(c.get("pan", "")) == "TAN"]
+
+        self.setWindowTitle("Generate TDS / TCS Challans")
+        self.setMinimumSize(760, 520)
+        self.setStyleSheet(f"QDialog{{background:{bt.bg_window};}}")
+        vl = QVBoxLayout(self)
+        vl.setContentsMargins(16, 14, 16, 12)
+        vl.setSpacing(8)
+
+        year_row = QHBoxLayout()
+        year_row.addWidget(_lbl("Tax Year:", 11, bold=True))
+        self._year_combo = QComboBox()
+        for e in ay_entries:
+            if not e.get("enabled", True):
+                continue
+            ty = e.get("year", {}).get("TY")
+            if ty:
+                self._year_combo.addItem(e.get("label", ty), ty)
+        year_row.addWidget(self._year_combo, 1)
+        year_row.addWidget(_lbl("Income-tax Act, 2025", 11, color=bt.text_muted))
+        vl.addLayout(year_row)
+
+        if not tan_clients:
+            warn = QLabel("No TAN clients in the vault yet. Add one via Client Master → "
+                          "Add New Client (use the deductor's TAN, e.g. ABCD12345E).")
+            warn.setWordWrap(True)
+            warn.setStyleSheet(f"color:{bt.error};font-size:11px;background:transparent;")
+            vl.addWidget(warn)
+
+        btns = QHBoxLayout()
+        self._add_btn = _btn("➕ Add Row", "primary")
+        self._edit_btn = _btn("Edit", "secondary")
+        self._del_btn = _btn("Remove", "danger")
+        btns.addWidget(self._add_btn)
+        btns.addWidget(self._edit_btn)
+        btns.addWidget(self._del_btn)
+        btns.addStretch(1)
+        vl.addLayout(btns)
+
+        self._table = QTableWidget(0, 6)
+        self._table.setHorizontalHeaderLabels(["TAN", "Name", "Sections", "Total", "Mode", "Bank"])
+        self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._table.verticalHeader().setVisible(False)
+        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._table.doubleClicked.connect(lambda *_: self._edit_row())
+        vl.addWidget(self._table, 1)
+
+        footer = QHBoxLayout()
+        footer.addStretch(1)
+        cancel = _btn("Cancel", "secondary")
+        gen = _btn("Generate Challans", "primary")
+        gen.setEnabled(bool(tan_clients))
+        footer.addWidget(cancel)
+        footer.addWidget(gen)
+        vl.addLayout(footer)
+
+        self._tan_clients = tan_clients
+        self._add_btn.clicked.connect(self._add_row)
+        self._edit_btn.clicked.connect(self._edit_row)
+        self._del_btn.clicked.connect(self._delete_row)
+        cancel.clicked.connect(self.reject)
+        gen.clicked.connect(self._generate)
+
+    def _refresh(self):
+        from automation.challan_generator_tds import tds_row_total
+        self._table.setRowCount(len(self._row_data))
+        for r, row in enumerate(self._row_data):
+            vals = [row.get("tan", ""), row.get("name", ""), str(len(row.get("sections", []))),
+                    f"₹{tds_row_total(row):,.0f}", row.get("payment_mode", ""),
+                    row.get("bank", "")]
+            for c, v in enumerate(vals):
+                self._table.setItem(r, c, QTableWidgetItem(v))
+
+    def _add_row(self):
+        if not self._tan_clients:
+            return
+        dlg = TdsChallanRowDetailDialog(self, self._tan_clients)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._row_data.append(dlg.row)
+            self._refresh()
+
+    def _edit_row(self):
+        r = self._table.currentRow()
+        if r < 0:
+            return
+        dlg = TdsChallanRowDetailDialog(self, self._tan_clients, self._row_data[r])
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._row_data[r] = dlg.row
+            self._refresh()
+
+    def _delete_row(self):
+        r = self._table.currentRow()
+        if r >= 0:
+            del self._row_data[r]
+            self._refresh()
+
+    def _generate(self):
+        if not self._row_data:
+            QMessageBox.warning(self, "Nothing to Generate",
+                                "Add at least one TDS challan row.")
+            return
+        self.year_label = self._year_combo.currentData()
+        self.rows = list(self._row_data)
+        self.accept()
+
+
 class ChallanGenerationProgressDialog(QDialog):
     """
     Live progress popup for a Generate Tax Challans run (F-64). Deliberately
@@ -4110,7 +4522,8 @@ class ChallanGenerationProgressDialog(QDialog):
     _COL_PATH = 3
 
     def __init__(self, targets: list, year_display: str, type_label: str,
-                 stop_callback=None, tray_callback=None, output_dir: str = "", parent=None):
+                 stop_callback=None, tray_callback=None, output_dir: str = "", parent=None,
+                 id_label: str = "PAN"):
         super().__init__(parent)
         self._stop_callback = stop_callback
         self._tray_callback = tray_callback
@@ -4139,7 +4552,7 @@ class ChallanGenerationProgressDialog(QDialog):
         layout.addWidget(title)
 
         self._table = QTableWidget(len(targets), 4)
-        self._table.setHorizontalHeaderLabels(["Name", "PAN", "Status", "Save Path"])
+        self._table.setHorizontalHeaderLabels(["Name", id_label, "Status", "Save Path"])
         hdr = self._table.horizontalHeader()
         hdr.setSectionResizeMode(self._COL_NAME, QHeaderView.ResizeMode.Interactive)
         hdr.setSectionResizeMode(self._COL_PAN, QHeaderView.ResizeMode.Interactive)

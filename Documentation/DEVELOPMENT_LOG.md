@@ -753,3 +753,44 @@ overwriting — repeated syncs wasted time and accumulated duplicate files
 - Simulated two-run scenario against a fake tree: run 2 over unchanged data
   queued **0** downloads; run 3 with one new notice queued **only** that
   notice's `ref_id`. `py_compile` clean on all touched files.
+
+---
+
+## 24. TDS/TCS Challan Generation (F-4)
+
+Deductor-side TAN login → e-Pay Tax → Income-tax Act 2025 → New Payment →
+Tax Year → Pay TDS/TCS. The wizard differs from the Income Tax challan flow:
+deductee type + residence radios, a section-code dropdown (64 codes for
+Other than Company + Resident), per-section Tax/Surcharge/Cess with Add,
+then a read-only summary before payment mode. Payment-mode selection, CRN
+parsing and artifact download are shared with F-64 via
+`automation/challan_common.py`.
+
+### 24.1 Live findings worth keeping
+
+- A TAN never sees the "Income Tax" tile; the tiles page has its own
+  mandatory Tax Year dropdown (`mat-select[formcontrolname='assessmentYear']`).
+- The deductee radios must be checked through `input[value='0021']` /
+  `input[value='resident']` — clicking the `mat-radio-button` host did not
+  register live.
+- A page-wide "Proceed" click hits the hidden `#okBtnNav3` modal button.
+  Scope to `div.matcard` filtered by "Pay TDS/TCS".
+- Section codes must be matched by the trailing numeric code
+  (`re.search(r"-\s*1002$", option_text)`), never by label.
+- Section amount inputs are three `input[formcontrolname='amount']` in order
+  Tax, Surcharge, Education Cess. Common other payments are `interest`,
+  `fee` (Late Fee u/s 427), `penalty`, `others`.
+- The summary step reuses `taxAmt/surchargeAmt/cessAmt/interestAmt/
+  feeAmt/penaltyAmt/othersAmt`, but read-only.
+- Payment modes are the same five tabs and bank radios as F-64.
+
+### 24.2 Implementation notes
+
+- `vault.py` now accepts TANs as a second identity type (`id_type`), and
+  DOB is optional for a TAN client.
+- The 64-section list is a captured snapshot in
+  `automation/data/tds_sections_other_than_company_resident.txt`; the
+  generator maps by code against the live dropdown and fails a row with a
+  clear reason if a code is no longer offered.
+- v1 supports Other than Company + Resident only; Company / Non-Resident
+  and Act 1961 move to a follow-up.
