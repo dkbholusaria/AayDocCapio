@@ -64,6 +64,7 @@ __all__ = [
     "derive_status",
     "compute_limitations",
     "kpis",
+    "timeline_docs",
     "filter_cases",
     "visible_docs",
     "sort_cases",
@@ -808,9 +809,17 @@ def _build_appeals(case: Case) -> None:
     when the proceeding itself is an appeal) AND either the proceeding /
     description mentions "appeal" or an appeal-order doc exists.
 
+    An appeal proceeding whose folder already holds a response but no order
+    yet still records a live appeal: the reply itself is the filing evidence
+    and the appeal stays ``Pending`` until an appeal-order is recorded.
+
     ``filed`` is the earliest reply date that follows the order.  A reply
     dated before the order cannot be the appeal memo, so it is ignored.  When
     no such reply exists the appeal window is still open.
+
+    Status is ``Resolved`` as soon as the case contains an ``appeal-order``
+    document (the appellate / closure order), otherwise ``Pending`` when a
+    filing exists, otherwise ``Window open``.
     """
 
     order_anchor = None
@@ -823,30 +832,46 @@ def _build_appeals(case: Case) -> None:
             if doc.kind == "appeal-order":
                 order_anchor = doc
                 break
+
+    appeal_only = False
     if order_anchor is None:
-        return
+        if ("appeal" in (case.proc_name or "").lower()
+                and any(doc.kind == "reply" for doc in case.docs)):
+            appeal_only = True
+        else:
+            return
 
     combined = " ".join(
         [case.proc_name] + [doc.title or "" for doc in case.docs]).lower()
     has_appeal_flavour = (
-        "appeal" in (case.proc_name or "").lower()
+        appeal_only
+        or "appeal" in (case.proc_name or "").lower()
         or "appeal" in combined
         or any(doc.kind == "appeal-order" for doc in case.docs)
     )
     if not has_appeal_flavour:
         return
 
-    order_date = _doc_date(order_anchor)
     reply_dates: list[date] = []
     has_reply_doc = False
-    if order_date is not None:
+    if appeal_only:
         for doc in case.docs:
             if doc.kind != "reply":
                 continue
             has_reply_doc = True
             reply_date = _doc_date(doc)
-            if reply_date is not None and reply_date >= order_date:
+            if reply_date is not None:
                 reply_dates.append(reply_date)
+    else:
+        order_date = _doc_date(order_anchor)
+        if order_date is not None:
+            for doc in case.docs:
+                if doc.kind != "reply":
+                    continue
+                has_reply_doc = True
+                reply_date = _doc_date(doc)
+                if reply_date is not None and reply_date >= order_date:
+                    reply_dates.append(reply_date)
     filed = _fmt_date(min(reply_dates)) if reply_dates else ""
     # A reply document proves something was filed even when the portal gave it
     # no parseable date — mark the "Appeal filed" step done in that case too,
@@ -860,7 +885,12 @@ def _build_appeals(case: Case) -> None:
         grounds = _clean_description(appeal_order_doc.title)
 
     forum = "ITAT" if "itat" in combined else "CIT(A)"
-    status = "Pending" if filed_done else "Window open"
+    if appeal_order_doc is not None:
+        status = "Resolved"
+    elif filed_done:
+        status = "Pending"
+    else:
+        status = "Window open"
     steps = [
         AppealStep("Appeal filed", filed, filed_done),
         AppealStep("Defects, if any", "", False),
@@ -871,7 +901,7 @@ def _build_appeals(case: Case) -> None:
     case.appeals.append(Appeal(
         id=f"{case.id}#a1",
         forum=forum,
-        against=order_anchor.id,
+        against=order_anchor.id if order_anchor is not None else "",
         filed=filed,
         status=status,
         grounds=grounds,
@@ -983,10 +1013,7 @@ def build_cases(root: str, assessees: list[dict],
             proc_ay = (meta_proc.get("ay") or "").strip()
 
             case_id = f"{pan}:{proc_num:02d}:{year_name}"
-            case_open = _case_open_from_meta(meta)
             override = state.get(case_id)
-            if isinstance(override, dict) and "closed" in override:
-                case_open = not bool(override.get("closed"))
 
             notices = meta.get("notices") or []
             if meta and notices:
@@ -999,7 +1026,7 @@ def build_cases(root: str, assessees: list[dict],
                 pan=pan,
                 name=assessee_name,
                 ays=_case_ays(year_name, proc_ay),
-                case_open=case_open,
+                case_open=True,
                 remanded=False,
                 assessee=assessee,
                 docs=docs,
@@ -1012,6 +1039,27 @@ def build_cases(root: str, assessees: list[dict],
 
             _link_docs(case)
             _build_appeals(case)
+
+            # Derive statuses once with the case treated as open so an
+            # unreplied notice is visible while deciding the final open flag.
+            case.case_open = True
+            for doc in case.docs:
+                doc.status = derive_status(doc, case, today=current)
+
+            has_order = any(doc.kind in _ORDER_KINDS for doc in case.docs)
+            pending_appeal = any(
+                appeal.status in ("Pending", "Window open")
+                for appeal in case.appeals)
+            open_notices = any(
+                doc.kind in ("notice", "penalty")
+                and doc.status in ("Open", "Overdue")
+                for doc in case.docs)
+            portal_closed = (not _case_open_from_meta(meta)) or has_order
+            case_open = (not portal_closed) or pending_appeal or open_notices
+            # A manual case_state entry is the final word.
+            if isinstance(override, dict) and "closed" in override:
+                case_open = not bool(override.get("closed"))
+            case.case_open = case_open
 
             for doc in case.docs:
                 doc.status = derive_status(doc, case, today=current)
@@ -1243,34 +1291,116 @@ def compute_limitations(case: Case,
 # KPIs, filtering and sorting
 # ---------------------------------------------------------------------------
 
+_UNREPLIED_STATUSES = ("Open", "Overdue")
+
+_PENDING_DOC_STATUSES = ("Open", "Window open", "2nd appeal window",
+                         "Under appeal")
+
+
+def _is_unreplied(doc: Doc) -> bool:
+    """True when a notice/penalty still needs a reply or has no closing order."""
+
+    return (doc.kind in ("notice", "penalty")
+            and doc.status in _UNREPLIED_STATUSES)
+
+
+def _pending_appeal_against(case: Case, doc_id: str) -> bool:
+    """True when a Pending / Window-open appeal is filed against ``doc_id``."""
+
+    return any(appeal.against == doc_id
+               and appeal.status in ("Pending", "Window open")
+               for appeal in case.appeals)
+
+
+def _deadline_days(doc: Doc, today: date) -> int | None:
+    """Days from ``today`` to the reply deadline; ``None`` when undated."""
+
+    deadline = _parse_date(doc.reply_deadline)
+    if deadline is None:
+        return None
+    return _days_between(deadline, today)
+
+
 def kpis(cases: list[Case], today: date | None = None) -> dict:
     """Aggregate dashboard counts.
 
-    Keys (exact): ``cases``, ``open_cases``, ``awaiting_reply``,
-    ``overdue_limitations``, ``under_appeal``, ``remanded``.
+    Keys (exact): ``cases``, ``open_cases``, ``fresh_notices``, ``due7``,
+    ``due15``, ``under_appeal``, ``closed_by_order``, ``remanded``,
+    ``overdue_limitations``.
 
-    ``awaiting_reply`` counts cases with at least one open/overdue
-    notice-or-penalty doc.  ``under_appeal`` counts cases with a *Pending*
-    appeal (a window that is still open is not an appeal on record).
+    Definitions:
+
+    * ``fresh_notices`` - unreplied notice/penalty docs (status ``Open`` or
+      ``Overdue``) with no reply deadline or a deadline more than 15 days
+      away.  Overdue documents never count as fresh.
+    * ``due7`` / ``due15`` - unreplied notice/penalty docs whose reply
+      deadline falls between today and 7 / 15 days from today inclusive.
+    * ``under_appeal`` - OPEN cases only, having at least one appeal whose
+      status is ``Pending`` (a filing exists and no appeal-order is recorded).
+    * ``closed_by_order`` - documents closed by an order with no Pending /
+      Window-open appeal against them.  Specifically:
+
+      - notice/penalty docs whose status is ``Closed`` (an order passed
+        after them), plus
+      - ``appeal-order`` docs that are not the target of a Pending /
+        Window-open appeal in the same case (no further appeal filed) and
+        whose own status is not a pending state (``Open``,
+        ``Window open``, ``2nd appeal window``, ``Under appeal``).
+
+      The resolved appeal that produced an appeal-order does not exclude it;
+      only a further pending appeal against it does.
+    * ``remanded`` - cases containing a remand document.
+    * ``overdue_limitations`` - limitation rows past their due date.
+
+    ``awaiting_reply`` is kept as a legacy alias for the number of cases with
+    at least one unreplied notice/penalty doc.
     """
 
     current = today or _today()
     open_cases = 0
     awaiting_reply = 0
+    fresh_notices = 0
+    due7 = 0
+    due15 = 0
     under_appeal = 0
+    closed_by_order = 0
     remanded = 0
 
     for case in cases:
         if case.case_open:
             open_cases += 1
-        if any(doc.kind in ("notice", "penalty")
-               and doc.status in ("Open", "Overdue")
-               for doc in case.docs):
+
+        has_unreplied = False
+        for doc in case.docs:
+            if not _is_unreplied(doc):
+                continue
+            has_unreplied = True
+            days = _deadline_days(doc, current)
+            if doc.status != "Overdue" and (days is None or days > 15):
+                fresh_notices += 1
+            if days is not None and 0 <= days <= 7:
+                due7 += 1
+            if days is not None and 0 <= days <= 15:
+                due15 += 1
+
+        if has_unreplied:
             awaiting_reply += 1
-        if any(appeal.status == "Pending" for appeal in case.appeals):
+        if case.case_open and any(
+                appeal.status == "Pending" for appeal in case.appeals):
             under_appeal += 1
         if case.remanded:
             remanded += 1
+
+        for doc in case.docs:
+            if doc.kind in ("notice", "penalty") and doc.status == "Closed":
+                if not _pending_appeal_against(case, doc.id):
+                    closed_by_order += 1
+            elif doc.kind == "appeal-order":
+                if _pending_appeal_against(case, doc.id):
+                    continue
+                if doc.status in _PENDING_DOC_STATUSES:
+                    continue
+                closed_by_order += 1
 
     overdue = 0
     for case in cases:
@@ -1281,10 +1411,79 @@ def kpis(cases: list[Case], today: date | None = None) -> dict:
         "cases": len(cases),
         "open_cases": open_cases,
         "awaiting_reply": awaiting_reply,
-        "overdue_limitations": overdue,
+        "fresh_notices": fresh_notices,
+        "due7": due7,
+        "due15": due15,
         "under_appeal": under_appeal,
+        "closed_by_order": closed_by_order,
         "remanded": remanded,
+        "overdue_limitations": overdue,
     }
+
+
+def _doc_index(doc: Doc) -> int:
+    """Trailing numeric index in a deterministic document id (0 if none)."""
+
+    match = re.search(r"(\d+)$", doc.id or "")
+    return int(match.group(1)) if match else 0
+
+
+def _timeline_date_key(doc: Doc) -> date:
+    return _doc_date(doc) or date.max
+
+
+def timeline_docs(case: Case) -> list[Doc]:
+    """Documents in true narrative order.
+
+    1. notices/penalties in issue order (date, then index); each notice is
+       immediately followed by ITS replies (``parent == notice.id``), oldest
+       first (undated replies stay with their parent);
+    2. orders, chronological;
+    3. appeal-orders, chronological (the appeal order always comes last);
+    4. remands, then anything unplaced (e.g. orphan replies).
+    """
+
+    position = {doc.id: index for index, doc in enumerate(case.docs)}
+    placed: set[str] = set()
+    out: list[Doc] = []
+
+    replies_by_parent: dict[str, list[Doc]] = {}
+    for doc in case.docs:
+        if doc.kind == "reply" and doc.parent:
+            replies_by_parent.setdefault(doc.parent, []).append(doc)
+
+    notices = [doc for doc in case.docs
+               if doc.kind in ("notice", "penalty")]
+    notices.sort(key=lambda doc: (_timeline_date_key(doc), _doc_index(doc),
+                                  position.get(doc.id, 0)))
+
+    for notice in notices:
+        out.append(notice)
+        placed.add(notice.id)
+        replies = replies_by_parent.get(notice.id, [])
+        replies.sort(key=lambda doc: (_doc_date(doc) or date.min,
+                                      position.get(doc.id, 0)))
+        for reply in replies:
+            if reply.id in placed:
+                continue
+            out.append(reply)
+            placed.add(reply.id)
+
+    for kind in ("order", "appeal-order", "remand"):
+        group = [doc for doc in case.docs
+                 if doc.kind == kind and doc.id not in placed]
+        group.sort(key=lambda doc: (_timeline_date_key(doc), _doc_index(doc),
+                                    position.get(doc.id, 0)))
+        for doc in group:
+            out.append(doc)
+            placed.add(doc.id)
+
+    for doc in case.docs:
+        if doc.id not in placed:
+            out.append(doc)
+            placed.add(doc.id)
+
+    return out
 
 
 def filter_cases(cases: list[Case], status: str = "all", tag: str = "all",

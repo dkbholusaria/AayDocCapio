@@ -1810,7 +1810,10 @@ class AayDocCapioApp(QMainWindow):
             # flat-table scan is kept but no longer drives the tab).
             ws = getattr(self, "_eproc_ws", None)
             if ws is not None:
-                ws.refresh()
+                try:
+                    ws.refresh()
+                except Exception as exc:
+                    self.log(f"[Error] e-Proceedings refresh failed: {exc}")
             else:
                 self._eproc_rescan()
         if idx > 0 and hasattr(self, "_it_tab_btns"):
@@ -2203,12 +2206,30 @@ class AayDocCapioApp(QMainWindow):
         PLACE below but unused — kept until the new workspace has proven
         itself in daily use, per the user's instruction not to delete yet.
         """
-        self._eproc_ws = EProceedingsWorkspace(
-            self.vault,
-            lambda: getattr(self, "assessee_list", []) or [],
-            self,
-        )
-        return self._eproc_ws
+        # Build the workspace defensively: a UI regression here must never
+        # take the whole app down at startup — fall back to a readable error
+        # page and keep the rest of the program usable.
+        try:
+            self._eproc_ws = EProceedingsWorkspace(
+                self.vault,
+                lambda: getattr(self, "assessee_list", []) or [],
+                self,
+            )
+            return self._eproc_ws
+        except Exception as exc:
+            self._eproc_ws = None
+            self.log(f"[Error] e-Proceedings workspace failed to build: {exc}")
+            page = QWidget()
+            lay = QVBoxLayout(page)
+            lay.setContentsMargins(24, 24, 24, 24)
+            lay.addStretch(1)
+            lay.addWidget(_lbl("e-Proceedings view could not load.", 14, bold=True))
+            lay.addWidget(_lbl(str(exc), 11, color=_t().text_muted))
+            lay.addWidget(_lbl(
+                "The rest of the app is unaffected. Check the activity log.",
+                11, color=_t().text_muted))
+            lay.addStretch(1)
+            return page
 
     # ── e-Proceedings tab: chips / dashboard cards ────────────────────────────
 
