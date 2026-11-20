@@ -232,3 +232,13 @@ python app.py
 | 5 | Check the portal summary total before confirming | Equals the app-side total |
 | 6 | Generate with RTGS/NEFT | Mandate Form PDF saved |
 | 7 | Regression: one Income Tax challan (F-64) end-to-end | CRN + PDF unchanged |
+
+## Download TDS/TCS Challans (F-8)
+
+| Step | Action | Expected result |
+|---|---|---|
+| 1 | Open TDS hub → Download TDS / TCS Challans | Picker lists only TAN clients |
+| 2 | Tick one TAN and one TY year → Download | Progress grid shows TAN column and one row per year |
+| 3 | Let the run finish | Paid challan PDFs appear under `{TAN}-{Name}/TY_…/Tax Challans (Paid)/` |
+| 4 | Select both a TY and an AY | One navigation per Act group; no re-login per year |
+| 5 | Regression: Income Tax → Download Documents → Tax Payment Challans | Unchanged |

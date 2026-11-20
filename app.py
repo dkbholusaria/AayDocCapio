@@ -321,6 +321,8 @@ class AayDocCapioApp(QMainWindow):
         self._tds_challan_progress_dialog = None
         self._tds_challan_done_signal.connect(self._on_tds_challan_batch_done)
         self._show_tds_challan_progress_signal.connect(self._show_tds_challan_progress_dialog)
+        # F-8: which column label the generic batch progress dialog uses.
+        self._progress_id_label = "PAN"
 
         self._retstatus_running = False
         self._retstatus_loop = None
@@ -564,6 +566,9 @@ class AayDocCapioApp(QMainWindow):
         act_gen_tds_challans = QAction("Generate TDS/TCS Challans…", self)
         act_gen_tds_challans.triggered.connect(self._open_generate_tds_challans_dialog)
         epay_menu.addAction(act_gen_tds_challans)
+        act_dl_tds_challans = QAction("Download TDS/TCS Challans…", self)
+        act_dl_tds_challans.triggered.connect(self._open_download_tds_challans_dialog)
+        epay_menu.addAction(act_dl_tds_challans)
         act_challan_template = QAction("Download Import Template…", self)
         act_challan_template.triggered.connect(self._download_challan_template)
         epay_menu.addAction(act_challan_template)
@@ -3016,6 +3021,11 @@ class AayDocCapioApp(QMainWindow):
             "Generate Challan 281 under Income-tax Act, 2025 for a deductor TAN, "
             "with section-wise tax, surcharge and cess.",
             "rupee", self._open_generate_tds_challans_dialog))
+        layout.addWidget(self._mk_action_card(
+            "Download TDS / TCS Challans",
+            "Download already-paid challans from e-Pay Tax Payment History "
+            "for the selected TAN clients and years.",
+            "document", self._open_download_tds_challans_dialog))
         layout.addStretch(1)
         return page
 
@@ -4398,6 +4408,7 @@ class AayDocCapioApp(QMainWindow):
         year_tag = years_desc if len(ay_labels) <= 3 else f"{len(ay_labels)} years"
 
         # Show progress dialog (on main thread via signal)
+        self._progress_id_label = "PAN"
         self._show_progress_signal.emit(targets, selected_docs, year_specs, output_dir, year_tag)
 
         # Enable "Send to Tray" in tray menu while batch is running
@@ -4421,7 +4432,8 @@ class AayDocCapioApp(QMainWindow):
             stop_callback=self.stop_automation,
             resume_callback=self.resume_batch, skip_callback=self.skip_client,
             tray_callback=self._tray_to_system_manual,
-            output_dir=output_dir, parent=self)
+            output_dir=output_dir, parent=self,
+            id_label=getattr(self, "_progress_id_label", "PAN"))
         # Window-modal: blocks the parent window but allows live signal updates.
         self._progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
         self._progress_dialog.show()
@@ -4889,6 +4901,66 @@ class AayDocCapioApp(QMainWindow):
         if hasattr(self, "_tray_send_act") and not self.is_running:
             self._tray_send_act.setVisible(False)
         self.refresh_grid()
+
+    # ── F-8: Download TDS/TCS Challans ───────────────────────────────────────
+
+    def _open_download_tds_challans_dialog(self):
+        if self.is_running:
+            return
+        from ui.dialogs import DownloadTdsChallansDialog
+        dlg = DownloadTdsChallansDialog(self, self.vault, self._ay_entries)
+        if dlg.exec() == dlg.DialogCode.Accepted:
+            self.start_tds_challan_download(dlg.selected_clients, dlg.year_labels)
+
+    def start_tds_challan_download(self, targets: list, year_labels: list):
+        """Same batch pipeline as the Income Tax downloads, restricted to the
+        TAN clients/years picked on the TDS hub. handle_challans() is
+        identity-agnostic, so no portal code changes are involved."""
+        if self.is_running:
+            return
+        if not targets:
+            return
+        year_specs = []
+        for ay_label in year_labels:
+            ay, fy, year_type, form_type = self._resolve_ay_fy(ay_label)
+            if not ay:
+                self.log(f"[Warning] Skipping unresolvable year: {ay_label}")
+                continue
+            year_specs.append({
+                "ay_label": ay_label, "value": ay, "fy": fy,
+                "year_type": year_type, "form_type": form_type,
+            })
+        if not year_specs:
+            QMessageBox.warning(self, "Invalid", "None of the selected years could be resolved.")
+            return
+
+        selected_docs = {"tds_challans"}
+        self.is_running = True
+        self._batch_aborted = False
+        self._batch_filing_scope = "all"
+        self._lock_ui(True)
+        self._clear_log()
+
+        output_dir = self.dir_lbl.text()
+        self._last_batch_params = (year_specs, output_dir, selected_docs)
+        self.btn_run.setText("⏳ Downloading...")
+
+        years_desc = ", ".join(year_labels)
+        self.log(f"[System] Starting TDS/TCS challan download — {len(targets)} client(s) | "
+                 f"Year(s): {years_desc} | Output: {output_dir}")
+        year_tag = years_desc if len(year_labels) <= 3 else f"{len(year_labels)} years"
+
+        self._progress_id_label = "TAN"
+        self._show_progress_signal.emit(targets, selected_docs, year_specs, output_dir, year_tag)
+        if hasattr(self, "_tray_send_act"):
+            self._tray_send_act.setVisible(True)
+        if getattr(self, "chk_auto_minimise", None) and self.chk_auto_minimise.isChecked():
+            QTimer.singleShot(800, lambda: self._tray_to_system(len(targets)))
+
+        threading.Thread(
+            target=self._run_wrapper,
+            args=(targets, year_specs, output_dir, selected_docs),
+            daemon=True).start()
 
     # ── F-67: ITR Processing Status ──────────────────────────────────────────
 
