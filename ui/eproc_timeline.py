@@ -200,7 +200,7 @@ class EprocTimeline(QScrollArea):
             self.setWidget(content)
             return
 
-        ordered = self._chronological(docs)
+        ordered = self._narrative_order(docs)
         last = len(ordered) - 1
         for index, doc in enumerate(ordered):
             row = QHBoxLayout()
@@ -223,6 +223,22 @@ class EprocTimeline(QScrollArea):
             return (0, parsed) if parsed is not None else (1, date.max)
 
         return sorted(docs, key=key)
+
+    def _narrative_order(self, docs):
+        """True reading order for a case.
+
+        The model's ``timeline_docs`` knows the notice/reply parent links and
+        keeps the appeal order last; fall back to the plain date sort when it
+        is unavailable (e.g. an older model module).
+        """
+        try:
+            from ui.eproceedings_model import timeline_docs
+            ordered = timeline_docs(self._case)
+            if ordered:
+                return ordered
+        except Exception:
+            pass
+        return self._chronological(docs)
 
     def _make_card(self, doc) -> ClickableCard:
         t = _t()

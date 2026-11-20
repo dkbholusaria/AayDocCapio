@@ -16,6 +16,7 @@ from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtWidgets import (
     QButtonGroup,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLayout,
     QLabel,
@@ -52,32 +53,44 @@ _TAB_KEYS = ("overview", "timeline", "appeals", "limitations")
 _TAB_LABELS = ("Overview", "Case Timeline", "Appeals", "Limitations")
 
 _KPI_TABS = {
+    "fresh_notices": "timeline",
+    "due7": "timeline",
+    "due15": "timeline",
     "under_appeal": "appeals",
-    "overdue_limitations": "limitations",
-    "awaiting_reply": "timeline",
+    "closed_by_order": "overview",
     "remanded": "timeline",
+    "overdue_limitations": "limitations",
 }
 
 _KPI_LABELS = {
     "cases": "All cases",
     "open_cases": "Open cases",
-    "awaiting_reply": "Awaiting reply",
-    "overdue_limitations": "Overdue limitations",
+    "fresh_notices": "Fresh notices",
+    "due7": "Due within 7 days",
+    "due15": "Due within 15 days",
     "under_appeal": "Under appeal",
+    "closed_by_order": "Closed by order",
     "remanded": "Remanded",
+    "overdue_limitations": "Overdue limitations",
 }
 
+# Eight cards, four per row. Colours map onto the theme's existing tokens —
+# there are no separate indigo/sky/violet tokens.
 _KPI_SPECS = (
     ("cases", "Cases", "Mapped matters", "accent", "document"),
     ("open_cases", "Open Cases", "Actively tracked", "success", "list"),
-    ("awaiting_reply", "Awaiting Reply", "Notices / penalties open",
+    ("fresh_notices", "Fresh Notices",
+     "Newly received, not yet urgent", "accent_mca", "mail"),
+    ("due7", "Due \u2264 7 days", "Reply deadline this week",
+     "error", "help"),
+    ("due15", "Due \u2264 15 days", "Reply deadline this fortnight",
      "warning", "gear"),
-    ("overdue_limitations", "Overdue Limitations",
-     "Statutory deadline crossed", "error", "help"),
-    ("under_appeal", "Under Appeal", "Appeals pending outcome",
-     "accent_mca", "columns"),
+    ("under_appeal", "Under Appeal",
+     "Open cases with a pending appeal", "accent_mca", "columns"),
+    ("closed_by_order", "Closed by Order",
+     "Order passed, no appeal filed", "success", "document"),
     ("remanded", "Remanded", "Set aside, back to AO",
-     "warning", "document"),
+     "warning", "building"),
 )
 
 _DOC_MIX = (
@@ -376,46 +389,47 @@ class EProceedingsWorkspace(QWidget):
     def _build_shell(self) -> None:
         t = _t()
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(16, 14, 16, 14)
-        outer.setSpacing(12)
+        outer.setContentsMargins(12, 6, 12, 8)
+        outer.setSpacing(7)
 
+        # Eight compact cards in a single row — the previous 4x2 grid ate
+        # ~200px of vertical space that the case list needs.
         kpi_row = QHBoxLayout()
-        kpi_row.setSpacing(9)
-        for key, caption, sub, token, icon in _KPI_SPECS:
+        kpi_row.setSpacing(7)
+        for position, (key, caption, sub, token, icon) in enumerate(_KPI_SPECS):
+            _row = _col = 0
             accent = getattr(t, token)
             card = ClickableCard()
             card.setObjectName("EprocKpi")
-            card.setMinimumHeight(92)
+            card.setFixedHeight(62)
+            card.setToolTip(sub)
             card.setSizePolicy(
                 QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             card.setStyleSheet(
                 f"QFrame#EprocKpi {{ background:{t.bg_panel};"
-                f"border:1px solid {t.border}; border-radius:10px; }}"
+                f"border:1px solid {t.border}; border-radius:9px; }}"
                 f"QFrame#EprocKpi:hover {{ border-color:{accent}; }}")
             card.clicked.connect(
                 lambda clicked=False, k=key: self._on_kpi(k))
 
-            body = QVBoxLayout(card)
-            body.setContentsMargins(12, 10, 12, 9)
-            body.setSpacing(2)
+            body = QHBoxLayout(card)
+            body.setContentsMargins(10, 6, 8, 6)
+            body.setSpacing(6)
 
-            top = QHBoxLayout()
-            top.setContentsMargins(0, 0, 0, 0)
-            top.setSpacing(4)
-            top.addWidget(_lbl(caption, 10, color=t.text_muted))
-            top.addStretch(1)
+            text_col = QVBoxLayout()
+            text_col.setSpacing(0)
+            text_col.addWidget(_lbl(caption, 9, color=t.text_muted))
+            number = _lbl("0", 18, bold=True, color=accent)
+            text_col.addWidget(number)
+            body.addLayout(text_col, 1)
+
             chip = QLabel()
-            chip.setFixedSize(28, 28)
+            chip.setFixedSize(24, 24)
             chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            chip.setPixmap(_svg_pixmap(icon, accent, 18))
+            chip.setPixmap(_svg_pixmap(icon, accent, 15))
             chip.setStyleSheet(
-                f"background:{accent}22; border:none; border-radius:8px;")
-            top.addWidget(chip)
-            body.addLayout(top)
-
-            number = _lbl("0", 22, bold=True, color=accent)
-            body.addWidget(number)
-            body.addWidget(_lbl(sub, 9, color=t.text_muted))
+                f"background:{accent}22; border:none; border-radius:7px;")
+            body.addWidget(chip, 0, Qt.AlignmentFlag.AlignVCenter)
 
             self._kpi_cards[key] = card
             self._kpi_numbers[key] = number
@@ -424,9 +438,14 @@ class EProceedingsWorkspace(QWidget):
 
         split = QHBoxLayout()
         split.setSpacing(14)
-        split.addWidget(self._build_case_panel(), 0)
-        split.addWidget(self._build_detail_panel(), 1)
+        self._case_panel = self._build_case_panel()
+        self._detail_panel = self._build_detail_panel()
+        split.addWidget(self._case_panel, 0)
+        split.addWidget(self._detail_panel, 1)
         outer.addLayout(split, 1)
+        # Browse mode first: the case list owns the page and the detail pane
+        # stays hidden until a case is clicked (saves a lot of empty space).
+        self._enter_browse()
 
         self._toast_label = QLabel("", self)
         self._toast_label.setAttribute(
@@ -442,13 +461,13 @@ class EProceedingsWorkspace(QWidget):
         t = _t()
         panel = QFrame()
         panel.setObjectName("EprocCasePanel")
-        panel.setFixedWidth(360)
+        panel.setMinimumWidth(300)
         panel.setStyleSheet(
             f"QFrame#EprocCasePanel {{ background:{t.bg_panel};"
             f"border:1px solid {t.border}; border-radius:10px; }}")
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(12, 11, 12, 10)
-        layout.setSpacing(7)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(6)
 
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
@@ -485,7 +504,7 @@ class EProceedingsWorkspace(QWidget):
         self._search = QLineEdit()
         self._search.setPlaceholderText("Search name, PAN, case ID, AY, ward\u2026")
         self._search.setClearButtonEnabled(True)
-        self._search.setFixedHeight(30)
+        self._search.setFixedHeight(26)
         self._search.setStyleSheet(
             f"QLineEdit {{ background:{t.bg_input}; border:1px solid {t.border};"
             f"border-radius:6px; padding:4px 9px; font-size:12px;"
@@ -508,25 +527,24 @@ class EProceedingsWorkspace(QWidget):
              ("Assessee", "assessee"), ("Case ID", "id")),
             emit=False)
 
+        self._filters_box = QWidget()
+        filters_lay = QVBoxLayout(self._filters_box)
+        filters_lay.setContentsMargins(0, 0, 0, 0)
+        filters_lay.setSpacing(7)
+
         row1 = QHBoxLayout()
         row1.setSpacing(6)
         row1.addWidget(self._status_combo, 1)
         row1.addWidget(self._tag_combo, 1)
-        layout.addLayout(row1)
-
-        row2 = QHBoxLayout()
-        row2.setSpacing(6)
-        row2.addWidget(self._section_combo, 1)
-        row2.addWidget(self._urgency_combo, 1)
-        layout.addLayout(row2)
-
-        row3 = QHBoxLayout()
-        row3.setSpacing(6)
-        row3.addWidget(self._sort_combo, 1)
-        reset = _btn("Reset", "outline", height=28, min_width=58)
+        row1.addWidget(self._section_combo, 1)
+        row1.addWidget(self._urgency_combo, 1)
+        row1.addWidget(self._sort_combo, 1)
+        reset = _btn("Reset", "outline", height=26, min_width=54)
         reset.clicked.connect(self._reset_filters)
-        row3.addWidget(reset)
-        layout.addLayout(row3)
+        row1.addWidget(reset)
+        filters_lay.addLayout(row1)
+
+        layout.addWidget(self._filters_box, 0)
 
         self._list_scroll, self._list_layout = _scroll_panel()
         layout.addWidget(self._list_scroll, 1)
@@ -534,7 +552,7 @@ class EProceedingsWorkspace(QWidget):
 
     def _filter_combo(self, items, emit: bool = True) -> StyledComboBox:
         combo = StyledComboBox()
-        combo.setFixedHeight(28)
+        combo.setFixedHeight(26)
         combo.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         combo.setStyleSheet(
@@ -544,6 +562,42 @@ class EProceedingsWorkspace(QWidget):
         if emit:
             combo.currentIndexChanged.connect(self._apply_filters)
         return combo
+
+    def _enter_browse(self) -> None:
+        """No case selected: the case list owns the page. The detail pane is
+        hidden and the filter row is shown full width (it is hidden in the
+        narrow split view to save room for the list)."""
+        self._detail_visible = False
+        self._selected_key = ""
+        self._selected_id = ""
+        for card in getattr(self, "_case_cards", []) or []:
+            card.setStyleSheet(self._case_card_qss(False))
+        if getattr(self, "_detail_panel", None) is not None:
+            self._detail_panel.setVisible(False)
+        if getattr(self, "_case_panel", None) is not None:
+            self._case_panel.setMaximumWidth(16777215)
+            self._case_panel.setMinimumWidth(300)
+        if getattr(self, "_filters_box", None) is not None:
+            self._filters_box.setMaximumWidth(16777215)
+            self._filters_box.setVisible(True)
+
+    def _back_to_browse(self) -> None:
+        """Detail header's 'Back to cases' button."""
+        self._enter_browse()
+        self._render_case_list(self._filtered_cases())
+
+    def _enter_workspace(self) -> None:
+        """A case is selected: show the detail pane, give the case list a
+        comfortable width, and drop the 5-control filter row that would not
+        fit beside it (search stays)."""
+        self._detail_visible = True
+        if getattr(self, "_detail_panel", None) is not None:
+            self._detail_panel.setVisible(True)
+        if getattr(self, "_case_panel", None) is not None:
+            self._case_panel.setMaximumWidth(470)
+            self._case_panel.setMinimumWidth(420)
+        if getattr(self, "_filters_box", None) is not None:
+            self._filters_box.setVisible(False)
 
     def _build_detail_panel(self) -> QWidget:
         t = _t()
@@ -587,6 +641,9 @@ class EProceedingsWorkspace(QWidget):
             self._selected_id = filtered[0].id
             self._selected_key = filtered[0].proc_dir
         self._render_case_list(filtered)
+        self._enter_workspace()
+        # Re-render the list so it collapses from two columns to one.
+        self._render_case_list(self._filtered_cases())
         self._render_detail()
         self._switch_tab(_KPI_TABS.get(key, "overview"))
 
@@ -670,14 +727,60 @@ class EProceedingsWorkspace(QWidget):
             return any(doc.kind in ("notice", "penalty")
                        and doc.status in ("Open", "Overdue")
                        for doc in case.docs)
+        if key == "fresh_notices":
+            return any(self._notice_bucket(doc) == "fresh" for doc in case.docs)
+        if key == "due7":
+            return any(self._notice_bucket(doc) == "due7" for doc in case.docs)
+        if key == "due15":
+            return any(self._notice_bucket(doc) == "due15"
+                       for doc in case.docs)
         if key == "under_appeal":
-            return any(appeal.status == "Pending" for appeal in case.appeals)
+            # "In appeal" only applies while the case is still OPEN.
+            return bool(case.case_open) and any(
+                appeal.status == "Pending" for appeal in case.appeals)
+        if key == "closed_by_order":
+            return self._has_closed_by_order(case)
         if key == "remanded":
             return bool(case.remanded)
         if key == "overdue_limitations":
             return any(row.status == "Overdue"
                        for row in compute_limitations(case))
         return True
+
+    @staticmethod
+    def _notice_bucket(doc) -> str:
+        """Classify an unreplied notice for the Fresh / Due-7 / Due-15 cards.
+
+        fresh   -> more than 15 days left (or no deadline given)
+        due7    -> deadline within 0..7 days
+        due15   -> deadline within 8..15 days (so the three buckets never
+                   double-count the same notice)
+        """
+        if doc.kind not in ("notice", "penalty"):
+            return ""
+        if doc.status not in ("Open", "Overdue"):
+            return ""
+        parsed = _parse_date(doc.reply_deadline)
+        if parsed is None:
+            return "fresh"
+        days = (parsed - date.today()).days
+        if days < 0:
+            return ""          # overdue is surfaced separately
+        if days <= 7:
+            return "due7"
+        if days <= 15:
+            return "due15"
+        return "fresh"
+
+    @staticmethod
+    def _has_closed_by_order(case) -> bool:
+        """A case counts as 'closed by order' when an order closed its
+        notices/appeal and nothing further is pending."""
+        if case.case_open:
+            return False
+        return any(doc.kind in ("order", "appeal-order") and doc.status
+                   in ("Closed", "Limitation expired", "Resolved")
+                   for doc in case.docs)
 
     # ------------------------------------------------------------------
     # Case list
@@ -699,10 +802,27 @@ class EProceedingsWorkspace(QWidget):
 
         section = self._section_combo.currentData() or "all"
         urgency = self._urgency_combo.currentData() or "all"
-        for case in cases:
+
+        # Browse mode uses two columns so a full-width page isn't one long
+        # sparse strip; the split workspace keeps a single column.
+        if getattr(self, "_detail_visible", False):
+            columns = 1
+        else:
+            columns = 3 if self.width() >= 1500 else 2
+        row_layout = None
+        for position, case in enumerate(cases):
             card = self._build_case_card(case, section, urgency)
             self._case_cards.append(card)
-            self._list_layout.addWidget(card, 0)
+            if columns == 1:
+                self._list_layout.addWidget(card, 0)
+                continue
+            if position % columns == 0:
+                row_layout = QHBoxLayout()
+                row_layout.setSpacing(10)
+                self._list_layout.addLayout(row_layout)
+            row_layout.addWidget(card, 1)
+            if position % columns == columns - 1:
+                row_layout = None
         self._list_layout.addStretch(1)
         # Force an immediate layout pass. Without this the freshly-built
         # cards keep their pre-layout geometry (a few pixels tall) until the
@@ -882,6 +1002,10 @@ class EProceedingsWorkspace(QWidget):
             card.setStyleSheet(
                 self._case_card_qss(
                     card.property("caseKey") == case.proc_dir))
+        self._enter_workspace()
+        # Re-render so the list collapses from two columns to one now that
+        # the detail pane is taking half the page.
+        self._render_case_list(self._filtered_cases())
         self._render_detail()
 
     @staticmethod
@@ -913,6 +1037,9 @@ class EProceedingsWorkspace(QWidget):
     # ------------------------------------------------------------------
 
     def _render_detail(self) -> None:
+        if not getattr(self, "_detail_visible", False):
+            # Browse mode — nothing to render until a case is clicked.
+            return
         _clear_layout(self._detail_layout)
         self._tab_buttons = []
         self._stack = None
@@ -944,6 +1071,18 @@ class EProceedingsWorkspace(QWidget):
         head = QHBoxLayout(header)
         head.setContentsMargins(14, 11, 12, 11)
         head.setSpacing(11)
+
+        back = QPushButton("Back to cases")
+        back.setCursor(Qt.CursorShape.PointingHandCursor)
+        back.setFlat(True)
+        back.setStyleSheet(
+            f"QPushButton {{ background:transparent; border:none;"
+            f"color:{t.accent}; font-size:10px; font-weight:600;"
+            f"padding:0 4px 0 0; }}"
+            f"QPushButton:hover {{ color:{t.accent_hover}; }}")
+        back.setToolTip("Back to the full case list")
+        back.clicked.connect(lambda clicked=False: self._back_to_browse())
+        head.addWidget(back, 0, Qt.AlignmentFlag.AlignTop)
 
         head.addWidget(_avatar(case.name, case.pan, 44),
                        0, Qt.AlignmentFlag.AlignTop)
