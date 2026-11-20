@@ -44,6 +44,7 @@ from ui.dialogs import (
     EProceedingsDialog,
 )
 from ui.log_history import LogHistoryDialog, LogStore
+from ui.eproceedings import EProceedingsWorkspace
 from automation.errors import _friendly_error
 
 sys.path.insert(0, _bundled_dir())
@@ -1786,8 +1787,13 @@ class AayDocCapioApp(QMainWindow):
         for i, b in enumerate(self._it_tab_btns):
             b.setChecked(i == idx)
         if idx == 5:
-            # Refresh the all-clients scan each time the tab is shown
-            self._eproc_rescan()
+            # Refresh the case workspace each time the tab is shown (the old
+            # flat-table scan is kept but no longer drives the tab).
+            ws = getattr(self, "_eproc_ws", None)
+            if ws is not None:
+                ws.refresh()
+            else:
+                self._eproc_rescan()
         if idx > 0 and hasattr(self, "_it_tab_btns"):
             self._on_hub_changed("Income Tax", self._it_tab_btns[idx].text())
         else:
@@ -2166,146 +2172,24 @@ class AayDocCapioApp(QMainWindow):
         return page
 
     def _mk_it_eproceedings_tab(self):
-        """Income Tax hub ▸ e-Proceedings (F-60 v2). One grouped table of
-        every downloaded notice/response file across ALL clients and ALL
-        year folders (AY_* and TY_*) under the download root — assessment
-        year deliberately NOT a criterion. Scanning reuses the approach of
-        ui.dialogs.EProceedingsDialog._scan_proceedings (proceeding dirs
-        NN-*, notice-*/response-* subfolders decide the Kind tag) but walks
-        <root>/<PAN>-<NameSafe>/<year>/e-Proceedings/… so every client and
-        every year shows up in one place. Per-proceeding _meta.json (written
-        by automation/downloader_e_proceedings.py) supplies notice metadata
-        (issue/due dates, responded flag, orders); legacy trees without it
-        are inferred from the folder layout + filename dates. Dashboard
-        cards above the table show Last Sync / Failed Clients / Latest
-        Fetched; filter chips narrow the table to open notices, dues and
-        orders. Double-click a row to open the file; double-click the
-        Folder cell to open the year folder; click a group header row to
-        collapse/expand it."""
-        page = QWidget()
-        outer = QVBoxLayout(page)
-        outer.setContentsMargins(24, 24, 24, 24)
-        outer.setSpacing(10)
-        t = _t()
+        """Income Tax hub ▸ e-Proceedings (F-60 v3 — case workspace).
 
-        # ── Header: title left, View/Open + Refresh right ────────────────────
-        hdr = QHBoxLayout()
-        hdr.addWidget(_lbl("e-Proceedings — All Clients", 14, bold=True))
-        hdr.addStretch(1)
-        self._eproc_view_btn = _btn("View / Open", "outline", height=32, icon="icon_preview.png")
-        self._eproc_view_btn.clicked.connect(self._eproc_open_selected)
-        hdr.addWidget(self._eproc_view_btn)
-        refresh_btn = _btn("Refresh", "outline", height=32, icon="btn_refresh.png")
-        refresh_btn.clicked.connect(self._eproc_rescan)
-        hdr.addWidget(refresh_btn)
-        outer.addLayout(hdr)
+        Replaces the earlier flat-table view with ui.eproceedings.
+        EProceedingsWorkspace: KPI row, left case list (one card per
+        proceeding), right detail workspace with Overview / Case Timeline /
+        Appeals / Limitations tabs and the cross-linking document modal.
 
-        # NOTE: the Last Sync / Failed Clients / Latest Fetched dashboard is
-        # GLOBAL now — built by _build_eproc_dashboard_strip() above the nav
-        # stack so it stays visible on every hub and tab. The tab itself
-        # keeps only the summary strip + filter chips below.
-
-        # ── Summary strip (recomputed on every scan) ─────────────────────────
-        self._eproc_summary = _lbl("", 11, color=t.text_muted)
-        outer.addWidget(self._eproc_summary)
-
-        # ── Filter chips: checkable buttons, exclusive group, counts set on scan ─
-        chips_row = QHBoxLayout()
-        chips_row.setSpacing(6)
-        self._eproc_chip = "all"
-        self._eproc_chip_group = QButtonGroup(self)
-        self._eproc_chip_group.setExclusive(True)
-        self._eproc_chips = {}
-        for key, label in (("all", "All"), ("open", "Open Notices"), ("due7", "Due ≤7d"),
-                           ("due15", "Due ≤15d"), ("orders", "Orders"),
-                           ("appeal", "Appeal Filed"), ("noappeal", "No Appeal")):
-            chip = QPushButton(label)
-            chip.setCheckable(True)
-            chip.setCursor(Qt.CursorShape.PointingHandCursor)
-            chip.setStyleSheet(
-                f"QPushButton{{border:1px solid {t.border};border-radius:12px;"
-                f"padding:3px 12px;font-size:11px;background:transparent;color:{t.text_muted};}}"
-                f"QPushButton:checked{{background:{t.accent_light};color:{t.accent_it};"
-                f"font-weight:bold;border-color:{t.accent_light};}}")
-            chip.clicked.connect(lambda _c=False, k=key: self._eproc_set_chip(k))
-            self._eproc_chip_group.addButton(chip)
-            chips_row.addWidget(chip)
-            self._eproc_chips[key] = chip
-        self._eproc_chips["all"].setChecked(True)
-        chips_row.addStretch(1)
-        outer.addLayout(chips_row)
-
-        # ── Search box — filters the already-loaded rows live (no rescan) ────
-        self._eproc_search = QLineEdit()
-        self._eproc_search.setPlaceholderText("Search PAN, client, proceeding, or file…")
-        self._eproc_search.setClearButtonEnabled(True)
-        self._eproc_search.setFixedHeight(30)
-        self._eproc_search.setStyleSheet(
-            f"QLineEdit{{border:1px solid {t.border};border-radius:6px;padding:4px 10px;"
-            f"font-size:12px;background:{t.bg_table};color:{t.text_primary};}}")
-        self._eproc_search.textChanged.connect(self._eproc_apply_filter)
-        outer.addWidget(self._eproc_search)
-
-        # ── Stacked: empty state ↔ table ─────────────────────────────────────
-        self._eproc_stack = QStackedWidget()
-        outer.addWidget(self._eproc_stack, 1)
-
-        empty_page = QWidget()
-        empty_v = QVBoxLayout(empty_page)
-        empty_v.addStretch(1)
-        self._eproc_empty_lbl = _lbl(
-            "No e-Proceedings downloaded yet.\nRun Download → e-Proceedings Documents first.",
-            12, color=t.text_muted)
-        self._eproc_empty_lbl.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        empty_v.addWidget(self._eproc_empty_lbl)
-        empty_v.addStretch(1)
-        self._eproc_stack.addWidget(empty_page)
-
-        self._eproc_table = QTableWidget()
-        self._eproc_table.setColumnCount(11)
-        self._eproc_table.setHorizontalHeaderLabels(
-            ["Client", "PAN", "Proceeding", "Document", "Kind", "Issue Date",
-             "Due Date", "Responded", "Appeal", "Size", "Folder"])
-        self._eproc_table.verticalHeader().setVisible(False)
-        self._eproc_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._eproc_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._eproc_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._eproc_table.setShowGrid(False)
-        self._eproc_table.setAlternatingRowColors(True)
-        self._eproc_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self._eproc_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self._eproc_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        self._eproc_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self._eproc_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        self._eproc_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        self._eproc_table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
-        self._eproc_table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
-        self._eproc_table.horizontalHeader().setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents)
-        self._eproc_table.horizontalHeader().setSectionResizeMode(9, QHeaderView.ResizeMode.ResizeToContents)
-        self._eproc_table.horizontalHeader().setSectionResizeMode(10, QHeaderView.ResizeMode.Stretch)
-        self._eproc_table.setStyleSheet(
-            f"QTableWidget{{border:1px solid {t.border};border-radius:10px;"
-            f"background:{t.bg_table};alternate-background-color:{t.bg_table_alt};"
-            f"outline:0;gridline-color:{t.grid};}}"
-            f"QTableWidget::item{{border-bottom:1px solid {t.grid};padding:6px;color:{t.text_primary};}}"
-            f"QTableWidget::item:selected{{background:{t.accent_light};}}")
-        self._eproc_table.horizontalHeader().setStyleSheet(
-            f"QHeaderView::section{{background-color:{t.bg_header};border:none;"
-            f"border-bottom:1px solid {t.border};font-weight:bold;color:{t.text_muted};"
-            f"font-size:10px;height:28px;padding-left:4px;}}")
-        self._eproc_table.cellClicked.connect(self._eproc_on_group_click)
-        self._eproc_table.cellDoubleClicked.connect(self._eproc_on_double_click)
-        self._eproc_stack.addWidget(self._eproc_table)
-
-        # State: _eproc_cases (per-proceeding dicts with notices), _eproc_rows
-        # (flat file/group row dicts feeding the table), _eproc_chip (active
-        # chip key), _eproc_collapsed (proc_dir → bool), _eproc_groups (row idx
-        # per group header).
-        self._eproc_rows = []
-        self._eproc_cases = []
-        self._eproc_collapsed = {}
-        self._eproc_groups = []
-        return page
+        The previous implementation's helper methods (_eproc_rescan,
+        _eproc_populate, the table, chips, etc.) are intentionally LEFT IN
+        PLACE below but unused — kept until the new workspace has proven
+        itself in daily use, per the user's instruction not to delete yet.
+        """
+        self._eproc_ws = EProceedingsWorkspace(
+            self.vault,
+            lambda: getattr(self, "assessee_list", []) or [],
+            self,
+        )
+        return self._eproc_ws
 
     # ── e-Proceedings tab: chips / dashboard cards ────────────────────────────
 
