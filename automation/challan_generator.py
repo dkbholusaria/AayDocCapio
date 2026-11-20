@@ -259,61 +259,10 @@ def _slug(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "_", (text or "").strip()).strip("_") or "Payment"
 
 
-def _norm_bank_name(text: str) -> str:
-    """Loose normalization for bank-name matching against dropdown options.
-
-    Confirmed live (2026-09-02): the portal's real "Other Bank" option text
-    differs from this app's static _NET_BANKING_EXTENDED list in small,
-    inconsistent ways — casing ("Central Bank Of India" vs our "Central
-    Bank of India"), "&" vs "And" ("Jammu And Kashmir Bank" vs "Jammu &
-    Kashmir Bank"), and trailing "Limited"/"Ltd" suffixes present on the
-    portal but not in our list ("City Union Bank Limited", "RBL Bank
-    Limited"). An exact-text XPath match failed on "Central Bank Of India"
-    even though the option was actually open and visible. Normalize both
-    sides instead of trying to hardcode every portal wording exactly.
-    """
-    s = (text or "").strip().lower()
-    s = s.replace("&", "and")
-    s = re.sub(r"\s+(limited|ltd\.?)\s*$", "", s)
-    s = re.sub(r"\s+", " ", s).strip()
-    return s
-
-
-async def _click_matching_option(
-    scope, target_text: str, timeout: int = 10000,
-    selector: str = "mat-option, [role='option']",
-):
-    """Find and click the visible element (matching `selector`) whose text
-    matches target_text once both are loosely normalized (see
-    _norm_bank_name) — tolerant of the casing/wording drift confirmed live
-    between this app's bank-name lists and the portal's actual text.
-    Defaults to open-dropdown options; pass selector="mat-radio-button" for
-    a tile/radio group instead (confirmed live 2026-09-02: the primary bank
-    tiles need the same tolerant matching as the "Other Bank" dropdown —
-    an exact-text XPath either matched nothing at all, e.g. "Union Bank Of
-    India" on the Debit Card tab, or silently failed to actually register
-    the click, e.g. "Cash" on Pay at Bank Counter, which left the page's
-    own Continue button permanently disabled).
-
-    `scope`: a Page or a Locator to search within — BUG FIX (2026-09-02,
-    round 2): a page-wide "mat-radio-button" search matched the same bank
-    name's tile on a different, INACTIVE tab (every tab's radio group
-    stays in the DOM, just marked inert, not removed — e.g. "ICICI Bank"
-    is a tile on Net Banking, Debit Card, AND Payment Gateway), so the
-    click landed on an inert/invisible radio and silently did nothing.
-    Callers for tile clicks now pass the active tab panel Locator instead
-    of the bare Page."""
-    target_norm = _norm_bank_name(target_text)
-    options = scope.locator(selector)
-    await options.first.wait_for(state="visible", timeout=timeout)
-    count = await options.count()
-    for i in range(count):
-        opt = options.nth(i)
-        text_norm = _norm_bank_name(await opt.inner_text())
-        if text_norm == target_norm:
-            await opt.click()
-            return
-    raise RuntimeError(f"No element matching '{target_text}' found among {count} candidates ({selector!r})")
+from automation.challan_common import (
+    _norm_bank_name, _click_matching_option, select_payment_mode,
+    read_crn, save_artifact,
+)
 
 
 async def _check_type_of_payment_available(page: Page, tax_type: str, step) -> bool:
@@ -509,127 +458,7 @@ async def generate_challan(
         await page.wait_for_load_state("domcontentloaded", timeout=20000)
         await asyncio.sleep(1.0)
 
-        step(f"Step 3a: selecting Payment Mode = {payment_mode}" + (f" / {bank}" if bank else "") + "...")
-        await _click_visible_exact_text(page, "*", payment_mode, log_callback, "CHALLAN")
-        await asyncio.sleep(0.5)
-        known_banks = mode_info.get("banks", [])
-        # BUG FIX (2026-09-03): confirmed live — a row carrying a stray
-        # `bank` value for a mode with no bank picklist at all (RTGS/NEFT's
-        # own "banks" list is empty by design, see PAYMENT_MODES above) fell
-        # through to the "Other Bank" fallback below and hunted for a
-        # #bankOther radio that doesn't exist on that tab, hanging for the
-        # full 30s click timeout ("element is not stable ... detached from
-        # DOM, retrying"). A mode with no banks configured never has
-        # anything to select here, regardless of what `bank` was passed in.
-        if bank and known_banks:
-            if bank in known_banks and bank != "Other Bank":
-                # BUG FIX (2026-09-02): confirmed live — the exact-text
-                # XPath here failed outright (zero matches, not even a
-                # wrong one) for "Union Bank Of India" on the Debit Card
-                # tab, and separately left "Cash" on Pay at Bank Counter
-                # selected in a way that never enabled Continue. Same root
-                # cause class as the "Other Bank" and bank-name-casing
-                # bugs fixed earlier: the portal's real tile text/markup
-                # doesn't reliably match a naive exact string. Use the same
-                # tolerant option-scanning matcher, over the radio tiles
-                # instead of dropdown options.
-                #
-                # BUG FIX (2026-09-02, round 2): confirmed live again —
-                # a page-wide "mat-radio-button" search matched the SAME
-                # bank name's tile on a different, inactive tab (every
-                # tab's radio group stays in the DOM, just marked inert,
-                # not removed — e.g. "ICICI Bank" is a tile on Net
-                # Banking, Debit Card, AND Payment Gateway), so the click
-                # landed on an inert/invisible radio and silently did
-                # nothing, leaving Continue disabled. Same scoping fix as
-                # the "Other Bank" nested dropdown below: restrict the
-                # search to the active tab panel only.
-                active_panel = page.locator(".mat-mdc-tab-body-active").last
-                await _click_matching_option(
-                    active_panel, bank, selector="mat-radio-button")
-            else:
-                # Confirmed live (2026-09-02): only a handful of banks get
-                # their own radio tile (Axis, Bank of Baroda, HDFC, ICICI,
-                # IDBI, Kotak Mahindra, Punjab National, SBI) — every other
-                # bank is reached via the "Other Bank" radio, which reveals
-                # a nested dropdown to pick the actual name from.
-                step(f"'{bank}' not in the standard tile list — trying 'Other Bank'...")
-                # BUG FIX (2026-09-02): the text-based XPath below matched
-                # the wrapping <div class="margin24"> that contains ONLY
-                # this radio button (so its aggregate text was also exactly
-                # "Other Bank", and being an ancestor it sorts first in
-                # document order) instead of the radio control itself —
-                # confirmed live by a diagnostic screenshot showing "Other
-                # Bank" still unchecked after the click. The portal gives
-                # this radio a stable id="bankOther"; use that directly.
-                #
-                # BUG FIX (2026-09-22): confirmed live — a page-wide
-                # "#bankOther" search hit the same "every inactive tab keeps
-                # its own copy in the DOM" problem already fixed above for
-                # the bank-tile click (Debit Card's own #bankOther plus Net
-                # Banking's inert one both matched, a strict-mode violation
-                # that crashed the run). Scope to the active tab panel here
-                # too, same as the tile-click branch above.
-                active_panel = page.locator(".mat-mdc-tab-body-active").last
-                other_tile = active_panel.locator("#bankOther")
-                await other_tile.wait_for(state="visible", timeout=10000)
-                await other_tile.click()
-                await asyncio.sleep(0.5)
-                # BUG FIX (2026-09-02): page.locator("mat-select, select").last
-                # matched the header's global language mat-select (always
-                # present, later in DOM than the tab content in some layouts)
-                # instead of the nested bank dropdown that just appeared,
-                # confirmed live by a diagnostic screenshot showing the
-                # English/Hindi language panel open instead of a bank list.
-                # Scope the search to the active tab panel only.
-                # The trigger lives inside the active tab panel — scope to
-                # it so it can't match the header's language select. Its
-                # dropdown options, once opened, render in a CDK overlay
-                # portaled to <body> (not nested under the panel), so that
-                # search stays page-wide — but by then only this select's
-                # overlay is open, so there's no ambiguity to worry about.
-                nested_select = active_panel.locator("mat-select, select").last
-                await nested_select.wait_for(state="visible", timeout=10000)
-                await nested_select.click()
-                # BUG FIX (2026-09-02): an exact-text XPath match failed on
-                # "Central Bank Of India" — the portal's actual option text
-                # differs from our _NET_BANKING_EXTENDED entries in casing
-                # ("Of" vs "of") and wording ("Limited" suffixes, "&" vs
-                # "And") for several banks. Use tolerant matching instead.
-                await _click_matching_option(page, bank)
-            await asyncio.sleep(0.3)
-
-        # BUG FIX (2026-09-02): confirmed live — Pay at Bank Counter has a
-        # SEPARATE mandatory "Select Bank (authorised Banks only)" dropdown
-        # that appears regardless of Cash/Cheque/Demand Draft (a diagnostic
-        # screenshot showed it required with "Cash" selected, blocking
-        # Continue for 30s until timeout). This was previously assumed to
-        # be the Cheque/DD-only "Drawn on Bank" field and skipped entirely
-        # for Cash — wrong: it's the counter branch you'll pay at, needed
-        # for every sub-mode. Reuse `drawee_bank` as its value since it's
-        # the only bank-name input this row carries for this mode.
-        if payment_mode == "Pay at Bank Counter" and drawee_bank:
-            step(f"Selecting Bank (authorised Banks only) = {drawee_bank}...")
-            try:
-                # Same fix as the "Other Bank" dropdown above: scope the
-                # trigger search to the active tab panel so it can't match
-                # the header's global language mat-select.
-                active_panel = page.locator(".mat-mdc-tab-body-active").last
-                drawn_select = active_panel.locator("mat-select, select").last
-                await drawn_select.click()
-                await asyncio.sleep(0.3)
-                # Same tolerant-matching fix as the "Other Bank" dropdown above.
-                await _click_matching_option(page, drawee_bank, timeout=8000)
-            except Exception:
-                try:
-                    drawn_input = page.locator(
-                        "input[formcontrolname*='bank' i], input[placeholder*='bank' i]"
-                    ).first
-                    await drawn_input.click()
-                    await drawn_input.fill(drawee_bank)
-                except Exception as e2:
-                    step(f"Could not set Drawn on Bank (best-effort, continuing): {e2}")
-            await asyncio.sleep(0.3)
+        await select_payment_mode(page, payment_mode, bank, drawee_bank, step)
 
         await _click_visible_exact_text(page, "button", "Continue", log_callback, "CHALLAN")
         await page.wait_for_load_state("domcontentloaded", timeout=20000)
@@ -662,57 +491,10 @@ async def generate_challan(
         # — UNCONFIRMED LIVE, no online-mode run has exercised this branch
         # yet.
         step("Fetching CRN from confirmation page...")
-        crn = ""
-        valid_till = ""
-        try:
-            crn_container = page.locator("div.labelCss", has_text="CRN").first
-            await crn_container.wait_for(state="visible", timeout=8000)
-            crn = (await crn_container.locator("div.valueCss").inner_text()).strip()
-            try:
-                valid_container = page.locator("div.labelCss", has_text="Valid Till").first
-                valid_till = (await valid_container.locator("div.valueCss").inner_text()).strip()
-            except Exception:
-                pass
-        except Exception:
-            # BUG FIX (2026-09-02): confirmed live — the online-payment
-            # (Net Banking/Debit Card/Payment Gateway) "Pay Later"
-            # confirmation page is a DIFFERENT Angular component
-            # (app-view-crn-details) than Pay at Bank Counter's, not the
-            # same one as originally assumed. It has no labelCss/valueCss
-            # pairs and no "Valid Till" field at all — the CRN instead
-            # appears as plain text "CRN - <number>" in a page heading
-            # (class "subHeading"). Fall back to parsing that.
-            step("labelCss CRN block not found — trying online-mode 'CRN - <number>' heading...")
-            heading = page.locator("text=/CRN\\s*-\\s*\\d+/").first
-            await heading.wait_for(state="visible", timeout=10000)
-            heading_text = await heading.inner_text()
-            match = re.search(r"CRN\s*-\s*(\d+)", heading_text)
-            if not match:
-                raise RuntimeError(f"Could not parse CRN from heading text: {heading_text!r}")
-            crn = match.group(1)
+        crn, valid_till = await read_crn(page, step)
 
-        if mode_info["has_download"]:
-            doc_label = "Challan Form" if mode_info["artifact"] == "challan_form" else "Mandate Form"
-            step(f"Downloading {doc_label} PDF...")
-            filename = f"{prefix}Challan-{year_tag}-{tax_type_slug}-{crn}.pdf"
-            output_path = os.path.join(challan_dir, filename)
-            download_btn = page.locator("button", has_text=f"Download {doc_label}").first
-            async with page.expect_download() as download_info:
-                await download_btn.click()
-            await (await download_info.value).save_as(output_path)
-            step(f"[Victory] Challan generated: {os.path.basename(output_path)} (CRN {crn})")
-        else:
-            # No downloadable document for this mode (confirmed live by the
-            # user for Net Banking/Debit Card/Payment Gateway) — the
-            # confirmation page already fetched above for CRN/Valid Till is
-            # itself the artifact worth keeping, so screenshot it directly
-            # rather than navigating away to Generated Challans + View
-            # Details.
-            step("No download for this mode — screenshotting confirmation page...")
-            filename = f"{prefix}Challan-{year_tag}-{tax_type_slug}-{crn}.png"
-            output_path = os.path.join(challan_dir, filename)
-            await page.screenshot(path=output_path, full_page=True)
-            step(f"[Victory] Challan generated: {os.path.basename(output_path)} (CRN {crn})")
+        filename_base = f"{prefix}Challan-{year_tag}-{tax_type_slug}-{crn}"
+        output_path = await save_artifact(page, mode_info, challan_dir, filename_base, step)
 
         await update_browser_status(page, "Challan Generated!")
         return {

@@ -11,7 +11,21 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 _PAN_RE = re.compile(r'^[A-Z]{3}[PCHFATBLJG][A-Z][0-9]{4}[A-Z]$')
+# A deductor TAN is 4 letters + 5 digits + 1 letter, e.g. ABCD12345E.
+# Deliberately a separate regex, not a loosened PAN rule — the app must be
+# able to tell the two apart (TDS flows are TAN-only).
+_TAN_RE = re.compile(r'^[A-Z]{4}[0-9]{5}[A-Z]$')
 _DOB_RE = re.compile(r'^(\d{2})-(\d{2})-(\d{4})$')
+
+
+def identify_type(value: str) -> str:
+    """Return "PAN", "TAN", or "" for a client identity value."""
+    v = (value or "").strip().upper()
+    if _PAN_RE.match(v):
+        return "PAN"
+    if _TAN_RE.match(v):
+        return "TAN"
+    return ""
 
 # Accepted import formats → normalised DD-MM-YYYY
 _DOB_FORMATS = [
@@ -50,33 +64,32 @@ def _validate_fields(name: str, pan: str, dob: str, password: str):
         raise ValueError("Full Name must be at least 2 characters.")
 
     if not pan:
-        raise ValueError("PAN Number is required.")
-    if not _PAN_RE.match(pan):
+        raise ValueError("PAN / TAN is required.")
+    id_type = identify_type(pan)
+    if not id_type:
         raise ValueError(
-            "Invalid PAN format.\n\n"
-            "Format: AAA · T · N · 0001 · Z\n"
-            "  · Characters 1–3 : any letters (A–Z)\n"
-            "  · Character 4    : P/C/H/F/A/T/B/L/J/G (taxpayer type)\n"
-            "  · Character 5    : any letter (A–Z)\n"
-            "  · Characters 6–9 : 4 digits\n"
-            "  · Character 10   : any letter (A–Z)\n\n"
-            "Example: AABCP1234F")
+            "Invalid PAN / TAN format.\n\n"
+            "PAN: 5 letters + 4 digits + 1 letter   (e.g. AABCP1234F)\n"
+            "TAN: 4 letters + 5 digits + 1 letter   (e.g. ABCD12345E)")
 
-    if not dob:
-        raise ValueError("Date of Birth is required.")
-    m = _DOB_RE.match(dob)
-    if not m:
-        raise ValueError("Date of Birth must be in DD-MM-YYYY format.\nExample: 01-01-1980")
-    day, month, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
-    try:
-        dt = datetime.date(year, month, day)
-    except ValueError:
-        raise ValueError(f"'{dob}' is not a valid date. Please use DD-MM-YYYY.")
-    today = datetime.date.today()
-    if dt >= today:
-        raise ValueError("Date of Birth cannot be today or a future date.")
-    if year < 1900:
-        raise ValueError("Date of Birth year seems incorrect (before 1900).")
+    # A deductor TAN never needs a date of birth — TDS challans are not
+    # password-protected PDFs, so DOB is not used anywhere in that flow.
+    if id_type == "PAN" and not dob:
+        raise ValueError("Date of Birth is required for a PAN client.")
+
+    if dob:
+        m = _DOB_RE.match(dob)
+        if not m:
+            raise ValueError("Date of Birth must be in DD-MM-YYYY format.\nExample: 01-01-1980")
+        day, month, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        try:
+            dt = datetime.date(year, month, day)
+        except ValueError:
+            raise ValueError(f"'{dob}' is not a valid date. Please use DD-MM-YYYY.")
+        if dt >= datetime.date.today():
+            raise ValueError("Date of Birth cannot be today or a future date.")
+        if year < 1900:
+            raise ValueError("Date of Birth year seems incorrect (before 1900).")
 
     if not password:
         raise ValueError("Portal Password is required.")
@@ -136,6 +149,9 @@ class VaultManager:
                     updated = True
                 if "pan" in entry:
                     entry["pan"] = entry["pan"].strip().upper()
+                if "id_type" not in entry:
+                    entry["id_type"] = identify_type(entry.get("pan", ""))
+                    updated = True
                 if "email" not in entry:
                     entry["email"] = ""
                     updated = True
@@ -201,6 +217,7 @@ class VaultManager:
                         "id": assessee_id,
                         "name": name.strip(),
                         "pan": pan,
+                        "id_type": identify_type(pan),
                         "dob": dob.strip(),
                         "password_enc": password_enc,
                         "email": email.strip(),
@@ -218,6 +235,7 @@ class VaultManager:
                         "id": assessee_id,
                         "name": name.strip(),
                         "pan": pan,
+                        "id_type": identify_type(pan),
                         "dob": dob.strip(),
                         "password_enc": password_enc,
                         "email": email.strip(),
@@ -233,6 +251,7 @@ class VaultManager:
                 "id": new_id,
                 "name": name.strip(),
                 "pan": pan,
+                "id_type": identify_type(pan),
                 "dob": dob.strip(),
                 "password_enc": password_enc,
                 "email": email.strip(),
