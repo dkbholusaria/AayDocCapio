@@ -252,6 +252,8 @@ class AayDocCapioApp(QMainWindow):
     _show_progress_signal = pyqtSignal(list, object, list, str, str)   # (targets, selected_docs: set, year_specs, output_dir, year_tag)
     _challan_done_signal = pyqtSignal()
     _show_challan_progress_signal = pyqtSignal(list, str, str, str)   # (targets, fy_value, type_label, output_dir)
+    _tds_challan_done_signal = pyqtSignal()
+    _show_tds_challan_progress_signal = pyqtSignal(list, str, str, str)
     _return_status_done_signal = pyqtSignal()
     _show_return_status_progress_signal = pyqtSignal(list, str)   # (targets, ay_value)
 
@@ -309,6 +311,16 @@ class AayDocCapioApp(QMainWindow):
         self._challan_progress_dialog = None
         self._challan_done_signal.connect(self._on_challan_batch_done)
         self._show_challan_progress_signal.connect(self._show_challan_progress_dialog)
+
+        # F-4: TDS/TCS challans run as their own flow (TAN clients, section-wise
+        # amounts) with the same threading/progress pattern as F-64 above.
+        self._tds_challan_running = False
+        self._tds_challan_loop = None
+        self._tds_challan_task = None
+        self._tds_challan_aborted = False
+        self._tds_challan_progress_dialog = None
+        self._tds_challan_done_signal.connect(self._on_tds_challan_batch_done)
+        self._show_tds_challan_progress_signal.connect(self._show_tds_challan_progress_dialog)
 
         self._retstatus_running = False
         self._retstatus_loop = None
@@ -549,6 +561,9 @@ class AayDocCapioApp(QMainWindow):
         act_gen_challans = QAction("Generate Tax Challans…", self)
         act_gen_challans.triggered.connect(self._open_generate_challans_dialog)
         epay_menu.addAction(act_gen_challans)
+        act_gen_tds_challans = QAction("Generate TDS/TCS Challans…", self)
+        act_gen_tds_challans.triggered.connect(self._open_generate_tds_challans_dialog)
+        epay_menu.addAction(act_gen_tds_challans)
         act_challan_template = QAction("Download Import Template…", self)
         act_challan_template.triggered.connect(self._download_challan_template)
         epay_menu.addAction(act_challan_template)
@@ -605,9 +620,8 @@ class AayDocCapioApp(QMainWindow):
         self._nav_shell.add_hub("gst", "GST", self._mk_placeholder_page(
             "GST", "Coming soon — see F-70 for the GST vs. Income Tax turnover reconciliation roadmap."),
             accent_key="accent_gst", section="top")
-        self._nav_shell.add_hub("tds", "TDS", self._mk_placeholder_page(
-            "TDS", "Coming soon — see F-71 for the TAN-based deductor-side automation roadmap."),
-            accent_key="accent_tds", section="top")
+        self._nav_shell.add_hub("tds", "TDS", self._mk_tds_page(),
+                                 accent_key="accent_tds", section="top")
         self._nav_shell.add_hub("mca", "MCA", self._mk_placeholder_page(
             "MCA / ROC", "Coming soon — see F-72 for the MCA/ROC filings roadmap."),
             accent_key="accent_mca", section="top")
@@ -2989,6 +3003,22 @@ class AayDocCapioApp(QMainWindow):
         layout.addStretch(1)
         return page
 
+    def _mk_tds_page(self):
+        """TDS hub — deductor-side (TAN) actions. F-4 adds TDS/TCS challan
+        generation; the rest of the TDS roadmap remains a placeholder."""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(14)
+        layout.addWidget(_lbl("TDS / TCS — Deductor (TAN)", 11, bold=True, color=_t().text_muted))
+        layout.addWidget(self._mk_action_card(
+            "TDS / TCS Challan",
+            "Generate Challan 281 under Income-tax Act, 2025 for a deductor TAN, "
+            "with section-wise tax, surcharge and cess.",
+            "rupee", self._open_generate_tds_challans_dialog))
+        layout.addStretch(1)
+        return page
+
     _LOG_HEADER_HEIGHT = 32
 
     def _mk_footer(self):
@@ -3521,9 +3551,9 @@ class AayDocCapioApp(QMainWindow):
         vl.addSpacing(10)
 
         # ── PAN ───────────────────────────────────────────────────────────────
-        vl.addWidget(_field_label("PAN Number"))
+        vl.addWidget(_field_label("PAN / TAN"))
         fields["pan"] = QLineEdit()
-        fields["pan"].setPlaceholderText("e.g. ABCDE1234F")
+        fields["pan"].setPlaceholderText("PAN ABCDE1234F  ·  TAN ABCD12345E")
         fields["pan"].setFixedHeight(34)
         fields["pan"].setMaxLength(10)
         fields["pan"].setValidator(
@@ -3535,7 +3565,7 @@ class AayDocCapioApp(QMainWindow):
         vl.addSpacing(10)
 
         # ── Date of Birth — text input + calendar picker + live hint ─────────
-        vl.addWidget(_field_label("Date of Birth"))
+        vl.addWidget(_field_label("Date of Birth (required for PAN, optional for TAN)"))
         dob_row = QHBoxLayout()
         dob_row.setSpacing(6)
         dob_row.setContentsMargins(0, 0, 0, 0)
@@ -4661,6 +4691,201 @@ class AayDocCapioApp(QMainWindow):
 
     def _on_challan_batch_done(self):
         self.log("[System] Tax Challan generation idle.")
+        if hasattr(self, "_tray_send_act") and not self.is_running:
+            self._tray_send_act.setVisible(False)
+        self.refresh_grid()
+
+
+    # ── F-4: Generate TDS/TCS Challans ───────────────────────────────────────
+
+    def _open_generate_tds_challans_dialog(self):
+        if self._tds_challan_running:
+            return
+        from ui.dialogs import GenerateTdsChallansDialog
+        dlg = GenerateTdsChallansDialog(self, self.vault, self._ay_entries,
+                                        output_dir=self.dir_lbl.text())
+        if dlg.exec() == dlg.DialogCode.Accepted:
+            self.start_tds_challan_generation(dlg.year_label, dlg.rows)
+
+    def start_tds_challan_generation(self, year_label: str, rows: list):
+        from vault import identify_type
+        by_tan = {a.get("pan", "").upper(): a for a in self.assessee_list
+                  if identify_type(a.get("pan", "")) == "TAN"}
+        targets = []
+        for row in rows:
+            client = by_tan.get(row.get("tan", "").upper())
+            if not client:
+                self.log(f"[Warning] Skipping {row.get('tan')} — no matching TAN client in the vault.")
+                continue
+            targets.append({**client, "_tds_row": row})
+        if not targets:
+            QMessageBox.warning(self, "Nothing to Generate",
+                                "None of the TDS rows matched a TAN client in the vault.")
+            return
+
+        self._tds_challan_running = True
+        self._tds_challan_aborted = False
+        self._clear_log()
+        if hasattr(self, "_tray_send_act"):
+            self._tray_send_act.setVisible(True)
+
+        output_dir = self.dir_lbl.text()
+        self.log(f"[System] Starting TDS/TCS challan generation — {len(targets)} row(s) | "
+                 f"TY {year_label} | Output: {output_dir}")
+        self._show_tds_challan_progress_signal.emit(
+            targets, f"TY {year_label}", "TDS/TCS (Act 2025)", output_dir)
+        threading.Thread(
+            target=self._run_tds_challan_wrapper,
+            args=(targets, year_label, output_dir), daemon=True).start()
+
+    def _show_tds_challan_progress_dialog(self, targets, year_display, type_label, output_dir):
+        from ui.dialogs import ChallanGenerationProgressDialog
+        self._tds_challan_progress_dialog = ChallanGenerationProgressDialog(
+            targets, year_display, type_label,
+            stop_callback=self.stop_tds_challan_generation,
+            tray_callback=self._tray_to_system_manual,
+            output_dir=output_dir, parent=self, id_label="TAN")
+        self._tds_challan_progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        self._tds_challan_progress_dialog.show()
+        self._tds_challan_progress_dialog.raise_()
+        self._tds_challan_progress_dialog.activateWindow()
+
+    def stop_tds_challan_generation(self):
+        if not self._tds_challan_running:
+            return
+        self.log("[System] Abort requested (TDS/TCS challan generation)...")
+        self._tds_challan_running = False
+        self._tds_challan_aborted = True
+        if self._tds_challan_task and self._tds_challan_loop:
+            self._tds_challan_loop.call_soon_threadsafe(self._tds_challan_task.cancel)
+
+    def _run_tds_challan_wrapper(self, targets, year_label, output_dir):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        self._tds_challan_loop = loop
+        try:
+            self._tds_challan_task = loop.create_task(
+                self._execute_tds_challan_generation(targets, year_label, output_dir))
+            loop.run_until_complete(self._tds_challan_task)
+        except asyncio.CancelledError:
+            self.log("[System] TDS/TCS challan generation cancelled.")
+        except Exception as e:
+            self.log(f"[System Error] TDS/TCS challan generation crashed: {e}")
+        finally:
+            self._tds_challan_task = None
+            self._tds_challan_loop = None
+            loop.close()
+            self._tds_challan_running = False
+            if self._tds_challan_progress_dialog:
+                self._tds_challan_progress_dialog.batch_finished()
+            self._tds_challan_done_signal.emit()
+
+    async def _execute_tds_challan_generation(self, targets, year_label, output_dir):
+        from automation.challan_generator_tds import generate_tds_challan
+
+        def set_status(row_index, text):
+            if self._tds_challan_progress_dialog:
+                self._tds_challan_progress_dialog.set_status(row_index, text)
+
+        try:
+            interactive = not self.chk_headless.isChecked()
+            context = await browser_manager.get_context(log_callback=self.log, interactive=interactive)
+        except Exception as e:
+            self.log(f"[System Error] Browser init failed: {e}")
+            return
+
+        results = []
+        processed = set()
+        try:
+            for i, target in enumerate(targets):
+                if not self._tds_challan_running:
+                    self.log("[System] Aborted.")
+                    break
+                tan = target.get("pan", "")
+                name = target.get("name", "")
+                row = dict(target.get("_tds_row", {}))
+                row["tan"] = tan
+                row["name"] = name
+                self.log("──────────────────────────────────────────────────")
+                self.log(f"[{i+1}/{len(targets)}] {name} ({tan})")
+
+                name_safe = "".join(c if c.isalnum() or c in " _-" else "" for c in name)
+                client_year_dir = os.path.join(
+                    output_dir, f"{tan}-{name_safe}", f"TY_{year_label.replace('-', '_')}")
+                set_status(i, "⏳ Logging in to ITD...")
+                page = None
+                try:
+                    page = await login_itd(tan, target.get("password"), self.log, context,
+                                           is_running=lambda: self._tds_challan_running)
+                    set_status(i, "⏳ Navigating to e-Pay Tax...")
+                    result = await generate_tds_challan(
+                        page, year_label, row, client_year_dir, self.log)
+                    results.append(result)
+                    processed.add(i)
+                    if result["status"] == "generated":
+                        set_status(i, f"✅ Generated — CRN {result['crn']}")
+                        if self._tds_challan_progress_dialog and result.get("artifact_path"):
+                            self._tds_challan_progress_dialog.set_artifact_path(
+                                i, result["artifact_path"])
+                    else:
+                        set_status(i, f"❌ Failed — {result['reason']}")
+                except Exception as e:
+                    self.log(f"[Error] {name}: {e}")
+                    set_status(i, f"❌ Failed — {e}")
+                    results.append({
+                        "tan": tan, "name": name, "portal_year_label": year_label,
+                        "sections": row.get("sections", []), "total_amount": 0,
+                        "payment_mode": row.get("payment_mode", ""), "bank": row.get("bank", ""),
+                        "drawee_bank": row.get("drawee_bank", ""), "crn": "", "valid_till": "",
+                        "status": "failed", "reason": str(e), "artifact_path": "",
+                    })
+                    processed.add(i)
+                finally:
+                    if page:
+                        try:
+                            await logout_itd(page, self.log)
+                        except Exception:
+                            pass
+        except asyncio.CancelledError:
+            self.log("[System] TDS/TCS challan generation stopped by user.")
+        finally:
+            for idx in range(len(targets)):
+                if idx not in processed:
+                    set_status(idx, "⏹ Stopped")
+            try:
+                report_path = self._write_tds_challan_summary(results, output_dir, year_label)
+                if report_path and self._tds_challan_progress_dialog:
+                    self._tds_challan_progress_dialog.set_report_path(report_path)
+            except Exception as e:
+                self.log(f"[Warning] Could not write TDS challan summary: {e}")
+
+    def _write_tds_challan_summary(self, results, output_dir, year_label):
+        from automation.challan_fields import TDS_SUMMARY_COLUMNS
+        from openpyxl import Workbook
+        import datetime as _dt
+
+        os.makedirs(output_dir, exist_ok=True)
+        ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = os.path.join(output_dir, f"TDS_Challans_Summary_{ts}.xlsx")
+        wb = Workbook()
+        ws = wb.active
+        ws.append(TDS_SUMMARY_COLUMNS)
+        for r in results:
+            secs = r.get("sections", []) or []
+            codes = ", ".join(str(s.get("section_code", "")) for s in secs)
+            ws.append([
+                r.get("tan", ""), r.get("name", ""), r.get("portal_year_label", ""),
+                "Other than Company", "Resident", codes, r.get("total_amount", 0),
+                r.get("payment_mode", ""), r.get("bank", ""), r.get("drawee_bank", ""),
+                r.get("crn", ""), r.get("valid_till", ""), r.get("status", ""),
+                r.get("reason", ""), r.get("artifact_path", ""),
+            ])
+        wb.save(path)
+        self.log(f"[System] TDS challan summary written: {path}")
+        return path
+
+    def _on_tds_challan_batch_done(self):
+        self.log("[System] TDS/TCS challan generation idle.")
         if hasattr(self, "_tray_send_act") and not self.is_running:
             self._tray_send_act.setVisible(False)
         self.refresh_grid()
