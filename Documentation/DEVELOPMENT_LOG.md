@@ -813,44 +813,30 @@ TAN credentials — no portal-flow changes.
 - Files land in `{TAN}-{Name}/{AY|TY}_{year}/Tax Challans (Paid)/`, exactly
   like the Income Tax challan download.
 
-
 ---
 
-## 26. Skip already-downloaded files on every flow (F-14 / #14)
+## 26. View Saved Challans (F-12)
 
-**Problem:** e-Proceedings got an incremental diff sync in F-2, and Filed IT
-Forms already skipped per artifact, but every other document type re-clicked
-the portal and re-downloaded the same file on each run — 26AS, Form 168,
-Filed Returns (Form/Receipt/JSON/Intimation and the ITR-Status Excel), Tax
-Challans, and AIS/TIS Phase 1.
+Adds a read-only way to reopen challans already saved in earlier sessions.
+The vault is deliberately not the source of truth: `record_download()` is
+only written by the batch download pipeline, and both challan generators
+(F-64 and F-4) never record their artifacts. The filesystem therefore backs
+the index.
 
-**Decision:** an issued ITD document is immutable — 26AS/168 for a closed
-year, a challan keyed by CIN, a filed return keyed by Acknowledgement Number,
-an intimation keyed by date. So a non-empty file at the deterministic output
-path is treated as already downloaded. No hashing or content comparison.
-
-**Implementation:**
-- `automation/fs_util.py` — `is_present(path)` = exists AND size > 0;
-  `skip_missing_required(path, log, label)` logs `[Skip] …`.
-- `downloader_26as.py` — paths computed before the portal click; PDF and TXT
-  guarded independently; both present returns early with "Already present
-  (PDF + TXT)".
-- `downloader_168.py` — per-artifact guards for PDF / ITD Excel / TXT.
-- `downloader_challans.py` — deterministic `<pan>-Challan-<year>-<CIN>-<type>.pdf`
-  checked before opening the ⋮ actions menu.
-- `downloader_filed_returns.py` — `_download_one_file` now returns
-  "downloaded" / "already_present" / "failed"; ITR-Status Excel guarded too;
-  a year with nothing new reports "Up to date (N file(s) already present)".
-- `downloader_ais_tis.py` — `download_tis`, `request_ais` and
-  `download_ais_from_activity_history` return `already_present` before opening
-  a modal, navigating Activity History, or unlocking.
-- `batch_handlers.py` — "Already present" and "Up to date" map to a green
-  ✅ status instead of a partial-failure warning.
-
-**Trade-off:** if the portal ever re-issues a document for the same year, the
-presence check will keep the old copy. Mitigation: delete the file to force a
-re-download (documented in the changelog).
-
-**Tests:** `test_fs_util.py` (5) and `test_f14_skip.py` (8) — empty file is
-not "present", AIS/TIS/request/activity-history short-circuit before touching
-Playwright, Filed Return artifact skips when present.
+- `automation/challan_index.py` walks the configured download root and
+  classifies files by their containing folder: `Tax Challans (Paid)` (and
+  legacy `Challans` / `Tax Challans`) -> Paid; `Tax Challans (Payable)` (and
+  legacy `Tax Challans (Generated)`) -> Unpaid. Client identity comes from the
+  `{PAN|TAN}-{Name}` folder and is resolved to the current vault name; year
+  comes from the `AY_/TY_` path segment, with a filename fallback for
+  downloaded challans.
+- `ui/challan_viewer.py` — `ViewChallansDialog`: client / status / year
+  filters plus a search box, table (client, year, status, type, file, date,
+  size), double-click to open, Open Folder, Refresh, and an empty state.
+  Nothing is written and no portal login happens.
+- `app.py` — entry points: E-Pay Tax menu -> View Challans..., Income Tax ->
+  E-Pay Tax tab (secondary button), and the TDS hub (action card).
+- `test_challan_viewer.py` — 5 test functions, all passing: folder
+  classification, legacy names, TDS vs Income Tax filenames, year/identity
+  parsing, sort order, filters, empty state, and open-file/open-folder
+  routing (with `_open_path` patched).

@@ -569,6 +569,10 @@ class AayDocCapioApp(QMainWindow):
         act_dl_tds_challans = QAction("Download TDS/TCS Challans…", self)
         act_dl_tds_challans.triggered.connect(self._open_download_tds_challans_dialog)
         epay_menu.addAction(act_dl_tds_challans)
+        epay_menu.addSeparator()
+        act_view_challans = QAction("View Challans…", self)
+        act_view_challans.triggered.connect(self._open_view_challans_dialog)
+        epay_menu.addAction(act_view_challans)
         act_challan_template = QAction("Download Import Template…", self)
         act_challan_template.triggered.connect(self._download_challan_template)
         epay_menu.addAction(act_challan_template)
@@ -1821,10 +1825,14 @@ class AayDocCapioApp(QMainWindow):
         else:
             self._on_hub_changed("Income Tax", "")
 
-    def _mk_it_dialog_tab(self, title: str, desc: str, btn_text: str, icon_key: str, handler):
+    def _mk_it_dialog_tab(self, title: str, desc: str, btn_text: str, icon_key: str, handler,
+                          extra_actions=None):
         """Sub-tab for an action that still opens its existing modal dialog
         (Download Documents / E-Pay Tax / Return Status) rather than being
-        embedded inline — that's a larger later phase (F-77c)."""
+        embedded inline — that's a larger later phase (F-77c).
+
+        `extra_actions`: optional list of (label, icon_key, handler) shown as
+        secondary buttons under the primary action (F-12's View Challans)."""
         t = _t()
         page = QWidget()
         layout = QVBoxLayout(page)
@@ -1840,6 +1848,11 @@ class AayDocCapioApp(QMainWindow):
         btn.setMaximumWidth(260)
         btn.clicked.connect(handler)
         layout.addWidget(btn)
+        for label, icon, action in (extra_actions or []):
+            extra = _btn(label, "secondary", height=34, icon=icon)
+            extra.setMaximumWidth(260)
+            extra.clicked.connect(action)
+            layout.addWidget(extra)
         layout.addStretch(1)
         return page
 
@@ -2955,8 +2968,12 @@ class AayDocCapioApp(QMainWindow):
         # ── Tabs 2-3: still open their existing modal dialogs ────────────────
         self._it_stack.addWidget(self._mk_it_dialog_tab(
             "E-Pay Tax",
-            "Generate tax payment challans against the ITD portal, or import a prepared batch.",
-            "Generate Tax Challans…", "", self._open_generate_challans_dialog))
+            "Generate tax payment challans against the ITD portal, or import a prepared batch. "
+            "Already saved a challan? Open it without fetching it again.",
+            "Generate Tax Challans…", "", self._open_generate_challans_dialog,
+            extra_actions=[
+                ("View Challans…", "document", self._open_view_challans_dialog),
+            ]))
         self._it_stack.addWidget(self._mk_it_dialog_tab(
             "Return Status",
             "See where every client's return actually stands, straight from the portal.",
@@ -3047,6 +3064,12 @@ class AayDocCapioApp(QMainWindow):
             "Download already-paid challans from e-Pay Tax Payment History "
             "for the selected TAN clients and years.",
             "document", self._open_download_tds_challans_dialog))
+        layout.addWidget(self._mk_action_card(
+            "View Challans",
+            "Browse challans already generated or downloaded in an earlier "
+            "session — filter by client and Paid / Unpaid, then open the "
+            "file or its folder.",
+            "list", self._open_view_challans_dialog))
         layout.addStretch(1)
         return page
 
@@ -4460,6 +4483,17 @@ class AayDocCapioApp(QMainWindow):
         self._progress_dialog.show()
         self._progress_dialog.raise_()
         self._progress_dialog.activateWindow()
+
+    # ── F-12: View saved challans (Paid / Unpaid) ────────────────────────────
+
+    def _open_view_challans_dialog(self):
+        """Read-only browser for challans already saved on disk. No portal
+        login — the files are the source of truth, since generation does not
+        write a download-history record into the vault."""
+        from ui.challan_viewer import ViewChallansDialog
+        root = self.dir_lbl.text() or self.vault.get_setting("download_root_dir", "")
+        dlg = ViewChallansDialog(self, root, self.vault.get_all_assessees())
+        dlg.exec()
 
     # ── F-64: Generate Tax Challans ──────────────────────────────────────────
 

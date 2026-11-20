@@ -6,14 +6,11 @@ All notable changes to AayDocCapio are documented here.
 
 ### New Features
 
-#### Faster repeat downloads — skip files that are already saved (F-14, #14)
-- **Every document type now checks the client folder before contacting the portal** — if a file is already saved (and not empty), that download is skipped. This is the same "diff fetch" behaviour e-Proceedings has had since F-2, extended to Form 26AS, Form 168, Filed Returns (Form/Receipt/JSON/Intimation), Tax Challans and AIS/TIS
-- **Re-running a batch for an already-downloaded client is now fast** — no portal clicks, no re-waiting for the same PDF to generate, no repeated PDF unlocking
-- **Partial downloads are handled per file** — e.g. if the 26AS PDF is present but the TXT is missing, only the TXT is fetched; the same applies to Form 168's PDF/Excel/TXT and each Filed Return artifact
-- **Status text distinguishes "already present" from "downloaded"** — e.g. "✅ 26AS — Already present (PDF + TXT)", "✅ Filed Returns — Up to date (N file(s) already present)"
-
-To force a fresh copy of a document, delete that file from the client folder and download again.
-
+#### View saved challans (F-12)
+- **New "View Challans" window** under E-Pay Tax (also on the Income Tax E-Pay Tax tab and the TDS hub) — see every challan already generated (Unpaid) or downloaded (Paid) in an earlier session, without logging in or fetching anything again
+- **Filter by client, Paid / Unpaid, and year**, or search by filename/CRN; the list shows the client, year, type, date and size
+- **Double-click a row to open the challan PDF/PNG, or use Open Folder** to jump to the exact folder it is saved in
+- Recognises older folder names too, so files saved by previous app versions still appear
 
 #### e-Proceedings Documents (F-60)
 - **Download every e-Proceedings document for a client in one pass** — all notices, letters and orders the department issued (via each notice's "Notice/Letter Pdf"), plus the client's own submitted responses: their attachments ("View Response") and acknowledgements. PDFs are not password-protected; any owner-encrypted client-uploaded attachments are unlocked automatically
