@@ -15,6 +15,7 @@ from automation.challan_fields import TDS_SECTION_FIELDS, TDS_OTHER_FIELDS
 
 from ui._theme import _t
 from ui.helpers import _btn, _lbl, _status_style, _UI_FONT, _icon_path
+from ui.widgets import CheckableComboBox
 from automation.doc_types import match_doc_type
 from config import _open_path, _log_open, _app_dir
 from themes import MONO_FONT_NAME as _MONO_FONT
@@ -528,6 +529,126 @@ class ManageGroupsDialog(QDialog):
 
 # ── Batch Progress Dialog ─────────────────────────────────────────────────────
 
+class DownloadTdsChallansDialog(QDialog):
+    """Pick TAN clients + years for the existing challan-download workflow.
+
+    The downloader itself is identity-agnostic (login → e-Pay Tax →
+    Payment History), so this dialog only chooses WHO and WHICH years; the
+    runner reuses handle_challans unchanged.
+    """
+
+    def __init__(self, parent, vault, ay_entries):
+        super().__init__(parent)
+        from vault import identify_type
+        bt = _t()
+        self._all_clients = [c for c in vault.get_all_assessees()
+                             if identify_type(c.get("pan", "")) == "TAN"]
+        self.selected_clients = []
+        self.year_labels = []
+
+        self.setWindowTitle("Download TDS / TCS Challans")
+        self.setMinimumSize(560, 480)
+        self.setStyleSheet(
+            f"QDialog{{background:{bt.bg_window};}}"
+            f"QLabel{{color:{bt.text_primary};background:transparent;}}"
+            f"QCheckBox{{color:{bt.text_primary};background:transparent;font-size:12px;}}"
+        )
+
+        vl = QVBoxLayout(self)
+        vl.setContentsMargins(20, 18, 20, 16)
+        vl.setSpacing(8)
+
+        vl.addWidget(_lbl("Tax Year(s)", 11, bold=True))
+        self._year_combo = CheckableComboBox(placeholder="Select Tax Year")
+        for e in ay_entries:
+            if e.get("enabled", True):
+                self._year_combo.add_item(e.get("label", ""), checked=False)
+        vl.addWidget(self._year_combo)
+        hint = QLabel("TY years use Income-tax Act 2025; AY years use Act 1961.")
+        hint.setStyleSheet(f"color:{bt.text_muted};font-size:11px;background:transparent;")
+        vl.addWidget(hint)
+
+        head = QHBoxLayout()
+        head.addWidget(_lbl("TAN Clients", 11, bold=True))
+        head.addStretch(1)
+        self._select_all = QCheckBox("Select all")
+        self._select_all.toggled.connect(self._toggle_all)
+        head.addWidget(self._select_all)
+        vl.addLayout(head)
+
+        self._table = QTableWidget(0, 2)
+        self._table.setHorizontalHeaderLabels(["TAN", "Name"])
+        self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._table.verticalHeader().setVisible(False)
+        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self._table.setStyleSheet(
+            f"QTableWidget{{border:1.5px solid {bt.border};border-radius:8px;"
+            f"background:{bt.bg_table};outline:0;gridline-color:{bt.grid};}}"
+            f"QTableWidget::item{{border-bottom:1px solid {bt.grid};padding:0 8px;}}")
+        self._table.horizontalHeader().setStyleSheet(
+            f"QHeaderView::section{{background-color:{bt.bg_header};border:none;"
+            f"border-right:1px solid {bt.border};border-bottom:1px solid {bt.border};"
+            f"font-weight:bold;color:{bt.text_muted};font-size:11px;height:34px;padding:0 8px;}}")
+
+        for c in self._all_clients:
+            r = self._table.rowCount()
+            self._table.insertRow(r)
+            self._table.setRowHeight(r, 34)
+            id_item = QTableWidgetItem(c.get("pan", ""))
+            id_item.setFlags(id_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            id_item.setCheckState(Qt.CheckState.Unchecked)
+            id_item.setFont(QFont(_MONO_FONT, 10))
+            self._table.setItem(r, 0, id_item)
+            self._table.setItem(r, 1, QTableWidgetItem(c.get("name", "")))
+        vl.addWidget(self._table, 1)
+
+        if not self._all_clients:
+            warn = QLabel("No TAN clients in the vault yet. Add one via Client Master → "
+                          "Add New Client (use the deductor's TAN).")
+            warn.setWordWrap(True)
+            warn.setStyleSheet(f"color:{bt.error};font-size:11px;background:transparent;")
+            vl.addWidget(warn)
+
+        footer = QHBoxLayout()
+        footer.addStretch(1)
+        cancel = _btn("Cancel", "secondary")
+        download = _btn("Download", "primary")
+        download.setEnabled(bool(self._all_clients))
+        footer.addWidget(cancel)
+        footer.addWidget(download)
+        vl.addLayout(footer)
+        cancel.clicked.connect(self.reject)
+        download.clicked.connect(self._on_download)
+
+    def _toggle_all(self, checked: bool):
+        state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+        for r in range(self._table.rowCount()):
+            item = self._table.item(r, 0)
+            if item:
+                item.setCheckState(state)
+
+    def _on_download(self):
+        chosen = []
+        for r in range(self._table.rowCount()):
+            item = self._table.item(r, 0)
+            if item and item.checkState() == Qt.CheckState.Checked:
+                pan = item.text()
+                client = next((c for c in self._all_clients if c.get("pan") == pan), None)
+                if client:
+                    chosen.append(client)
+        years = self._year_combo.checked_labels()
+        if not chosen:
+            QMessageBox.warning(self, "Nothing Selected", "Please select at least one TAN client.")
+            return
+        if not years:
+            QMessageBox.warning(self, "Nothing Selected", "Please select at least one year.")
+            return
+        self.selected_clients = chosen
+        self.year_labels = years
+        self.accept()
+
+
 class BatchProgressDialog(QDialog):
     """
     Live progress popup shown during any batch run.
@@ -553,7 +674,8 @@ class BatchProgressDialog(QDialog):
 
     def __init__(self, targets: list, selected_docs, year_specs: list,
                  ay: str = "", stop_callback=None, resume_callback=None, skip_callback=None,
-                 tray_callback=None, output_dir: str = "", parent=None):
+                 tray_callback=None, output_dir: str = "", parent=None,
+                 id_label: str = "PAN"):
         super().__init__(parent)
         self._stop_callback   = stop_callback
         self._resume_callback = resume_callback
@@ -576,6 +698,7 @@ class BatchProgressDialog(QDialog):
             "ais_tis":        "AIS / TIS",
             "filed_returns":  "Filed Returns",
             "challans":       "Tax Challans",
+            "tds_challans":   "TDS/TCS Challans",
             "e_proceedings":  "e-Proceedings",
         }
         mode_label = " + ".join(
@@ -615,7 +738,7 @@ class BatchProgressDialog(QDialog):
 
         # ── Table ─────────────────────────────────────────────────────────────
         self._table = QTableWidget(len(self._client_year_pairs), 5)
-        self._table.setHorizontalHeaderLabels(["Name", "Year", "PAN", "Status", "Save Path"])
+        self._table.setHorizontalHeaderLabels(["Name", "Year", id_label, "Status", "Save Path"])
         if not self._multi_year:
             self._table.setColumnHidden(self._COL_YEAR, True)
 

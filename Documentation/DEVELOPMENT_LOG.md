@@ -794,3 +794,21 @@ parsing and artifact download are shared with F-64 via
   clear reason if a code is no longer offered.
 - v1 supports Other than Company + Resident only; Company / Non-Resident
   and Act 1961 move to a follow-up.
+
+---
+
+## 25. TDS/TCS Challan Download (F-8)
+
+The existing F-61 downloader (`automation/downloader_challans.py`) was already
+identity-agnostic: login → e-File > e-Pay Tax → Act from year type → Payment
+History → filter by year → download PDFs. F-8 adds only a UI entry point and
+TAN credentials — no portal-flow changes.
+
+- `batch_handlers` registers a `tds_challans` doc-type alias pointing at the
+  same `handle_challans` handler, so the existing batch runner,
+  retry/resume and per-(client, year) progress rows are reused unchanged.
+- The TDS hub gets a "Download TDS / TCS Challans" card. Its picker lists only
+  TAN clients and the same year list as the Income Tax download.
+- `BatchProgressDialog` takes an `id_label` so the identity column reads TAN.
+- Files land in `{TAN}-{Name}/{AY|TY}_{year}/Tax Challans (Paid)/`, exactly
+  like the Income Tax challan download.

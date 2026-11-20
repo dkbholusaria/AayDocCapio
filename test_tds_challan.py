@@ -126,6 +126,43 @@ def test_rejects_unsupported_deductee_type():
     assert "Company" in validate_tds_row(_row(deductee_type="company"))
 
 
+def test_tds_challans_is_registered_alias():
+    from automation.batch_handlers import HANDLERS, DOC_TYPE_LABELS, ordered_doc_types
+    assert HANDLERS["tds_challans"] is HANDLERS["challans"]
+    assert DOC_TYPE_LABELS["tds_challans"] == "TDS/TCS Challans"
+    assert "tds_challans" in ordered_doc_types({"tds_challans"})
+
+
+def test_download_dialog_lists_only_tan_clients():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PyQt6.QtWidgets import QApplication
+    from PyQt6.QtCore import Qt
+    from ui.dialogs import DownloadTdsChallansDialog
+
+    app = QApplication.instance() or QApplication([])
+    with tempfile.TemporaryDirectory() as tmp:
+        v = VaultManager(vault_path=os.path.join(tmp, "v.json"))
+        v.add_update_assessee("Sample Deductor", "ABCD12345E", "", "testpass")
+        v.add_update_assessee("Sample Client", "AABCP1234F", "01-01-1980", "secret1")
+        years = [
+            {"label": "TY 2026-27 (FY 2026-27)", "enabled": True,
+             "year": {"TY": "2026-27", "FY": "2026-27"}},
+            {"label": "AY 2025-26 (FY 2024-25)", "enabled": True,
+             "year": {"AY": "2025-26", "FY": "2024-25"}},
+        ]
+        dlg = DownloadTdsChallansDialog(None, v, years)
+        assert [c["pan"] for c in dlg._all_clients] == ["ABCD12345E"]
+        assert dlg._year_combo.model_.rowCount() == 2
+        # Tick the TAN row + first year, then confirm selection.
+        dlg._table.item(0, 0).setCheckState(Qt.CheckState.Checked)
+        dlg._year_combo.set_checked_labels([years[0]["label"]])
+        dlg._on_download()
+        assert [c["pan"] for c in dlg.selected_clients] == ["ABCD12345E"]
+        assert dlg.year_labels == [years[0]["label"]]
+        dlg.deleteLater()
+        app.processEvents()
+
+
 if __name__ == "__main__":
     test_identify_type()
     test_vault_accepts_tan_without_dob()
@@ -143,4 +180,6 @@ if __name__ == "__main__":
     test_rejects_cash_over_ten_thousand()
     test_rejects_missing_drawee_bank()
     test_rejects_unsupported_deductee_type()
+    test_tds_challans_is_registered_alias()
+    test_download_dialog_lists_only_tan_clients()
     print("PASS")

@@ -43,6 +43,7 @@ DOC_TYPE_LABELS = {
     "ais_tis": "AIS/TIS",
     "filed_returns": "Filed Returns",
     "challans": "Tax Challans",
+    "tds_challans": "TDS/TCS Challans",
     "e_proceedings": "e-Proceedings",
 }
 
@@ -367,6 +368,10 @@ HANDLERS = {
     "ais_tis": handle_ais_tis,
     "filed_returns": handle_filed_returns,
     "challans": handle_challans,
+    # F-8: same downloader/handler — only the UI entry point and TAN
+    # credentials differ. Kept as its own doc-type key so the progress
+    # dialog label and vault status axis stay distinct.
+    "tds_challans": handle_challans,
     "e_proceedings": handle_e_proceedings,
 }
 
@@ -386,7 +391,8 @@ HANDLERS = {
 # 26AS + Challans) before this ordering can be trusted. e-Proceedings (F-60)
 # is also Pending-Actions/e-File-adjacent and brand new — same policy, placed
 # after Challans until live multi-select testing proves it safe elsewhere.
-HANDLER_ORDER = ["filed_returns", "26as", "challans", "e_proceedings", "request_ais", "ais_tis"]
+HANDLER_ORDER = ["filed_returns", "26as", "challans", "tds_challans", "e_proceedings",
+                 "request_ais", "ais_tis"]
 
 
 def ordered_doc_types(selected_docs):
