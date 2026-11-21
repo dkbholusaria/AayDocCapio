@@ -375,7 +375,7 @@ async def handle_filed_forms(page, pan, dob, year_specs, out_for_year, log_callb
 
 
 async def handle_e_proceedings(page, pan, dob, year_specs, out_for_year, log_callback, set_status,
-                                filing_scope="all", is_running=None) -> dict:
+                                filing_scope="all", is_running=None, doc_delay=None) -> dict:
     """F-60 — e-Proceedings documents (notices/letters/orders + the client's
     own submitted responses). NOT year-scoped: proceedings frequently show
     "Assessment Year : Not Available" (confirmed live), so everything found
@@ -397,7 +397,8 @@ async def handle_e_proceedings(page, pan, dob, year_specs, out_for_year, log_cal
     set_status(pan, first_spec["ay_label"], "⏳ Downloading e-Proceedings...")
 
     ok, msg, saved = await download_e_proceedings(
-        page, download_root, log_callback, pan=pan, is_running=is_running)
+        page, download_root, log_callback, pan=pan, is_running=is_running,
+        before_download=doc_delay)
 
     # Incremental sync: everything already on disk and nothing new to fetch.
     if ok and not saved and msg.startswith("Up to date"):

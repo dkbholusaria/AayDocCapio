@@ -158,6 +158,9 @@ class VaultManager:
                 if "cc" not in entry:
                     entry["cc"] = ""
                     updated = True
+                if "credential_invalid" not in entry:
+                    entry["credential_invalid"] = False
+                    updated = True
 
             if updated:
                 self._save_raw(data)
@@ -213,6 +216,10 @@ class VaultManager:
             # Update by ID
             for i, a in enumerate(raw_data["assessees"]):
                 if a.get("id") == assessee_id:
+                    credential_invalid = (
+                        bool(a.get("credential_invalid", False))
+                        if self.decrypt_password(a.get("password_enc", "")) == password
+                        else False)
                     raw_data["assessees"][i] = {
                         "id": assessee_id,
                         "name": name.strip(),
@@ -223,6 +230,7 @@ class VaultManager:
                         "email": email.strip(),
                         "cc": cc.strip(),
                         "group": group.strip(),
+                        "credential_invalid": credential_invalid,
                     }
                     found = True
                     break
@@ -231,6 +239,10 @@ class VaultManager:
             for i, a in enumerate(raw_data["assessees"]):
                 if a.get("pan") == pan:
                     assessee_id = a.get("id") or str(uuid.uuid4())
+                    credential_invalid = (
+                        bool(a.get("credential_invalid", False))
+                        if self.decrypt_password(a.get("password_enc", "")) == password
+                        else False)
                     raw_data["assessees"][i] = {
                         "id": assessee_id,
                         "name": name.strip(),
@@ -241,6 +253,7 @@ class VaultManager:
                         "email": email.strip(),
                         "cc": cc.strip(),
                         "group": group.strip(),
+                        "credential_invalid": credential_invalid,
                     }
                     found = True
                     break
@@ -257,6 +270,7 @@ class VaultManager:
                 "email": email.strip(),
                 "cc": cc.strip(),
                 "group": group.strip(),
+                "credential_invalid": False,
             })
             assessee_id = new_id
 
@@ -871,6 +885,39 @@ class VaultManager:
         raw_data = self._get_raw()
         raw_data["settings"][key] = value
         self._save_raw(raw_data)
+
+    # --- e-Proceedings auto-fetch (F-13) ---
+
+    def set_client_credential_invalid(self, pan: str, invalid: bool) -> bool:
+        """Flag (or clear) a client whose portal password appears to have changed."""
+        raw_data = self._get_raw()
+        target = pan.strip().upper()
+        found = False
+        for entry in raw_data.get("assessees", []):
+            if entry.get("pan", "").upper() == target:
+                entry["credential_invalid"] = bool(invalid)
+                found = True
+        if found:
+            self._save_raw(raw_data)
+        return found
+
+    def get_credential_invalid(self) -> set:
+        """Return PANs currently blocked from automatic sync."""
+        return {
+            entry.get("pan", "").upper()
+            for entry in self._get_raw().get("assessees", [])
+            if entry.get("credential_invalid")
+        }
+
+    def get_eproc_autofetch_config(self) -> dict:
+        from automation.eproc_scheduler import normalise_config
+        return normalise_config(self.get_setting("eproc_autofetch", {}))
+
+    def save_eproc_autofetch_config(self, cfg: dict) -> dict:
+        from automation.eproc_scheduler import normalise_config
+        normalised = normalise_config(cfg)
+        self.update_setting("eproc_autofetch", normalised)
+        return normalised
 
     # --- Email / SMTP Settings ---
 

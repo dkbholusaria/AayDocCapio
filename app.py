@@ -41,7 +41,7 @@ from ui.dialogs import (
     ManageYearsDialog, BatchProgressDialog, DownloadPickerDialog,
     GenerateChallansDialog, ChallanGenerationProgressDialog,
     ReturnStatusDialog, ReturnStatusProgressDialog, EmailLogDialog,
-    EProceedingsDialog,
+    EProceedingsDialog, EAutoFetchSettingsDialog,
 )
 from ui.log_history import LogHistoryDialog, LogStore
 from ui.eproceedings import EProceedingsWorkspace
@@ -256,6 +256,7 @@ class AayDocCapioApp(QMainWindow):
     _show_tds_challan_progress_signal = pyqtSignal(list, str, str, str)
     _return_status_done_signal = pyqtSignal()
     _show_return_status_progress_signal = pyqtSignal(list, str)   # (targets, ay_value)
+    _eproc_auto_done_signal = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -333,6 +334,26 @@ class AayDocCapioApp(QMainWindow):
         self._return_status_done_signal.connect(self._on_return_status_batch_done)
         self._show_return_status_progress_signal.connect(self._show_return_status_progress_dialog)
 
+        self._eproc_auto_running = False
+        self._eproc_auto_loop = None
+        self._eproc_auto_task = None
+        self._eproc_auto_aborted = False
+        self._eproc_auto_paused = False
+        self._eproc_auto_skip_current = False
+        self._eproc_auto_skip_future = False
+        self._eproc_auto_restart = False
+        self._eproc_auto_stop_keeps = None
+        self._eproc_auto_cfg = {}
+        self._eproc_auto_run_clients = []
+        self._eproc_auto_pending = []
+        self._eproc_auto_tail = []
+        self._eproc_auto_paths = {}
+        self._eproc_auto_counts = {}
+        self._eproc_auto_started_at = None
+        self._eproc_auto_dialog = None
+        self._eproc_auto_timer = None
+        self._eproc_auto_done_signal.connect(self._on_eproc_auto_done)
+
         try:
             log_path = os.path.join(_app_dir(), "app.log")
             _MAX_LOG_BYTES = 5 * 1024 * 1024  # 5 MB
@@ -367,6 +388,8 @@ class AayDocCapioApp(QMainWindow):
 
         # Check for app updates 3s after startup
         QTimer.singleShot(3000, self._check_for_update)
+
+        self._eproc_auto_init_timer()
 
     # ── System Tray ───────────────────────────────────────────────────────────
 
@@ -1596,6 +1619,14 @@ class AayDocCapioApp(QMainWindow):
         hl.addWidget(self.btn_epay)
         hl.addSpacing(8)
 
+        self.lbl_eproc_auto_status = QLabel("")
+        self.lbl_eproc_auto_status.setStyleSheet(
+            f"color:{_t().text_muted};font-size:10px;background:transparent;")
+        self.lbl_eproc_auto_status.setWordWrap(False)
+        self.lbl_eproc_auto_status.setMaximumWidth(240)
+        hl.addWidget(self.lbl_eproc_auto_status)
+        hl.addSpacing(8)
+
         # ── Exit button ───────────────────────────────────────────────────────
         self.btn_exit = _btn("Exit", "danger", height=34, icon="btn_cancel.png")
         self.btn_exit.setToolTip("Close AayDocCapio")
@@ -1706,6 +1737,34 @@ class AayDocCapioApp(QMainWindow):
         self.chk_show_splash.stateChanged.connect(
             lambda v: self.vault.update_setting("show_splash", bool(v)))
         layout.addWidget(self.chk_show_splash)
+
+        _section("E-PROCEEDINGS AUTO-FETCH")
+        _auto_cfg = self.vault.get_eproc_autofetch_config()
+        self.chk_eproc_autofetch = QCheckBox("Enable scheduled e-Proceedings auto-fetch")
+        self.chk_eproc_autofetch.setChecked(bool(_auto_cfg["enabled"]))
+        self.chk_eproc_autofetch.setToolTip(
+            "Sync e-Proceedings automatically at the configured time.\n"
+            "Clients whose portal password changed are skipped until the password is updated.")
+        self.chk_eproc_autofetch.setStyleSheet(self.chk_headless.styleSheet())
+        self.chk_eproc_autofetch.stateChanged.connect(self._on_eproc_autofetch_toggle)
+        layout.addWidget(self.chk_eproc_autofetch)
+
+        _eproc_row = QHBoxLayout()
+        _eproc_row.setSpacing(8)
+        btn_eproc_settings = _btn("Auto-Fetch Settings…", "secondary", height=34, icon="btn_scan.png")
+        btn_eproc_settings.clicked.connect(self._open_eproc_autofetch_settings)
+        _eproc_row.addWidget(btn_eproc_settings)
+        self.lbl_eproc_autofetch_summary = QLabel("")
+        self.lbl_eproc_autofetch_summary.setStyleSheet(
+            f"color:{_t().text_muted};font-size:11px;background:transparent;")
+        self.lbl_eproc_autofetch_summary.setWordWrap(True)
+        _eproc_row.addWidget(self.lbl_eproc_autofetch_summary, stretch=1)
+        btn_clear_flags = _btn("Clear Password Warnings", "outline", height=34)
+        btn_clear_flags.setToolTip("Clear the password warning from all clients after you have updated them.")
+        btn_clear_flags.clicked.connect(self._clear_eproc_credential_flags)
+        _eproc_row.addWidget(btn_clear_flags)
+        layout.addLayout(_eproc_row)
+        self._refresh_eproc_autofetch_summary()
 
         _section("EMAIL")
         btn_email = _btn("Email Settings…", "secondary", height=34, icon="icon_email.png")
@@ -3940,6 +3999,88 @@ class AayDocCapioApp(QMainWindow):
 
     # ── Email menu handlers ───────────────────────────────────────────────────
 
+    def _clear_eproc_credential_flags(self):
+        flagged = sorted(self.vault.get_credential_invalid())
+        if not flagged:
+            QMessageBox.information(self, "No Warnings",
+                                    "No client is currently blocked for a password update.")
+            return
+        answer = QMessageBox.question(
+            self, "Clear Password Warnings",
+            f"Clear the password warning for {len(flagged)} client(s)?\n\n"
+            "Only do this after updating their passwords.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        for pan in flagged:
+            self.vault.set_client_credential_invalid(pan, False)
+        self.log(f"[Auto-Fetch] Cleared password warning for {len(flagged)} client(s).")
+        self.refresh_grid()
+
+    def _open_eproc_autofetch_settings(self):
+        dlg = EAutoFetchSettingsDialog(self, self.vault, self.vault.get_all_assessees())
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            cfg = self.vault.get_eproc_autofetch_config()
+            if cfg["enabled"] and not self._eproc_auto_running:
+                from automation.eproc_scheduler import compute_next_run
+                nxt = compute_next_run(datetime.datetime.now(), cfg)
+                cfg["next_run_at"] = nxt.isoformat(timespec="seconds") if nxt else ""
+                cfg = self.vault.save_eproc_autofetch_config(cfg)
+            self._refresh_eproc_autofetch_summary()
+            self.log("[Auto-Fetch] Settings saved.")
+
+    def _on_eproc_autofetch_toggle(self, state):
+        cfg = self.vault.get_eproc_autofetch_config()
+        cfg["enabled"] = bool(state)
+        if cfg["enabled"] and not cfg.get("next_run_at"):
+            from automation.eproc_scheduler import compute_next_run
+            next_run = compute_next_run(datetime.datetime.now(), cfg)
+            cfg["next_run_at"] = next_run.isoformat(timespec="seconds") if next_run else ""
+        self.vault.save_eproc_autofetch_config(cfg)
+        self._refresh_eproc_autofetch_summary()
+        self.log(f"[Auto-Fetch] {'Enabled' if cfg['enabled'] else 'Disabled'}.")
+
+    def _refresh_eproc_autofetch_summary(self):
+        label = getattr(self, "lbl_eproc_autofetch_summary", None)
+        compact = getattr(self, "lbl_eproc_auto_status", None)
+        cfg = self.vault.get_eproc_autofetch_config()
+        if not cfg["enabled"]:
+            if label is not None:
+                label.setText("Auto-fetch is off.")
+            if compact is not None:
+                compact.setText("Auto-fetch off")
+            return
+        parts = []
+        backoff = cfg.get("backoff_until") or ""
+        if backoff:
+            try:
+                when = datetime.datetime.fromisoformat(backoff)
+                if when > datetime.datetime.now():
+                    parts.append(f"Backing off until {when.strftime('%d %b %H:%M')}")
+            except ValueError:
+                pass
+        next_run = cfg.get("next_run_at") or ""
+        if next_run:
+            try:
+                when = datetime.datetime.fromisoformat(next_run)
+                parts.append(f"Next run {when.strftime('%d %b %H:%M')}")
+            except ValueError:
+                pass
+        summary = cfg.get("last_run_summary") or {}
+        if summary:
+            parts.append(
+                f"Last: {summary.get('synced', 0)} synced, "
+                f"{summary.get('failed', 0)} failed, "
+                f"{summary.get('flagged', 0)} password issue(s)")
+        if not parts:
+            parts.append(f"Scheduled daily at {cfg['run_time']}")
+        text = " · ".join(parts)
+        if label is not None:
+            label.setText(text)
+        if compact is not None:
+            compact.setText(text)
+
     def _open_email_settings(self):
         from ui.dialogs import SmtpSettingsDialog
         SmtpSettingsDialog(self, self.vault).exec()
@@ -4407,6 +4548,10 @@ class AayDocCapioApp(QMainWindow):
         """
         selected_docs = set(selected_docs) if not isinstance(selected_docs, set) else selected_docs
         if self.is_running:
+            return
+        if getattr(self, "_eproc_auto_running", False):
+            QMessageBox.warning(self, "Auto-Fetch Running",
+                "Scheduled e-Proceedings auto-fetch is running. Stop it before starting another batch.")
             return
         if not selected_docs:
             return
@@ -5203,6 +5348,492 @@ class AayDocCapioApp(QMainWindow):
             target=self._run_wrapper,
             args=(remaining_targets, year_specs, root_dir, selected_docs),
             daemon=True).start()
+
+    # ── Scheduled e-Proceedings auto-fetch (F-13) ─────────────────────────────
+
+    def _eproc_auto_init_timer(self):
+        from automation.eproc_scheduler import compute_next_run
+        self._eproc_auto_timer = QTimer(self)
+        self._eproc_auto_timer.setInterval(60_000)
+        self._eproc_auto_timer.timeout.connect(self._eproc_auto_tick)
+        self._eproc_auto_timer.start()
+        cfg = self.vault.get_eproc_autofetch_config()
+        if cfg["enabled"] and not cfg.get("next_run_at"):
+            nxt = compute_next_run(datetime.datetime.now(), cfg)
+            cfg["next_run_at"] = nxt.isoformat(timespec="seconds") if nxt else ""
+            self.vault.save_eproc_autofetch_config(cfg)
+            self._refresh_eproc_autofetch_summary()
+
+    def _eproc_auto_tick(self):
+        if getattr(self, "_eproc_auto_running", False):
+            return
+        if self.is_running or self._challan_running or self._tds_challan_running or self._retstatus_running:
+            return
+        from automation.eproc_scheduler import is_due
+        cfg = self.vault.get_eproc_autofetch_config()
+        if not cfg["enabled"]:
+            return
+        if not is_due(datetime.datetime.now(), cfg):
+            return
+        self._eproc_auto_start(cfg)
+
+    def _eproc_auto_year_spec(self):
+        labels = []
+        try:
+            labels = self.ay_combo.checked_labels()
+        except Exception:
+            labels = []
+        if not labels:
+            labels = [e["label"] for e in self._ay_entries if e.get("enabled", True)]
+        for label in labels:
+            ay, fy, year_type, form_type = self._resolve_ay_fy(label)
+            if ay:
+                return {"ay_label": label, "value": ay, "fy": fy,
+                        "year_type": year_type, "form_type": form_type}
+        return None
+
+    def _eproc_auto_token(self, pan: str) -> str:
+        return pan[:3] + "XXXXXXX" if pan and len(pan) >= 3 else "UNKNOWN"
+
+    def _eproc_auto_client_dir(self, target: dict, output_dir: str, spec: dict) -> str:
+        pan = target.get("pan", "")
+        name_safe = "".join(c if c.isalnum() or c in " _-" else "" for c in target.get("name", ""))
+        return os.path.join(
+            output_dir, f"{pan}-{name_safe}",
+            f"{spec['year_type']}_{spec['value'].replace('-', '_')}")
+
+    def _eproc_auto_start(self, cfg=None, clients_override=None):
+        from automation.eproc_scheduler import build_queue
+        if getattr(self, "_eproc_auto_running", False):
+            return
+        if self.is_running or self._challan_running or self._tds_challan_running or self._retstatus_running:
+            return
+        cfg = dict(cfg or self.vault.get_eproc_autofetch_config())
+        all_clients = self.vault.get_all_assessees()
+        if clients_override is None:
+            clients, cfg = build_queue(all_clients, cfg)
+        else:
+            blocked = self.vault.get_credential_invalid()
+            clients = [c for c in clients_override
+                       if str(c.get("pan", "")).upper() not in blocked]
+            cfg["queue_remaining"] = []
+        if not clients:
+            self.log("[Auto-Fetch] No clients in scope or queue is empty.")
+            self._eproc_auto_schedule_next(cfg)
+            return
+        spec = self._eproc_auto_year_spec()
+        if spec is None:
+            self.log("[Auto-Fetch] No enabled Assessment/Tax Year is available.")
+            self._eproc_auto_schedule_next(cfg)
+            return
+
+        output_dir = self.dir_lbl.text() or self.vault.get_setting("download_root_dir", "")
+        pending = [str(c.get("pan", "")).upper() for c in clients if str(c.get("pan", "")).strip()]
+        tail = list(cfg.get("queue_remaining") or [])
+        cfg["queue_remaining"] = pending + tail
+        self.vault.save_eproc_autofetch_config(cfg)
+
+        self._eproc_auto_cfg = cfg
+        self._eproc_auto_run_clients = list(clients)
+        self._eproc_auto_pending = pending
+        self._eproc_auto_tail = tail
+        self._eproc_auto_paths = {}
+        self._eproc_auto_counts = {"synced": 0, "failed": 0, "skipped": 0,
+                                   "flagged": 0, "timeouts": 0}
+        self._eproc_auto_running = True
+        self._eproc_auto_aborted = False
+        self._eproc_auto_paused = False
+        self._eproc_auto_skip_current = False
+        self._eproc_auto_skip_future = False
+        self._eproc_auto_restart = False
+        self._eproc_auto_stop_keeps = None
+        self._eproc_auto_started_at = datetime.datetime.now()
+
+        self._eproc_auto_dialog = BatchProgressDialog(
+            clients, {"e_proceedings"}, year_specs=[spec],
+            ay="e-Proceedings Auto-Fetch",
+            stop_callback=self._eproc_auto_stop,
+            skip_callback=self._eproc_auto_skip_client,
+            tray_callback=self._tray_to_system_manual,
+            output_dir=output_dir, parent=self,
+            pause_callback=self._eproc_auto_pause,
+            resume_pause_callback=self._eproc_auto_resume_pause,
+            restart_callback=self._eproc_auto_restart_run,
+            skip_future_callback=self._eproc_auto_skip_future_clients)
+        self._eproc_auto_dialog.show()
+        self._eproc_auto_dialog.raise_()
+
+        for client in clients:
+            key = (client.get("pan", ""), spec["ay_label"])
+            path = os.path.join(self._eproc_auto_client_dir(client, output_dir, spec), "e-Proceedings")
+            self._eproc_auto_paths[key] = path
+            self._eproc_auto_dialog.set_client_path(client.get("pan", ""), spec["ay_label"], path)
+
+        self.log(f"[Auto-Fetch] Starting — {len(clients)} client(s), "
+                 f"run time {cfg['run_time']}, mode {cfg['distribution']}.")
+        threading.Thread(target=self._eproc_auto_worker,
+                         args=(clients, [spec], output_dir),
+                         daemon=True).start()
+
+    def _eproc_auto_worker(self, clients, year_specs, output_dir):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        self._eproc_auto_loop = loop
+
+        def _exc_handler(loop, ctx):
+            exc = ctx.get("exception")
+            if exc is not None and type(exc).__name__ in (
+                    "TargetClosedError", "ConnectionClosedError", "CancelledError"):
+                return
+            loop.default_exception_handler(ctx)
+
+        loop.set_exception_handler(_exc_handler)
+        try:
+            self._eproc_auto_task = loop.create_task(
+                self._eproc_auto_run(clients, year_specs, output_dir))
+            loop.run_until_complete(self._eproc_auto_task)
+        except asyncio.CancelledError:
+            self.log("[Auto-Fetch] Run cancelled.")
+        except Exception as exc:
+            self.log(f"[Auto-Fetch] Run crashed: {exc}")
+        finally:
+            self._eproc_auto_task = None
+            self._eproc_auto_loop = None
+            loop.close()
+            self._eproc_auto_done_signal.emit()
+
+    async def _eproc_auto_run(self, clients, year_specs, output_dir):
+        from automation.eproc_scheduler import cooldown_for
+        context = None
+        try:
+            interactive = not self.chk_headless.isChecked()
+            context = await browser_manager.get_context(
+                log_callback=self.log, interactive=interactive)
+            for index, target in enumerate(clients):
+                if not self._eproc_auto_running or self._eproc_auto_skip_future:
+                    break
+                if self._eproc_auto_budget_used():
+                    self.log("[Auto-Fetch] Run time budget reached — stopping.")
+                    self._eproc_auto_aborted = True
+                    break
+                pan = str(target.get("pan", "")).upper()
+                if pan in self.vault.get_credential_invalid():
+                    self._eproc_auto_counts["flagged"] += 1
+                    self._eproc_auto_set_status(
+                        pan, year_specs[0]["ay_label"],
+                        "⚠ Password needs update — skipped")
+                    self._eproc_auto_mark_processed(pan)
+                    if self._eproc_auto_dialog is not None:
+                        self._eproc_auto_dialog.client_finished(pan, year_specs[0]["ay_label"])
+                    continue
+                self._eproc_auto_skip_current = False
+                processed = await self._eproc_auto_sync_client(
+                    context, target, year_specs, output_dir, self._eproc_auto_cfg)
+                if processed:
+                    self._eproc_auto_mark_processed(pan)
+                    if self._eproc_auto_dialog is not None:
+                        self._eproc_auto_dialog.client_finished(pan, year_specs[0]["ay_label"])
+                if index < len(clients) - 1 and self._eproc_auto_running and not self._eproc_auto_skip_future:
+                    seconds = cooldown_for(
+                        self._eproc_auto_cfg["client_cooldown_sec"],
+                        self._eproc_auto_cfg["jitter_sec"])
+                    await self._eproc_auto_wait(seconds, "Next client in")
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self.log(f"[Auto-Fetch] Error: {exc}")
+        finally:
+            if context is not None:
+                try:
+                    await browser_manager.close()
+                except Exception:
+                    pass
+
+    async def _eproc_auto_sync_client(self, context, target, year_specs, output_dir, cfg):
+        from automation.batch_handlers import handle_e_proceedings
+        from automation.eproc_scheduler import cooldown_for, is_timeout, should_backoff
+
+        pan = str(target.get("pan", "")).upper()
+        name = target.get("name", "")
+        spec = year_specs[0]
+        ay_label = spec["ay_label"]
+        token = self._eproc_auto_token(pan)
+        attempts = int(cfg["timeout_retries"]) + 1
+
+        def _out_for_year(year_type, value, _root=output_dir, _pan=pan,
+                          _name_safe="".join(c if c.isalnum() or c in " _-" else ""
+                                             for c in name)):
+            return os.path.join(_root, f"{_pan}-{_name_safe}",
+                                f"{year_type}_{value.replace('-', '_')}")
+
+        for attempt in range(attempts):
+            if not self._eproc_auto_running or self._eproc_auto_skip_future:
+                return False
+            page = None
+            last_status = {}
+            try:
+                self._eproc_auto_set_status(pan, ay_label, "⏳ Logging in to ITD...")
+                page = await login_itd(
+                    pan, target.get("password"), self.log, context,
+                    is_running=lambda: (self._eproc_auto_running
+                                        and not self._eproc_auto_skip_current
+                                        and not self._eproc_auto_skip_future))
+                if self._eproc_auto_skip_current:
+                    self._eproc_auto_counts["skipped"] += 1
+                    self._eproc_auto_set_status(pan, ay_label, "⬜ Skipped")
+                    return True
+
+                def _set_status(pan_, ay_, text_):
+                    last_status[ay_] = text_
+                    self._eproc_auto_set_status(pan_, ay_, text_)
+
+                async def _doc_delay():
+                    seconds = cooldown_for(cfg["doc_cooldown_sec"], cfg["jitter_sec"])
+                    if seconds:
+                        await self._eproc_auto_wait(seconds, "Next document in")
+
+                await handle_e_proceedings(
+                    page, pan, target.get("dob", ""), year_specs,
+                    _out_for_year, self.log, _set_status,
+                    filing_scope="all",
+                    is_running=lambda: (self._eproc_auto_running
+                                        and not self._eproc_auto_skip_future
+                                        and not self._eproc_auto_skip_current),
+                    doc_delay=_doc_delay)
+
+                if self._eproc_auto_skip_current:
+                    self._eproc_auto_counts["skipped"] += 1
+                    self._eproc_auto_set_status(pan, ay_label, "⬜ Skipped")
+                elif any(str(v).startswith("❌") for v in last_status.values()):
+                    self._eproc_auto_counts["failed"] += 1
+                else:
+                    self._eproc_auto_counts["synced"] += 1
+                return True
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                text = str(exc)
+                if self._eproc_auto_skip_current or self._eproc_auto_skip_future:
+                    self._eproc_auto_counts["skipped"] += 1
+                    self._eproc_auto_set_status(pan, ay_label, "⬜ Skipped")
+                    return True
+                if not self._eproc_auto_running:
+                    return False
+                if self._eproc_auto_is_credential_error(text):
+                    self.vault.set_client_credential_invalid(pan, True)
+                    self._eproc_auto_counts["flagged"] += 1
+                    self._eproc_auto_set_status(pan, ay_label, "⚠ Password needs update")
+                    self.log(f"[Auto-Fetch] {token} needs a password update — "
+                             f"auto-fetch will skip this client until it is updated.")
+                    notify_windows("AayDocCapio — Password needs update",
+                                   f"{name or token}: portal login failed. Update the password; "
+                                   f"auto-fetch will skip this client until then.")
+                    return True
+                if should_backoff(text):
+                    self._eproc_auto_set_backoff()
+                    self._eproc_auto_counts["failed"] += 1
+                    self._eproc_auto_set_status(pan, ay_label, "❌ Portal rate limit — backing off")
+                    self._eproc_auto_aborted = True
+                    self._eproc_auto_running = False
+                    self.log("[Auto-Fetch] Portal rate-limit signal — run stopped and back-off applied.")
+                    return False
+                if is_timeout(text) and attempt < attempts - 1:
+                    self._eproc_auto_counts["timeouts"] += 1
+                    self.log(f"[Auto-Fetch] {token} timed out — retry "
+                             f"{attempt + 1}/{attempts - 1}.")
+                    self._eproc_auto_set_status(pan, ay_label, "🕐 Timed out — retrying...")
+                    seconds = cooldown_for(
+                        cfg["client_cooldown_sec"], cfg["jitter_sec"])
+                    await self._eproc_auto_wait(seconds, "Retry in")
+                    continue
+                self._eproc_auto_counts["failed"] += 1
+                self._eproc_auto_set_status(pan, ay_label, f"❌ Failed — {_friendly_error(text)}")
+                self.log(f"[Auto-Fetch] {token} failed: {text}")
+                return False
+            finally:
+                if page is not None:
+                    try:
+                        await logout_itd(page, self.log)
+                    except Exception:
+                        pass
+
+    async def _eproc_auto_wait(self, seconds, label):
+        from automation.eproc_scheduler import format_countdown, interruptible_sleep
+        if seconds <= 0:
+            return True
+
+        def _tick(remaining, paused):
+            dialog = self._eproc_auto_dialog
+            if dialog is None:
+                return
+            if paused:
+                dialog.set_countdown("Paused — press Resume to continue.")
+            else:
+                dialog.set_countdown(f"{label} {format_countdown(remaining)}")
+
+        return await interruptible_sleep(
+            seconds,
+            should_continue=lambda: self._eproc_auto_running and not self._eproc_auto_skip_future,
+            is_paused=lambda: self._eproc_auto_paused,
+            on_tick=_tick)
+
+    def _eproc_auto_budget_used(self) -> bool:
+        if self._eproc_auto_started_at is None:
+            return False
+        minutes = (datetime.datetime.now() - self._eproc_auto_started_at).total_seconds() / 60
+        return minutes >= self._eproc_auto_cfg.get("run_budget_min", 60)
+
+    def _eproc_auto_set_status(self, pan, ay_label, text):
+        dialog = self._eproc_auto_dialog
+        if dialog is not None:
+            dialog.set_status(pan, ay_label, text)
+        terminal = ("✅", "❌", "🕐", "⏹", "⬜", "⚠")
+        if ay_label and any(text.startswith(p) for p in terminal):
+            try:
+                self.vault.record_download(
+                    pan, ay_label, "e_proceedings", text,
+                    self._eproc_auto_paths.get((pan, ay_label), ""))
+            except Exception:
+                pass
+
+    def _eproc_auto_mark_processed(self, pan):
+        pan = str(pan).upper()
+        if pan in self._eproc_auto_pending:
+            self._eproc_auto_pending.remove(pan)
+        cfg = self.vault.get_eproc_autofetch_config()
+        cfg["queue_remaining"] = self._eproc_auto_pending + self._eproc_auto_tail
+        self.vault.save_eproc_autofetch_config(cfg)
+        self._eproc_auto_cfg = cfg
+
+    def _eproc_auto_set_backoff(self):
+        cfg = self.vault.get_eproc_autofetch_config()
+        until = datetime.datetime.now() + datetime.timedelta(minutes=cfg["backoff_min"])
+        cfg["backoff_until"] = until.isoformat(timespec="seconds")
+        cfg["queue_remaining"] = self._eproc_auto_pending + self._eproc_auto_tail
+        self.vault.save_eproc_autofetch_config(cfg)
+        self._eproc_auto_cfg = cfg
+
+    def _eproc_auto_schedule_next(self, cfg):
+        from automation.eproc_scheduler import compute_next_run
+        now = datetime.datetime.now()
+        backoff = cfg.get("backoff_until") or ""
+        next_run = None
+        if backoff:
+            try:
+                until = datetime.datetime.fromisoformat(backoff)
+            except ValueError:
+                until = None
+            if until is not None and until > now:
+                same_day = cfg["on_backoff_action"] == "resume_same_evening"
+                if same_day and until.date() == now.date() and now.weekday() in cfg["active_days"]:
+                    next_run = until
+                else:
+                    next_run = compute_next_run(until, cfg)
+        if next_run is None:
+            next_run = compute_next_run(now, cfg)
+        cfg["next_run_at"] = next_run.isoformat(timespec="seconds") if next_run else ""
+        self.vault.save_eproc_autofetch_config(cfg)
+        self._refresh_eproc_autofetch_summary()
+
+    @staticmethod
+    def _eproc_auto_is_credential_error(text: str) -> bool:
+        low = str(text).lower()
+        return any(marker in low for marker in (
+            "authentication failed", "2fa", "otp", "account locked"))
+
+    def _eproc_auto_cancel_task(self):
+        if self._eproc_auto_task is not None and self._eproc_auto_loop is not None:
+            try:
+                self._eproc_auto_loop.call_soon_threadsafe(self._eproc_auto_task.cancel)
+            except Exception:
+                pass
+
+    def _eproc_auto_stop(self):
+        if not self._eproc_auto_running:
+            return
+        cfg = self.vault.get_eproc_autofetch_config()
+        mb = QMessageBox(self)
+        mb.setWindowTitle("Stop Auto-Fetch")
+        mb.setText("Stop the scheduled e-Proceedings sync?")
+        mb.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        mb.setDefaultButton(QMessageBox.StandardButton.No)
+        keep = QCheckBox("Keep the remaining clients for the next run")
+        keep.setChecked(bool(cfg["stop_keeps_remainder"]))
+        mb.setCheckBox(keep)
+        if mb.exec() != QMessageBox.StandardButton.Yes:
+            return
+        self._eproc_auto_stop_keeps = keep.isChecked()
+        self._eproc_auto_aborted = True
+        self._eproc_auto_running = False
+        self.log("[Auto-Fetch] Stop requested.")
+        self._eproc_auto_cancel_task()
+
+    def _eproc_auto_skip_client(self):
+        self._eproc_auto_skip_current = True
+        self.log("[Auto-Fetch] Skip current client requested.")
+
+    def _eproc_auto_skip_future_clients(self):
+        self._eproc_auto_skip_future = True
+        self._eproc_auto_skip_current = True
+        self.log("[Auto-Fetch] Remaining clients will be skipped.")
+
+    def _eproc_auto_pause(self):
+        self._eproc_auto_paused = True
+        self.log("[Auto-Fetch] Paused.")
+
+    def _eproc_auto_resume_pause(self):
+        self._eproc_auto_paused = False
+        self.log("[Auto-Fetch] Resumed.")
+
+    def _eproc_auto_restart_run(self):
+        if not self._eproc_auto_running:
+            return
+        self._eproc_auto_restart = True
+        self._eproc_auto_running = False
+        self._eproc_auto_cancel_task()
+        self.log("[Auto-Fetch] Restart requested.")
+
+    def _on_eproc_auto_done(self):
+        was_aborted = self._eproc_auto_aborted
+        restart = self._eproc_auto_restart
+        self._eproc_auto_running = False
+        dialog = self._eproc_auto_dialog
+        self._eproc_auto_dialog = None
+        if dialog is not None:
+            try:
+                dialog.batch_finished(aborted=was_aborted)
+            except Exception:
+                pass
+
+        if restart:
+            clients = list(self._eproc_auto_run_clients)
+            cfg = self.vault.get_eproc_autofetch_config()
+            if dialog is not None:
+                dialog.accept()
+            self._eproc_auto_restart = False
+            self._eproc_auto_start(cfg, clients_override=clients)
+            return
+
+        cfg = self.vault.get_eproc_autofetch_config()
+        cfg["last_run_finished"] = datetime.datetime.now().isoformat(timespec="seconds")
+        cfg["last_run_summary"] = dict(self._eproc_auto_counts)
+        keep_remaining = cfg["stop_keeps_remainder"]
+        if self._eproc_auto_stop_keeps is not None:
+            keep_remaining = self._eproc_auto_stop_keeps
+        if self._eproc_auto_skip_future or (was_aborted and not keep_remaining):
+            cfg["queue_remaining"] = []
+        else:
+            cfg["queue_remaining"] = self._eproc_auto_pending + self._eproc_auto_tail
+        self._eproc_auto_schedule_next(cfg)
+        counts = self._eproc_auto_counts
+        self.log(f"[Auto-Fetch] Finished — {counts.get('synced', 0)} synced, "
+                 f"{counts.get('failed', 0)} failed, {counts.get('flagged', 0)} password issue(s), "
+                 f"{counts.get('skipped', 0)} skipped.")
+        if not was_aborted:
+            notify_windows(
+                "AayDocCapio — Auto-Fetch Complete",
+                f"{counts.get('synced', 0)} client(s) synced, "
+                f"{counts.get('failed', 0)} failed, {counts.get('flagged', 0)} password issue(s).")
 
     def _run_wrapper(self, targets, year_specs, root_dir, selected_docs):
         loop = asyncio.new_event_loop()

@@ -518,7 +518,8 @@ async def _read_proceedings_on_active_tab(page: Page, step) -> list[dict]:
     ]
 
 
-async def _download_attachments_on_page(page: Page, step, save_dir: str, tag: str) -> list[str]:
+async def _download_attachments_on_page(page: Page, step, save_dir: str, tag: str,
+                                       before_download=None) -> list[str]:
     """On a Detailed Notices / View Response page, download every attachment
     card / hyperLink with expect_download. Returns list of saved paths.
     Duplicate portal filenames get (n) suffixes rather than overwriting.
@@ -534,6 +535,8 @@ async def _download_attachments_on_page(page: Page, step, save_dir: str, tag: st
     n = await dl_btns.count()
     step(f"Attachment download buttons found: {n}")
     for k in range(n):
+        if before_download:
+            await before_download()
         try:
             async with page.expect_download(timeout=30000) as dl_info:
                 await dl_btns.nth(k).click(timeout=10000)
@@ -558,6 +561,8 @@ async def _download_attachments_on_page(page: Page, step, save_dir: str, tag: st
             continue
         if not label.lower().endswith(".pdf"):
             continue
+        if before_download:
+            await before_download()
         try:
             async with page.expect_download(timeout=30000) as dl_info:
                 await links.nth(k).click(timeout=10000)
@@ -574,6 +579,8 @@ async def _download_attachments_on_page(page: Page, step, save_dir: str, tag: st
     # (c) Acknowledgement button (View Response page)
     ack = page.locator("button[aria-label='Download Acknowledgement']")
     if await ack.count():
+        if before_download:
+            await before_download()
         try:
             async with page.expect_download(timeout=30000) as dl_info:
                 await ack.first.click(timeout=10000)
@@ -702,7 +709,7 @@ async def _visible_download_button(page: Page):
 
 async def _download_proceeding_orders(page: Page, card_index: int, proc_dir: str,
                                       proc_label: str, old_orders: list[dict],
-                                      step) -> tuple[list[str], list[dict], list[str]]:
+                                      step, before_download=None) -> tuple[list[str], list[dict], list[str]]:
     """Download order documents attached to a proceeding CARD (e.g. the
     'Download Closure Order' button on a closed appeal). Confirmed live:
     clicking it opens a modal titled e.g. 'Closure Order' with the order PDF
@@ -742,6 +749,8 @@ async def _download_proceeding_orders(page: Page, card_index: int, proc_dir: str
 
     for n, b in enumerate(buttons, start=1):
         label = b["t"]
+        if before_download:
+            await before_download()
         try:
             await card.locator("button").nth(b["i"]).click(timeout=12000)
         except Exception as e:
@@ -779,6 +788,8 @@ async def _download_proceeding_orders(page: Page, card_index: int, proc_dir: str
             if btn is None:
                 break
             try:
+                if before_download:
+                    await before_download()
                 async with page.expect_download(timeout=45000) as dl_info:
                     await btn.click(timeout=10000)
                 download = await dl_info.value
@@ -833,7 +844,8 @@ async def _download_proceeding_orders(page: Page, card_index: int, proc_dir: str
 
 async def _process_proceeding(page: Page, button_index: int, proc_meta: dict,
                               download_root: str, log_callback, pan: str,
-                              step, card_index: int = -1) -> tuple[list[str], list[str], int, dict]:
+                              step, card_index: int = -1,
+                              before_download=None) -> tuple[list[str], list[str], int, dict]:
     """Open one proceeding's View Notices/Orders and sync its documents.
 
     Diff-first: notices/responses whose (ref_id, issued_on) already exist in
@@ -861,7 +873,7 @@ async def _process_proceeding(page: Page, button_index: int, proc_meta: dict,
     # on screen, before navigating away.
     order_paths, order_entries, order_warns = await _download_proceeding_orders(
         page, card_index, proc_dir, proc_label,
-        old_meta.get("orders") or [], step)
+        old_meta.get("orders") or [], step, before_download=before_download)
     saved.extend(order_paths)
     warns.extend(order_warns)
     if order_entries:
@@ -918,7 +930,8 @@ async def _process_proceeding(page: Page, button_index: int, proc_meta: dict,
             pass  # keep going — the download loop logs what it finds
         notice_dir = os.path.join(proc_dir, f"notice-{k + 1:02d}")
         got = await _download_attachments_on_page(viewer, step, notice_dir,
-                                                  f"{proc_label}-notice{k + 1}")
+                                                  f"{proc_label}-notice{k + 1}",
+                                                  before_download=before_download)
         saved.extend(got)
         notice_files[k] = list(got)
         if not got:
@@ -969,7 +982,8 @@ async def _process_proceeding(page: Page, button_index: int, proc_meta: dict,
             pass  # keep going — the download loop logs what it finds
         resp_dir = os.path.join(proc_dir, f"response-{notice_index + 1:02d}")
         got = await _download_attachments_on_page(viewer, step, resp_dir,
-                                                  f"{proc_label}-response{notice_index + 1}")
+                                                  f"{proc_label}-response{notice_index + 1}",
+                                                  before_download=before_download)
         saved.extend(got)
         # The mapped notice index may exceed the parsed blocks (portal data
         # gaps) — the meta builder guards unmapped indices, keep the files.
@@ -1014,7 +1028,8 @@ async def _process_proceeding(page: Page, button_index: int, proc_meta: dict,
 
 
 async def download_e_proceedings(page: Page, download_root: str, log_callback,
-                                 pan: str = "", is_running=None) -> tuple[bool, str, list[dict]]:
+                                 pan: str = "", is_running=None,
+                                 before_download=None) -> tuple[bool, str, list[dict]]:
     """F-60 entry point. Syncs e-Proceedings documents (both tabs, all
     proceedings) for the already-logged-in client on `page`.
 
@@ -1083,7 +1098,8 @@ async def download_e_proceedings(page: Page, download_root: str, log_callback,
                                                f"Proceeding Status\n{proc['status']}")
             saved, warns, skipped, extra = await _process_proceeding(
                 page, proc["button_index"], meta or proc, download_root,
-                log_callback, pan, step, card_index=proc.get("card_index", -1))
+                log_callback, pan, step, card_index=proc.get("card_index", -1),
+                before_download=before_download)
             saved_files.extend(
                 {"path": p, "proceeding": proc["name"], "kind": kind} for p in saved)
             warnings.extend(warns)

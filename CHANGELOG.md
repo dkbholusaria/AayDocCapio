@@ -14,6 +14,13 @@ All notable changes to AayDocCapio are documented here.
 
 To force a fresh copy of a document, delete that file from the client folder and download again.
 
+#### Scheduled e-Proceedings auto-fetch (F-13)
+- **Optional background sync** — a Settings switch keeps e-Proceedings up to date automatically at a chosen time on chosen days; it is off by default
+- **You decide the workload** — set clients per day (1–500), then either continue every day or spread the work across 1–3 days, split by client count or by group; cases can also rotate so the same clients are not always fetched first
+- **IP-protection pacing** — adjustable cooldowns between clients and between documents, random extra delay, a per-run time budget, timeout retries, and a longer back-off if the portal signals a rate limit
+- **Password-change protection** — if the portal rejects a saved password, that client is marked "Password needs update", you are notified, and auto-fetch skips the client until the password is changed
+- **Full control while it runs** — a progress window with Skip current, Skip future, Pause/Resume, Restart and Stop; the remaining queue is saved so a restart or crash resumes where it left off
+
 #### View saved challans (F-12)
 - **New "View Challans" window** under E-Pay Tax (also on the Income Tax E-Pay Tax tab and the TDS hub) — see every challan already generated (Unpaid) or downloaded (Paid) in an earlier session, without logging in or fetching anything again
 - **Filter by client, Paid / Unpaid, and year**, or search by filename/CRN; the list shows the client, year, type, date and size
