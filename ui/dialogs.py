@@ -700,6 +700,7 @@ class BatchProgressDialog(QDialog):
             "challans":       "Tax Challans",
             "tds_challans":   "TDS/TCS Challans",
             "e_proceedings":  "e-Proceedings",
+            "filed_forms":    "Filed IT Forms",
         }
         mode_label = " + ".join(
             _doc_labels.get(d, d) for d in sorted(selected_docs)
@@ -4869,7 +4870,7 @@ class DownloadPickerDialog(QDialog):
 
         self.setWindowTitle("Download Documents")
         self.setMinimumWidth(440)
-        self.resize(460, 460)
+        self.resize(460, 520)
         self.setWindowFlags(
             Qt.WindowType.Dialog |
             Qt.WindowType.WindowTitleHint |
@@ -4933,6 +4934,9 @@ class DownloadPickerDialog(QDialog):
 
         add_option("e_proceedings", "e-Proceedings Documents",
                     "Notices, orders and your submitted responses — all proceedings, both tabs")
+
+        add_option("filed_forms", "Filed IT Forms",
+                    "Every form under e-File > Income Tax Forms — 15CA, 3CD, 10IE, 35 and any others")
 
         self._scope_panel = QFrame()
         self._scope_panel.setStyleSheet(

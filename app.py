@@ -2133,6 +2133,7 @@ class AayDocCapioApp(QMainWindow):
             self._mk_dl_doc_card("filed_returns", "ITR Return + Intimation", "Form, Receipt/ITR-V, JSON, and any Intimation Orders"),
             self._mk_dl_doc_card("challans", "Tax Payment Challans", "From e-Pay Tax Payment History for the selected year"),
             self._mk_dl_doc_card("e_proceedings", "e-Proceedings Documents", "Notices, orders and submitted responses — all proceedings"),
+            self._mk_dl_doc_card("filed_forms", "Filed IT Forms", "All forms filed under Income Tax Forms — 15CA, 3CD, 10IE, 35 and others"),
         ]
         for i, card in enumerate(doc_cards):
             doc_grid.addWidget(card, i // 3, i % 3)
@@ -3341,7 +3342,8 @@ class AayDocCapioApp(QMainWindow):
                 _doc_labels = {"26as": "26AS/Form 168", "request_ais": "AIS Request",
                                "ais_tis": "AIS/TIS", "filed_returns": "Filed Returns",
                                "challans": "Tax Challans", "legacy": "Download",
-                               "e_proceedings": "e-Proceedings"}
+                               "e_proceedings": "e-Proceedings",
+                               "filed_forms": "Filed IT Forms"}
                 tooltip_text = "\n".join(
                     f"{_doc_labels.get(dt, dt)}: {st}" for dt, st in breakdown
                 )
@@ -4394,8 +4396,8 @@ class AayDocCapioApp(QMainWindow):
     def start_automation(self, selected_docs):
         """
         selected_docs: set/collection of doc-type strings to run, any of
-        "26as", "request_ais", "ais_tis", "filed_returns" — one batch run
-        can now cover several at once (F-56 Phase 2).
+        "26as", "request_ais", "ais_tis", "filed_returns", "filed_forms" —
+        one batch run can now cover several at once (F-56 Phase 2).
 
         F-14 (multi-year): the AY/TY combo is now a multi-select — every
         checked year runs for every selected client. `year_specs` (built
