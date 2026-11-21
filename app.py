@@ -3395,6 +3395,10 @@ class AayDocCapioApp(QMainWindow):
             hist = dl_history.get(pan, {})
             status_text = hist.get("status", "—")
             breakdown = hist.get("breakdown", [])
+            credential_invalid = bool(a.get("credential_invalid"))
+            if credential_invalid:
+                status_text = "⚠ Password needs update — auto-fetch paused"
+                breakdown = []
             status_item = QTableWidgetItem(status_text)
             status_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             if len(breakdown) > 1:
@@ -3408,6 +3412,9 @@ class AayDocCapioApp(QMainWindow):
                 )
             else:
                 tooltip_text = status_text
+            if credential_invalid:
+                tooltip_text = ("The portal rejected this client's saved password. "
+                                "Update it in Client Master to resume automatic sync.")
             status_item.setToolTip(tooltip_text)
             if status_text.startswith("✅"):
                 status_item.setForeground(QColor(_t().success))
