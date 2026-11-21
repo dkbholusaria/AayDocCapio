@@ -843,70 +843,53 @@ the index.
 
 ---
 
-## 27. Filed IT Forms Download — F-63 (2026-11-20)
+## 28. Scheduled e-Proceedings Auto-Fetch — F-13 (2026-11-21)
 
-Adds "Filed IT Forms" as a normal Download Documents option (alongside 26AS,
-AIS/TIS, ITR, challans, e-Proceedings). It is a separate flow from
-e-Proceedings: e-Proceedings is notices/orders/our replies; this is the forms
-the assessee (or their CA) actually filed.
-
-### Verified live (2026-11-20, assessee logins)
-
-Evidence and per-client inventories: `PlansofThisProject/F-63_evidence/`.
-
-- Path: e-File -> hover "Income Tax Forms" -> "View Filed Forms"
-  (`#/dashboard/statForms/viewFiledForms`).
-- Three Act tabs: 2025 / 1961 / Other Acts. Each tab shows category cards
-  (`.eachMatCardStyle`) with the form description, code, filing count and
-  latest AY/FY; 6 per page, paginated.
-- Opening a category lists filings (`.subCard`), paginated. Each filing has
-  Download Form, Download Receipt, and sometimes Download Attachments,
-  Download JSON, Download XML.
-- Form 3CD arrives inside the `3CB-3CD` / `3CA-3CD` "Download Form" ZIP
-  (`form.pdf`, sometimes a generated CSV). Form 146 follows the same shape
-  wherever it is filed, so no per-form code is needed.
-- Portal filenames repeat across clients (`Form 35_Filed Form.pdf`), so
-  every saved file is prefixed with the form code and acknowledgement number.
-- The security modal ("browser Back/Refresh disabled — logout?") appears if
-  the SPA route is changed via `window.location.hash`. Navigation therefore
-  always uses menu clicks, and the modal is answered with **No** (never YES).
-- Long scans can raise a "Session Timeout — Continue to stay logged in"
-  modal; it is refreshed by clicking Continue, which previously caused a
-  cascade of click timeouts on later filings.
+Adds an optional background scheduler for e-Proceedings, built on the
+incremental sync from F-2 so repeat runs only fetch new/changed documents.
 
 ### Implementation
 
-- `automation/downloader_filed_forms.py`
-  - Pure helpers (unit-tested): `form_code_from_text`, `filing_year_from_text`
-    (FY for 15CA, AY otherwise), `parse_filing_text`, `filing_stem`,
-    `artifact_path`, `existing_artifact`.
-  - UI flow: `navigate_to_filed_forms`, act-tab loop, `_collect_categories`
-    (both levels paginated), `_open_category`, `_process_category`,
-    `_process_filing`, `_download_click`, `_download_attachments`.
-  - Resilience: `_refresh_session` (Session Timeout), `_dismiss_modal`
-    (never YES), `_stuck_reason` (detects a portal overlay and aborts the
-    category instead of burning 45 s per remaining button).
-  - Incremental: any artifact already on disk is skipped, so a re-run
-    reports "✅ Filed IT Forms — Up to date (N file(s) already present)".
-  - Output: `<client>/Filed IT Forms/<FormCode>/<AY|FY>/<FormCode>_<AckNo>_<Artifact>.<ext>`
-    (attachments keep their portal extension under `_Attachments`, `_2`, ...).
-- `automation/batch_handlers.py` — `handle_filed_forms` (not year-scoped;
-  records the same status against every selected year) plus
-  `DOC_TYPE_LABELS["filed_forms"]`; `HANDLER_ORDER` runs it immediately after
-  Filed Returns, before 26AS (same e-File menu).
-- `ui/dialogs.py` — "Filed IT Forms" checkbox in `DownloadPickerDialog`.
-- `app.py` — "Filed IT Forms" card on the Download Documents tab and the grid
-  status tooltip label.
+- `automation/eproc_scheduler.py` (new) — pure, no Qt/Playwright:
+  - `normalise_config` (all settings validated and clamped; off by default)
+  - `is_due` / `compute_next_run` (run time, active days, back-off window)
+  - `in_scope` (all / group / selected PANs; excludes password-flagged clients)
+  - `assign_split` (1–3 day cycle, balanced by client count or whole groups)
+  - `assign_rotation` / `build_queue` (alternate starting cases, clients-per-day
+    cap, persisted remainder, distribution phase)
+  - `cooldown_for` (jitter), `should_backoff`, `is_timeout`,
+    `interruptible_sleep` (pause-aware), `estimate_nights`.
+- `vault.py` — per-client `credential_invalid`; preserved when a client is
+  edited with the same password and cleared when the password actually changes.
+  Config accessors store the scheduler state in `settings.eproc_autofetch`.
+- `ui/dialogs.py` — `EAutoFetchSettingsDialog` (time, days, scope, clients per
+  day with a nights estimate, distribution, split boundary, alternate cases,
+  cooldowns, retries, back-off choice, Stop behaviour) and
+  `BatchProgressDialog` controls: Pause/Resume, Restart, Skip Future, countdown
+  line.
+- `app.py` — 60-second `QTimer` tick, per-client background worker (login,
+  e-Proceedings handler, cooldown, timeout retry), credential flagging with
+  notification, rate-limit back-off, queue persistence after every client,
+  restart/skip/pause controls, settings status line and grid warning.
+- `automation/downloader_e_proceedings.py`, `automation/batch_handlers.py` —
+  optional `before_download` hook so the document cooldown is honoured; manual
+  runs pass nothing and behave exactly as before.
 
-### Live verification
+### Verification
 
-- `AAAPL1234C`: 15CA (1 filing) + 35 (2 filings) → 14 files, second run
-  reports "Up to date (8 file(s) already present)", 0 downloads.
-- `AAAPL5678F`: 10IE (1) + 3CB-3CD (13) → ZIP forms, JSON, receipts and
-  attachments downloaded; labelled "⚠ Partially Completed" for older 3CB-3CD
-  filings whose buttons the portal itself blocks after the Session Timeout.
-- Offline: `test_filed_forms.py` (9 tests) plus the existing
-  `test_tds_challan.py` (18) and `test_e_proceedings_parse.py` (16) pass.
+- `test_eproc_scheduler.py` (new): 21 checks — config defaults/clamps, due time,
+  back-off, next-run day skipping, scope filtering, credential exclusion,
+  1/2/3-day split, group boundary, clients-per-day cap, queue continuation,
+  rotation, alternate cases, cooldown range, rate-limit/timeout detection,
+  nights estimate, vault flag and password-clear.
+- Existing `test_e_proceedings_parse.py` (16) and `test_tds_challan.py` pass.
+- `compileall` clean; `git diff --check` clean.
+- Offscreen UI checks: main window builds, settings dialog saves without losing
+  queue/rotation state, progress controls render, auto-fetch start/finish.
+- Simulated worker runs (no browser): successful sync, wrong-password flag +
+  notification, timeout retry, and rate-limit back-off with queue retention.
 
+### Not yet verified
 
----
+A supervised real-portal auto-fetch run with live client credentials. All
+browser interaction paths are the existing manual e-Proceedings code.
