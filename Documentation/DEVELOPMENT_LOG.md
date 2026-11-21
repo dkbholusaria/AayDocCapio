@@ -840,3 +840,73 @@ the index.
   classification, legacy names, TDS vs Income Tax filenames, year/identity
   parsing, sort order, filters, empty state, and open-file/open-folder
   routing (with `_open_path` patched).
+
+---
+
+## 27. Filed IT Forms Download — F-63 (2026-11-20)
+
+Adds "Filed IT Forms" as a normal Download Documents option (alongside 26AS,
+AIS/TIS, ITR, challans, e-Proceedings). It is a separate flow from
+e-Proceedings: e-Proceedings is notices/orders/our replies; this is the forms
+the assessee (or their CA) actually filed.
+
+### Verified live (2026-11-20, assessee logins)
+
+Evidence and per-client inventories: `PlansofThisProject/F-63_evidence/`.
+
+- Path: e-File -> hover "Income Tax Forms" -> "View Filed Forms"
+  (`#/dashboard/statForms/viewFiledForms`).
+- Three Act tabs: 2025 / 1961 / Other Acts. Each tab shows category cards
+  (`.eachMatCardStyle`) with the form description, code, filing count and
+  latest AY/FY; 6 per page, paginated.
+- Opening a category lists filings (`.subCard`), paginated. Each filing has
+  Download Form, Download Receipt, and sometimes Download Attachments,
+  Download JSON, Download XML.
+- Form 3CD arrives inside the `3CB-3CD` / `3CA-3CD` "Download Form" ZIP
+  (`form.pdf`, sometimes a generated CSV). Form 146 follows the same shape
+  wherever it is filed, so no per-form code is needed.
+- Portal filenames repeat across clients (`Form 35_Filed Form.pdf`), so
+  every saved file is prefixed with the form code and acknowledgement number.
+- The security modal ("browser Back/Refresh disabled — logout?") appears if
+  the SPA route is changed via `window.location.hash`. Navigation therefore
+  always uses menu clicks, and the modal is answered with **No** (never YES).
+- Long scans can raise a "Session Timeout — Continue to stay logged in"
+  modal; it is refreshed by clicking Continue, which previously caused a
+  cascade of click timeouts on later filings.
+
+### Implementation
+
+- `automation/downloader_filed_forms.py`
+  - Pure helpers (unit-tested): `form_code_from_text`, `filing_year_from_text`
+    (FY for 15CA, AY otherwise), `parse_filing_text`, `filing_stem`,
+    `artifact_path`, `existing_artifact`.
+  - UI flow: `navigate_to_filed_forms`, act-tab loop, `_collect_categories`
+    (both levels paginated), `_open_category`, `_process_category`,
+    `_process_filing`, `_download_click`, `_download_attachments`.
+  - Resilience: `_refresh_session` (Session Timeout), `_dismiss_modal`
+    (never YES), `_stuck_reason` (detects a portal overlay and aborts the
+    category instead of burning 45 s per remaining button).
+  - Incremental: any artifact already on disk is skipped, so a re-run
+    reports "✅ Filed IT Forms — Up to date (N file(s) already present)".
+  - Output: `<client>/Filed IT Forms/<FormCode>/<AY|FY>/<FormCode>_<AckNo>_<Artifact>.<ext>`
+    (attachments keep their portal extension under `_Attachments`, `_2`, ...).
+- `automation/batch_handlers.py` — `handle_filed_forms` (not year-scoped;
+  records the same status against every selected year) plus
+  `DOC_TYPE_LABELS["filed_forms"]`; `HANDLER_ORDER` runs it immediately after
+  Filed Returns, before 26AS (same e-File menu).
+- `ui/dialogs.py` — "Filed IT Forms" checkbox in `DownloadPickerDialog`.
+- `app.py` — "Filed IT Forms" card on the Download Documents tab and the grid
+  status tooltip label.
+
+### Live verification
+
+- `AAAPL1234C`: 15CA (1 filing) + 35 (2 filings) → 14 files, second run
+  reports "Up to date (8 file(s) already present)", 0 downloads.
+- `AAAPL5678F`: 10IE (1) + 3CB-3CD (13) → ZIP forms, JSON, receipts and
+  attachments downloaded; labelled "⚠ Partially Completed" for older 3CB-3CD
+  filings whose buttons the portal itself blocks after the Session Timeout.
+- Offline: `test_filed_forms.py` (9 tests) plus the existing
+  `test_tds_challan.py` (18) and `test_e_proceedings_parse.py` (16) pass.
+
+
+---
