@@ -94,6 +94,7 @@ async def handle_26as(page, pan, dob, year_specs, out_for_year, log_callback, se
 
     txt_paths = {}   # ay_label -> txt_path (for the 26AS→Excel conversion step)
     form_labels = {}
+    already_present: set[str] = set()   # F-14 (#14) — nothing new downloaded
 
     for group_specs, form_code in ((ay_specs, "26AS"), (ty_specs, "168")):
         if not group_specs:
@@ -120,7 +121,11 @@ async def handle_26as(page, pan, dob, year_specs, out_for_year, log_callback, se
             if not ok:
                 set_status(pan, ay_label, f"❌ {_form} Failed — {err_msg}")
                 continue
-            if err_msg:
+            if err_msg.startswith("Already present"):
+                # F-14 (#14): every artifact for this year was already on disk.
+                set_status(pan, ay_label, f"✅ {_form} — {err_msg}")
+                already_present.add(ay_label)
+            elif err_msg:
                 set_status(pan, ay_label, f"⚠ Partially Completed — {err_msg}")
             else:
                 set_status(pan, ay_label, f"✅ {_form} Downloaded")
@@ -136,7 +141,10 @@ async def handle_26as(page, pan, dob, year_specs, out_for_year, log_callback, se
             from automation.as26_converter import convert_26as_txt
             log_callback(f"[Convert] Converting {_form} → Excel/HTML for {pan} ({ay_label})…")
             convert_26as_txt(txt_path, log_callback=log_callback)
-            set_status(pan, ay_label, f"✅ {_form} + Excel + HTML")
+            if ay_label in already_present:
+                set_status(pan, ay_label, f"✅ {_form} already present (Excel/HTML refreshed)")
+            else:
+                set_status(pan, ay_label, f"✅ {_form} + Excel + HTML")
         except Exception as _conv_exc:
             log_callback(f"[Convert] Warning: conversion failed for {pan} ({ay_label}): {_conv_exc}")
             set_status(pan, ay_label, "⚠ Excel convert failed")
@@ -256,7 +264,9 @@ async def handle_filed_returns(page, pan, dob, year_specs, out_for_year, log_cal
         if fr_status.get("ok"):
             return_statuses[value] = fr_status
         if fr_ok:
-            if fr_msg:
+            if fr_msg.startswith("Up to date"):
+                set_status(pan, ay_label, f"✅ Filed Returns — {fr_msg}")
+            elif fr_msg:
                 set_status(pan, ay_label, f"⚠ Partially Completed — {fr_msg}")
             else:
                 set_status(pan, ay_label, f"✅ Filed Returns Downloaded ({len(fr_saved)} file(s))")

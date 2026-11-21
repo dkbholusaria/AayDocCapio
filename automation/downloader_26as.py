@@ -2,6 +2,7 @@ import os, asyncio, zipfile, shutil, re
 from playwright.async_api import Page, Frame
 from automation.downloader import update_browser_status
 from automation.diagnostics import capture_failure
+from automation.fs_util import is_present
 from utils import migrate_flat_docs_to_subfolders
 
 
@@ -219,6 +220,25 @@ async def _download_26as_for_year(traces_page: Page, assessment_year: str, downl
         # onchange fires updatePart() which enables btnSubmit — give JS a moment
         await asyncio.sleep(1)
 
+        # F-14 (#14): a closed AY's 26AS is immutable — if the PDF and/or TXT
+        # are already on disk, skip fetching that artifact. Work out the
+        # destination paths first (same naming as the download code below).
+        ay_str = assessment_year.replace("-", "_")
+        prefix = f"{pan}-" if pan else ""
+        migrate_flat_docs_to_subfolders(download_dir, log_callback)
+        download_dir = os.path.join(download_dir, "26AS")
+        os.makedirs(download_dir, exist_ok=True)
+        output_pdf = os.path.join(download_dir, f"{prefix}26AS-{ay_str}.pdf")
+        output_txt = os.path.join(download_dir, f"{prefix}26AS-{ay_str}.txt")
+        need_pdf = not is_present(output_pdf)
+        need_txt = not is_present(output_txt)
+        if not need_pdf and not need_txt:
+            log_callback(
+                f"[26AS] AY {assessment_year} already present (PDF + TXT) — nothing to download")
+            return True, "Already present (PDF + TXT)", output_txt
+        if not need_pdf:
+            log_callback(f"[26AS] PDF already present — skipping: {os.path.basename(output_pdf)}")
+
         log_callback("[26AS] Selecting View As: HTML")
         await update_browser_status(traces_page, "TRACES: Selecting HTML format...")
         fmt_frame = await _find_frame(traces_page, "select#viewType", timeout=20000)
@@ -262,28 +282,25 @@ async def _download_26as_for_year(traces_page: Page, assessment_year: str, downl
             except Exception:
                 continue
 
-        ay_str = assessment_year.replace("-", "_")
-        prefix = f"{pan}-" if pan else ""
-        migrate_flat_docs_to_subfolders(download_dir, log_callback)
-        download_dir = os.path.join(download_dir, "26AS")
-        os.makedirs(download_dir, exist_ok=True)
-
         # ── PDF download ──────────────────────────────────────────────────────
-        pdf_frame = await _find_frame(traces_page, "input#pdfBtn", timeout=10000)
-        if not pdf_frame:
-            raise Exception("Could not find pdfBtn on TRACES view26AS page.")
-        pdf_btn = pdf_frame.locator("input#pdfBtn").first
+        if need_pdf:
+            pdf_frame = await _find_frame(traces_page, "input#pdfBtn", timeout=10000)
+            if not pdf_frame:
+                raise Exception("Could not find pdfBtn on TRACES view26AS page.")
+            pdf_btn = pdf_frame.locator("input#pdfBtn").first
 
-        log_callback("[26AS] Exporting Form 26AS to PDF...")
-        await update_browser_status(traces_page, "TRACES: Downloading PDF file...")
-        output_pdf = os.path.join(download_dir, f"{prefix}26AS-{ay_str}.pdf")
-        async with traces_page.expect_download() as download_info:
-            await pdf_btn.click()
-        await (await download_info.value).save_as(output_pdf)
-        log_callback(f"[Victory] Form 26AS PDF downloaded: {os.path.basename(output_pdf)}")
+            log_callback("[26AS] Exporting Form 26AS to PDF...")
+            await update_browser_status(traces_page, "TRACES: Downloading PDF file...")
+            async with traces_page.expect_download() as download_info:
+                await pdf_btn.click()
+            await (await download_info.value).save_as(output_pdf)
+            log_callback(f"[Victory] Form 26AS PDF downloaded: {os.path.basename(output_pdf)}")
 
         # ── TXT download ──────────────────────────────────────────────────────
         # Switch View As to "Text" and re-submit — TRACES streams the .txt directly
+        if not need_txt:
+            log_callback(f"[26AS] TXT already present — skipping: {os.path.basename(output_txt)}")
+            return True, "", output_txt
         log_callback("[26AS] Switching to Text format for TXT download...")
         await update_browser_status(traces_page, "TRACES: Downloading TXT file...")
         _saved_txt = ""
@@ -295,7 +312,6 @@ async def _download_26as_for_year(traces_page: Page, assessment_year: str, downl
             txt_btn_frame = await _find_frame(traces_page, "input#btnSubmit", timeout=10000)
             if not txt_btn_frame:
                 raise Exception("btnSubmit not found for TXT download")
-            output_txt = os.path.join(download_dir, f"{prefix}26AS-{ay_str}.txt")
             tmp_path = output_txt + ".download"
             async with traces_page.expect_download(timeout=30000) as txt_dl_info:
                 await txt_btn_frame.locator("input#btnSubmit").first.click()
@@ -375,6 +391,28 @@ async def download_26as(page: Page, assessment_years: list[str], download_dir_fo
     `on_year_start(assessment_year)`, if given, fires right before that
     year's download begins."""
     results: dict[str, tuple[bool, str, str]] = {}
+    prefix = f"{pan}-" if pan else ""
+
+    # F-14 (#14): resolve already-saved years BEFORE navigating to TRACES.
+    # If every requested year is already on disk, the whole portal trip is
+    # skipped (the per-year guard inside _download_26as_for_year still covers
+    # direct callers).
+    pending: list[str] = []
+    for ay in assessment_years:
+        _dir = download_dir_for_year(ay)
+        migrate_flat_docs_to_subfolders(_dir, log_callback)
+        _sub = os.path.join(_dir, "26AS")
+        _ay_str = ay.replace("-", "_")
+        _pdf = os.path.join(_sub, f"{prefix}26AS-{_ay_str}.pdf")
+        _txt = os.path.join(_sub, f"{prefix}26AS-{_ay_str}.txt")
+        if is_present(_pdf) and is_present(_txt):
+            log_callback(f"[26AS] AY {ay} already present — skipping portal fetch")
+            results[ay] = (True, "Already present (PDF + TXT)", _txt)
+        else:
+            pending.append(ay)
+    if not pending:
+        return results
+
     try:
         traces_page = await _navigate_to_traces_1_0(page, log_callback)
     except Exception as e:
@@ -384,12 +422,12 @@ async def download_26as(page: Page, assessment_years: list[str], download_dir_fo
             reason = "Timed out — ITD dashboard still loading (try again)"
         else:
             reason = err[:80] if len(err) <= 80 else err[:77] + "..."
-        for ay in assessment_years:
+        for ay in pending:
             results[ay] = (False, reason, "")
         return results
 
     try:
-        for assessment_year in assessment_years:
+        for assessment_year in pending:
             if on_year_start:
                 on_year_start(assessment_year)
             download_dir = download_dir_for_year(assessment_year)
