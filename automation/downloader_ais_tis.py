@@ -3,6 +3,7 @@ import re
 import asyncio
 from playwright.async_api import Page
 from automation.downloader import update_browser_status, make_step_logger
+from automation.fs_util import is_present
 from automation.pdf_unlocker import unlock_pdf
 from utils import migrate_flat_docs_to_subfolders
 
@@ -390,6 +391,12 @@ async def download_tis(portal: Page, fiscal_year: str, download_dir: str,
 
     tis_file = os.path.join(download_dir, f"{prefix}TIS-{fy_str}.pdf")
 
+    # F-14 (#14): TIS for a closed FY is immutable — if it is already on disk,
+    # don't open the modal or click Download at all.
+    if is_present(tis_file):
+        log(f"[TIS] FY {fiscal_year} TIS already present — skipped: {os.path.basename(tis_file)}")
+        return _outcome("already_present", file=tis_file)
+
     # If a modal is already open from the AIS step and it contains a TIS row,
     # use it directly; otherwise open the shortcut modal.
     modal = _modal_locator(portal)
@@ -451,6 +458,12 @@ async def request_ais(portal: Page, fiscal_year: str, download_dir: str,
     fy_str = fiscal_year.replace("-", "_")
     prefix = f"{pan}-" if pan else ""
     ais_file = os.path.join(download_dir, f"{prefix}AIS-{fy_str}.pdf")
+
+    # F-14 (#14): AIS for a closed FY is immutable. If the PDF is already on
+    # disk there is nothing to request or download — skip the modal entirely.
+    if is_present(ais_file):
+        log(f"[AIS] FY {fiscal_year} AIS already present — skipped: {os.path.basename(ais_file)}")
+        return _outcome("already_present", file=ais_file)
 
     opened = await _open_ais_modal(portal, log, status_cb=status_cb)
     if not opened:
@@ -685,6 +698,12 @@ async def download_ais_from_activity_history(portal: Page, fiscal_year: str,
     ais_file = os.path.join(download_dir, f"{prefix}AIS-{fy_str}.pdf")
     fy_desc = f"AIS - F.Y. {fiscal_year}"
 
+    # F-14 (#14): skip the whole Activity History navigation when the AIS PDF
+    # is already on disk from a previous run.
+    if is_present(ais_file):
+        log(f"[AIS] FY {fiscal_year} AIS already present — skipped: {os.path.basename(ais_file)}")
+        return _outcome("already_present", file=ais_file)
+
     def _aborted():
         return should_continue is not None and not should_continue()
 
@@ -843,12 +862,39 @@ async def run_request_ais(itd_page: Page, fiscal_years: list[str], download_dir_
             status_callback(msg)
 
     results: dict[str, dict] = {}
+    prefix = f"{pan}-" if pan else ""
+
+    # F-14 (#14): if a year's AIS + TIS are both already on disk, there is
+    # nothing to request — resolve it before opening the Compliance Portal.
+    # When every requested year resolves, the portal is never opened at all.
+    pending: list[str] = []
+    for fy in fiscal_years:
+        fy_start = int(fy.split("-")[0]) if "-" in fy else 0
+        if fy_start < 2021:
+            pending.append(fy)
+            continue
+        _dir = download_dir_for_year(fy)
+        migrate_flat_docs_to_subfolders(_dir, log)
+        _sub = os.path.join(_dir, "AIS-TIS")
+        _fy_str = fy.replace("-", "_")
+        _ais = os.path.join(_sub, f"{prefix}AIS-{_fy_str}.pdf")
+        _tis = os.path.join(_sub, f"{prefix}TIS-{_fy_str}.pdf")
+        if is_present(_ais) and is_present(_tis):
+            log(f"[AIS] FY {fy} AIS + TIS already present — skipping portal fetch")
+            outcome = _outcome("already_present", file=_ais)
+            outcome["tis"] = _outcome("already_present", file=_tis)
+            results[fy] = outcome
+        else:
+            pending.append(fy)
+    if not pending:
+        return results
+
     portal = None
     try:
         portal = await _open_ais_portal(itd_page, log, status_cb=status_callback)
         await _navigate_to_ais_tab(portal, log, status_cb=status_callback)
 
-        for fiscal_year in fiscal_years:
+        for fiscal_year in pending:
             if on_year_start:
                 on_year_start(fiscal_year)
             fy_start = int(fiscal_year.split("-")[0]) if "-" in fiscal_year else 0
@@ -918,12 +964,41 @@ async def run_download_ais_tis(itd_page: Page, fiscal_years: list[str], download
     """
     ais_ref_ids = ais_ref_ids or {}
     results: dict[str, dict] = {}
+    prefix = f"{pan}-" if pan else ""
+
+    # F-14 (#14): resolve years whose requested artifacts are already on disk
+    # before opening the Compliance Portal.
+    pending: list[str] = []
+    for fy in fiscal_years:
+        fy_start = int(fy.split("-")[0]) if "-" in fy else 0
+        if fy_start < 2021:
+            pending.append(fy)
+            continue
+        _dir = download_dir_for_year(fy)
+        migrate_flat_docs_to_subfolders(_dir, log)
+        _sub = os.path.join(_dir, "AIS-TIS")
+        _fy_str = fy.replace("-", "_")
+        _ais = os.path.join(_sub, f"{prefix}AIS-{_fy_str}.pdf")
+        _tis = os.path.join(_sub, f"{prefix}TIS-{_fy_str}.pdf")
+        ais_done = (not dl_ais) or is_present(_ais)
+        tis_done = (not dl_tis) or is_present(_tis)
+        if ais_done and tis_done:
+            log(f"[AIS] FY {fy} requested documents already present — skipping portal fetch")
+            results[fy] = {
+                "ais": _outcome("already_present", file=_ais) if dl_ais else None,
+                "tis": _outcome("already_present", file=_tis) if dl_tis else None,
+            }
+        else:
+            pending.append(fy)
+    if not pending:
+        return results
+
     portal = None
     try:
         portal = await _open_ais_portal(itd_page, log, status_cb=status_callback)
         await _navigate_to_ais_tab(portal, log, status_cb=status_callback)
 
-        for fiscal_year in fiscal_years:
+        for fiscal_year in pending:
             if on_year_start:
                 on_year_start(fiscal_year)
             fy_start = int(fiscal_year.split("-")[0]) if "-" in fiscal_year else 0

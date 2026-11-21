@@ -2,6 +2,7 @@ import os, asyncio, re
 from playwright.async_api import Page
 from automation.downloader import update_browser_status
 from automation.diagnostics import capture_failure
+from automation.fs_util import is_present
 from utils import migrate_flat_docs_to_subfolders, migrate_168_subfolder_name
 
 
@@ -348,6 +349,22 @@ async def _download_168_for_year(traces2_page: Page, tax_year: str, download_dir
         download_dir = os.path.join(download_dir, "168")
         os.makedirs(download_dir, exist_ok=True)
 
+        # F-14 (#14): a closed Tax Year's Form 168 is immutable — skip any
+        # artifact already on disk instead of re-fetching it from the portal.
+        output_pdf = os.path.join(download_dir, f"{prefix}168-{ty_str}.pdf")
+        output_xls = os.path.join(download_dir, f"{prefix}168-{ty_str}-itd.xlsx")
+        output_txt = os.path.join(download_dir, f"{prefix}168-{ty_str}.txt")
+        need_pdf = not is_present(output_pdf)
+        need_xls = not is_present(output_xls)
+        need_txt = not is_present(output_txt)
+        if not (need_pdf or need_xls or need_txt):
+            log_callback(
+                f"[168] TY {tax_year} already present (PDF + Excel + TXT) — nothing to download")
+            return True, "Already present (PDF + Excel + TXT)", output_txt
+        for _needed, _path in ((need_pdf, output_pdf), (need_xls, output_xls), (need_txt, output_txt)):
+            if not _needed:
+                log_callback(f"[168] Already present — skipping: {os.path.basename(_path)}")
+
         # ── Select Tax Year (once per year — persists for all downloads) ─────
         log_callback(f"[168] Selecting Tax Year: {tax_year}")
         await update_browser_status(traces2_page, f"TRACES 2.0: Selecting TY {tax_year}...")
@@ -380,54 +397,54 @@ async def _download_168_for_year(traces2_page: Page, tax_year: str, download_dir
             await asyncio.sleep(pause_s)
 
         # ── PDF download ──────────────────────────────────────────────────────
-        log_callback("[168] Selecting Download PDF...")
-        await update_browser_status(traces2_page, "TRACES 2.0: Downloading PDF...")
-        await _select_radio(traces2_page, "Download PDF", log_callback)
-        output_pdf = os.path.join(download_dir, f"{prefix}168-{ty_str}.pdf")
-        async with traces2_page.expect_download(timeout=60000) as dl_info:
-            await _click_proceed(traces2_page, log_callback)
-        await (await dl_info.value).save_as(output_pdf)
-        log_callback(f"[Victory] Form 168 PDF downloaded: {os.path.basename(output_pdf)}")
-        await asyncio.sleep(1)
+        if need_pdf:
+            log_callback("[168] Selecting Download PDF...")
+            await update_browser_status(traces2_page, "TRACES 2.0: Downloading PDF...")
+            await _select_radio(traces2_page, "Download PDF", log_callback)
+            async with traces2_page.expect_download(timeout=60000) as dl_info:
+                await _click_proceed(traces2_page, log_callback)
+            await (await dl_info.value).save_as(output_pdf)
+            log_callback(f"[Victory] Form 168 PDF downloaded: {os.path.basename(output_pdf)}")
+            await asyncio.sleep(1)
 
         # ── Excel download (ITD native) ───────────────────────────────────────
-        _saved_xls = ""
-        try:
-            log_callback("[168] Selecting Download Excel...")
-            await update_browser_status(traces2_page, "TRACES 2.0: Downloading Excel...")
-            await _select_radio(traces2_page, "Download Excel", log_callback)
-            output_xls = os.path.join(download_dir, f"{prefix}168-{ty_str}-itd.xlsx")
-            async with traces2_page.expect_download(timeout=60000) as xls_dl_info:
-                await _click_proceed(traces2_page, log_callback)
-            await (await xls_dl_info.value).save_as(output_xls)
-            log_callback(f"[Victory] Form 168 Excel (ITD) downloaded: {os.path.basename(output_xls)}")
-            _saved_xls = output_xls
-        except Exception as xls_err:
-            log_callback(f"[Warning] Excel download failed: {xls_err}")
-        await asyncio.sleep(1)
+        _saved_xls = output_xls if not need_xls else ""
+        if need_xls:
+            try:
+                log_callback("[168] Selecting Download Excel...")
+                await update_browser_status(traces2_page, "TRACES 2.0: Downloading Excel...")
+                await _select_radio(traces2_page, "Download Excel", log_callback)
+                async with traces2_page.expect_download(timeout=60000) as xls_dl_info:
+                    await _click_proceed(traces2_page, log_callback)
+                await (await xls_dl_info.value).save_as(output_xls)
+                log_callback(f"[Victory] Form 168 Excel (ITD) downloaded: {os.path.basename(output_xls)}")
+                _saved_xls = output_xls
+            except Exception as xls_err:
+                log_callback(f"[Warning] Excel download failed: {xls_err}")
+            await asyncio.sleep(1)
 
         # ── TXT download ──────────────────────────────────────────────────────
-        _saved_txt = ""
+        _saved_txt = output_txt if not need_txt else ""
         tmp_path = ""
-        try:
-            log_callback("[168] Selecting Download Text...")
-            await update_browser_status(traces2_page, "TRACES 2.0: Downloading TXT...")
-            await _select_radio(traces2_page, "Download Text", log_callback)
-            output_txt = os.path.join(download_dir, f"{prefix}168-{ty_str}.txt")
-            tmp_path = output_txt + ".download"
-            async with traces2_page.expect_download(timeout=60000) as txt_dl_info:
-                await _click_proceed(traces2_page, log_callback)
-            await (await txt_dl_info.value).save_as(tmp_path)
-            os.replace(tmp_path, output_txt)
-            log_callback(f"[Victory] Form 168 TXT downloaded: {os.path.basename(output_txt)}")
-            _saved_txt = output_txt
-        except Exception as txt_err:
+        if need_txt:
             try:
-                if tmp_path and os.path.exists(tmp_path):
-                    os.remove(tmp_path)
-            except Exception:
-                pass
-            log_callback(f"[Warning] TXT download failed: {txt_err}")
+                log_callback("[168] Selecting Download Text...")
+                await update_browser_status(traces2_page, "TRACES 2.0: Downloading TXT...")
+                await _select_radio(traces2_page, "Download Text", log_callback)
+                tmp_path = output_txt + ".download"
+                async with traces2_page.expect_download(timeout=60000) as txt_dl_info:
+                    await _click_proceed(traces2_page, log_callback)
+                await (await txt_dl_info.value).save_as(tmp_path)
+                os.replace(tmp_path, output_txt)
+                log_callback(f"[Victory] Form 168 TXT downloaded: {os.path.basename(output_txt)}")
+                _saved_txt = output_txt
+            except Exception as txt_err:
+                try:
+                    if tmp_path and os.path.exists(tmp_path):
+                        os.remove(tmp_path)
+                except Exception:
+                    pass
+                log_callback(f"[Warning] TXT download failed: {txt_err}")
 
         await update_browser_status(traces2_page, "TRACES 2.0: Form 168 Download Complete!")
         await asyncio.sleep(1)
@@ -465,6 +482,27 @@ async def download_168(page: Page, tax_years: list[str], download_dir_for_year,
     `on_year_start(tax_year)`, if given, fires right before that year's
     download begins."""
     results: dict[str, tuple[bool, str, str]] = {}
+    prefix = f"{pan}-" if pan else ""
+
+    # F-14 (#14): resolve already-saved years before opening TRACES 2.0.
+    pending: list[str] = []
+    for ty in tax_years:
+        _dir = download_dir_for_year(ty)
+        migrate_flat_docs_to_subfolders(_dir, log_callback)
+        migrate_168_subfolder_name(_dir, log_callback)
+        _sub = os.path.join(_dir, "168")
+        _ty_str = ty.replace("-", "_")
+        _pdf = os.path.join(_sub, f"{prefix}168-{_ty_str}.pdf")
+        _xls = os.path.join(_sub, f"{prefix}168-{_ty_str}-itd.xlsx")
+        _txt = os.path.join(_sub, f"{prefix}168-{_ty_str}.txt")
+        if is_present(_pdf) and is_present(_xls) and is_present(_txt):
+            log_callback(f"[168] TY {ty} already present — skipping portal fetch")
+            results[ty] = (True, "Already present (PDF + Excel + TXT)", _txt)
+        else:
+            pending.append(ty)
+    if not pending:
+        return results
+
     try:
         traces2_page = await _navigate_to_traces_2_0(page, log_callback)
     except Exception as e:
@@ -472,12 +510,12 @@ async def download_168(page: Page, tax_years: list[str], download_dir_for_year,
         log_callback(f"[Error] Failed to reach TRACES 2.0 for Form 168: {err}")
         reason = "Timed out — ITD dashboard still loading (try again)" if "Timeout" in err or "timeout" in err \
             else (err[:80] if len(err) <= 80 else err[:77] + "...")
-        for ty in tax_years:
+        for ty in pending:
             results[ty] = (False, reason, "")
         return results
 
     try:
-        for tax_year in tax_years:
+        for tax_year in pending:
             if on_year_start:
                 on_year_start(tax_year)
             download_dir = download_dir_for_year(tax_year)

@@ -7,6 +7,7 @@ from playwright.async_api import Page
 
 from automation.downloader import update_browser_status, make_step_logger
 from automation._nav_helpers import open_hamburger, hover_to_income_tax_returns
+from automation.fs_util import is_present
 from automation.pdf_unlocker import unlock_pdf
 from utils import migrate_flat_docs_to_subfolders, migrate_itr_filing_subfolder
 
@@ -295,7 +296,7 @@ async def _goto_page(target_page: int, current_page: int, next_btn, prev_btn, st
 
 
 async def _download_one_file(page: Page, trigger_locator, output_path: str, step, artifact_label: str,
-                              pan: str = "", dob: str = "") -> bool:
+                              pan: str = "", dob: str = "") -> str:
     """Wraps a single expect_download()+save_as() in try/except so one failed
     artifact never aborts the remaining filings/artifacts in the batch.
     If dob is provided and the saved file is a PDF, attempts to auto-unlock
@@ -303,7 +304,15 @@ async def _download_one_file(page: Page, trigger_locator, output_path: str, step
     files that turn out not to be encrypted, so it's safe to call for every
     PDF artifact rather than needing to know in advance which ones ITD
     protects (confirmed: Intimation Orders are; Form/Receipt may or may not
-    be, so we don't special-case)."""
+    be, so we don't special-case).
+
+    F-14 (#14): a non-empty file at `output_path` means this artifact of this
+    filing (identified by Acknowledgment Number) is already downloaded, so
+    the portal is not touched. Returns "downloaded", "already_present" or
+    "failed" (previously a bool)."""
+    if is_present(output_path):
+        step(f"{artifact_label}: already present — skipped ({os.path.basename(output_path)})")
+        return "already_present"
     try:
         step(f"Clicking trigger for {artifact_label}, expecting a download")
         async with page.expect_download() as download_info:
@@ -317,10 +326,10 @@ async def _download_one_file(page: Page, trigger_locator, output_path: str, step
                 step(f"[PDF Unlock] {os.path.basename(output_path)} unlocked (password: {result.get('password')})")
             else:
                 step(f"[PDF Unlock] {os.path.basename(output_path)} left as-is: {result.get('reason')}")
-        return True
+        return "downloaded"
     except Exception as e:
         step(f"[Warning] {artifact_label} download failed: {e}")
-        return False
+        return "failed"
 
 
 async def _submit_intimation_request(card, filing_type: str, step) -> str | None:
@@ -390,7 +399,8 @@ async def _submit_intimation_request(card, filing_type: str, step) -> str | None
 
 async def _process_card(card, filing_type: str, filing_date_ddmmyyyy: str, ack_no: str, ay_str: str, prefix: str,
                          pan: str, dob: str, download_dir: str,
-                         filed_returns_page: Page, step) -> tuple[list[dict], list[str]]:
+                         filed_returns_page: Page, step,
+                         skipped: dict | None = None) -> tuple[list[dict], list[str]]:
     """Downloads Form/Receipt/JSON/Intimation for one already-located,
     already-on-screen filing card. Must be called while `card` is valid on
     the currently rendered page — a card locator from a page that has since
@@ -405,6 +415,8 @@ async def _process_card(card, filing_type: str, filing_date_ddmmyyyy: str, ack_n
     'Original' return sharing both with the return that replaced it)."""
     saved: list[dict] = []
     warns: list[str] = []
+    if skipped is None:
+        skipped = {"n": 0}
     step(f"Processing card: filing_type={filing_type}, filing_date={filing_date_ddmmyyyy}, ack_no={ack_no}")
 
     migrate_itr_filing_subfolder(download_dir, filing_type, filing_date_ddmmyyyy, ack_no, step)
@@ -444,11 +456,14 @@ async def _process_card(card, filing_type: str, filing_date_ddmmyyyy: str, ack_n
             warns.append(f"{filing_type} {artifact_label} not available")
             continue
         output_path = os.path.join(itr_dir, filename)
-        ok = await _download_one_file(
+        status = await _download_one_file(
             filed_returns_page, trigger, output_path, step,
             f"ITR {filing_type} {artifact_label}", pan=pan, dob=dob,
         )
-        if ok:
+        if status == "already_present":
+            skipped["n"] += 1
+            saved.append({"filing_type": filing_type, "artifact": artifact_label, "path": output_path, "intimation_date": None})
+        elif status == "downloaded":
             saved.append({"filing_type": filing_type, "artifact": artifact_label, "path": output_path, "intimation_date": None})
         else:
             warns.append(f"{filing_type} {artifact_label} failed")
@@ -482,11 +497,13 @@ async def _process_card(card, filing_type: str, filing_date_ddmmyyyy: str, ack_n
         date_str = _sanitize_date_for_filename(raw_date, step)
         filename = f"{prefix}Intimation-{ay_str}-{filing_type}-{date_str}.pdf"
         output_path = os.path.join(intimation_dir, filename)
-        ok = await _download_one_file(
+        status = await _download_one_file(
             filed_returns_page, link, output_path, step,
             f"Intimation Order ({filing_type})", pan=pan, dob=dob,
         )
-        if ok:
+        if status in ("downloaded", "already_present"):
+            if status == "already_present":
+                skipped["n"] += 1
             saved.append({"filing_type": filing_type, "artifact": "Intimation", "path": output_path, "intimation_date": date_str})
         else:
             warns.append(f"{filing_type} Intimation Order failed")
@@ -621,10 +638,14 @@ async def _download_filed_returns_for_year(
                 itr_root = os.path.join(download_dir, "ITR Returns")
                 os.makedirs(itr_root, exist_ok=True)
                 status_xlsx = os.path.join(itr_root, f"{prefix}ITR-Status-{ay_str}.xlsx")
-                async with filed_returns_page.expect_download() as export_dl_info:
-                    await export_btn.click()
-                await (await export_dl_info.value).save_as(status_xlsx)
-                step(f"[Victory] ITR Status Excel saved: {os.path.basename(status_xlsx)}")
+                if is_present(status_xlsx):
+                    step(f"ITR Status Excel already present — skipped: {os.path.basename(status_xlsx)}")
+                    skipped["n"] += 1
+                else:
+                    async with filed_returns_page.expect_download() as export_dl_info:
+                        await export_btn.click()
+                    await (await export_dl_info.value).save_as(status_xlsx)
+                    step(f"[Victory] ITR Status Excel saved: {os.path.basename(status_xlsx)}")
             except Exception as e:
                 step(f"[Warning] Export to Excel failed (continuing): {e}")
         else:
@@ -658,6 +679,7 @@ async def _download_filed_returns_for_year(
 
         saved_files: list[dict] = []
         warnings: list[str] = []
+        skipped = {"n": 0}
         found_any_match = False
         candidates: list[dict] = []  # only populated for filing_scope == "latest": {"page", "index", "filing_type", "date_text", "date_parsed"}
         current_page = 0
@@ -711,7 +733,7 @@ async def _download_filed_returns_for_year(
                 else:
                     saved, warns = await _process_card(
                         card, filing_type, filing_date_ddmmyyyy, ack_no, ay_str, prefix, pan, dob,
-                        download_dir, filed_returns_page, step
+                        download_dir, filed_returns_page, step, skipped=skipped
                     )
                     saved_files.extend(saved)
                     warnings.extend(warns)
@@ -754,18 +776,22 @@ async def _download_filed_returns_for_year(
             card = filed_returns_page.locator("mat-card.contextBox").nth(winner["index"])
             saved, warns = await _process_card(
                 card, winner["filing_type"], winner["filing_date_ddmmyyyy"], winner["ack_no"], ay_str, prefix, pan, dob,
-                download_dir, filed_returns_page, step
+                download_dir, filed_returns_page, step, skipped=skipped
             )
             saved_files.extend(saved)
             warnings.extend(warns)
 
         await update_browser_status(filed_returns_page, "Filed Returns: Download Complete!")
-        step(f"Done: {len(saved_files)} file(s) saved, {len(warnings)} warning(s)")
+        new_count = len(saved_files) - skipped["n"]
+        step(f"Done: {len(saved_files)} file(s) present ({skipped['n']} already on disk, "
+             f"{new_count} new), {len(warnings)} warning(s)")
 
         if not saved_files:
             return False, "All filing downloads failed: " + "; ".join(warnings), []
         if warnings:
             return True, "; ".join(warnings), saved_files
+        if new_count == 0 and skipped["n"]:
+            return True, f"Up to date ({skipped['n']} file(s) already present)", saved_files
         return True, "", saved_files
 
     except Exception as e:
