@@ -144,7 +144,8 @@ class ManageYearsDialog(QDialog):
             f"QCheckBox{{color:{t.text_primary};background:transparent;spacing:6px;}}"
             f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {t.border};"
             f"border-radius:3px;background:{t.bg_checkbox};}}"
-            f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};}}"
+            f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};"
+            f"image:url(resources/check_white.png);}}"
         )
         self._checkboxes.append((entry, cb))
         self._list_layout.insertWidget(self._list_layout.count() - 1, cb)
@@ -1741,7 +1742,7 @@ class SmtpSettingsDialog(QDialog):
             f"QTabBar::tab{{background:{t.bg_table_alt};color:{t.text_muted};"
             f"padding:8px 20px;border:1px solid {t.border};border-bottom:none;"
             f"border-radius:6px 6px 0 0;margin-right:2px;font-size:12px;}}"
-            f"QTabBar::tab:selected{{background:{t.accent};color:white;"
+            f"QTabBar::tab:selected{{background:{t.accent};color:{t.accent_text};"
             f"border-color:{t.accent};font-weight:600;}}"
             f"QTabBar::tab:hover:!selected{{background:{t.bg_input};}}"
         )
@@ -1948,7 +1949,7 @@ class SmtpSettingsDialog(QDialog):
         self._tpl_list.setStyleSheet(
             f"QListWidget{{background:{t.bg_panel};border:none;outline:none;font-size:12px;}}"
             f"QListWidget::item{{padding:8px 10px;border-radius:5px;color:{t.text_primary};}}"
-            f"QListWidget::item:selected{{background:{t.accent};color:white;}}"
+            f"QListWidget::item:selected{{background:{t.accent};color:{t.accent_text};}}"
             f"QListWidget::item:hover:!selected{{background:{t.bg_table_alt};}}"
         )
         self._tpl_list.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked)
@@ -2047,7 +2048,7 @@ class SmtpSettingsDialog(QDialog):
             f"border:1px solid {t.border};border-radius:5px;"
             f"font-size:12px;padding:0 8px;min-width:28px;height:28px;}}"
             f"QPushButton:hover{{background:{t.bg_input};border-color:{t.accent};}}"
-            f"QPushButton:checked{{background:{t.accent};color:#fff;border-color:{t.accent};}}"
+            f"QPushButton:checked{{background:{t.accent};color:{t.accent_text};border-color:{t.accent};}}"
         )
 
         def _fmt_toggle(label: str, prop: str) -> QPushButton:
@@ -2137,7 +2138,8 @@ class SmtpSettingsDialog(QDialog):
             f"QCheckBox{{color:{t.text_primary};font-size:12px;spacing:6px;}}"
             f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {t.border};"
             f"border-radius:3px;background:{t.bg_checkbox};}}"
-            f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};}}"
+            f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};"
+            f"image:url(resources/check_white.png);}}"
         )
         self._doc_cbs = {}
         docs_rows = QVBoxLayout(); docs_rows.setSpacing(6)
@@ -5009,7 +5011,8 @@ class DownloadPickerDialog(QDialog):
             f"QCheckBox::indicator{{width:16px;height:16px;border:1.5px solid {t.border};"
             f"border-radius:4px;background:{t.bg_checkbox};}}"
             f"QCheckBox::indicator:hover{{border-color:{t.border_focus};}}"
-            f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};}}"
+            f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};"
+            f"image:url(resources/check_white.png);}}"
             f"QRadioButton{{color:{t.text_primary};background:transparent;font-size:12px;spacing:6px;}}"
             f"QRadioButton::indicator{{width:14px;height:14px;border:1.5px solid {t.border};"
             f"border-radius:7px;background:{t.bg_checkbox};}}"
@@ -5538,7 +5541,7 @@ class MailDocsDialog(QDialog):
             f"QPushButton:hover{{background:{t.bg_table_alt};}}"
         )
         _btn_ss_primary = (
-            f"QPushButton{{background:{t.accent};color:white;border:none;"
+            f"QPushButton{{background:{t.accent};color:{t.accent_text};border:none;"
             f"border-radius:5px;padding:0 8px;font-size:11px;font-weight:600;}}"
             f"QPushButton:hover{{background:{t.accent_hover};}}"
             f"QPushButton:disabled{{background:{t.border};color:{t.text_muted};}}"
@@ -5847,7 +5850,8 @@ class MailDocsDialog(QDialog):
                 f"QCheckBox{{background:transparent;}}"
                 f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {t.border};"
                 f"border-radius:3px;background:{t.bg_checkbox};}}"
-                f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};}}"
+                f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};"
+            f"image:url(resources/check_white.png);}}"
                 f"QCheckBox::indicator:disabled{{background:{t.border};}}")
             chk_layout.addWidget(chk)
             self._table.setCellWidget(row, self._COL_CHK, chk_widget)
@@ -6563,7 +6567,8 @@ class ReturnStatusDialog(QDialog):
                 f"QCheckBox{{background:transparent;}}"
                 f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {_bt.border};"
                 f"border-radius:3px;background:{_bt.bg_checkbox};}}"
-                f"QCheckBox::indicator:checked{{background:{_bt.accent};border-color:{_bt.accent};}}"
+                f"QCheckBox::indicator:checked{{background:{_bt.accent};border-color:{_bt.accent};"
+                f"image:url(resources/check_white.png);}}"
                 f"QCheckBox::indicator:disabled{{background:{_bt.border};}}")
             chk.stateChanged.connect(
                 lambda state, k=key: self._checked_keys.add(k) if state

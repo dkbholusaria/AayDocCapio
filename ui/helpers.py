@@ -39,15 +39,16 @@ def _btn(text, style="secondary", height=36, min_width=None, icon: str = ""):
             b.setIcon(QIcon(px))
             b.setIconSize(QSize(20, 20))
     t = _t()
+    # F-17: every button colour pair is WCAG AA (>=4.5:1) with its label.
     COLORS = {
-        "primary":   ("#2563EB",      "#1D4ED8",      "white"),
-        "success":   ("#16A34A",      "#15803D",      "white"),
-        "danger":    ("#EF4444",      "#DC2626",      "white"),
-        "secondary": ("#64748B",      "#475569",      "white"),
-        "warning":   ("#EAB308",      "#CA8A04",      "white"),
+        "primary":   ("#2563EB",      "#1D4ED8",      "#FFFFFF"),
+        "success":   ("#15803D",      "#166534",      "#FFFFFF"),
+        "danger":    ("#B91C1C",      "#991B1B",      "#FFFFFF"),
+        "secondary": ("#475569",      "#334155",      "#FFFFFF"),
+        "warning":   ("#EAB308",      "#CA8A04",      "#0F172A"),
         "outline":   ("transparent",  t.bg_table_alt, t.text_primary),
-        "edit":      ("#0284C7",      "#0369A1",      "white"),
-        "delete":    ("#DC2626",      "#991B1B",      "white"),
+        "edit":      ("#0369A1",      "#075985",      "#FFFFFF"),
+        "delete":    ("#B91C1C",      "#991B1B",      "#FFFFFF"),
     }
     bg, hov, fg = COLORS.get(style, COLORS["secondary"])
     border = f"1px solid {t.border}" if style == "outline" else "none"
@@ -55,6 +56,7 @@ def _btn(text, style="secondary", height=36, min_width=None, icon: str = ""):
         f"QPushButton {{ background:{bg}; color:{fg}; border:{border}; "
         f"border-radius:6px; padding:6px 14px; font-weight:bold; font-size:12px; }}"
         f"QPushButton:hover {{ background:{hov}; }}"
+        f"QPushButton:focus {{ border:2px solid {t.border_focus}; }}"
         f"QPushButton:disabled {{ background:{t.border}; color:{t.text_muted}; }}"
     )
     return b

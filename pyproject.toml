@@ -26,9 +26,6 @@ requires = [
     "cryptography",
 ]
 
-# Entry point — Briefcase calls main() in the app module
-[tool.briefcase.app.aaydoccapio.sources]
-
 [tool.briefcase.app.aaydoccapio.windows]
 requires = [
     "PyQt6",
