@@ -11,8 +11,9 @@ from urllib.parse import urlencode
 # WSLg sets WAYLAND_DISPLAY which Qt6 prefers; unsetting it prevents the
 # "Wayland connection broke" hang that requires WSL restart to fix.
 if sys.platform != "win32":
-    os.environ["QT_QPA_PLATFORM"] = "xcb"
-    os.environ.pop("WAYLAND_DISPLAY", None)
+    os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
+    if os.environ.get("QT_QPA_PLATFORM") == "xcb":
+        os.environ.pop("WAYLAND_DISPLAY", None)
 from themes import THEMES, ThemeColors, build_stylesheet, get_theme, MONO_FONT_NAME as _MONO_FONT
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton,
@@ -22,13 +23,17 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QToolButton, QMenu, QCalendarWidget, QSystemTrayIcon, QButtonGroup,
     QGraphicsDropShadowEffect, QStackedWidget, QRadioButton,
-    QGridLayout,
+    QGridLayout, QAbstractButton,
 )
 from PyQt6.QtCore import (
     Qt, pyqtSignal, pyqtSlot, QTimer, QMetaObject, Q_ARG, QUrl,
     QPropertyAnimation, QEasingCurve,
 )
-from PyQt6.QtGui import QFont, QTextCursor, QColor, QRegularExpressionValidator, QPalette, QAction, QIcon, QPixmap, QDesktopServices
+from PyQt6.QtGui import (
+    QFont, QTextCursor, QColor, QRegularExpressionValidator, QPalette, QAction,
+    QIcon, QPixmap, QDesktopServices, QKeySequence,
+)
+from ui import shortcuts as _shortcuts
 from PyQt6.QtCore import QRegularExpression
 
 from config import _app_dir, _default_download_dir, _bundled_dir
@@ -100,14 +105,15 @@ class _ClientPickerDialog(QDialog):
             f"QTableWidget{{border:1px solid {t.border};border-radius:6px;"
             f"background:{t.bg_table};gridline-color:{t.grid};outline:0;}}"
             f"QTableWidget::item{{padding:4px 8px;border:none;}}"
-            f"QTableWidget::item:selected{{background:{t.accent};color:white;}}"
+            f"QTableWidget::item:selected{{background:{t.accent};color:{t.accent_text};}}"
             f"QHeaderView::section{{background:{t.bg_header};color:{t.text_muted};"
             f"border:none;border-right:1px solid {t.border};"
             f"border-bottom:1px solid {t.border};font-weight:bold;"
             f"font-size:11px;height:30px;padding:0 8px;}}"
             f"QCheckBox::indicator{{width:14px;height:14px;border:1.5px solid {t.border};"
             f"border-radius:3px;background:{t.bg_checkbox};}}"
-            f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};}}"
+            f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};"
+            f"image:url(resources/check_white.png);}}"
         )
 
         vl = QVBoxLayout(self)
@@ -373,11 +379,23 @@ class AayDocCapioApp(QMainWindow):
         except Exception:
             pass
 
-        self._current_theme = self.vault.get_setting("theme", "light")
+        self._theme_pref = self.vault.get_setting("theme", "light")
+        if self._theme_pref not in (*THEMES, "system"):
+            self._theme_pref = "light"
+        self._current_theme = self._resolve_theme(self._theme_pref)
+        # F-17: widgets capture _t() while they are constructed, so the active
+        # theme MUST be set before _build_ui(). Otherwise every inline style
+        # baked into a page uses the light palette (white cards, dark text).
+        import ui._theme as _theme_mod_build
+        _theme_mod_build._active_theme = get_theme(self._current_theme)
+        self._apply_palette(get_theme(self._current_theme))
         self._build_ui()
         self.refresh_grid()
-        # Apply saved theme after UI is built
-        QTimer.singleShot(0, lambda: self._apply_theme(self._current_theme))
+        # Re-sync menu checks and widgets after the UI exists (no rebuild on
+        # the first pass — construction already used the resolved theme).
+        QTimer.singleShot(
+            0, lambda: self._apply_theme(self._theme_pref, persist=False, rebuild_ui=False))
+        self._watch_system_theme()
         self._setup_tray()
 
         client_count = len(self.vault.get_all_assessees())
@@ -523,8 +541,11 @@ class AayDocCapioApp(QMainWindow):
         act_exp      = QAction(_micon("menu_export.png"),     "Export Client Data",       self); act_exp.triggered.connect(self.export_data)
         act_tpl      = QAction(_micon("menu_template.png"),   "Download Import Template", self); act_tpl.triggered.connect(self.generate_template)
         act_groups   = QAction(_micon("btn_scan.png"),        "Manage Groups…",      self); act_groups.triggered.connect(self.open_manage_groups)
+        self._act_add     = act_add
         self._act_edit_cl = act_edit_cl
         self._act_del_cl  = act_del_cl
+        self._act_import  = act_imp
+        self._act_export  = act_exp
         cm_menu.addAction(act_add)
         cm_menu.addSeparator()
         cm_menu.addAction(act_edit_cl)
@@ -550,7 +571,8 @@ class AayDocCapioApp(QMainWindow):
         st_menu.addAction(act_email)
         st_menu.addSeparator()
 
-        # Appearance submenu — built dynamically from THEMES registry
+        # Appearance submenu — built dynamically from THEMES registry, plus
+        # the F-17 "Follow system" preference.
         appear_menu = st_menu.addMenu(_micon("menu_appearance.png"), "Appearance")
         _icons = {"light": "☀", "dark": "🌙"}
         for theme_key, theme_colors in THEMES.items():
@@ -560,6 +582,13 @@ class AayDocCapioApp(QMainWindow):
             act.triggered.connect(lambda _, k=theme_key: self._apply_theme(k))
             setattr(self, f"_theme_{theme_key}_act", act)
             appear_menu.addAction(act)
+        appear_menu.addSeparator()
+        _sys_act = QAction("🖥  Follow system", self)
+        _sys_act.setCheckable(True)
+        _sys_act.setToolTip("Switch automatically with the operating system's light/dark setting")
+        _sys_act.triggered.connect(lambda: self._apply_theme("system"))
+        self._theme_system_act = _sys_act
+        appear_menu.addAction(_sys_act)
 
         # Tools menu
         tools_menu = menubar.addMenu("Tools")
@@ -612,9 +641,15 @@ class AayDocCapioApp(QMainWindow):
 
         # Help menu
         help_menu = menubar.addMenu("Help")
+        self._help_menu = help_menu
         act_manual = QAction(_micon("menu_about.png"), "User Manual", self)
         act_manual.triggered.connect(self._open_user_manual)
         help_menu.addAction(act_manual)
+        self._act_manual = act_manual
+        act_shortcuts = QAction("⌨  Keyboard Shortcuts…", self)
+        act_shortcuts.triggered.connect(self._open_shortcut_editor)
+        help_menu.addAction(act_shortcuts)
+        self._act_shortcuts = act_shortcuts
         help_menu.addSeparator()
         smtp_help_action = QAction(_micon("btn_send_test.png"), "Email Setup Help…", self)
         smtp_help_action.triggered.connect(self._open_smtp_help)
@@ -676,6 +711,134 @@ class AayDocCapioApp(QMainWindow):
         # Populate the global e-Proceedings dashboard once the vault/assessees
         # are available (deferred — tabs are built before the vault loads).
         QTimer.singleShot(0, self._eproc_update_dashboard)
+
+        # F-17: keyboard navigation + customizable shortcuts (defaults are
+        # applied here; user overrides come from the vault).
+        self._setup_shortcuts()
+
+    def _setup_shortcuts(self):
+        """Create/attach the shortcut action map and apply saved bindings."""
+        self._shortcut_actions: dict[str, QAction] = {}
+        self._shortcut_user = _shortcuts.load_user_bindings(self.vault)
+
+        def _action(action_id: str, handler) -> QAction:
+            act = QAction(self)
+            act.setObjectName(action_id)
+            act.triggered.connect(lambda _=False: handler())
+            self.addAction(act)
+            self._shortcut_actions[action_id] = act
+            return act
+
+        # Reuse the existing menu actions so hints show up in the menus.
+        for action_id, act in (
+            ("app.add_client", getattr(self, "_act_add", None)),
+            ("app.edit_client", getattr(self, "_act_edit_cl", None)),
+            ("app.delete_clients", getattr(self, "_act_del_cl", None)),
+            ("app.import", getattr(self, "_act_import", None)),
+            ("app.export", getattr(self, "_act_export", None)),
+            ("app.user_manual", getattr(self, "_act_manual", None)),
+            ("app.open_shortcuts", getattr(self, "_act_shortcuts", None)),
+        ):
+            if act is not None:
+                self._shortcut_actions[action_id] = act
+
+        for action_id, hub in (
+            ("nav.home", "home"),
+            ("nav.income_tax", "it"),
+            ("nav.tds", "tds"),
+            ("nav.mail", "mail"),
+            ("nav.activity", "activity"),
+            ("nav.settings", "settings"),
+            ("nav.help", "help"),
+        ):
+            _action(action_id, lambda h=hub: self._nav_shell.go(h))
+
+        _action("app.focus_search", self._shortcut_focus_search)
+        _action("app.refresh_clients", self.refresh_grid)
+        _action("app.start_batch", self._open_download_picker)
+        _action("app.stop_batch", self.stop_automation)
+        _action("app.open_output_folder", self._open_output_folder)
+        _action("app.toggle_theme", self._toggle_theme)
+
+        self._apply_shortcut_bindings()
+
+        # Accessibility pass for the primary controls (F-17).
+        effective = _shortcuts.merge_user_bindings(self._shortcut_user)
+        if hasattr(self, "search_box"):
+            self.search_box.setAccessibleName("Search clients")
+            self.search_box.setAccessibleDescription(
+                "Filter the client list by name or PAN. Shortcut: "
+                + _shortcuts.format_binding(effective.get("app.focus_search", "")))
+        if hasattr(self, "status_filter"):
+            self.status_filter.setAccessibleName("Filter by download status")
+        if hasattr(self, "client_table"):
+            self.client_table.setAccessibleName("Client list")
+            self.client_table.setAccessibleDescription(
+                "Tab to a client's checkbox and press Space to select or clear it. "
+                "Arrow keys move through the rows; Ctrl+F searches. "
+                "Use the Downloads button or Ctrl+Enter to start.")
+        if hasattr(self, "btn_run"):
+            self.btn_run.setAccessibleName("Download documents")
+            self.btn_run.setToolTip("Choose document types and start downloading")
+        # Predictable keyboard path through the Home screen.
+        try:
+            QWidget.setTabOrder(self.search_box, self.status_filter)
+            QWidget.setTabOrder(self.status_filter, self.group_filter)
+            QWidget.setTabOrder(self.group_filter, self.client_table)
+            QWidget.setTabOrder(self.client_table, self.btn_run)
+        except Exception:
+            pass
+        self._apply_generic_accessibility()
+
+    def _apply_generic_accessibility(self):
+        """Give any remaining interactive control a sensible accessible name."""
+        for button in self.findChildren(QAbstractButton):
+            if button.accessibleName():
+                continue
+            name = (button.text() or "").strip() or (button.toolTip() or "").strip()
+            if name:
+                button.setAccessibleName(name)
+        for field in self.findChildren(QLineEdit):
+            if not field.accessibleName():
+                name = field.placeholderText().strip() or field.toolTip().strip()
+                if name:
+                    field.setAccessibleName(name)
+        for combo in self.findChildren(QComboBox):
+            if not combo.accessibleName():
+                name = combo.toolTip().strip() or combo.currentText().strip()
+                if name:
+                    combo.setAccessibleName(name)
+
+    def _shortcut_focus_search(self):
+        try:
+            self._nav_shell.go("home")
+        except Exception:
+            pass
+        if hasattr(self, "search_box"):
+            self.activateWindow()
+            self.search_box.setFocus(Qt.FocusReason.ShortcutFocusReason)
+            self.search_box.selectAll()
+
+    def _toggle_theme(self):
+        self._apply_theme("light" if self._current_theme == "dark" else "dark")
+
+    def _apply_shortcut_bindings(self):
+        effective = _shortcuts.merge_user_bindings(self._shortcut_user)
+        for action_id, act in self._shortcut_actions.items():
+            seq = effective.get(action_id, "")
+            act.setShortcut(QKeySequence(seq) if seq else QKeySequence())
+            act.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+            act.setShortcutVisibleInContextMenu(True)
+
+    def _open_shortcut_editor(self):
+        from ui.shortcuts_dialog import ShortcutEditorDialog
+        dlg = ShortcutEditorDialog(self, self.vault, on_saved=self._on_shortcuts_saved)
+        dlg.exec()
+
+    def _on_shortcuts_saved(self, user_bindings):
+        self._shortcut_user = user_bindings
+        self._apply_shortcut_bindings()
+        self.log("[Settings] Keyboard shortcuts updated.")
 
     def _build_eproc_dashboard_strip(self):
         """GLOBAL e-Proceedings dashboard: Last Sync / Failed Clients / Latest
@@ -745,23 +908,149 @@ class AayDocCapioApp(QMainWindow):
         if hasattr(self, "_hdr_crumb"):
             self._hdr_crumb.setText(f"{hub_label} › {sub_label}" if sub_label else hub_label)
 
-    def _apply_theme(self, theme: str):
-        """Switch theme by name and persist the choice."""
-        self._current_theme = theme
-        self.vault.update_setting("theme", theme)
-        self.log(f"[System] Theme set to: {theme}")
-        t = get_theme(theme)
+    def _resolve_theme(self, theme: str) -> str:
+        """Map a preference (light/dark/system) to a concrete theme name."""
+        if theme == "system":
+            return "dark" if self._system_is_dark() else "light"
+        return theme if theme in THEMES else "light"
+
+    def _system_is_dark(self) -> bool:
+        try:
+            app = QApplication.instance()
+            if app:
+                scheme = app.styleHints().colorScheme()
+                if scheme == Qt.ColorScheme.Dark:
+                    return True
+                if scheme == Qt.ColorScheme.Light:
+                    return False
+        except Exception:
+            pass
+        return False
+
+    def _watch_system_theme(self):
+        """Follow the OS light/dark scheme while the preference is "system"."""
+        try:
+            self._style_hints = QApplication.instance().styleHints()
+            self._style_hints.colorSchemeChanged.connect(self._on_system_scheme_changed)
+        except Exception:
+            self._style_hints = None
+
+    def _on_system_scheme_changed(self, *_):
+        if getattr(self, "_theme_pref", "light") == "system":
+            self._apply_theme("system", persist=False)
+
+    def _apply_theme(self, theme: str, persist: bool = True, rebuild_ui: bool = True):
+        """Switch theme by preference name and (optionally) persist it."""
+        if theme not in (*THEMES, "system"):
+            theme = "light"
+        previous = self._current_theme
+        self._theme_pref = theme
+        resolved = self._resolve_theme(theme)
+        self._current_theme = resolved
+        if persist:
+            self.vault.update_setting("theme", theme)
+        suffix = f" ({resolved})" if theme == "system" else ""
+        self.log(f"[System] Theme set to: {theme}{suffix}")
+        t = get_theme(resolved)
         import ui._theme as _theme_mod
         _theme_mod._active_theme = t
+        if QApplication.instance():
+            self._apply_palette(t)
+        self._sync_theme_actions()
+        if (rebuild_ui and resolved != previous
+                and hasattr(self, "_nav_shell")
+                and not getattr(self, "_theme_rebuild_pending", False)):
+            # Inline styles capture the theme at construction time, so a live
+            # theme change rebuilds the pages instead of leaving white cards
+            # behind. Deferred so we never delete the widget that fired the
+            # shortcut/menu action.
+            self._theme_rebuild_pending = True
+            QTimer.singleShot(0, self._rebuild_ui_for_theme)
+        else:
+            self._repaint_theme(t)
+            self._repaint_open_windows(t)
+
+    def _rebuild_ui_for_theme(self):
+        """Rebuild the main UI so every inline style uses the new theme."""
+        self._theme_rebuild_pending = False
+        if not hasattr(self, "_nav_shell"):
+            return
+        nav_key = self._nav_shell.current_key() or "home"
+        search_text = self.search_box.text() if hasattr(self, "search_box") else ""
+        status_idx = self.status_filter.currentIndex() if hasattr(self, "status_filter") else 0
+        group_idx = self.group_filter.currentIndex() if hasattr(self, "group_filter") else 0
+        it_tab_idx = self._it_stack.currentIndex() if hasattr(self, "_it_stack") else 0
+
+        for act in getattr(self, "_shortcut_actions", {}).values():
+            self.removeAction(act)
+            act.deleteLater()
+        self._shortcut_actions = {}
+
+        menubar = self.menuBar()
+        menubar.clear()
+        for menu in menubar.findChildren(QMenu):
+            menu.deleteLater()
+
+        self._build_ui()
+        self.refresh_grid()
+
+        if hasattr(self, "status_filter"):
+            self.status_filter.setCurrentIndex(status_idx)
+        if hasattr(self, "group_filter"):
+            self.group_filter.setCurrentIndex(group_idx)
+        if hasattr(self, "search_box") and search_text:
+            self.search_box.setText(search_text)
+        if (nav_key == "it" and hasattr(self, "_it_stack")
+                and hasattr(self, "_it_tab_btns")):
+            self._switch_it_tab(it_tab_idx)
+        self._nav_shell.go(nav_key)
+        self._repaint_theme(get_theme(self._current_theme))
+        self._repaint_open_windows(get_theme(self._current_theme))
+
+    def _sync_theme_actions(self):
+        for name in (*THEMES, "system"):
+            act = getattr(self, f"_theme_{name}_act", None)
+            if act:
+                act.setChecked(name == self._theme_pref)
+
+    def _apply_palette(self, t: ThemeColors):
+        """Theme Qt-painted surfaces that QSS cannot reach reliably."""
         app = QApplication.instance()
-        if app:
-            app.setStyleSheet(build_stylesheet(t))
-        if hasattr(self, "_theme_light_act"):
-            for name, action in THEMES.items():
-                act = getattr(self, f"_theme_{name}_act", None)
-                if act:
-                    act.setChecked(name == theme)
-        self._repaint_theme(t)
+        if not app:
+            return
+        pal = app.palette()
+        pal.setColor(QPalette.ColorRole.Window, QColor(t.bg_window))
+        pal.setColor(QPalette.ColorRole.WindowText, QColor(t.text_primary))
+        pal.setColor(QPalette.ColorRole.Base, QColor(t.bg_input))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(t.bg_table_alt))
+        pal.setColor(QPalette.ColorRole.Text, QColor(t.text_primary))
+        pal.setColor(QPalette.ColorRole.Button, QColor(t.bg_panel))
+        pal.setColor(QPalette.ColorRole.ButtonText, QColor(t.text_primary))
+        pal.setColor(QPalette.ColorRole.ToolTipBase, QColor(t.bg_tooltip))
+        pal.setColor(QPalette.ColorRole.ToolTipText, QColor(t.text_primary))
+        pal.setColor(QPalette.ColorRole.Highlight, QColor(t.accent))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(t.accent_text))
+        pal.setColor(QPalette.ColorRole.PlaceholderText, QColor(t.text_muted))
+        for role in (QPalette.ColorRole.WindowText, QPalette.ColorRole.Text,
+                     QPalette.ColorRole.ButtonText):
+            pal.setColor(QPalette.ColorGroup.Disabled, role, QColor(t.text_disabled))
+        app.setPalette(pal)
+        app.setStyleSheet(build_stylesheet(t))
+
+    def _repaint_open_windows(self, t: ThemeColors):
+        """Best-effort live re-theme for windows that opt into repaint_theme."""
+        app = QApplication.instance()
+        if not app:
+            return
+        for widget in app.topLevelWidgets():
+            if widget is self or not widget.isVisible():
+                continue
+            repaint = getattr(widget, "repaint_theme", None)
+            if callable(repaint):
+                try:
+                    repaint(t)
+                except Exception:
+                    pass
 
     def _repaint_theme(self, t: ThemeColors = None):
         """Repaint widgets whose colours are set imperatively (not via QSS)."""
@@ -844,7 +1133,8 @@ class AayDocCapioApp(QMainWindow):
                 f"QCheckBox{{font-size:12px;color:{t.text_muted};background:transparent;spacing:6px;}}"
                 f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {t.border};"
                 f"border-radius:3px;background:{t.bg_checkbox};}}"
-                f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};}}")
+                f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};"
+                f"image:url(resources/check_white.png);}}")
 
         # ── Run button ────────────────────────────────────────────────────────
         if hasattr(self, "btn_run"):
@@ -888,6 +1178,7 @@ class AayDocCapioApp(QMainWindow):
             chk_path = self.checkmark_path.replace("\\", "/")
             chk_ss = (
                 "QCheckBox { background: transparent; }"
+                f"QCheckBox:focus {{ background: {t.accent_light}; border-radius: 4px; }}"
                 f"QCheckBox::indicator {{ width: 15px; height: 15px; border: 1.5px solid {t.border};"
                 f" border-radius: 3px; background: {t.bg_checkbox}; }}"
                 f"QCheckBox::indicator:hover {{ border-color: {t.border_focus}; }}"
@@ -897,6 +1188,7 @@ class AayDocCapioApp(QMainWindow):
             self.client_table.setStyleSheet(
                 f"QTableWidget {{ border: 1.5px solid {t.border}; border-radius: 8px;"
                 f" background: {t.bg_table}; outline: 0; gridline-color: {t.grid}; }}"
+                f"QTableWidget:focus {{ border: 2px solid {t.border_focus}; }}"
                 f"QTableWidget::item {{ border-bottom: 1px solid {t.grid}; padding: 5px; color: {t.text_primary}; }}"
                 + chk_ss
             )
@@ -1183,7 +1475,7 @@ class AayDocCapioApp(QMainWindow):
 
         self.search_box = QLineEdit()
         self.search_box.setPlaceholderText("🔍  Search by name, PAN or status...")
-        self.search_box.setFixedHeight(28)
+        self.search_box.setMinimumHeight(30)
         self.search_box.setClearButtonEnabled(True)
         self.search_box.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
         self.search_box.textChanged.connect(self._apply_filter)
@@ -1198,8 +1490,8 @@ class AayDocCapioApp(QMainWindow):
             "🕐  Queued / Pending",
             "—  Not run yet",
         ])
-        self.status_filter.setFixedHeight(28)
-        self.status_filter.setFixedWidth(185)
+        self.status_filter.setMinimumHeight(30)
+        self.status_filter.setMinimumWidth(185)
         self.status_filter.currentIndexChanged.connect(lambda _: self._apply_filter(self.search_box.text()))
         filter_row.addWidget(self.status_filter)
 
@@ -1208,8 +1500,8 @@ class AayDocCapioApp(QMainWindow):
         # are actually tagged with.
         self.group_filter = StyledComboBox()
         self.group_filter.addItem("All Groups")
-        self.group_filter.setFixedHeight(28)
-        self.group_filter.setFixedWidth(160)
+        self.group_filter.setMinimumHeight(30)
+        self.group_filter.setMinimumWidth(160)
         self.group_filter.currentIndexChanged.connect(lambda _: self._apply_filter(self.search_box.text()))
         filter_row.addWidget(self.group_filter)
 
@@ -1225,7 +1517,7 @@ class AayDocCapioApp(QMainWindow):
     def _mk_settings_bar(self):
         bar = QFrame()
         self._settings_bar = bar
-        bar.setFixedHeight(68)
+        bar.setMinimumHeight(68)
         bar.setStyleSheet(f"QFrame{{background:{_t().bg_panel};border-radius:10px;}}")
         hl = QHBoxLayout(bar)
         hl.setContentsMargins(20, 0, 20, 0)
@@ -1358,12 +1650,14 @@ class AayDocCapioApp(QMainWindow):
         chk_path = self.checkmark_path.replace("\\", "/")
         checkbox_style = (
             "QCheckBox { background: transparent; }"
+            f"QCheckBox:focus {{ background: {_tbl.accent_light}; border-radius: 4px; }}"
             f"QCheckBox::indicator {{ width: 15px; height: 15px; border: 1.5px solid {_tbl.border}; border-radius: 3px; background: {_tbl.bg_checkbox}; }}"
             f"QCheckBox::indicator:hover {{ border-color: {_tbl.border_focus}; }}"
             f"QCheckBox::indicator:checked {{ background-color: {_tbl.accent}; border-color: {_tbl.accent}; image: url('{chk_path}'); }}"
         )
         self.client_table.setStyleSheet(
             f"QTableWidget {{ border: 1.5px solid {_tbl.border}; border-radius: 8px; background: {_tbl.bg_table}; outline: 0; gridline-color: {_tbl.grid}; }}"
+            f"QTableWidget:focus {{ border: 2px solid {_tbl.border_focus}; }}"
             f"QTableWidget::item {{ border-bottom: 1px solid {_tbl.grid}; padding: 5px; }}"
             + checkbox_style
         )
@@ -1543,7 +1837,7 @@ class AayDocCapioApp(QMainWindow):
     def _mk_control_bar(self):
         bar = QFrame()
         self._control_bar = bar
-        bar.setFixedHeight(54)
+        bar.setMinimumHeight(54)
         bar.setStyleSheet(f"QFrame{{background:{_t().bg_panel};border-radius:10px;}}")
         hl = QHBoxLayout(bar)
         hl.setContentsMargins(22, 0, 16, 0)
@@ -1577,7 +1871,7 @@ class AayDocCapioApp(QMainWindow):
         # per document type — lets a user select any combination for one run.
         self.btn_run = QToolButton()
         self.btn_run.setText("  Downloads")
-        self.btn_run.setFixedHeight(34)
+        self.btn_run.setMinimumHeight(34)
         self.btn_run.setMinimumWidth(130)
         from ui.helpers import _icon_path
         from PyQt6.QtGui import QIcon, QPixmap
@@ -1605,7 +1899,7 @@ class AayDocCapioApp(QMainWindow):
         # generates real portal records rather than just fetching files.
         self.btn_epay = QToolButton()
         self.btn_epay.setText("  🧾 E-Pay Tax")
-        self.btn_epay.setFixedHeight(34)
+        self.btn_epay.setMinimumHeight(34)
         self.btn_epay.setMinimumWidth(130)
         self.btn_epay.setStyleSheet(
             "QToolButton{"
@@ -1713,7 +2007,8 @@ class AayDocCapioApp(QMainWindow):
             f"QCheckBox{{font-size:12px;color:{_ck.text_muted};background:transparent;spacing:6px;}}"
             f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {_ck.border};"
             f"border-radius:3px;background:{_ck.bg_checkbox};}}"
-            f"QCheckBox::indicator:checked{{background:{_ck.accent};border-color:{_ck.accent};}}")
+            f"QCheckBox::indicator:checked{{background:{_ck.accent};border-color:{_ck.accent};"
+            f"image:url(resources/check_white.png);}}")
         layout.addWidget(self.chk_headless)
 
         _auto_min_saved = self.vault.get_setting("auto_minimise", False) if hasattr(self, "vault") else False
@@ -1778,10 +2073,32 @@ class AayDocCapioApp(QMainWindow):
         for theme_key, theme_colors in THEMES.items():
             icon = _icons.get(theme_key, "●")
             b = _btn(f"{icon}  {theme_colors.name}", "outline", height=34)
+            b.setAccessibleName(f"Use {theme_colors.name} theme")
             b.clicked.connect(lambda _, k=theme_key: self._apply_theme(k))
             theme_row.addWidget(b)
+        b_system = _btn("🖥  Follow system", "outline", height=34)
+        b_system.setToolTip("Switch automatically with the operating system's light/dark setting")
+        b_system.setAccessibleName("Follow the operating system theme")
+        b_system.clicked.connect(lambda: self._apply_theme("system"))
+        theme_row.addWidget(b_system)
         theme_row.addStretch()
         layout.addLayout(theme_row)
+
+        _section("KEYBOARD SHORTCUTS")
+        kb_row = QHBoxLayout()
+        kb_row.setSpacing(8)
+        btn_shortcuts = _btn("Edit Shortcuts…", "secondary", height=34)
+        btn_shortcuts.setToolTip("View, change or reset keyboard shortcuts for actions and pages")
+        btn_shortcuts.setAccessibleName("Edit keyboard shortcuts")
+        btn_shortcuts.clicked.connect(self._open_shortcut_editor)
+        kb_row.addWidget(btn_shortcuts)
+        _kb = _lbl(
+            "Every action and page can be reached from the keyboard. "
+            "Shortcuts are saved automatically and can be reset here.",
+            11, color=_t().text_muted)
+        _kb.setWordWrap(True)
+        kb_row.addWidget(_kb, stretch=1)
+        layout.addLayout(kb_row)
 
         layout.addStretch(1)
         return page
@@ -1794,6 +2111,7 @@ class AayDocCapioApp(QMainWindow):
         layout.setSpacing(8)
 
         items = [
+            ("Keyboard Shortcuts…", "menu_about.png", self._open_shortcut_editor),
             ("User Manual", "menu_about.png", self._open_user_manual),
             ("Email Setup Help…", "btn_send_test.png", self._open_smtp_help),
             ("Report Bug / Request Feature…", "btn_view_log.png", self._open_feedback_picker),
@@ -1858,8 +2176,9 @@ class AayDocCapioApp(QMainWindow):
         btn.setStyleSheet(
             "QPushButton{background:transparent;border:none;border-radius:7px;"
             f"padding:0 14px;font-size:12px;font-weight:600;color:{t.text_muted};}}"
-            f"QPushButton:hover{{background:rgba(255,255,255,0.04);color:{t.text_primary};}}"
-            f"QPushButton:checked{{color:{t.accent_it};background:{t.accent_it}22;}}"
+            f"QPushButton:hover{{background:{t.accent_light};color:{t.text_primary};}}"
+            f"QPushButton:focus{{border:2px solid {t.border_focus};}}"
+            f"QPushButton:checked{{color:{t.accent_it};background:{t.accent_it}1A;}}"
         )
         btn.clicked.connect(lambda: self._switch_it_tab(idx))
         return btn
@@ -1935,7 +2254,8 @@ class AayDocCapioApp(QMainWindow):
         cb.setStyleSheet(
             f"QCheckBox::indicator{{width:16px;height:16px;border:1.5px solid {t.border};"
             f"border-radius:4px;background:{t.bg_checkbox};}}"
-            f"QCheckBox::indicator:checked{{background:{t.accent_it};border-color:{t.accent_it};}}")
+            f"QCheckBox::indicator:checked{{background:{t.accent_it};border-color:{t.accent_it};"
+            f"image:url(resources/check_white.png);}}")
         hl.addWidget(cb, 0, Qt.AlignmentFlag.AlignTop)
 
         text_col = QVBoxLayout()
@@ -2007,7 +2327,8 @@ class AayDocCapioApp(QMainWindow):
                 f"QCheckBox{{background:transparent;}}"
                 f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {t.border};"
                 f"border-radius:3px;background:{t.bg_checkbox};}}"
-                f"QCheckBox::indicator:checked{{background:{t.accent_it};border-color:{t.accent_it};}}")
+                f"QCheckBox::indicator:checked{{background:{t.accent_it};border-color:{t.accent_it};"
+                f"image:url(resources/check_white.png);}}")
             cb.setChecked(True)
             cb.toggled.connect(self._dl_update_summary)
             self._dl_client_cbs[a.get("id")] = cb
@@ -2024,13 +2345,17 @@ class AayDocCapioApp(QMainWindow):
             self._dl_update_summary()
 
     def _dl_update_summary(self):
+        if not hasattr(self, "_dl_summary_lbl"):
+            return
         n_clients = sum(1 for cb in self._dl_client_cbs.values() if cb.isChecked())
         n_docs = sum(1 for cb in self._dl_doc_cbs.values() if cb.isChecked())
         self._dl_summary_lbl.setText(
             f"{n_clients} client{'s' if n_clients != 1 else ''} × "
             f"{n_docs} document{'s' if n_docs != 1 else ''} selected")
-        if hasattr(self, "_dl_scope_panel"):
-            self._dl_scope_panel.setVisible(self._dl_doc_cbs["filed_returns"].isChecked())
+        if (hasattr(self, "_dl_scope_panel")
+                and "filed_returns" in self._dl_doc_cbs):
+            self._dl_scope_panel.setVisible(
+                self._dl_doc_cbs["filed_returns"].isChecked())
 
     def _populate_dl_ay_combo(self):
         """(Re)fill the Download Documents tab's AY/TY selector from the same
@@ -3138,13 +3463,15 @@ class AayDocCapioApp(QMainWindow):
     def _mk_footer(self):
         """Live Logs — embedded in the Activity Log hub page, styled to
         match iBench's Activity Log view (WindowsProject/iBench App.tsx):
-        dark #0F1923 panel, #1A2636 header, per-line severity colouring
-        instead of icons, no wrap (horizontal scroll), always-on
-        auto-scroll. No hide/show toggle — it already lives on its own
-        dedicated page, so there's nothing to collapse it against."""
+        a deliberately dark panel in both themes, with per-line severity
+        colouring instead of icons, no wrap (horizontal scroll), and
+        always-on auto-scroll.
+
+        B-101: all colours come from the theme-invariant ``log_*`` tokens,
+        so this file has no unexplained raw hex literals."""
+        t = _t()
         footer = QFrame()
-        # Intentional: Live Logs panel is deliberately dark regardless of theme
-        footer.setStyleSheet("QFrame{background:#0F1923;}")
+        footer.setStyleSheet(f"QFrame{{background:{t.log_panel};}}")
         fl = QVBoxLayout(footer)
         fl.setContentsMargins(0, 0, 0, 0)
         fl.setSpacing(0)
@@ -3152,12 +3479,15 @@ class AayDocCapioApp(QMainWindow):
 
         log_hdr = QFrame()
         log_hdr.setFixedHeight(self._LOG_HEADER_HEIGHT)
-        log_hdr.setStyleSheet("QFrame{background:#1A2636;border-bottom:1px solid #1E293B;}")
+        log_hdr.setStyleSheet(
+            f"QFrame{{background:{t.log_header};"
+            f"border-bottom:1px solid {t.log_header_border};}}")
         hhl = QHBoxLayout(log_hdr); hhl.setContentsMargins(16, 0, 12, 0)
-        hhl.addWidget(_lbl("Activity Log", 11, bold=True, color="#CBD5E1"))
+        hhl.addWidget(_lbl("Activity Log", 11, bold=True, color=t.log_header_text))
         hhl.addStretch()
         self._log_count_lbl = QLabel("0 lines")
-        self._log_count_lbl.setStyleSheet("color:#64748B;font-size:10px;background:transparent;")
+        self._log_count_lbl.setStyleSheet(
+            f"color:{t.log_muted};font-size:10px;background:transparent;")
         hhl.addWidget(self._log_count_lbl)
         hhl.addSpacing(12)
 
@@ -3165,9 +3495,11 @@ class AayDocCapioApp(QMainWindow):
             b = QPushButton(text)
             b.setFixedHeight(22)
             b.setStyleSheet(
-                "QPushButton{background:#1E293B;color:#94A3B8;border:none;"
-                "border-radius:4px;padding:0 10px;font-size:10px;}"
-                "QPushButton:hover{background:#334155;color:#E2E8F0;}")
+                f"QPushButton{{background:{t.log_button_bg};color:{t.log_button_fg};"
+                "border:none;border-radius:4px;padding:0 10px;font-size:10px;}"
+                f"QPushButton:hover{{background:{t.log_button_hover_bg};"
+                f"color:{t.log_button_hover_fg};}}"
+                f"QPushButton:focus{{border:2px solid {t.border_focus};}}")
             return b
 
         open_folder_btn = _hdr_btn("Open Logs Folder")
@@ -3183,9 +3515,9 @@ class AayDocCapioApp(QMainWindow):
         self.log_box.setReadOnly(True)
         self.log_box.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         self.log_box.setStyleSheet(
-            "QTextEdit{background:#0F1923;border:none;"
+            f"QTextEdit{{background:{t.log_panel};border:none;"
             f"font-family:'{_MONO_FONT}',monospace;"
-            "font-size:12px;padding:8px 16px;}")  # noqa: hardcoded colors intentional — Live Logs panel is deliberately dark regardless of theme
+            "font-size:12px;padding:8px 16px;}")
         fl.addWidget(self.log_box)
         self._log_line_count = 0
 
@@ -3361,6 +3693,7 @@ class AayDocCapioApp(QMainWindow):
                 f"image:url('{_chk_path}');}}"
             )
             cb.setChecked(is_selected)
+            cb.setAccessibleName(f"Select {a.get('name', pan)}")
             cb.toggled.connect(lambda checked, id_=a_id: self._on_check(id_, checked))
             self._checkbox_map[a_id] = cb
             self._id_to_row[a_id] = i
@@ -3370,6 +3703,9 @@ class AayDocCapioApp(QMainWindow):
             # Col 1: Name
             name_item = QTableWidgetItem(a.get("name", ""))
             name_item.setData(Qt.ItemDataRole.UserRole, a_id)
+            name_item.setData(
+                Qt.ItemDataRole.AccessibleTextRole,
+                f"Client {a.get('name', '')}, PAN {pan}")
             name_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             self.client_table.setItem(i, self._TC_NAME, name_item)
 
@@ -3416,6 +3752,11 @@ class AayDocCapioApp(QMainWindow):
                 tooltip_text = ("The portal rejected this client's saved password. "
                                 "Update it in Client Master to resume automatic sync.")
             status_item.setToolTip(tooltip_text)
+            # F-17: never make colour the only signal — screen readers get the
+            # status text and the per-document breakdown too.
+            status_item.setData(
+                Qt.ItemDataRole.AccessibleTextRole,
+                f"Status for {a.get('name', pan)}: {status_text}. {tooltip_text}")
             if status_text.startswith("✅"):
                 status_item.setForeground(QColor(_t().success))
             elif status_text.startswith("❌"):
@@ -4334,26 +4675,28 @@ class AayDocCapioApp(QMainWindow):
     def _log_level_color(self, message: str) -> str:
         """Classify a log line the same way iBench does — by scanning for
         a status marker already present in the message text — and return
-        the matching iBench severity colour."""
+        the matching theme-invariant log severity colour."""
+        t = _t()
         m = message.lower()
         if "✅" in message or "done" in m:
-            return "#34D399"   # ok / success
+            return t.log_success
         if "❌" in message or "error" in m or "failed" in m or "timeout" in m:
-            return "#F87171"   # err
+            return t.log_error
         if "⚠" in message or "🕐" in message or "warn" in m:
-            return "#FBBF24"   # warn
+            return t.log_warning
         if "[debug]" in m:
-            return "#64748B"   # debug
-        return "#7DD3FC"       # info (default)
+            return t.log_debug
+        return t.log_info
 
     def _append_log(self, text):
         m = self._LOG_TS_RE.match(text)
         ts, message = (m.group(1), m.group(2)) if m else ("", text)
         color = self._log_level_color(message)
+        ts_color = _t().log_timestamp
         row = (
             '<div style="white-space:pre;line-height:20px;">'
-            f'<span style="color:#475569;">{html.escape(ts)}</span>'
-            '<span style="color:#475569;">&nbsp;&nbsp;</span>'
+            f'<span style="color:{ts_color};">{html.escape(ts)}</span>'
+            f'<span style="color:{ts_color};">&nbsp;&nbsp;</span>'
             f'<span style="color:{color};">{html.escape(message)}</span>'
             '</div>'
         )
@@ -6687,14 +7030,35 @@ if __name__ == "__main__":
         # visible moment with nothing else on screen otherwise.
         splash = None
         _splash_shown_at = None
+        _theme_pref_early = "light"
         try:
             # Read the "show splash screen" setting before AayDocCapioApp()
             # (and its own VaultManager) exists yet — a throwaway early
             # VaultManager just for this one read; harmless to construct
             # twice (idempotent _ensure_vault() migration check).
-            _show_splash = VaultManager().get_setting("show_splash", True)
+            _early_vault = VaultManager()
+            _show_splash = _early_vault.get_setting("show_splash", True)
+            _theme_pref_early = _early_vault.get_setting("theme", "light")
         except Exception:
             _show_splash = True
+        # F-17: apply the saved theme (including "system") before the splash
+        # paints, so there is no light flash before the main window appears.
+        _resolved_early = _theme_pref_early
+        if _resolved_early == "system":
+            try:
+                _resolved_early = (
+                    "dark" if app.styleHints().colorScheme() == Qt.ColorScheme.Dark
+                    else "light")
+            except Exception:
+                _resolved_early = "light"
+        if _resolved_early not in THEMES:
+            _resolved_early = "light"
+        try:
+            import ui._theme as _theme_mod_early
+            _theme_mod_early._active_theme = get_theme(_resolved_early)
+            app.setStyleSheet(build_stylesheet(get_theme(_resolved_early)))
+        except Exception:
+            pass
         try:
             _splash_logo_path = os.path.join(_bundled_dir(), "resources", "AayDoc_FullLogo.png")
             if _show_splash and os.path.exists(_splash_logo_path):
@@ -6711,11 +7075,14 @@ if __name__ == "__main__":
         app.setApplicationName("AayDocCapio")
         app.setDesktopFileName("aay-doc-capio")
         app.setStyle("Fusion")
-        # Force light palette so macOS dark mode doesn't corrupt unstyled
-        # native widgets (dialogs, menus, headers). Will be overridden once
-        # the theme system initialises inside AayDocCapioApp.
+        # Match the native palette to the saved preference. "system" is left
+        # alone so the OS scheme is honoured; light/dark are pinned so macOS
+        # dark mode does not corrupt unstyled native widgets.
         try:
-            app.styleHints().setColorScheme(Qt.ColorScheme.Light)
+            if _theme_pref_early == "dark":
+                app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
+            elif _theme_pref_early == "light":
+                app.styleHints().setColorScheme(Qt.ColorScheme.Light)
         except AttributeError:
             pass  # Qt < 6.8
         _diag("Step 3: font loading")
@@ -6726,7 +7093,7 @@ if __name__ == "__main__":
                 if _ttf.endswith(".ttf"):
                     QFontDatabase.addApplicationFont(os.path.join(_fonts_dir, _ttf))
         _diag("Step 4: setStyleSheet")
-        app.setStyleSheet(build_stylesheet(get_theme("light")))
+        app.setStyleSheet(build_stylesheet(get_theme(_resolved_early)))
         _diag("Step 5: AayDocCapioApp()")
         window = AayDocCapioApp()
         _diag("Step 6: setWindowIcon")

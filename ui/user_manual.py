@@ -485,6 +485,7 @@ def _user_manual_page_html(img_uris: dict) -> str:
         <a href="#settings-ay" class="sidebar-nav-item sub-item">10.2. Manage Assessment Years</a>
         <a href="#settings-appearance" class="sidebar-nav-item sub-item">10.3. Appearance & Themes</a>
         <a href="#settings-tray" class="sidebar-nav-item sub-item">10.4. System Tray & Background</a>
+        <a href="#settings-shortcuts" class="sidebar-nav-item sub-item">10.5. Keyboard Shortcuts</a>
       </div>
       
       <div class="sidebar-group">
@@ -1086,8 +1087,10 @@ def _user_manual_page_html(img_uris: dict) -> str:
           {section_card(
             h3("10.3. Appearance & Themes") +
             f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;">'
-            f'Switch between Light, Dark Navy, Slate, and Teal visual styles via <strong>Settings → Appearance</strong>. '
-            f'Theme preference is saved locally and applies instantly on next application launch.</p>'
+            f'Choose <strong>Light</strong>, <strong>Dark Navy</strong>, or <strong>Follow system</strong> via '
+            f'<strong>Settings → Appearance</strong> (or the menu bar). Follow system switches automatically '
+            f'when Windows, macOS or Linux changes between light and dark. The preference is saved locally '
+            f'and applies immediately.</p>'
           )}
           {_img("ADC_SettingsMenu", "Global settings categories dropdown", "Settings Menu")}
         </div>
@@ -1108,6 +1111,47 @@ def _user_manual_page_html(img_uris: dict) -> str:
             ])
             + tip_box("You can also send the app to tray manually at any time during a running batch by clicking the ⬇ Tray button in the progress dialog, or via right-click → Send to Tray on the tray icon.")
             + warn_box("If you quit from the tray menu while a batch is running, the batch will be aborted. Use Stop Batch first if you want to cleanly abort.")
+          )}
+        </div>
+
+        <div id="settings-shortcuts" style="scroll-margin-top: 90px; margin-top: 24px;">
+          {section_card(
+            h3("10.5. Keyboard Shortcuts") +
+            f'<p style="color:#1A2233;font-size:0.95rem;line-height:1.7;margin-bottom:12px;">'
+            f'Every screen and common action can be reached without a mouse. On Windows and Linux use '
+            f'<strong>Ctrl</strong>; on macOS the same shortcuts use <strong>Cmd</strong>. '
+            f'Change any shortcut from <strong>Settings → Keyboard Shortcuts → Edit Shortcuts…</strong>.</p>'
+            + f'<p style="color:#1A2233;font-size:0.92rem;margin-bottom:6px;"><strong>Pages</strong></p>'
+            + bullets_html([
+              '<code>Ctrl+1</code> — Home / Clients',
+              '<code>Ctrl+2</code> — Income Tax',
+              '<code>Ctrl+3</code> — TDS',
+              '<code>Ctrl+4</code> — Mail Docs to Clients',
+              '<code>Ctrl+5</code> — Activity Log',
+              '<code>Ctrl+,</code> — Settings',
+              '<code>F1</code> — Help',
+            ])
+            + f'<p style="color:#1A2233;font-size:0.92rem;margin:12px 0 6px;"><strong>Clients</strong></p>'
+            + bullets_html([
+              '<code>Ctrl+N</code> — Add New Client',
+              '<code>Ctrl+E</code> — Edit selected client',
+              '<code>Ctrl+I</code> — Import from CSV / Excel',
+              '<code>Ctrl+Shift+E</code> — Export client data',
+              '<code>Ctrl+F</code> — Focus the search box',
+              '<code>F5</code> — Refresh the client list',
+              'Delete selected clients — unassigned by default (deliberately, to prevent accidents)',
+            ])
+            + f'<p style="color:#1A2233;font-size:0.92rem;margin:12px 0 6px;"><strong>Downloads and help</strong></p>'
+            + bullets_html([
+              '<code>Ctrl+Enter</code> — Start selected downloads',
+              '<code>Ctrl+Shift+Enter</code> — Stop the current batch',
+              '<code>Ctrl+Shift+O</code> — Open the output folder',
+              '<code>Ctrl+Shift+D</code> — Toggle light/dark theme',
+              '<code>Ctrl+Shift+K</code> — Open the Keyboard Shortcuts editor',
+              '<code>Shift+F1</code> — Open the User Manual',
+            ])
+            + tip_box("The editor warns you if two actions use the same keys and will not save until the conflict is fixed. Use Reset This or Reset All to restore the defaults. Shortcuts apply immediately and are remembered after restart.")
+            + warn_box("Shortcuts work inside AayDocCapio only — they do not take over keys in other programs.")
           )}
         </div>
       </div>
