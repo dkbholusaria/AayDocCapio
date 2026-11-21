@@ -14,6 +14,19 @@ All notable changes to AayDocCapio are documented here.
 
 To force a fresh copy of a document, delete that file from the client folder and download again.
 
+#### Filed IT Forms download (F-63)
+- **New "Filed IT Forms" option** in Download Documents and the download picker, alongside 26AS, ITR, challans and e-Proceedings — it is not part of e-Proceedings
+- **Downloads every form you filed** under e-File > Income Tax Forms: Form 15CA, 15CB, 10IE, 10-IC, 35, 3CB-3CD / 3CA-3CD (Form 3CD is inside the "Download Form" ZIP), Form 146 and any other form the portal lists — including forms filed by the client's CA
+- **Each filing keeps its full set** — Filed Form, Acknowledgement/Receipt, JSON or XML where available, and the attachments ZIP
+- **Files are organised and never overwrite each other**: `Filed IT Forms/<Form>/<AY or FY>/<Form>_<Acknowledgement No>_<file>`, with attachments saved alongside
+- **Repeat runs only fetch what's new** — already-saved files are skipped, so a second run finishes with "☑ Filed IT Forms — Up to date"
+- **Handles both Act tabs** (2025 and 1961) plus Other Acts, and pages through long lists automatically
+
+#### View saved challans (F-12)
+- **New "View Challans" window** under E-Pay Tax (also on the Income Tax E-Pay Tax tab and the TDS hub) — see every challan already generated (Unpaid) or downloaded (Paid) in an earlier session, without logging in or fetching anything again
+- **Filter by client, Paid / Unpaid, and year**, or search by filename/CRN; the list shows the client, year, type, date and size
+- **Double-click a row to open the challan PDF/PNG, or use Open Folder** to jump to the exact folder it is saved in
+- Recognises older folder names too, so files saved by previous app versions still appear
 
 #### e-Proceedings Documents (F-60)
 - **Download every e-Proceedings document for a client in one pass** — all notices, letters and orders the department issued (via each notice's "Notice/Letter Pdf"), plus the client's own submitted responses: their attachments ("View Response") and acknowledgements. PDFs are not password-protected; any owner-encrypted client-uploaded attachments are unlocked automatically

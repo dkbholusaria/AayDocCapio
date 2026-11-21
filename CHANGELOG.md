@@ -14,6 +14,11 @@ All notable changes to AayDocCapio are documented here.
 
 To force a fresh copy of a document, delete that file from the client folder and download again.
 
+#### View saved challans (F-12)
+- **New "View Challans" window** under E-Pay Tax (also on the Income Tax E-Pay Tax tab and the TDS hub) — see every challan already generated (Unpaid) or downloaded (Paid) in an earlier session, without logging in or fetching anything again
+- **Filter by client, Paid / Unpaid, and year**, or search by filename/CRN; the list shows the client, year, type, date and size
+- **Double-click a row to open the challan PDF/PNG, or use Open Folder** to jump to the exact folder it is saved in
+- Recognises older folder names too, so files saved by previous app versions still appear
 
 #### e-Proceedings Documents (F-60)
 - **Download every e-Proceedings document for a client in one pass** — all notices, letters and orders the department issued (via each notice's "Notice/Letter Pdf"), plus the client's own submitted responses: their attachments ("View Response") and acknowledgements. PDFs are not password-protected; any owner-encrypted client-uploaded attachments are unlocked automatically
