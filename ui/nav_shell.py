@@ -146,6 +146,9 @@ class NavRail(QWidget):
         btn.setCheckable(True)
         btn.setFixedSize(BUTTON_SIZE, BUTTON_SIZE)
         btn.setToolTip(label)
+        btn.setAccessibleName(label)
+        btn.setAccessibleDescription(f"Go to the {label} screen")
+        btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setIconSize(QSize(ICON_SIZE, ICON_SIZE))
 
@@ -189,6 +192,9 @@ class NavRail(QWidget):
                 "QToolButton:checked {"
                 f"  background: {accent}29;"
                 "}"
+                "QToolButton:focus {"
+                f"  border: 2px solid {t.border_focus};"
+                "}"
             )
 
 
@@ -207,6 +213,7 @@ class NavShell(QWidget):
 
         self._hub_labels: dict[str, str] = {}
         self._hub_pages: dict[str, QWidget] = {}
+        self._current_key: str = ""
 
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -229,7 +236,11 @@ class NavShell(QWidget):
             return
         self._stack.setCurrentWidget(page)
         self._rail.set_active(key)
+        self._current_key = key
         self.hubChanged.emit(self._hub_labels.get(key, key), sub or "")
+
+    def current_key(self) -> str:
+        return self._current_key
 
     def repaint_theme(self, t):
         self._rail.repaint_theme(t)

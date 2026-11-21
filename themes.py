@@ -91,6 +91,25 @@ class ThemeColors:
     warning:    str
     warning_bg: str
 
+    # Live Logs panel (B-101) — intentionally theme-invariant: the log stays
+    # dark in both themes, so these are defaults shared by every theme rather
+    # than duplicated per palette. All values meet 4.5:1 on log_panel.
+    log_panel:            str = "#0F1923"
+    log_header:           str = "#1A2636"
+    log_header_border:    str = "#1E293B"
+    log_header_text:      str = "#CBD5E1"
+    log_muted:            str = "#94A3B8"
+    log_button_bg:        str = "#1E293B"
+    log_button_fg:        str = "#CBD5E1"
+    log_button_hover_bg:  str = "#334155"
+    log_button_hover_fg:  str = "#E2E8F0"
+    log_success:          str = "#34D399"
+    log_error:            str = "#F87171"
+    log_warning:          str = "#FBBF24"
+    log_debug:            str = "#94A3B8"
+    log_info:             str = "#7DD3FC"
+    log_timestamp:        str = "#94A3B8"
+
 
 # ── Theme definitions ─────────────────────────────────────────────────────────
 
@@ -113,13 +132,13 @@ THEMES: dict[str, ThemeColors] = {
         bg_checkbox     = "#FFFFFF",
 
         text_primary    = "#0F172A",
-        text_muted      = "#94A3B8",
-        text_disabled   = "#94A3B8",
+        text_muted      = "#64748B",
+        text_disabled   = "#64748B",
         text_log        = "#7DD3FC",
 
-        border          = "#E2E8F0",
+        border          = "#64748B",
         border_focus    = "#3B82F6",
-        border_menu     = "#94A3B8",
+        border_menu     = "#475569",
         bg_tooltip      = "#FFFDE7",
         grid            = "#E2E8F0",
 
@@ -131,8 +150,8 @@ THEMES: dict[str, ThemeColors] = {
         row_selected_bg = "#FFFFFF",
         row_selected_fg = "#DC2626",
 
-        scrollbar_handle       = "#CBD5E1",
-        scrollbar_handle_hover = "#94A3B8",
+        scrollbar_handle       = "#64748B",
+        scrollbar_handle_hover = "#475569",
 
         accent_home     = "#2563EB",
         accent_it       = "#9F1239",
@@ -140,11 +159,11 @@ THEMES: dict[str, ThemeColors] = {
         accent_tds      = "#0F766E",
         accent_mca      = "#7E22CE",
 
-        success         = "#16A34A",
+        success         = "#166534",
         success_bg      = "#D1FAE5",
-        error           = "#DC2626",
+        error           = "#B91C1C",
         error_bg        = "#FEF2F2",
-        warning         = "#D97706",
+        warning         = "#B45309",
         warning_bg      = "#FFF7ED",
     ),
 
@@ -164,14 +183,14 @@ THEMES: dict[str, ThemeColors] = {
         bg_menubar      = "#122036",
         bg_checkbox     = "#0F2040",
 
-        text_primary    = "#E2E8F0",
-        text_muted      = "#94A3B8",
-        text_disabled   = "#475569",
+        text_primary    = "#FFFFFF",
+        text_muted      = "#CBD5E1",
+        text_disabled   = "#94A3B8",
         text_log        = "#7DD3FC",
 
-        border          = "#1E3A5F",
+        border          = "#54739B",
         border_focus    = "#3B82F6",
-        border_menu     = "#2E5A8E",
+        border_menu     = "#54739B",
         bg_tooltip      = "#0F2040",
         grid            = "#1E3A5F",
 
@@ -183,8 +202,8 @@ THEMES: dict[str, ThemeColors] = {
         row_selected_bg = "#0D1F3C",
         row_selected_fg = "#60A5FA",
 
-        scrollbar_handle       = "#1E3A5F",
-        scrollbar_handle_hover = "#2563EB",
+        scrollbar_handle       = "#54739B",
+        scrollbar_handle_hover = "#6B8CB8",
 
         accent_home     = "#2563EB",
         accent_it       = "#F43F5E",
@@ -202,6 +221,73 @@ THEMES: dict[str, ThemeColors] = {
 }
 
 
+# ── WCAG contrast helpers (F-17) ─────────────────────────────────────────────
+
+def _hex_to_rgb(value: str) -> tuple[float, float, float]:
+    value = value.strip().lstrip("#")
+    if len(value) == 3:
+        value = "".join(c * 2 for c in value)
+    if len(value) != 6:
+        raise ValueError(f"Unsupported colour: {value!r}")
+    return tuple(int(value[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
+
+
+def relative_luminance(color: str) -> float:
+    def _linear(channel: float) -> float:
+        return channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
+
+    r, g, b = (_linear(c) for c in _hex_to_rgb(color))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast_ratio(foreground: str, background: str) -> float:
+    """WCAG 2.x contrast ratio between two hex colours."""
+    a = relative_luminance(foreground)
+    b = relative_luminance(background)
+    lighter, darker = max(a, b), min(a, b)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def contrast_checks(t: ThemeColors) -> list[tuple[str, str, str, float]]:
+    """Return ``(label, foreground, background, required_ratio)`` for the
+    colour pairs F-17 guarantees in both themes.
+
+    Normal text needs AA 4.5:1; large text and UI boundaries (focus rings,
+    input/menu borders) need 3:1.
+    """
+    surfaces = {
+        "window": t.bg_window,
+        "panel": t.bg_panel,
+        "input": t.bg_input,
+        "table": t.bg_table,
+        "table_alt": t.bg_table_alt,
+        "header": t.bg_header,
+        "menu": t.bg_menu,
+    }
+    checks: list[tuple[str, str, str, float]] = []
+    for name, bg in surfaces.items():
+        checks.append((f"primary on {name}", t.text_primary, bg, 4.5))
+        checks.append((f"muted on {name}", t.text_muted, bg, 4.5))
+        # Disabled text is exempt from WCAG 4.5:1, but it must still be
+        # perceivable; hold it to the 3:1 non-text level.
+        checks.append((f"disabled on {name}", t.text_disabled, bg, 3.0))
+    checks.extend([
+        ("accent text on accent", t.accent_text, t.accent, 4.5),
+        ("accent text on accent hover", t.accent_text, t.accent_hover, 4.5),
+        ("success on success bg", t.success, t.success_bg, 4.5),
+        ("error on error bg", t.error, t.error_bg, 4.5),
+        ("warning on warning bg", t.warning, t.warning_bg, 4.5),
+        ("selected row text", t.row_selected_fg, t.row_selected_bg, 4.5),
+        ("focus ring on window", t.border_focus, t.bg_window, 3.0),
+        ("focus ring on panel", t.border_focus, t.bg_panel, 3.0),
+        ("border on window", t.border, t.bg_window, 3.0),
+        ("border on panel", t.border, t.bg_panel, 3.0),
+        ("menu border on menu", t.border_menu, t.bg_menu, 3.0),
+        ("scrollbar on window", t.scrollbar_handle, t.bg_window, 3.0),
+    ])
+    return checks
+
+
 # ── Stylesheet builder ────────────────────────────────────────────────────────
 
 def build_stylesheet(t: ThemeColors) -> str:
@@ -216,6 +302,22 @@ QMessageBox QPushButton {{
 QMessageBox QPushButton:hover {{ background: {t.accent_hover}; }}
 QWidget {{ font-family: {UI_FONT}; font-size: 13px; color: {t.text_primary}; }}
 QLabel  {{ color: {t.text_primary}; font-size: 13px; }}
+
+/* F-17: keyboard focus must be visible in both themes. */
+QPushButton:focus, QToolButton:focus {{
+    border: 2px solid {t.border_focus};
+}}
+QCheckBox:focus, QRadioButton:focus {{
+    color: {t.text_primary};
+    background: {t.accent_light};
+    border-radius: 4px;
+}}
+QAbstractItemView:focus {{
+    border: 2px solid {t.border_focus};
+}}
+QMenuBar::item:selected {{
+    border: 1px solid {t.border_focus};
+}}
 
 QLineEdit {{
     background: {t.bg_input};
@@ -267,7 +369,7 @@ QCheckBox::indicator:hover   {{ border-color: {t.border_focus}; }}
 QCheckBox::indicator:checked {{
     background: {t.accent};
     border-color: {t.accent};
-    image: url(resources/check.png);
+    image: url(resources/check_white.png);
 }}
 QCheckBox::indicator:disabled {{ background: {t.bg_window}; border-color: {t.border}; }}
 

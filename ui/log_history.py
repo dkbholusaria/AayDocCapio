@@ -105,7 +105,7 @@ class LogHistoryDialog(QDialog):
             f"QTableWidget{{border:none;background:{t.bg_table};gridline-color:{t.border};"
             f"color:{t.text_primary};font-family:{_MONO_FONT};font-size:11px;outline:none;}}"
             f"QTableWidget::item{{padding:6px 10px;border:none;text-decoration:none;}}"
-            f"QTableWidget::item:selected{{background:{t.accent};color:white;}}"
+            f"QTableWidget::item:selected{{background:{t.accent};color:{t.accent_text};}}"
             f"QHeaderView::section{{background:{t.bg_header};color:{t.text_muted};"
             f"border:none;border-right:1px solid {t.border};"
             f"border-bottom:1px solid {t.border};"
