@@ -5,8 +5,9 @@ from PyQt6.QtWidgets import (
     QFrame, QTableWidget, QTableWidgetItem, QHeaderView,
     QAbstractItemView, QProgressBar, QSizePolicy, QFileDialog, QMessageBox,
     QTextEdit, QSpinBox, QComboBox, QFontComboBox, QTabWidget,
+    QTimeEdit, QGridLayout,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QTime
 from PyQt6.QtGui import (
     QFont, QColor, QPixmap, QPainter, QBrush, QPen,
     QTextCharFormat, QIcon, QDoubleValidator,
@@ -664,6 +665,7 @@ class BatchProgressDialog(QDialog):
     _update_signal = pyqtSignal(str, str, str)         # pan, ay_label, status
     _path_signal   = pyqtSignal(str, str, str)         # pan, ay_label, folder
     _resume_signal = pyqtSignal(list)
+    _countdown_signal = pyqtSignal(str)
     _client_done_signal = pyqtSignal(str, str)   # pan, ay_label — ALL selected doc types finished for this (client, year)
 
     _COL_NAME   = 0
@@ -675,12 +677,18 @@ class BatchProgressDialog(QDialog):
     def __init__(self, targets: list, selected_docs, year_specs: list,
                  ay: str = "", stop_callback=None, resume_callback=None, skip_callback=None,
                  tray_callback=None, output_dir: str = "", parent=None,
-                 id_label: str = "PAN"):
+                 id_label: str = "PAN", pause_callback=None, resume_pause_callback=None,
+                 restart_callback=None, skip_future_callback=None):
         super().__init__(parent)
         self._stop_callback   = stop_callback
         self._resume_callback = resume_callback
         self._skip_callback   = skip_callback
         self._tray_callback   = tray_callback
+        self._pause_callback = pause_callback
+        self._resume_pause_callback = resume_pause_callback
+        self._restart_callback = restart_callback
+        self._skip_future_callback = skip_future_callback
+        self._paused = False
         self._output_dir      = output_dir
         self._selected_docs   = selected_docs
         self._ay              = ay
@@ -826,6 +834,11 @@ class BatchProgressDialog(QDialog):
             f"QProgressBar::chunk{{background:{_bt.success};border-radius:9px;}}")
         layout.addWidget(self._progress_bar)
 
+        self._countdown_lbl = QLabel("")
+        self._countdown_lbl.setStyleSheet(
+            f"color:{_bt.text_muted};font-size:11px;background:transparent;")
+        layout.addWidget(self._countdown_lbl)
+
         # ── Footer ────────────────────────────────────────────────────────────
         footer = QHBoxLayout()
         footer.setSpacing(8)
@@ -902,6 +915,33 @@ class BatchProgressDialog(QDialog):
         self._stop_btn.clicked.connect(self._on_stop_clicked)
         footer.addWidget(self._stop_btn)
 
+        self._pause_btn = QPushButton("⏸  Pause")
+        self._pause_btn.setFixedHeight(32)
+        self._pause_btn.setMinimumWidth(90)
+        self._pause_btn.setVisible(bool(self._pause_callback))
+        self._pause_btn.setStyleSheet(
+            f"QPushButton{{background:{_bt.bg_table_alt};color:{_bt.text_primary};border:1px solid {_bt.border};"
+            f"border-radius:6px;font-size:12px;font-weight:600;padding:0 12px;}}"
+            f"QPushButton:hover{{background:{_bt.bg_input};}}")
+        self._pause_btn.clicked.connect(self._on_pause_clicked)
+        footer.addWidget(self._pause_btn)
+
+        self._restart_btn = QPushButton("↻  Restart")
+        self._restart_btn.setFixedHeight(32)
+        self._restart_btn.setMinimumWidth(90)
+        self._restart_btn.setVisible(bool(self._restart_callback))
+        self._restart_btn.setStyleSheet(self._pause_btn.styleSheet())
+        self._restart_btn.clicked.connect(self.restart_run)
+        footer.addWidget(self._restart_btn)
+
+        self._skip_future_btn = QPushButton("⏭⏭  Skip Future")
+        self._skip_future_btn.setFixedHeight(32)
+        self._skip_future_btn.setMinimumWidth(110)
+        self._skip_future_btn.setVisible(bool(self._skip_future_callback))
+        self._skip_future_btn.setStyleSheet(self._pause_btn.styleSheet())
+        self._skip_future_btn.clicked.connect(self.skip_future)
+        footer.addWidget(self._skip_future_btn)
+
         self._resume_btn = QPushButton("▶  Resume")
         self._resume_btn.setFixedHeight(32)
         self._resume_btn.setMinimumWidth(100)
@@ -935,6 +975,7 @@ class BatchProgressDialog(QDialog):
 
         self._update_signal.connect(self._on_update)
         self._path_signal.connect(self._on_path_update)
+        self._countdown_signal.connect(self._set_countdown_ui)
         self._client_done_signal.connect(self._on_client_done)
         self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
 
@@ -1036,6 +1077,55 @@ class BatchProgressDialog(QDialog):
     def _on_skip_clicked(self):
         if self._skip_callback:
             self._skip_callback()
+
+    def _on_pause_clicked(self):
+        self._paused = not self._paused
+        if self._paused:
+            self.pause_visual()
+            if self._pause_callback:
+                self._pause_callback()
+        else:
+            self.resume_visual()
+            if self._resume_pause_callback:
+                self._resume_pause_callback()
+
+    def pause_visual(self):
+        self._paused = True
+        self._pause_btn.setText("▶  Resume")
+        self._countdown_lbl.setText("Paused — the current step will finish first.")
+
+    def resume_visual(self):
+        self._paused = False
+        self._pause_btn.setText("⏸  Pause")
+        self._countdown_lbl.setText("Resuming…")
+
+    def set_countdown(self, text: str):
+        self._countdown_signal.emit(text)
+
+    def _set_countdown_ui(self, text: str):
+        self._countdown_lbl.setText(text)
+
+    def restart_run(self):
+        if not self._restart_callback:
+            return
+        answer = QMessageBox.question(
+            self, "Restart Run",
+            "Restart this auto-fetch run from the first client?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer == QMessageBox.StandardButton.Yes:
+            self._restart_callback()
+
+    def skip_future(self):
+        if not self._skip_future_callback:
+            return
+        answer = QMessageBox.question(
+            self, "Skip Future Clients",
+            "Stop after the current client and remove the remaining clients from this run?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer == QMessageBox.StandardButton.Yes:
+            self._skip_future_callback()
         self._skip_btn.setEnabled(False)
         self._skip_btn.setText("⏭  Skipping...")
 
@@ -1157,7 +1247,12 @@ class BatchProgressDialog(QDialog):
         self._skip_btn.setVisible(False)
         self._tray_btn.setVisible(False)
         self._stop_btn.setVisible(False)
-        self._resume_btn.setVisible(aborted)
+        self._pause_btn.setVisible(False)
+        self._restart_btn.setVisible(False)
+        self._skip_future_btn.setVisible(False)
+        if self._countdown_lbl.text():
+            self._countdown_lbl.setText("")
+        self._resume_btn.setVisible(bool(aborted and self._resume_callback))
         self._close_btn.setEnabled(True)
         self._report_btn.setEnabled(True)
         n = self._done_count
@@ -4767,6 +4862,33 @@ class ChallanGenerationProgressDialog(QDialog):
         self._stop_btn = _btn("⏹  Stop", "danger")
         self._stop_btn.clicked.connect(self._on_stop_clicked)
         footer.addWidget(self._stop_btn)
+
+        self._pause_btn = QPushButton("⏸  Pause")
+        self._pause_btn.setFixedHeight(32)
+        self._pause_btn.setMinimumWidth(90)
+        self._pause_btn.setVisible(bool(self._pause_callback))
+        self._pause_btn.setStyleSheet(
+            f"QPushButton{{background:{_bt.bg_table_alt};color:{_bt.text_primary};border:1px solid {_bt.border};"
+            f"border-radius:6px;font-size:12px;font-weight:600;padding:0 12px;}}"
+            f"QPushButton:hover{{background:{_bt.bg_input};}}")
+        self._pause_btn.clicked.connect(self._on_pause_clicked)
+        footer.addWidget(self._pause_btn)
+
+        self._restart_btn = QPushButton("↻  Restart")
+        self._restart_btn.setFixedHeight(32)
+        self._restart_btn.setMinimumWidth(90)
+        self._restart_btn.setVisible(bool(self._restart_callback))
+        self._restart_btn.setStyleSheet(self._pause_btn.styleSheet())
+        self._restart_btn.clicked.connect(self.restart_run)
+        footer.addWidget(self._restart_btn)
+
+        self._skip_future_btn = QPushButton("⏭⏭  Skip Future")
+        self._skip_future_btn.setFixedHeight(32)
+        self._skip_future_btn.setMinimumWidth(110)
+        self._skip_future_btn.setVisible(bool(self._skip_future_callback))
+        self._skip_future_btn.setStyleSheet(self._pause_btn.styleSheet())
+        self._skip_future_btn.clicked.connect(self.skip_future)
+        footer.addWidget(self._skip_future_btn)
         layout.addLayout(footer)
 
         self._update_signal.connect(self._on_update)
@@ -4869,7 +4991,7 @@ class DownloadPickerDialog(QDialog):
 
         self.setWindowTitle("Download Documents")
         self.setMinimumWidth(440)
-        self.resize(460, 460)
+        self.resize(460, 520)
         self.setWindowFlags(
             Qt.WindowType.Dialog |
             Qt.WindowType.WindowTitleHint |
@@ -6163,6 +6285,33 @@ class ReturnStatusProgressDialog(QDialog):
         self._stop_btn = _btn("⏹  Stop", "danger")
         self._stop_btn.clicked.connect(self._on_stop_clicked)
         footer.addWidget(self._stop_btn)
+
+        self._pause_btn = QPushButton("⏸  Pause")
+        self._pause_btn.setFixedHeight(32)
+        self._pause_btn.setMinimumWidth(90)
+        self._pause_btn.setVisible(bool(self._pause_callback))
+        self._pause_btn.setStyleSheet(
+            f"QPushButton{{background:{_bt.bg_table_alt};color:{_bt.text_primary};border:1px solid {_bt.border};"
+            f"border-radius:6px;font-size:12px;font-weight:600;padding:0 12px;}}"
+            f"QPushButton:hover{{background:{_bt.bg_input};}}")
+        self._pause_btn.clicked.connect(self._on_pause_clicked)
+        footer.addWidget(self._pause_btn)
+
+        self._restart_btn = QPushButton("↻  Restart")
+        self._restart_btn.setFixedHeight(32)
+        self._restart_btn.setMinimumWidth(90)
+        self._restart_btn.setVisible(bool(self._restart_callback))
+        self._restart_btn.setStyleSheet(self._pause_btn.styleSheet())
+        self._restart_btn.clicked.connect(self.restart_run)
+        footer.addWidget(self._restart_btn)
+
+        self._skip_future_btn = QPushButton("⏭⏭  Skip Future")
+        self._skip_future_btn.setFixedHeight(32)
+        self._skip_future_btn.setMinimumWidth(110)
+        self._skip_future_btn.setVisible(bool(self._skip_future_callback))
+        self._skip_future_btn.setStyleSheet(self._pause_btn.styleSheet())
+        self._skip_future_btn.clicked.connect(self.skip_future)
+        footer.addWidget(self._skip_future_btn)
         layout.addLayout(footer)
 
         self._update_signal.connect(self._on_update)
@@ -6471,3 +6620,293 @@ class ReturnStatusDialog(QDialog):
         parent = self.parent()
         if parent is not None and hasattr(parent, "start_return_status_check"):
             parent.start_return_status_check(ay_value, targets, on_done=self._refresh_table)
+
+
+class EAutoFetchSettingsDialog(QDialog):
+    def __init__(self, parent, vault, clients):
+        super().__init__(parent)
+        self.vault = vault
+        self.clients = list(clients or [])
+        self._cfg = vault.get_eproc_autofetch_config()
+        self._pan_labels = {}
+
+        t = _t()
+        self.setWindowTitle("e-Proceedings Auto-Fetch Settings")
+        self.setMinimumSize(660, 720)
+        self.resize(700, 780)
+        self.setStyleSheet(
+            f"QDialog{{background:{t.bg_window};}}"
+            f"QLabel{{background:transparent;border:none;color:{t.text_primary};font-size:12px;}}"
+            f"QCheckBox,QRadioButton{{background:transparent;color:{t.text_primary};font-size:12px;spacing:6px;}}"
+            f"QSpinBox,QComboBox,QTimeEdit{{background:{t.bg_input};border:1px solid {t.border};"
+            f"border-radius:5px;padding:4px 6px;color:{t.text_primary};font-size:12px;}}"
+            f"QGroupBox{{border:1px solid {t.border};border-radius:6px;margin-top:10px;"
+            f"padding:10px 8px 8px 8px;color:{t.text_primary};font-weight:600;}}"
+            f"QGroupBox::title{{subcontrol-origin:margin;left:10px;padding:0 4px;}}"
+        )
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(16, 14, 16, 12)
+        outer.setSpacing(10)
+
+        title = QLabel("Scheduled e-Proceedings Auto-Fetch")
+        title.setStyleSheet(f"font-size:15px;font-weight:700;color:{t.text_primary};")
+        outer.addWidget(title)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        body = QWidget()
+        body.setStyleSheet("background:transparent;")
+        layout = QVBoxLayout(body)
+        layout.setContentsMargins(2, 2, 8, 2)
+        layout.setSpacing(10)
+        scroll.setWidget(body)
+        outer.addWidget(scroll, stretch=1)
+
+        def section(text):
+            label = QLabel(text)
+            label.setStyleSheet(
+                f"font-size:10px;font-weight:700;color:{t.text_muted};"
+                "letter-spacing:0.5px;margin-top:6px;")
+            layout.addWidget(label)
+
+        self.chk_enabled = QCheckBox("Enable e-Proceedings auto-fetch")
+        self.chk_enabled.setChecked(self._cfg["enabled"])
+        self.chk_enabled.setToolTip("When off, nothing runs automatically.")
+        layout.addWidget(self.chk_enabled)
+
+        section("SCHEDULE")
+        schedule_row = QHBoxLayout()
+        schedule_row.setSpacing(8)
+        schedule_row.addWidget(QLabel("Run at"))
+        self.time_edit = QTimeEdit()
+        self.time_edit.setDisplayFormat("HH:mm")
+        self.time_edit.setTime(QTime.fromString(self._cfg["run_time"], "HH:mm"))
+        self.time_edit.setFixedWidth(90)
+        schedule_row.addWidget(self.time_edit)
+        schedule_row.addSpacing(12)
+        schedule_row.addWidget(QLabel("Active days"))
+        self._day_checks = {}
+        for index, name in enumerate(("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")):
+            cb = QCheckBox(name)
+            cb.setChecked(index in self._cfg["active_days"])
+            cb.stateChanged.connect(self._update_estimate)
+            self._day_checks[index] = cb
+            schedule_row.addWidget(cb)
+        schedule_row.addStretch()
+        layout.addLayout(schedule_row)
+
+        section("CLIENTS")
+        self.combo_scope = QComboBox()
+        self.combo_scope.addItems(["All clients", "Selected group", "Selected clients"])
+        self.combo_scope.setCurrentIndex({"all": 0, "group": 1, "pan": 2}.get(self._cfg["scope"], 0))
+        self.combo_scope.currentIndexChanged.connect(self._scope_changed)
+        layout.addWidget(self.combo_scope)
+
+        self.combo_group = QComboBox()
+        self.combo_group.addItems(self.vault.get_all_groups())
+        if self._cfg["scope_groups"]:
+            wanted = self._cfg["scope_groups"][0]
+            pos = self.combo_group.findText(wanted)
+            if pos >= 0:
+                self.combo_group.setCurrentIndex(pos)
+        self.combo_group.currentIndexChanged.connect(self._update_estimate)
+        layout.addWidget(self.combo_group)
+
+        self.combo_clients = CheckableComboBox(placeholder="Select clients")
+        for client in self.clients:
+            pan = str(client.get("pan", "")).upper()
+            label = f"{pan} — {client.get('name', '')}".strip()
+            self._pan_labels[label] = pan
+            self.combo_clients.add_item(label, pan in set(self._cfg["scope_pans"]))
+        layout.addWidget(self.combo_clients)
+
+        row_clients = QHBoxLayout()
+        row_clients.setSpacing(8)
+        row_clients.addWidget(QLabel("Clients per day"))
+        self.spin_clients_per_day = QSpinBox()
+        self.spin_clients_per_day.setRange(1, 500)
+        self.spin_clients_per_day.setValue(self._cfg["clients_per_day"])
+        self.spin_clients_per_day.valueChanged.connect(self._update_estimate)
+        row_clients.addWidget(self.spin_clients_per_day)
+        self.lbl_estimate = QLabel("")
+        self.lbl_estimate.setStyleSheet(f"color:{t.text_muted};font-size:11px;")
+        row_clients.addWidget(self.lbl_estimate, stretch=1)
+        layout.addLayout(row_clients)
+
+        section("DISTRIBUTION")
+        self.rd_every_day = QRadioButton("Run every day and continue where it left off")
+        self.rd_distribute = QRadioButton("Distribute the workload across several days")
+        self.rd_every_day.setChecked(self._cfg["distribution"] == "every_day")
+        self.rd_distribute.setChecked(self._cfg["distribution"] == "distribute")
+        self.rd_every_day.toggled.connect(self._distribution_changed)
+        self.rd_distribute.toggled.connect(self._distribution_changed)
+        layout.addWidget(self.rd_every_day)
+        layout.addWidget(self.rd_distribute)
+
+        self._distribute_box = QWidget()
+        self._distribute_box.setStyleSheet("background:transparent;")
+        dist_lay = QVBoxLayout(self._distribute_box)
+        dist_lay.setContentsMargins(22, 0, 0, 0)
+        dist_lay.setSpacing(6)
+        row_days = QHBoxLayout()
+        row_days.addWidget(QLabel("Spread across"))
+        self.spin_distribute_days = QSpinBox()
+        self.spin_distribute_days.setRange(1, 3)
+        self.spin_distribute_days.setValue(self._cfg["distribute_days"])
+        self.spin_distribute_days.setFixedWidth(60)
+        self.spin_distribute_days.valueChanged.connect(self._update_estimate)
+        row_days.addWidget(self.spin_distribute_days)
+        row_days.addWidget(QLabel("day(s)  (1 day = every day)"))
+        row_days.addStretch()
+        dist_lay.addLayout(row_days)
+        self.rd_by_count = QRadioButton("Split by number of clients (balanced)")
+        self.rd_by_group = QRadioButton("Split by group (whole groups per day)")
+        self.rd_by_count.setChecked(self._cfg["split_boundary"] == "client_count")
+        self.rd_by_group.setChecked(self._cfg["split_boundary"] == "group")
+        self.rd_by_count.toggled.connect(self._update_estimate)
+        self.rd_by_group.toggled.connect(self._update_estimate)
+        dist_lay.addWidget(self.rd_by_count)
+        dist_lay.addWidget(self.rd_by_group)
+        layout.addWidget(self._distribute_box)
+
+        self.chk_alternate = QCheckBox("Alternate the starting client each run (do not always start with the same cases)")
+        self.chk_alternate.setChecked(self._cfg["alternate_cases"])
+        layout.addWidget(self.chk_alternate)
+
+        section("PACING AND SAFETY")
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(6)
+        self._set_spin = {}
+        spin_defs = [
+            ("client_cooldown_sec", "Cooldown between clients (seconds)", 0, 86400),
+            ("doc_cooldown_sec", "Cooldown between documents (seconds)", 0, 3600),
+            ("jitter_sec", "Random extra delay (seconds)", 0, 600),
+            ("run_budget_min", "Maximum minutes per run", 1, 1440),
+            ("backoff_min", "Back-off after a rate-limit warning (minutes)", 1, 1440),
+            ("timeout_retries", "Retries after a portal timeout", 0, 5),
+        ]
+        for row, (key, label, low, high) in enumerate(spin_defs):
+            spin = QSpinBox()
+            spin.setRange(low, high)
+            spin.setValue(self._cfg[key])
+            grid.addWidget(QLabel(label), row, 0)
+            grid.addWidget(spin, row, 1)
+            self._set_spin[key] = spin
+        layout.addLayout(grid)
+        note = QLabel(
+            "The ITD portal is sometimes slow and times out. Increase the cooldowns "
+            "if you see many timeouts, or lower clients per day.")
+        note.setWordWrap(True)
+        note.setStyleSheet(f"color:{t.text_muted};font-size:11px;")
+        layout.addWidget(note)
+
+        row_backoff = QHBoxLayout()
+        row_backoff.addWidget(QLabel("After a rate-limit back-off"))
+        self.combo_backoff_action = QComboBox()
+        self.combo_backoff_action.addItems(["Resume the same evening", "Wait for the next scheduled day"])
+        self.combo_backoff_action.setCurrentIndex(
+            0 if self._cfg["on_backoff_action"] == "resume_same_evening" else 1)
+        row_backoff.addWidget(self.combo_backoff_action)
+        row_backoff.addStretch()
+        layout.addLayout(row_backoff)
+
+        row_stop = QHBoxLayout()
+        row_stop.addWidget(QLabel("When I press Stop"))
+        self.combo_stop = QComboBox()
+        self.combo_stop.addItems(["Keep the remaining clients for next time",
+                                  "Drop the remaining clients"])
+        self.combo_stop.setCurrentIndex(0 if self._cfg["stop_keeps_remainder"] else 1)
+        row_stop.addWidget(self.combo_stop)
+        row_stop.addStretch()
+        layout.addLayout(row_stop)
+
+        layout.addStretch(1)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        cancel = _btn("Cancel", "secondary", height=34)
+        cancel.clicked.connect(self.reject)
+        save = _btn("Save", "primary", height=34)
+        save.clicked.connect(self._save)
+        buttons.addWidget(cancel)
+        buttons.addSpacing(8)
+        buttons.addWidget(save)
+        outer.addLayout(buttons)
+
+        self._scope_changed()
+        self._distribution_changed()
+        self._update_estimate()
+
+    def _scope_changed(self):
+        scope = self.combo_scope.currentIndex()
+        self.combo_group.setVisible(scope == 1)
+        self.combo_clients.setVisible(scope == 2)
+        self._update_estimate()
+
+    def _distribution_changed(self):
+        self._distribute_box.setVisible(self.rd_distribute.isChecked())
+        self._update_estimate()
+
+    def _selected_pans(self):
+        return {self._pan_labels.get(label) for label in self.combo_clients.checked_labels()} - {None}
+
+    def _draft_config(self):
+        from automation.eproc_scheduler import normalise_config
+        return normalise_config({
+            "enabled": self.chk_enabled.isChecked(),
+            "run_time": self.time_edit.time().toString("HH:mm"),
+            "active_days": [i for i, cb in self._day_checks.items() if cb.isChecked()],
+            "scope": ("all", "group", "pan")[self.combo_scope.currentIndex()],
+            "scope_groups": [self.combo_group.currentText()] if self.combo_group.currentText() else [],
+            "scope_pans": sorted(self._selected_pans()),
+            "distribution": "distribute" if self.rd_distribute.isChecked() else "every_day",
+            "distribute_days": self.spin_distribute_days.value(),
+            "split_boundary": "group" if self.rd_by_group.isChecked() else "client_count",
+            "alternate_cases": self.chk_alternate.isChecked(),
+            "clients_per_day": self.spin_clients_per_day.value(),
+            **{key: spin.value() for key, spin in self._set_spin.items()},
+            "on_backoff_action": ("resume_same_evening" if self.combo_backoff_action.currentIndex() == 0
+                                  else "next_day"),
+            "stop_keeps_remainder": self.combo_stop.currentIndex() == 0,
+            "last_run_finished": self._cfg.get("last_run_finished", ""),
+            "last_run_summary": self._cfg.get("last_run_summary", {}),
+            "next_run_at": self._cfg.get("next_run_at", ""),
+            "rotation_cursor": self._cfg.get("rotation_cursor", 0),
+            "split_phase": self._cfg.get("split_phase", 0),
+            "queue_remaining": self._cfg.get("queue_remaining", []),
+            "backoff_until": self._cfg.get("backoff_until", ""),
+        })
+
+    def _update_estimate(self, *_args):
+        from automation.eproc_scheduler import estimate_nights, in_scope
+        cfg = self._draft_config()
+        total = len(in_scope(self.clients, cfg))
+        if total == 0:
+            self.lbl_estimate.setText("No clients in this scope.")
+            return
+        nights = estimate_nights(self.clients, cfg)
+        cap = cfg["clients_per_day"]
+        if cfg["distribution"] == "every_day":
+            self.lbl_estimate.setText(
+                f"{total} client(s) in scope — about {nights} night(s) at {cap}/night.")
+        else:
+            self.lbl_estimate.setText(
+                f"{total} client(s) in scope — {cfg['distribute_days']} day cycle, "
+                f"about {nights} night(s) at {cap}/night.")
+
+    def _save(self):
+        cfg = self._draft_config()
+        if not cfg["active_days"]:
+            QMessageBox.warning(self, "Select Days", "Choose at least one active day.")
+            return
+        if cfg["scope"] == "group" and not cfg["scope_groups"]:
+            QMessageBox.warning(self, "Select Group", "Choose a client group to sync.")
+            return
+        if cfg["scope"] == "pan" and not cfg["scope_pans"]:
+            QMessageBox.warning(self, "Select Clients", "Choose at least one client.")
+            return
+        self._cfg = self.vault.save_eproc_autofetch_config(cfg)
+        self.accept()

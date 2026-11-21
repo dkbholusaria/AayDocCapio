@@ -334,7 +334,8 @@ async def handle_e_proceedings(page, pan, dob, year_specs, out_for_year, log_cal
     set_status(pan, first_spec["ay_label"], "⏳ Downloading e-Proceedings...")
 
     ok, msg, saved = await download_e_proceedings(
-        page, download_root, log_callback, pan=pan, is_running=is_running)
+        page, download_root, log_callback, pan=pan, is_running=is_running,
+        before_download=doc_delay)
 
     # Incremental sync: everything already on disk and nothing new to fetch.
     if ok and not saved and msg.startswith("Up to date"):

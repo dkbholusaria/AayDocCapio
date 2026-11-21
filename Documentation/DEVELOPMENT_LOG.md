@@ -840,3 +840,56 @@ the index.
   classification, legacy names, TDS vs Income Tax filenames, year/identity
   parsing, sort order, filters, empty state, and open-file/open-folder
   routing (with `_open_path` patched).
+
+---
+
+## 28. Scheduled e-Proceedings Auto-Fetch — F-13 (2026-11-21)
+
+Adds an optional background scheduler for e-Proceedings, built on the
+incremental sync from F-2 so repeat runs only fetch new/changed documents.
+
+### Implementation
+
+- `automation/eproc_scheduler.py` (new) — pure, no Qt/Playwright:
+  - `normalise_config` (all settings validated and clamped; off by default)
+  - `is_due` / `compute_next_run` (run time, active days, back-off window)
+  - `in_scope` (all / group / selected PANs; excludes password-flagged clients)
+  - `assign_split` (1–3 day cycle, balanced by client count or whole groups)
+  - `assign_rotation` / `build_queue` (alternate starting cases, clients-per-day
+    cap, persisted remainder, distribution phase)
+  - `cooldown_for` (jitter), `should_backoff`, `is_timeout`,
+    `interruptible_sleep` (pause-aware), `estimate_nights`.
+- `vault.py` — per-client `credential_invalid`; preserved when a client is
+  edited with the same password and cleared when the password actually changes.
+  Config accessors store the scheduler state in `settings.eproc_autofetch`.
+- `ui/dialogs.py` — `EAutoFetchSettingsDialog` (time, days, scope, clients per
+  day with a nights estimate, distribution, split boundary, alternate cases,
+  cooldowns, retries, back-off choice, Stop behaviour) and
+  `BatchProgressDialog` controls: Pause/Resume, Restart, Skip Future, countdown
+  line.
+- `app.py` — 60-second `QTimer` tick, per-client background worker (login,
+  e-Proceedings handler, cooldown, timeout retry), credential flagging with
+  notification, rate-limit back-off, queue persistence after every client,
+  restart/skip/pause controls, settings status line and grid warning.
+- `automation/downloader_e_proceedings.py`, `automation/batch_handlers.py` —
+  optional `before_download` hook so the document cooldown is honoured; manual
+  runs pass nothing and behave exactly as before.
+
+### Verification
+
+- `test_eproc_scheduler.py` (new): 21 checks — config defaults/clamps, due time,
+  back-off, next-run day skipping, scope filtering, credential exclusion,
+  1/2/3-day split, group boundary, clients-per-day cap, queue continuation,
+  rotation, alternate cases, cooldown range, rate-limit/timeout detection,
+  nights estimate, vault flag and password-clear.
+- Existing `test_e_proceedings_parse.py` (16) and `test_tds_challan.py` pass.
+- `compileall` clean; `git diff --check` clean.
+- Offscreen UI checks: main window builds, settings dialog saves without losing
+  queue/rotation state, progress controls render, auto-fetch start/finish.
+- Simulated worker runs (no browser): successful sync, wrong-password flag +
+  notification, timeout retry, and rate-limit back-off with queue retention.
+
+### Not yet verified
+
+A supervised real-portal auto-fetch run with live client credentials. All
+browser interaction paths are the existing manual e-Proceedings code.
