@@ -590,6 +590,9 @@ def _user_manual_page_html(img_uris: dict) -> str:
               'Click the <strong>+ Add Client</strong> button on the toolbar or navigate to <strong>Client Master → Add Client</strong>.',
               'Enter the client\'s <strong>PAN</strong> (10 alphanumeric characters), <strong>Full Name</strong> (exactly as registered), '
               '<strong>Portal Password</strong>, and <strong>Date of Birth</strong> (DD-MM-YYYY format).',
+              'Optionally add the client\'s <strong>GST Username</strong> and <strong>GST Password</strong> in the '
+              '<strong>GST Portal</strong> section — used for GST work such as the turnover reconciliation. '
+              'Leave them blank if the client has no GST login.',
               'Click <strong>Save</strong> to securely write this client to your encrypted local vault.'
             ])
           )}
@@ -617,7 +620,8 @@ def _user_manual_page_html(img_uris: dict) -> str:
             + steps_html([
               'Go to <strong>Client Master → Export Template</strong> to download a pre-formatted Excel template.',
               'Open the Excel file and fill out the client rows: <strong>PAN</strong>, <strong>Name</strong>, '
-              '<strong>Password</strong>, and <strong>DOB (DD-MM-YYYY)</strong>.',
+              '<strong>Password</strong>, and <strong>DOB (DD-MM-YYYY)</strong>. The '
+              '<strong>GST Username</strong> and <strong>GST Password</strong> columns are optional.',
               'Import the filled Excel sheet using <strong>Client Master → Import Clients…</strong>.',
               'You can also export your current client list at any time to a spreadsheet using <strong>Client Master → Export Clients…</strong>.'
             ])

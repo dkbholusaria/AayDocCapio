@@ -4222,10 +4222,40 @@ class AayDocCapioApp(QMainWindow):
         # Show password toggle
         show_cb = QCheckBox("Show password")
         show_cb.setStyleSheet(f"color:{t.text_muted};font-size:11px;background:transparent;")
-        show_cb.toggled.connect(
-            lambda v: fields["pwd"].setEchoMode(
-                QLineEdit.EchoMode.Normal if v else QLineEdit.EchoMode.Password))
         vl.addWidget(show_cb)
+        vl.addSpacing(14)
+
+        # ── GST Portal (optional, F-20) ───────────────────────────────────────
+        vl.addWidget(_field_label("GST Username (optional)"))
+        fields["gst_user"] = QLineEdit()
+        fields["gst_user"].setPlaceholderText("GST portal login, e.g. GSTLOGIN01")
+        fields["gst_user"].setFixedHeight(34)
+        fields["gst_user"].setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
+        vl.addWidget(fields["gst_user"])
+        vl.addSpacing(10)
+
+        vl.addWidget(_field_label("GST Password (optional)"))
+        fields["gst_pwd"] = QLineEdit()
+        fields["gst_pwd"].setPlaceholderText("GST portal password")
+        fields["gst_pwd"].setFixedHeight(34)
+        fields["gst_pwd"].setEchoMode(QLineEdit.EchoMode.Password)
+        fields["gst_pwd"].setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
+        vl.addWidget(fields["gst_pwd"])
+
+        show_gst_cb = QCheckBox("Show GST password")
+        show_gst_cb.setStyleSheet(f"color:{t.text_muted};font-size:11px;background:transparent;")
+        vl.addWidget(show_gst_cb)
+
+        def _toggle_echo(_checked: bool = False):
+            fields["pwd"].setEchoMode(
+                QLineEdit.EchoMode.Normal if show_cb.isChecked()
+                else QLineEdit.EchoMode.Password)
+            fields["gst_pwd"].setEchoMode(
+                QLineEdit.EchoMode.Normal if show_gst_cb.isChecked()
+                else QLineEdit.EchoMode.Password)
+
+        show_cb.toggled.connect(_toggle_echo)
+        show_gst_cb.toggled.connect(_toggle_echo)
         vl.addSpacing(14)
 
         sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
@@ -4259,6 +4289,8 @@ class AayDocCapioApp(QMainWindow):
             fields["pwd"].setText(a.get("password", ""))
             fields["email"].setText(a.get("email", ""))
             fields["cc"].setText(a.get("cc", ""))
+            fields["gst_user"].setText(a.get("gst_username", ""))
+            fields["gst_pwd"].setText(a.get("gst_password", ""))
 
         # Buttons
         btn_row = QHBoxLayout()
@@ -4279,7 +4311,9 @@ class AayDocCapioApp(QMainWindow):
                     fields["dob"].text(), fields["pwd"].text(), edit_id,
                     email=fields["email"].text(),
                     cc=fields["cc"].text(),
-                    group=fields["group"].currentText())
+                    group=fields["group"].currentText(),
+                    gst_username=fields["gst_user"].text(),
+                    gst_password=fields["gst_pwd"].text())
                 action = "updated" if editing else "added"
                 self.log(f"[Vault] Client {action}: {fields['pan'].text()} — {fields['name'].text()}")
                 dlg.accept()
