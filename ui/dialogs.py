@@ -6294,32 +6294,6 @@ class ReturnStatusProgressDialog(QDialog):
         self._stop_btn.clicked.connect(self._on_stop_clicked)
         footer.addWidget(self._stop_btn)
 
-        self._pause_btn = QPushButton("⏸  Pause")
-        self._pause_btn.setFixedHeight(32)
-        self._pause_btn.setMinimumWidth(90)
-        self._pause_btn.setVisible(bool(self._pause_callback))
-        self._pause_btn.setStyleSheet(
-            f"QPushButton{{background:{_bt.bg_table_alt};color:{_bt.text_primary};border:1px solid {_bt.border};"
-            f"border-radius:6px;font-size:12px;font-weight:600;padding:0 12px;}}"
-            f"QPushButton:hover{{background:{_bt.bg_input};}}")
-        self._pause_btn.clicked.connect(self._on_pause_clicked)
-        footer.addWidget(self._pause_btn)
-
-        self._restart_btn = QPushButton("↻  Restart")
-        self._restart_btn.setFixedHeight(32)
-        self._restart_btn.setMinimumWidth(90)
-        self._restart_btn.setVisible(bool(self._restart_callback))
-        self._restart_btn.setStyleSheet(self._pause_btn.styleSheet())
-        self._restart_btn.clicked.connect(self.restart_run)
-        footer.addWidget(self._restart_btn)
-
-        self._skip_future_btn = QPushButton("⏭⏭  Skip Future")
-        self._skip_future_btn.setFixedHeight(32)
-        self._skip_future_btn.setMinimumWidth(110)
-        self._skip_future_btn.setVisible(bool(self._skip_future_callback))
-        self._skip_future_btn.setStyleSheet(self._pause_btn.styleSheet())
-        self._skip_future_btn.clicked.connect(self.skip_future)
-        footer.addWidget(self._skip_future_btn)
         layout.addLayout(footer)
 
         self._update_signal.connect(self._on_update)
