@@ -198,18 +198,31 @@ class VaultManager:
         for a in raw_data.get("assessees", []):
             decrypted = a.copy()
             decrypted["password"] = self.decrypt_password(a.get("password_enc", ""))
+            decrypted["gst_password"] = self.decrypt_password(
+                a.get("gst_password_enc", ""))
+            decrypted["gst_username"] = a.get("gst_username", "")
             assessees.append(decrypted)
         return assessees
 
     def add_update_assessee(self, name: str, pan: str, dob: str, password: str,
                             assessee_id: str = None, email: str = "", cc: str = "",
-                            group: str = "") -> str:
-        """Adds or updates a single assessee."""
+                            group: str = "", gst_username: str = "",
+                            gst_password: str = "") -> str:
+        """Adds or updates a single assessee.
+
+        ``gst_username`` / ``gst_password`` are the optional GST portal login
+        (F-20). An empty value clears the stored one — callers such as the
+        Add/Edit Client dialog always pass the current field contents, so this
+        stays predictable.
+        """
         raw_data = self._get_raw()
         _validate_fields(name, pan, dob, password)
         pan = pan.strip().upper()
 
         password_enc = self.encrypt_password(password)
+        gst_username = (gst_username or "").strip()
+        gst_password_enc = (self.encrypt_password(gst_password)
+                            if gst_password else "")
 
         found = False
         if assessee_id:
@@ -231,6 +244,8 @@ class VaultManager:
                         "cc": cc.strip(),
                         "group": group.strip(),
                         "credential_invalid": credential_invalid,
+                        "gst_username": gst_username,
+                        "gst_password_enc": gst_password_enc,
                     }
                     found = True
                     break
@@ -254,6 +269,8 @@ class VaultManager:
                         "cc": cc.strip(),
                         "group": group.strip(),
                         "credential_invalid": credential_invalid,
+                        "gst_username": gst_username,
+                        "gst_password_enc": gst_password_enc,
                     }
                     found = True
                     break
@@ -271,6 +288,8 @@ class VaultManager:
                 "cc": cc.strip(),
                 "group": group.strip(),
                 "credential_invalid": False,
+                "gst_username": gst_username,
+                "gst_password_enc": gst_password_enc,
             })
             assessee_id = new_id
 
@@ -488,8 +507,9 @@ class VaultManager:
     def import_bulk(self, file_path: str) -> tuple:
         """
         Imports assessees from an Excel (.xlsx) or CSV (.csv) file.
-        Expects columns: Name, PAN, DOB, Password
-        Returns: (success_count, error_messages_list)
+        Expects columns: Name, PAN, DOB, Password.
+        Optional columns: Group, Email, CC, GST Username, GST Password.
+        Returns: (added_count, updated_count, errors)
         """
         if not os.path.exists(file_path):
             return 0, [f"File {file_path} does not exist."]
@@ -521,7 +541,7 @@ class VaultManager:
                     raw_rows = list(reader)
                 if not raw_rows:
                     return 0, ["File is empty."]
-                headers = [c.strip().lower() for c in raw_rows[0]]
+                headers = [str(c).strip().lower() for c in raw_rows[0]]
                 data_rows = [row for row in raw_rows[1:] if any(c.strip() for c in row)]
             else:
                 return 0, ["Unsupported file format. Please use Excel (.xlsx) or CSV (.csv)."]
@@ -562,6 +582,8 @@ class VaultManager:
                 email = _cell('email') if 'email' in col else ""
                 cc = _cell('cc') if 'cc' in col else ""
                 group = _cell('group') if 'group' in col else ""
+                gst_username = _cell('gst username') if 'gst username' in col else ""
+                gst_password = _cell('gst password') if 'gst password' in col else ""
 
                 if not name or not pan or not dob or not password:
                     errors.append(f"Row {row_num}: Missing values in Name, PAN, DOB, or Password.")
@@ -572,7 +594,10 @@ class VaultManager:
                     continue
 
                 is_existing = pan in existing_pans
-                self.add_update_assessee(name, pan, dob, password, email=email, cc=cc, group=group)
+                self.add_update_assessee(name, pan, dob, password, email=email,
+                                         cc=cc, group=group,
+                                         gst_username=gst_username,
+                                         gst_password=gst_password)
                 if is_existing:
                     updated_count += 1
                 else:
@@ -585,18 +610,22 @@ class VaultManager:
 
     def generate_template(self, file_path: str):
         """Generates an Excel import template with sample columns."""
-        headers = ["Name", "Group", "PAN", "DOB", "Password", "Email", "CC"]
-        sample = ["John Doe", "", "AAAPT0001A", "01-01-1980", "YourPortalPassword",
-                  "client@example.com", "spouse@example.com;accountant@firm.com"]
+        headers = ["Name", "Group", "PAN", "DOB", "Password", "Email", "CC",
+                   "GST Username", "GST Password"]
+        sample = ["John Doe", "", "AABCP1234F", "01-01-1980", "YourPortalPassword",
+                  "client@example.com", "spouse@example.com;accountant@firm.com",
+                  "gstuser01", "YourGstPassword"]
         target = file_path if (file_path.endswith('.csv') or file_path.endswith('.xlsx')) else file_path + ".xlsx"
         self._write_client_table_file(target, headers, [sample])
 
     def export_data(self, file_path: str):
         """Exports all saved assessees (with decrypted passwords) to Excel or CSV."""
         assessees = self.get_all_assessees()
-        headers = ["Name", "Group", "PAN", "DOB", "Password", "Email", "CC"]
+        headers = ["Name", "Group", "PAN", "DOB", "Password", "Email", "CC",
+                   "GST Username", "GST Password"]
         rows = [[a.get("name", ""), a.get("group", ""), a.get("pan", ""), a.get("dob", ""),
-                 a.get("password", ""), a.get("email", ""), a.get("cc", "")]
+                 a.get("password", ""), a.get("email", ""), a.get("cc", ""),
+                 a.get("gst_username", ""), a.get("gst_password", "")]
                 for a in assessees]
         self._write_client_table_file(file_path, headers, rows)
 
@@ -636,12 +665,18 @@ class VaultManager:
             "Password",
             "  The client's ITD e-Filing portal password.",
             "",
+            "GST Username / GST Password",
+            "  Optional. The client's GST portal login (services.gst.gov.in), used "
+            "for GST work. Leave both blank if the client has no GST login — the "
+            "rest of the row still imports normally.",
+            "",
             "Email / CC",
             "  Optional. Email is who reports get sent to; CC can have more than "
             "one address, separated by semicolons.",
             "",
             "Note: Name, PAN, DOB, and Password are all required — a row missing "
-            "any of these is skipped and listed as an error when you import it.",
+            "any of these is skipped and listed as an error when you import it. "
+            "Group, Email, CC, GST Username and GST Password are optional.",
             "",
             "Note: this file has real portal passwords in plain text once you fill "
             "it in (or once you export your saved clients) — keep it somewhere safe "
@@ -687,7 +722,8 @@ class VaultManager:
         )
         ws.add_table(tab)
         ws.freeze_panes = "A2"
-        col_widths = {"Name": 22, "Group": 20, "PAN": 14, "DOB": 12, "Password": 20, "Email": 26, "CC": 30}
+        col_widths = {"Name": 22, "Group": 20, "PAN": 14, "DOB": 12, "Password": 20,
+                      "Email": 26, "CC": 30, "GST Username": 18, "GST Password": 20}
         for i, label in enumerate(headers, start=1):
             ws.column_dimensions[get_column_letter(i)].width = col_widths.get(label, 16)
         for row_cells in ws.iter_rows(min_row=2, max_row=max(table_last_row, 2), max_col=len(headers)):
@@ -813,6 +849,10 @@ class VaultManager:
              "Date of birth, as DD-MM-YYYY (e.g. 01-01-1980). A few other common date "
              "formats are also accepted."),
             ("Password", "The client's ITD e-Filing portal password."),
+            ("GST Username / GST Password",
+             "Optional. The client's GST portal login (services.gst.gov.in), used for "
+             "GST work. Leave both blank if the client has no GST login — the rest of "
+             "the row still imports normally."),
             ("Email / CC",
              "Optional. Email is who reports get sent to; CC can have more than one "
              "address, separated by semicolons."),
@@ -836,7 +876,8 @@ class VaultManager:
         note_cell = ws_help.cell(
             row=r, column=1,
             value="Note: Name, PAN, DOB, and Password are all required — a row missing "
-                  "any of these is skipped and listed as an error when you import it.",
+                  "any of these is skipped and listed as an error when you import it. "
+                  "Group, Email, CC, GST Username and GST Password are optional.",
         )
         note_cell.font = Font(bold=True, color="7F6000")
         note_cell.fill = NOTE_FILL
