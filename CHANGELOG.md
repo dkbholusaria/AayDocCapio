@@ -6,6 +6,18 @@ All notable changes to AayDocCapio are documented here.
 
 ### New Features
 
+#### GST portal login with captcha solving (F-21)
+- **Automated GST portal login** — a Playwright-based async login that reads the portal's login captcha and signs in, matching the existing ITD automation conventions
+- **Confident captcha reading** — four independent readers (a local CNN via `onnxruntime`, ddddocr at two thresholds, and a multi-render ddddocr vote) with conservative submit rules; unsure reads are refreshed rather than guessed
+- **Bundled model** — a compact 6-head CNN (≈1.68M params) trained on synthetic data covering the three observed captcha styles plus captchas harvested from accepted live logins; PyTorch is a dev-only dependency, runtime uses `onnxruntime`
+- **Robust retries** — up to six refreshes until confident, credential fields are refilled when the portal clears them after a rejected captcha, and the verdict is read from the portal's error text
+- Synthetic generator, trainer and ONNX exporter are included for reproducibility, with an ADR and model card
+
+#### GST credentials per client (F-20)
+- **Optional GST Username + GST Password on each client** in the Add/Edit Client modal, each with its own show/hide toggle; stored Fernet-encrypted in the vault alongside the ITD password
+- **Import/export support** — vault add/update, CSV/Excel import, export and the import template gain optional GST columns; existing files without them import exactly as before
+- **Legacy records keep working** — clients with no GST credentials are unchanged
+
 #### Dark mode, accessibility, and customizable keyboard shortcuts (F-17, #101)
 - **Dark mode across the whole app** — the saved theme is applied before the UI is built and pages are rebuilt when it changes, so there are no light cards or unreadable text left over; "Follow system theme" is supported too
 - **Accessibility improvements** — WCAG AA contrast checks, visible focus styles, accessible widget names, and white check marks in the dark palette
@@ -42,6 +54,9 @@ To force a fresh copy of a document, delete that file from the client folder and
 - **Incremental sync (F-2)** — repeat downloads no longer re-fetch everything. Each sync compares the portal's notices with what's already saved (by reference ID and issue date) and downloads **only new or changed documents**; a run with nothing new finishes with "✅ e-Proceedings — Up to date (N unchanged)" and creates no duplicates
 
 ### Bug Fixes
+
+#### Starting an ITR Processing Status check no longer crashes the app (F-67)
+- **Fixed the app closing as soon as a Return Status check was started** — the progress dialog referenced Pause/Restart/Skip-Future handlers that only exist on the challan-generation dialog; in PyQt6 the resulting `AttributeError` inside the signal slot aborted the process. The unused buttons are removed, so status checks run normally
 
 #### Auto-fetch password warning shown in client grid (#13)
 - **Clients whose saved portal password was rejected now show a warning directly in the main client grid**, instead of only in the scheduled auto-fetch status — so you can spot a password that needs updating without opening the auto-fetch window
