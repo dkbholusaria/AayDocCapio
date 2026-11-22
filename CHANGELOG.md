@@ -6,6 +6,12 @@ All notable changes to AayDocCapio are documented here.
 
 ### New Features
 
+#### Dark mode, accessibility, and customizable keyboard shortcuts (F-17, #101)
+- **Dark mode across the whole app** — the saved theme is applied before the UI is built and pages are rebuilt when it changes, so there are no light cards or unreadable text left over; "Follow system theme" is supported too
+- **Accessibility improvements** — WCAG AA contrast checks, visible focus styles, accessible widget names, and white check marks in the dark palette
+- **Customizable keyboard shortcuts** — a shortcut registry with sensible defaults, menu hints, and a Settings/Help editor that blocks conflicting or unsafe keys and saves your choices to the vault
+- **Theme-invariant log colours** — Live Logs now use theme tokens instead of hardcoded hex colours
+
 #### Faster repeat downloads — skip files that are already saved (F-14, #14)
 - **Every document type now checks the client folder before contacting the portal** — if a file is already saved (and not empty), that download is skipped. This is the same "diff fetch" behaviour e-Proceedings has had since F-2, extended to Form 26AS, Form 168, Filed Returns (Form/Receipt/JSON/Intimation), Tax Challans and AIS/TIS
 - **Re-running a batch for an already-downloaded client is now fast** — no portal clicks, no re-waiting for the same PDF to generate, no repeated PDF unlocking
@@ -36,6 +42,9 @@ To force a fresh copy of a document, delete that file from the client folder and
 - **Incremental sync (F-2)** — repeat downloads no longer re-fetch everything. Each sync compares the portal's notices with what's already saved (by reference ID and issue date) and downloads **only new or changed documents**; a run with nothing new finishes with "✅ e-Proceedings — Up to date (N unchanged)" and creates no duplicates
 
 ### Bug Fixes
+
+#### Auto-fetch password warning shown in client grid (#13)
+- **Clients whose saved portal password was rejected now show a warning directly in the main client grid**, instead of only in the scheduled auto-fetch status — so you can spot a password that needs updating without opening the auto-fetch window
 
 #### Download Documents tab can now pick the year and run (B-1)
 - **Fixed downloads started from Income Tax ▸ Download Documents always being blocked** with "Please select at least one Assessment / Tax Year" — that tab had no year selector of its own, and the only one in the app lives on the Home screen, which isn't visible from the Income Tax hub
