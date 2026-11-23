@@ -202,6 +202,7 @@ class EprocDocModal(QDialog):
             ("Issued", doc.issued),
             ("Served", doc.served),
             ("Reply deadline", doc.reply_deadline),
+            ("Response viewed by AO", doc.viewed_by_ao),
         ):
             if value:
                 chips.addWidget(self._date_chip(f"{label} {value}"))

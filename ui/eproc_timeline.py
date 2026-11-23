@@ -335,6 +335,8 @@ class EprocTimeline(QScrollArea):
             target = _lookup(self._case, doc.parent)
             short = _short(target.title if target else doc.parent)
             pieces.append(f"Reply to {_link(doc.parent, short)}")
+            if doc.viewed_by_ao:
+                pieces.append(f"Viewed by AO {doc.viewed_by_ao}")
 
         elif doc.kind == "remand" and doc.remands:
             target = _lookup(self._case, doc.remands)
