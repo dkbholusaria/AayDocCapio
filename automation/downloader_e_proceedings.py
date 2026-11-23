@@ -256,6 +256,388 @@ def _notice_key(notice: dict) -> str:
     return f"{ref}|{issued}" if ref else ""
 
 
+# ── Virtual hearing (VC) parsing ──────────────────────────────────────────
+# The VC screen (#/dashboard/eProceedings/viewNotices/seekVideoConferencing)
+# renders an ag-Grid request table. Confirmed live 2026-11-23 on AABCP1234F:
+# columns (col-id -> meaning): date (request), rfsvca (reason),
+# vcdt (VC date & Time), sa (status), itdrd (ITD response date),
+# vcld (VC Recording link), itdR (VC Schedule Notice / Status and VC).
+_VC_COLS = ("date", "rfsvca", "vcdt", "sa", "itdrd", "vcld", "itdR")
+
+
+def _parse_vc_table(rows: list[dict]) -> list[dict]:
+    """Normalize raw ag-Grid rows into hearing dicts. Pure function
+    (unit-testable). Each raw row is {col_id: {"text": str,
+    "links": [{"txt", "cls"}]}} as extracted from the DOM."""
+    out: list[dict] = []
+    for row in rows or []:
+        def _text(cid: str) -> str:
+            return ((row.get(cid) or {}).get("text") or "").strip()
+
+        vc_datetime = _text("vcdt")
+        status = _text("sa")
+        request_date = _text("date")
+        reason = _text("rfsvca")
+        itd_response = _text("itdrd")
+        links: list[str] = []
+        for cid in ("vcld", "itdR"):
+            for link in ((row.get(cid) or {}).get("links") or []):
+                label = (link.get("txt") or "").strip()
+                if label and label not in links:
+                    links.append(label)
+        if not any((vc_datetime, status, request_date, reason, itd_response)) \
+                and not links:
+            continue
+        out.append({
+            "request_date": request_date,
+            "reason": reason,
+            "vc_datetime": vc_datetime,
+            "status": status,
+            "itd_response_date": itd_response,
+            "links": links,
+        })
+    return out
+
+
+def _hearing_key(hearing: dict) -> str:
+    """Diff key for one hearing: '<notice_ref>|<vc_datetime>'. Empty when
+    either part is missing — an unknown hearing is never treated as synced."""
+    ref = (hearing.get("notice_ref") or "").strip()
+    when = (hearing.get("vc_datetime") or "").strip()
+    return f"{ref}|{when}" if ref and when else ""
+
+
+def _synced_hearing_keys(meta: dict) -> set[str]:
+    """Keys of hearings already recorded with a recording URL or file."""
+    out: set[str] = set()
+    for hearing in (meta.get("hearings") or []):
+        key = _hearing_key(hearing)
+        if key and (hearing.get("recording_url") or hearing.get("files")
+                    or hearing.get("vc_datetime")):
+            out.add(key)
+    return out
+
+
+def _synced_hearing_notice_refs(meta: dict) -> set[str]:
+    """Notice refs that already have a recorded hearing with a known VC
+    datetime — used to skip re-opening that notice's VC screen."""
+    refs: set[str] = set()
+    for hearing in (meta.get("hearings") or []):
+        ref = (hearing.get("notice_ref") or "").strip()
+        when = (hearing.get("vc_datetime") or "").strip()
+        if ref and when:
+            refs.add(ref)
+    return refs
+
+
+async def _read_vc_rows(page: Page) -> list[dict]:
+    """Extract the VC request table's ag-Grid rows as raw {col_id: {text,
+    links}} dicts (fed to _parse_vc_table). Returns [] when absent/empty."""
+    try:
+        return await page.evaluate(
+            """() => {
+            const rows = [];
+            for (const row of document.querySelectorAll('.ag-row')) {
+                const cells = {};
+                for (const c of row.querySelectorAll('[col-id]')) {
+                    const cid = c.getAttribute('col-id');
+                    const links = [...c.querySelectorAll('a.hyperLink, span.hyperLink')]
+                        .map(a => ({txt: (a.innerText || '').trim(),
+                                    cls: (a.className && a.className.toString) ? a.className.toString() : ''}));
+                    cells[cid] = {text: (c.innerText || '').trim(), links};
+                }
+                if (Object.keys(cells).length) rows.push(cells);
+            }
+            return rows;
+        }"""
+        ) or []
+    except Exception:
+        return []
+
+
+async def _close_modal(page: Page) -> None:
+    """Close an open portal modal/overlay (best-effort, never raises)."""
+    for sel in (".modal.show button:has-text('Close')",
+                "#attachmentsPopup button.close-btn",
+                "#linkPassModal button.close-btn",
+                ".modal.show .close-btn", ".modal.show .close",
+                ".cdk-overlay-pane button:has-text('Close')"):
+        try:
+            loc = page.locator(sel).first
+            if await loc.count() and await loc.is_visible(timeout=600):
+                await loc.click(timeout=3000)
+                await asyncio.sleep(1)
+                return
+        except Exception:
+            continue
+
+
+async def _click_vc_hyperlink(page: Page, label: str) -> bool:
+    """Click a hyperlink in the VC table by its visible label."""
+    clicked = await page.evaluate(
+        """(sub) => {
+        const links = [...document.querySelectorAll('a.hyperLink, span.hyperLink, a')]
+            .filter(a => a.getBoundingClientRect().width > 0
+                && (a.innerText || '').trim().toLowerCase().includes(sub.toLowerCase()));
+        if (!links.length) return false;
+        links[0].scrollIntoView({block: 'center'});
+        links[0].click();
+        return true;
+    }""", label)
+    if clicked:
+        await asyncio.sleep(4)
+    return bool(clicked)
+
+
+async def _read_modal(page: Page) -> dict:
+    """Read the currently-open modal: {text, links: [{txt, href}]}."""
+    try:
+        return await page.evaluate(
+            """() => {
+            const m = document.querySelector('.modal.show, .cdk-overlay-pane');
+            if (!m) return {text: '', links: []};
+            const links = [...m.querySelectorAll('a.hyperLink, span.hyperLink, a[href]')]
+                .map(a => ({txt: (a.innerText || '').trim(),
+                            href: a.getAttribute('href') || ''}))
+                .filter(x => x.txt);
+            return {text: (m.innerText || ''), links};
+        }"""
+        ) or {"text": "", "links": []}
+    except Exception:
+        return {"text": "", "links": []}
+
+
+async def _vc_recording_url(page: Page, step) -> str:
+    """Open the 'VC Recording' modal and return the recording URL (stored,
+    not downloaded). Empty when absent."""
+    if not await _click_vc_hyperlink(page, "VC Recording"):
+        return ""
+    modal = await _read_modal(page)
+    url = ""
+    for link in modal.get("links") or []:
+        txt = (link.get("txt") or "").strip()
+        if txt.startswith("http://") or txt.startswith("https://"):
+            url = txt
+            break
+    if not url:
+        m = re.search(r"https?://\S+", modal.get("text") or "")
+        url = m.group(0) if m else ""
+    await _close_modal(page)
+    if url:
+        step(f"VC recording link captured: {url[:80]}...")
+    return url
+
+
+async def _vc_join_credentials(page: Page) -> dict:
+    """Read '#linkPassModal' (VC Password Details) join link + password.
+    Only populated within 2 hours of the scheduled VC; usually empty."""
+    try:
+        text = await page.locator("#linkPassModal").first.inner_text(timeout=1500)
+    except Exception:
+        return {"join_link": "", "vc_password": ""}
+    join_link = ""
+    m = re.search(r"https?://\S+", text or "")
+    if m:
+        join_link = m.group(0).strip()
+    pwd = ""
+    pm = re.search(r"VC Password\s*[:\-]?\s*([^\n]+)", text or "", re.IGNORECASE)
+    if pm:
+        candidate = pm.group(1).strip()
+        if candidate.lower() not in ("details", "close", ""):
+            pwd = candidate
+    return {"join_link": join_link, "vc_password": pwd}
+
+
+async def _download_vc_pdf(page: Page, page_label: str, save_dir: str, step,
+                           before_download=None) -> str:
+    """Download the PDF behind a VC-table hyperlink (Minutes of Meeting /
+    Schedule Notice). Returns the saved path ('' on failure)."""
+    if not await _click_vc_hyperlink(page, page_label):
+        return ""
+    modal = await _read_modal(page)
+    pdf_link = ""
+    for link in modal.get("links") or []:
+        if (link.get("txt") or "").lower().endswith(".pdf"):
+            pdf_link = link["txt"]
+            break
+    if not pdf_link:
+        await _close_modal(page)
+        return ""
+    os.makedirs(save_dir, exist_ok=True)
+    saved_path = ""
+    try:
+        if before_download:
+            await before_download()
+        async with page.expect_download(timeout=45000) as dl_info:
+            clicked = await page.evaluate(
+                """(label) => {
+                const m = document.querySelector('.modal.show, .cdk-overlay-pane');
+                if (!m) return false;
+                const a = [...m.querySelectorAll('a.hyperLink, span.hyperLink, a')]
+                    .find(x => (x.innerText || '').trim() === label);
+                if (a) { a.click(); return true; }
+                return false;
+            }""", pdf_link)
+            if not clicked:
+                raise RuntimeError("PDF link not found in modal")
+        download = await dl_info.value
+        fname = _sanitize_name(download.suggested_filename or pdf_link)
+        path = _dedupe_path(save_dir, fname)
+        await download.save_as(path)
+        _strip_owner_encryption(path)
+        saved_path = path
+        step(f"[Victory] Saved VC document: {os.path.basename(path)}")
+    except Exception as e:
+        step(f"[Warning] VC document '{page_label}' download failed: {e}")
+    await _close_modal(page)
+    return saved_path
+
+
+async def _vc_button_notice_refs(page: Page) -> list[str]:
+    """Return the notice reference IDs whose block shows a visible 'Seek
+    Video Conferencing' button, in DOM order (confirmed live 2026-11-23)."""
+    try:
+        return await page.evaluate(
+            """() => {
+            const out = [];
+            const btns = [...document.querySelectorAll('button')]
+                .filter(b => b.getBoundingClientRect().width > 0
+                    && /Seek Video Conferencing/i.test(b.innerText || ''));
+            for (const b of btns) {
+                let node = b, ref = '';
+                for (let up = 0; up < 12 && node; up++) {
+                    const m = (node.innerText || '').match(
+                        /Communication Reference ID\\s*:\\s*([0-9A-Za-z]+)/);
+                    if (m) { ref = m[1]; break; }
+                    node = node.parentElement;
+                }
+                if (ref && !out.includes(ref)) out.push(ref);
+            }
+            return out;
+        }"""
+        ) or []
+    except Exception:
+        return []
+
+
+async def _return_to_notices(page: Page, step) -> None:
+    """Navigate from the VC page back to the notices list."""
+    for sel in ("button:has-text('Back')", "a:has-text('Back')"):
+        try:
+            loc = page.locator(sel).first
+            if await loc.count() and await loc.is_visible(timeout=1500):
+                await loc.click(timeout=8000)
+                await asyncio.sleep(4)
+                return
+        except Exception:
+            continue
+    step("[Warning] Could not navigate back to notices list after VC")
+
+
+async def _sync_notice_hearing(page: Page, notice_ref: str, notice: dict,
+                               proc_dir: str, index: int, step,
+                               before_download=None) -> dict | None:
+    """Open the 'Seek Video Conferencing' screen for `notice_ref` and capture
+    its hearing data. Returns a hearing dict or None."""
+    section = (notice.get("section") or "").strip()
+
+    clicked = await page.evaluate(
+        """(ref) => {
+        const btns = [...document.querySelectorAll('button')]
+            .filter(b => b.getBoundingClientRect().width > 0
+                && /Seek Video Conferencing/i.test(b.innerText || ''));
+        for (const b of btns) {
+            let node = b, found = '';
+            for (let up = 0; up < 12 && node; up++) {
+                const m = (node.innerText || '').match(
+                    /Communication Reference ID\\s*:\\s*([0-9A-Za-z]+)/);
+                if (m) { found = m[1]; break; }
+                node = node.parentElement;
+            }
+            if (found === ref) {
+                b.scrollIntoView({block: 'center'}); b.click(); return true;
+            }
+        }
+        return false;
+    }""", notice_ref)
+    if not clicked:
+        return None
+    await asyncio.sleep(5)
+    await _dismiss_portal_popups(page, step)
+
+    rows = await _read_vc_rows(page)
+    parsed = _parse_vc_table(rows)
+    step(f"Hearing(s) on notice {notice_ref}: {len(parsed)}")
+
+    hearing: dict | None = dict(parsed[0]) if parsed else None
+
+    recording_url = await _vc_recording_url(page, step)
+    creds = await _vc_join_credentials(page)
+
+    vc_dir = os.path.join(proc_dir, f"vc-{index + 1:02d}")
+    files: list[str] = []
+    for page_label in ("Status and VC recording", "VC Schedule Notice"):
+        path = await _download_vc_pdf(page, page_label, vc_dir, step,
+                                      before_download=before_download)
+        if path:
+            files.append(f"vc-{index + 1:02d}/{os.path.basename(path)}")
+
+    if hearing is None:
+        if not (recording_url or files or creds.get("join_link")):
+            await _return_to_notices(page, step)
+            return None
+        hearing = {}
+
+    hearing.setdefault("request_date", "")
+    hearing.setdefault("reason", "")
+    hearing.setdefault("vc_datetime", "")
+    hearing.setdefault("status", "")
+    hearing.setdefault("itd_response_date", "")
+    hearing.pop("links", None)
+    hearing["notice_ref"] = notice_ref
+    hearing["notice_section"] = section
+    hearing["recording_url"] = recording_url
+    hearing["join_link"] = creds.get("join_link", "")
+    hearing["vc_password"] = creds.get("vc_password", "")
+    hearing["files"] = files
+    step(f"Captured hearing for notice {notice_ref} "
+         f"({hearing.get('vc_datetime') or 'no date'}): "
+         f"recording={'yes' if recording_url else 'no'}, "
+         f"{len(files)} document(s)")
+
+    await _return_to_notices(page, step)
+    return hearing
+
+
+def _merge_hearings(old_meta: dict, new_hearings: list[dict]) -> list[dict]:
+    """Merge freshly captured hearings with the previous run's, keyed by
+    (notice_ref, vc_datetime). Pure function (unit-testable)."""
+    old_by_key = {}
+    for h in (old_meta.get("hearings") or []):
+        key = _hearing_key(h)
+        if key:
+            old_by_key[key] = h
+    merged: list[dict] = []
+    used: set[str] = set()
+    for h in new_hearings:
+        key = _hearing_key(h)
+        prev = old_by_key.get(key) if key else None
+        entry = dict(h)
+        if prev:
+            if not entry.get("recording_url"):
+                entry["recording_url"] = prev.get("recording_url", "")
+            entry["files"] = _merge_rel_files(
+                prev.get("files") or [], entry.get("files") or [])
+        entry.pop("all_hearings", None)
+        merged.append(entry)
+        if key:
+            used.add(key)
+    for key, prev in old_by_key.items():
+        if key not in used and (prev.get("recording_url") or prev.get("files")):
+            merged.append(prev)
+    return merged
+
+
 def _load_existing_meta(proc_dir: str) -> dict:
     """Read a proceeding's `_meta.json`; {} on anything missing/corrupt."""
     try:
@@ -310,7 +692,9 @@ def _diff_build_meta(proc_meta: dict, notices: list[dict],
                      notice_files: dict[int, list[str]],
                      response_files: dict[int, list[str]],
                      old_meta: dict, downloaded_at: str,
-                     orders: list[dict] | None = None) -> dict:
+                     orders: list[dict] | None = None,
+                     hearings: list[dict] | None = None,
+                     vc_requestable: bool = False) -> dict:
     """Build `_meta.json` by merging the portal's CURRENT notice list with the
     previous run's meta. Only entries whose ref_id/issued_on are new (or whose
     files vanished) carry freshly downloaded paths; already-synced entries
@@ -402,6 +786,8 @@ def _diff_build_meta(proc_meta: dict, notices: list[dict],
     status = proc_meta.get("status", "")
     closed = has_order or "clos" in (status or "").lower()
 
+    merged_hearings = _merge_hearings(old_meta, hearings or [])
+
     return {
         "proceeding": {
             "name": proc_meta.get("name", ""),
@@ -412,6 +798,8 @@ def _diff_build_meta(proc_meta: dict, notices: list[dict],
         "downloaded_at": downloaded_at,
         "notices": entries,
         "orders": merged_orders,
+        "hearings": merged_hearings,
+        "vc_requestable": bool(vc_requestable),
     }
 
 
@@ -419,7 +807,9 @@ def _build_proc_meta(proc_meta: dict, notices: list[dict],
                      notice_files: dict[int, list[str]],
                      response_files: dict[int, list[str]],
                      downloaded_at: str,
-                     orders: list[dict] | None = None) -> dict:
+                     orders: list[dict] | None = None,
+                     hearings: list[dict] | None = None,
+                     vc_requestable: bool = False) -> dict:
     """Assemble the per-proceeding `_meta.json` payload. Pure function
     (unit-testable). notice_files/response_files map the download loop
     index k (0-based) to that notice's saved basenames; notice k falls
@@ -460,6 +850,8 @@ def _build_proc_meta(proc_meta: dict, notices: list[dict],
         "downloaded_at": downloaded_at,
         "notices": entries,
         "orders": merged_orders,
+        "hearings": list(hearings or []),
+        "vc_requestable": bool(vc_requestable),
     }
 
 
@@ -864,6 +1256,9 @@ async def _process_proceeding(page: Page, button_index: int, proc_meta: dict,
     old_meta = _load_existing_meta(proc_dir)
     synced_notices = _synced_keys(proc_dir, old_meta, "files")
     synced_responses = _synced_keys(proc_dir, old_meta, "response_files")
+    synced_hearing_refs = _synced_hearing_notice_refs(old_meta)
+    hearings: list[dict] = []
+    vc_requestable = False
     if synced_notices or synced_responses:
         step(f"Previous sync: {len(synced_notices)} notice(s), "
              f"{len(synced_responses)} response(s) already on disk")
@@ -949,6 +1344,51 @@ async def _process_proceeding(page: Page, button_index: int, proc_meta: dict,
             warns.append(f"{proc_label}: navigation lost after notice {k + 1}")
             return saved, warns, skipped, {}
 
+    # Virtual hearings: notices in faceless proceedings can expose a
+    # "Seek Video Conferencing" button. Capture the VC date/time, recording
+    # link (stored, not downloaded), Minutes of Meeting / Schedule Notice
+    # PDFs, and join+password (only within 2h of a scheduled VC). Each open
+    # returns to the notices list, so re-read the button map each pass.
+    try:
+        vc_refs = await _vc_button_notice_refs(page)
+    except Exception:
+        vc_refs = []
+    if vc_refs:
+        # A still-open, faceless notice with this button means the user can
+        # still apply for a VC — flag it so the UI can prompt them.
+        vc_requestable = True
+        step(f"Video Conferencing notice(s): {len(vc_refs)}")
+        notice_by_ref = {(n.get("ref_id") or "").strip(): n for n in notices}
+        vc_index = 0
+        attempted: set[str] = set()
+        while True:
+            remaining = [r for r in vc_refs if r not in attempted]
+            if not remaining:
+                break
+            ref = remaining[0]
+            attempted.add(ref)
+            notice = notice_by_ref.get(ref) or {}
+            if ref in synced_hearing_refs:
+                step(f"Cached (unchanged): hearing for notice {ref}")
+                skipped += 1
+                continue
+            try:
+                hearing = await _sync_notice_hearing(
+                    page, ref, notice, proc_dir, vc_index, step,
+                    before_download=before_download)
+            except Exception as e:
+                step(f"[Warning] Hearing capture for notice {ref} failed: {e}")
+                warns.append(f"{proc_label}: hearing for notice {ref} failed")
+                try:
+                    if "seekVideoConferencing" in page.url:
+                        await _return_to_notices(page, step)
+                except Exception:
+                    pass
+                hearing = None
+            if hearing:
+                hearings.append(hearing)
+                vc_index += 1
+
     # Per-notice View Response (client's submitted response + attachments).
     # Only RESPONDED notices render a View Response button, so button k maps
     # to the k-th notice flagged `responded` — not to notices[k].
@@ -1007,7 +1447,8 @@ async def _process_proceeding(page: Page, button_index: int, proc_meta: dict,
         meta = _diff_build_meta(proc_meta, notices, notice_files,
                                 response_files, old_meta,
                                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                orders=order_entries)
+                                orders=order_entries, hearings=hearings,
+                                vc_requestable=vc_requestable)
         meta_path = os.path.join(proc_dir, "_meta.json")
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump(meta, f, ensure_ascii=False, indent=2)
@@ -1024,7 +1465,9 @@ async def _process_proceeding(page: Page, button_index: int, proc_meta: dict,
     except Exception as e:
         step(f"[Warning] Back to proceedings list failed: {e}")
         warns.append(f"{proc_label}: could not return to list")
-    return saved, warns, skipped, {"orders": order_entries}
+    return saved, warns, skipped, {"orders": order_entries,
+                                   "hearings": hearings,
+                                   "vc_requestable": vc_requestable}
 
 
 async def download_e_proceedings(page: Page, download_root: str, log_callback,

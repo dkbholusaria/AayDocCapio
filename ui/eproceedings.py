@@ -9,10 +9,11 @@ Appeals and Limitations tabs.  All data comes from
 from __future__ import annotations
 
 import html
+import os
 from datetime import date, timedelta
 
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QGuiApplication
+from PyQt6.QtCore import Qt, QTimer, QUrl
+from PyQt6.QtGui import QDesktopServices, QGuiApplication
 from PyQt6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -1235,6 +1236,9 @@ class EProceedingsWorkspace(QWidget):
         columns.addWidget(self._build_linked_card(case), 1)
         outer.addLayout(columns)
 
+        if getattr(case, "hearings", None) or getattr(case, "vc_requestable", False):
+            outer.addWidget(self._build_hearings_card(case))
+
         bottom = QHBoxLayout()
         bottom.setSpacing(10)
         bottom.addWidget(self._build_spotlight_card(case), 2)
@@ -1405,6 +1409,81 @@ class EProceedingsWorkspace(QWidget):
                 block.addWidget(_muted("No links yet.", 9))
             body.addLayout(block)
 
+        body.addStretch(1)
+        return frame
+
+    def _build_hearings_card(self, case) -> QFrame:
+        """Virtual hearing (VC) data: date/time, status, recording link,
+        join link/password (when a VC is within 2h), and the Minutes of
+        Meeting / Schedule Notice PDFs. Also flags when the user can still
+        request a video conferencing for an open notice."""
+        t = _t()
+        frame, body = _panel()
+        body.addWidget(_lbl("Virtual hearings", 11, bold=True))
+
+        if getattr(case, "vc_requestable", False):
+            banner = QLabel(
+                "A video conferencing can be requested for this case from the "
+                "portal (Seek Video Conferencing).")
+            banner.setWordWrap(True)
+            banner.setStyleSheet(
+                f"background:{t.accent_light}; border:none; border-radius:7px;"
+                f"padding:6px 8px; color:{t.text_primary}; font-size:10px;")
+            body.addWidget(banner)
+
+        hearings = getattr(case, "hearings", None) or []
+        if not hearings:
+            body.addWidget(_muted(
+                "No hearings captured yet. Run e-Proceedings sync to fetch "
+                "VC details.", 10))
+            return frame
+
+        proc_dir = case.proc_dir
+        for h in hearings:
+            block = QFrame()
+            block.setStyleSheet(
+                f"QFrame {{ background:{t.bg_table_alt}; border:none;"
+                f"border-radius:7px; }}")
+            bl = QVBoxLayout(block)
+            bl.setContentsMargins(9, 7, 9, 7)
+            bl.setSpacing(2)
+            title = h.vc_datetime or "VC (date not shown)"
+            status = f"  \u00b7  {h.status}" if h.status else ""
+            bl.addWidget(_lbl(f"{title}{status}", 11, bold=True,
+                              color=t.text_primary))
+            if h.reason:
+                bl.addWidget(_muted(_short(h.reason, 90), 9))
+            links = QHBoxLayout()
+            links.setSpacing(8)
+            if h.recording_url:
+                btn = _btn("Open recording", "outline", height=26, min_width=110)
+                btn.clicked.connect(
+                    lambda checked=False, u=h.recording_url:
+                    QDesktopServices.openUrl(QUrl(u)))
+                links.addWidget(btn)
+            if h.join_link:
+                jbtn = _btn("Join VC", "primary", height=26, min_width=80)
+                jbtn.clicked.connect(
+                    lambda checked=False, u=h.join_link:
+                    QDesktopServices.openUrl(QUrl(u)))
+                links.addWidget(jbtn)
+                if h.vc_password:
+                    links.addWidget(_lbl(f"Password: {h.vc_password}", 9,
+                                         color=t.text_muted))
+            for rel in (h.files or []):
+                path = os.path.join(proc_dir, rel)
+                label = "Schedule notice" if "schedule" in rel.lower() \
+                    else ("Minutes of meeting" if "minutes" in rel.lower()
+                          else os.path.basename(rel))
+                fbtn = _btn(label, "outline", height=26, min_width=110)
+                fbtn.clicked.connect(
+                    lambda checked=False, p=path:
+                    QDesktopServices.openUrl(QUrl.fromLocalFile(p)))
+                links.addWidget(fbtn)
+            if links.count():
+                links.addStretch(1)
+                bl.addLayout(links)
+            body.addWidget(block)
         body.addStretch(1)
         return frame
 

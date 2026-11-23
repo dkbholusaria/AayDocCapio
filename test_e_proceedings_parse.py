@@ -283,6 +283,105 @@ def test_real_147_notices():
     assert all(n["issued_on"] for n in ns)
 
 
+# ----------------------------------------------------------- VC / hearings
+
+def _vc_row():
+    return {
+        "date": {"text": "07-Feb-2024", "links": []},
+        "rfsvca": {"text": "Matter requires explanation due to complexity",
+                   "links": [{"txt": "Matter requires explanation due to complexity"}]},
+        "vcdt": {"text": "10-Feb-2024 12:30 PM", "links": []},
+        "sa": {"text": "Completed", "links": []},
+        "itdrd": {"text": "09-Feb-2024", "links": []},
+        "vcld": {"text": "VC Recording", "links": [{"txt": "VC Recording"}]},
+        "itdR": {"text": "VC Schedule Notice\nStatus and VC recording",
+                 "links": [{"txt": "VC Schedule Notice"},
+                           {"txt": "Status and VC recording"}]},
+    }
+
+
+def test_parse_vc_table_basic():
+    from automation.downloader_e_proceedings import _parse_vc_table
+    rows = _parse_vc_table([_vc_row()])
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["vc_datetime"] == "10-Feb-2024 12:30 PM"
+    assert r["status"] == "Completed"
+    assert r["request_date"] == "07-Feb-2024"
+    assert r["itd_response_date"] == "09-Feb-2024"
+    assert "VC Recording" in r["links"]
+    assert "Status and VC recording" in r["links"]
+    assert "VC Schedule Notice" in r["links"]
+
+
+def test_parse_vc_table_empty():
+    from automation.downloader_e_proceedings import _parse_vc_table
+    assert _parse_vc_table([]) == []
+    assert _parse_vc_table([{}]) == []
+
+
+def test_hearing_key():
+    from automation.downloader_e_proceedings import _hearing_key
+    assert _hearing_key({"notice_ref": "1", "vc_datetime": "X"}) == "1|X"
+    assert _hearing_key({"notice_ref": "", "vc_datetime": "X"}) == ""
+    assert _hearing_key({"notice_ref": "1", "vc_datetime": ""}) == ""
+
+
+def test_synced_hearing_helpers():
+    from automation.downloader_e_proceedings import (
+        _synced_hearing_keys, _synced_hearing_notice_refs)
+    meta = {"hearings": [
+        {"notice_ref": "1", "vc_datetime": "D1", "recording_url": "u"},
+        {"notice_ref": "2", "vc_datetime": "D2", "files": ["vc-01/a.pdf"]},
+        {"notice_ref": "3", "vc_datetime": "", "recording_url": "u"},
+    ]}
+    assert _synced_hearing_keys(meta) == {"1|D1", "2|D2"}
+    assert _synced_hearing_notice_refs(meta) == {"1", "2"}
+
+
+def test_merge_hearings_keeps_cached():
+    from automation.downloader_e_proceedings import _merge_hearings
+    old = {"hearings": [
+        {"notice_ref": "1", "vc_datetime": "D1",
+         "recording_url": "http://old", "files": ["vc-01/a.pdf"]},
+    ]}
+    # Fresh entry lacks recording url + files — cached values are kept.
+    merged = _merge_hearings(old, [
+        {"notice_ref": "1", "vc_datetime": "D1", "status": "Completed"}])
+    assert len(merged) == 1
+    assert merged[0]["recording_url"] == "http://old"
+    assert merged[0]["files"] == ["vc-01/a.pdf"]
+    assert merged[0]["status"] == "Completed"
+
+
+def test_diff_build_meta_includes_hearings():
+    meta = _diff_build_meta(
+        {"name": "Assessment Proceeding u/s 147", "ay": "2015-16",
+         "status": "Open"},
+        [], {}, {}, {}, "2026-11-23 10:00:00",
+        orders=[],
+        hearings=[{"notice_ref": "1", "vc_datetime": "10-Feb-2024 12:30 PM",
+                   "recording_url": "http://x/webcams.webm",
+                   "files": ["vc-01/sched.pdf"]}],
+        vc_requestable=True)
+    assert meta["hearings"][0]["recording_url"] == "http://x/webcams.webm"
+    assert meta["vc_requestable"] is True
+
+
+def test_model_build_hearings():
+    from ui.eproceedings_model import _build_hearings, Hearing
+    hs = _build_hearings({"hearings": [
+        {"notice_ref": "1", "vc_datetime": "10-Feb-2024 12:30 PM",
+         "status": "Completed", "recording_url": "http://x",
+         "files": ["vc-01/a.pdf"]}]})
+    assert len(hs) == 1
+    assert isinstance(hs[0], Hearing)
+    assert hs[0].recording_url == "http://x"
+    assert hs[0].files == ["vc-01/a.pdf"]
+    # Legacy meta (no hearings key) -> empty
+    assert _build_hearings({}) == []
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     failed = 0

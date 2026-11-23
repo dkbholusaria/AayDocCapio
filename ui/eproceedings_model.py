@@ -59,6 +59,7 @@ __all__ = [
     "AppealStep",
     "Appeal",
     "Limitation",
+    "Hearing",
     "Case",
     "build_cases",
     "derive_status",
@@ -154,6 +155,28 @@ class Limitation:
 
 
 @dataclass
+class Hearing:
+    """A virtual hearing (video conferencing) recorded for a notice.
+
+    Dates keep the portal display format ``DD-Mon-YYYY`` (or ``""``).
+    ``recording_url`` is stored as a link (never downloaded). ``join_link`` /
+    ``vc_password`` are only present within 2 hours of a scheduled VC, so they
+    are usually empty.
+    """
+
+    notice_ref: str
+    vc_datetime: str
+    status: str = ""
+    reason: str = ""
+    request_date: str = ""
+    itd_response_date: str = ""
+    recording_url: str = ""
+    join_link: str = ""
+    vc_password: str = ""
+    files: list = field(default_factory=list)
+
+
+@dataclass
 class Case:
     """A single proceeding workspace."""
 
@@ -171,6 +194,8 @@ class Case:
     proc_dir: str
     downloaded_at: str = ""
     inferred_links: bool = False
+    hearings: list = field(default_factory=list)
+    vc_requestable: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -713,6 +738,28 @@ def _build_meta_docs(case_id: str, proc_name: str, meta: dict) -> list[Doc]:
     return docs
 
 
+def _build_hearings(meta: dict) -> list[Hearing]:
+    """Parse a proceeding's ``_meta.json`` ``hearings`` list into
+    :class:`Hearing` objects. Missing/legacy meta -> empty list."""
+    hearings: list[Hearing] = []
+    for raw in (meta.get("hearings") or []):
+        if not isinstance(raw, dict):
+            continue
+        hearings.append(Hearing(
+            notice_ref=(raw.get("notice_ref") or "").strip(),
+            vc_datetime=(raw.get("vc_datetime") or "").strip(),
+            status=(raw.get("status") or "").strip(),
+            reason=(raw.get("reason") or "").strip(),
+            request_date=(raw.get("request_date") or "").strip(),
+            itd_response_date=(raw.get("itd_response_date") or "").strip(),
+            recording_url=(raw.get("recording_url") or "").strip(),
+            join_link=(raw.get("join_link") or "").strip(),
+            vc_password=(raw.get("vc_password") or "").strip(),
+            files=list(raw.get("files") or []),
+        ))
+    return hearings
+
+
 def _build_legacy_docs(case_id: str, proc_name: str, proc_dir: str) -> list[Doc]:
     """Infer documents from a legacy tree with no ``_meta.json``.
 
@@ -980,7 +1027,8 @@ def _case_open_from_meta(meta: dict) -> bool:
 
 def build_cases(root: str, assessees: list[dict],
                 case_state: dict | None = None,
-                today: date | None = None) -> list[Case]:
+                today: date | None = None,
+                doc_overrides: dict | None = None) -> list[Case]:
     """Build one :class:`Case` per proceeding directory under ``root``.
 
     ``assessees`` is the vault list (keys ``pan``, ``name``, ``email``, ``cc``,
@@ -991,12 +1039,25 @@ def build_cases(root: str, assessees: list[dict],
     ``today`` is injected into the initial status/urgency derivation so tests
     remain deterministic; call :func:`derive_status` again after a date
     change if needed.
+
+    ``doc_overrides`` (F-26) maps a document override uid to ``{"replied":
+    bool, "ignored": bool}`` so a reply/ignore action taken in the Litigation
+    hub is reflected here — a manually replied notice counts as responded and
+    an ignored one drops out of the open/overdue set. The uid is read from
+    ``doc.inferred["override_uid"]``.
     """
 
     current = today or _today()
     by_pan = _assessee_index(assessees)
     state = case_state or {}
+    overrides = doc_overrides or {}
     cases: list[Case] = []
+
+    def _override_for(doc):
+        uid = (doc.inferred or {}).get("override_uid")
+        if not uid:
+            return None
+        return overrides.get(uid)
 
     for client_entry, year_name, eproc_root in _iter_eproc_roots(root):
         if "-" in client_entry:
@@ -1059,9 +1120,23 @@ def build_cases(root: str, assessees: list[dict],
                 proc_dir=proc_dir,
                 downloaded_at=(meta.get("downloaded_at") or "").strip(),
             )
+            case.hearings = _build_hearings(meta)
+            case.vc_requestable = bool(meta.get("vc_requestable"))
 
             _link_docs(case)
             _build_appeals(case)
+
+            # F-26: stamp each doc with its override uid and apply any manual
+            # reply/ignore set from the Litigation hub.
+            for doc in case.docs:
+                doc.inferred = dict(doc.inferred or {})
+                doc.inferred.setdefault("override_uid", f"it:{doc.id}")
+                ov = _override_for(doc)
+                if ov:
+                    if ov.get("replied"):
+                        doc.responded = True
+                    if ov.get("ignored"):
+                        doc.inferred["ignored"] = True
 
             # Derive statuses once with the case treated as open so an
             # unreplied notice is visible while deciding the final open flag.
@@ -1166,6 +1241,8 @@ def derive_status(doc: Doc, case: Case, today: date | None = None) -> str:
             return "Closed" if later_order else "Replied"
         if later_order:
             return "Closed"
+        if (doc.inferred or {}).get("ignored"):
+            return "Ignored"
         deadline = _parse_date(doc.reply_deadline)
         if deadline is not None and deadline < current:
             return "Overdue"
