@@ -126,7 +126,7 @@ def _user_manual_page_html(img_uris: dict) -> str:
          "Wait a few minutes for the session to expire, or ask the client to log out, then retry."),
         ("⚠️ AIS locked — wrong password",
          "The PDF was downloaded but the unlock attempt failed because the DOB in the vault does not match.",
-         f'Verify the Date of Birth in the client record. AIS/TIS password format: {badge("lowercase_pan + DDMMYYYY")} e.g. {badge("aaapt0001a01011980")}'),
+         f'Verify the Date of Birth in the client record. AIS/TIS password format: {badge("lowercase_pan + DDMMYYYY")} e.g. {badge("AABCP1234F01011980")}'),
         ("⬜ AIS — no data for this FY",
          "The Insight portal has no AIS data for this client for the selected year.",
          "This is normal for newer clients or years with no transactions. No action needed."),
@@ -845,7 +845,7 @@ def _user_manual_page_html(img_uris: dict) -> str:
             f'decryption system that removes these passwords before saving them to your folders.</p>'
             + bullets_html([
               'Attempts 9 password variations derived from the client\'s records.',
-              f'AIS/TIS Password Rule: {badge("lowercase_pan + DDMMYYYY")} (e.g. {badge("aaapt0001a15081985")}).',
+              f'AIS/TIS Password Rule: {badge("lowercase_pan + DDMMYYYY")} (e.g. {badge("AABCP1234F15081985")}).',
               f'26AS ZIP/PDF Password Rule: {badge("DDMMYYYY")} (e.g. {badge("15081985")}).',
               'Saves a fully unlocked, password-free version of the PDF for direct viewing, printing, or archiving.',
             ])

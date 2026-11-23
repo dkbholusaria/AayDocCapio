@@ -31,7 +31,7 @@ The GUI will be constructed using `customtkinter` (matching the modern design la
 │   ├── browser.py           # Self-healing Playwright browser manager
 │   ├── auth.py              # ITD Login and logout automation
 │   ├── downloader.py        # Redirection, 26AS, and AIS/TIS download logic
-└── outputs/                 # Subfolders named "PAN-Name of the assessee" (e.g. "AAAPT0001A-John Doe")
+└── outputs/                 # Subfolders named "PAN-Name of the assessee" (e.g. "AABCP1234F-Sample Client")
 ```
 
 ## Proposed Changes

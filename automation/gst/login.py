@@ -52,7 +52,7 @@ _ACCOUNT_JS = """() => {
 
 
 def mask(username: str) -> str:
-    """``GSTLOGIN01`` -> ``adg***``: safe for logs."""
+    """``GSTLOGIN01`` -> ``GST***``: safe for logs."""
     u = (username or "").strip()
     return (u[:3] + "***") if len(u) >= 3 else "***"
 

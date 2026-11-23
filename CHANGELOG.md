@@ -55,6 +55,13 @@ To force a fresh copy of a document, delete that file from the client folder and
 
 ### Bug Fixes
 
+#### Real client details removed from the codebase, docs and examples (#25)
+- **All examples, placeholders, sample mockups, tests and docs now use clearly fake data** — no real client name, username, company name, TAN, PAN, GSTIN, email or password appears anywhere in the repository or its history going forward
+- **Approved placeholders are standardised** — names `Sample Client` / `Sample Pvt Ltd` / `Test User`, PAN `AABCP1234F`, TAN `ABCD12345E`, GST username `GSTLOGIN01`, email `client@example.com`, and only obvious test passwords such as `testpass`
+- **A guard test now blocks regressions** — `test_no_real_identifiers.py` fails the build if a known real identifier or a non-placeholder PAN/TAN value is committed
+- **Contributor rule added** — `AGENT.md` now forbids using a real client's details as an example in code, docs, tests, CHANGELOG, commit messages or PR text
+- Leaked details previously posted in an upstream pull-request discussion were also redacted
+
 #### Starting an ITR Processing Status check no longer crashes the app (F-67)
 - **Fixed the app closing as soon as a Return Status check was started** — the progress dialog referenced Pause/Restart/Skip-Future handlers that only exist on the challan-generation dialog; in PyQt6 the resulting `AttributeError` inside the signal slot aborted the process. The unused buttons are removed, so status checks run normally
 

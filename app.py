@@ -784,7 +784,8 @@ class AayDocCapioApp(QMainWindow):
         try:
             QWidget.setTabOrder(self.search_box, self.status_filter)
             QWidget.setTabOrder(self.status_filter, self.group_filter)
-            QWidget.setTabOrder(self.group_filter, self.client_table)
+            QWidget.setTabOrder(self.group_filter, self.source_filter)
+            QWidget.setTabOrder(self.source_filter, self.client_table)
             QWidget.setTabOrder(self.client_table, self.btn_run)
         except Exception:
             pass
@@ -979,6 +980,7 @@ class AayDocCapioApp(QMainWindow):
         search_text = self.search_box.text() if hasattr(self, "search_box") else ""
         status_idx = self.status_filter.currentIndex() if hasattr(self, "status_filter") else 0
         group_idx = self.group_filter.currentIndex() if hasattr(self, "group_filter") else 0
+        source_idx = self.source_filter.currentIndex() if hasattr(self, "source_filter") else 0
         it_tab_idx = self._it_stack.currentIndex() if hasattr(self, "_it_stack") else 0
 
         for act in getattr(self, "_shortcut_actions", {}).values():
@@ -998,6 +1000,8 @@ class AayDocCapioApp(QMainWindow):
             self.status_filter.setCurrentIndex(status_idx)
         if hasattr(self, "group_filter"):
             self.group_filter.setCurrentIndex(group_idx)
+        if hasattr(self, "source_filter"):
+            self.source_filter.setCurrentIndex(source_idx)
         if hasattr(self, "search_box") and search_text:
             self.search_box.setText(search_text)
         if (nav_key == "it" and hasattr(self, "_it_stack")
@@ -1474,7 +1478,7 @@ class AayDocCapioApp(QMainWindow):
         filter_row.setContentsMargins(0, 0, 0, 0)
 
         self.search_box = QLineEdit()
-        self.search_box.setPlaceholderText("🔍  Search by name, PAN or status...")
+        self.search_box.setPlaceholderText("🔍  Search by name, PAN, status or GST...")
         self.search_box.setMinimumHeight(30)
         self.search_box.setClearButtonEnabled(True)
         self.search_box.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
@@ -1504,6 +1508,19 @@ class AayDocCapioApp(QMainWindow):
         self.group_filter.setMinimumWidth(160)
         self.group_filter.currentIndexChanged.connect(lambda _: self._apply_filter(self.search_box.text()))
         filter_row.addWidget(self.group_filter)
+
+        # Credential-source filter — lets the GST client base be listed at a
+        # glance, which is the first thing the GST reconciliation work needs.
+        self.source_filter = StyledComboBox()
+        self.source_filter.addItems([
+            "All sources", "Has GST", "Has TDS", "Has Income Tax", "Has no credentials",
+        ])
+        self.source_filter.setMinimumHeight(30)
+        self.source_filter.setMinimumWidth(150)
+        self.source_filter.setAccessibleName("Filter by portal credentials")
+        self.source_filter.currentIndexChanged.connect(
+            lambda _: self._apply_filter(self.search_box.text()))
+        filter_row.addWidget(self.source_filter)
 
         layout.addLayout(filter_row)
 
@@ -1623,15 +1640,16 @@ class AayDocCapioApp(QMainWindow):
     _TC_GROUP  = 2
     _TC_PAN    = 3
     _TC_DOB    = 4
-    _TC_STATUS = 5
-    _TC_TS     = 6   # Last Download Time
-    _TC_PATH   = 7
-    _TC_ACTS   = 8
+    _TC_SRCS   = 5   # Credential sources (Income Tax / TDS / GST)
+    _TC_STATUS = 6
+    _TC_TS     = 7   # Last Download Time
+    _TC_PATH   = 8
+    _TC_ACTS   = 9
 
     def _mk_client_table(self):
-        self.client_table = QTableWidget(0, 9)
+        self.client_table = QTableWidget(0, 10)
         self.client_table.setHorizontalHeaderLabels([
-            "", "Name  ⇅", "Group  ⇅", "PAN  ⇅", "Date of Birth",
+            "", "Name  ⇅", "Group  ⇅", "PAN  ⇅", "Date of Birth", "Sources",
             "Last Download Status", "Last Download Time", "Last Saved Location", ""
         ])
 
@@ -1679,6 +1697,7 @@ class AayDocCapioApp(QMainWindow):
         self.client_table.setColumnWidth(self._TC_CHK,    45)
         self.client_table.setColumnWidth(self._TC_GROUP, 140)
         self.client_table.setColumnWidth(self._TC_PAN,   130)
+        self.client_table.setColumnWidth(self._TC_SRCS,  200)
         self.client_table.setColumnWidth(self._TC_STATUS, 170)
         self.client_table.setColumnWidth(self._TC_TS,    155)
         self.client_table.setColumnWidth(self._TC_ACTS,   52)
@@ -3574,6 +3593,8 @@ class AayDocCapioApp(QMainWindow):
         group_wanted = (self.group_filter.currentText()
                         if hasattr(self, "group_filter") and self.group_filter.currentIndex() > 0
                         else None)
+        _src_wanted = (self.source_filter.currentIndex()
+                       if hasattr(self, "source_filter") else 0)
         for row_idx in range(self.client_table.rowCount()):
             name_item   = self.client_table.item(row_idx, self._TC_NAME)
             pan_item    = self.client_table.item(row_idx, self._TC_PAN)
@@ -3593,7 +3614,20 @@ class AayDocCapioApp(QMainWindow):
                 status_match = any(st.startswith(p) for p in status_prefixes)
             group_match = (group_wanted is None
                            or (group_item is not None and group_item.text() == group_wanted))
-            hidden = not (text_match and status_match and group_match)
+            src_item = self.client_table.item(row_idx, self._TC_SRCS)
+            srcs = (src_item.data(Qt.ItemDataRole.UserRole + 2)
+                    if src_item is not None else None) or []
+            if _src_wanted == 1:
+                src_match = "GST" in srcs
+            elif _src_wanted == 2:
+                src_match = "TDS" in srcs
+            elif _src_wanted == 3:
+                src_match = "Income Tax" in srcs
+            elif _src_wanted == 4:
+                src_match = not srcs
+            else:
+                src_match = True
+            hidden = not (text_match and status_match and group_match and src_match)
             self.client_table.setRowHidden(row_idx, hidden)
             if not hidden:
                 a_id = name_item.data(Qt.ItemDataRole.UserRole)
@@ -3725,6 +3759,23 @@ class AayDocCapioApp(QMainWindow):
             dob_item = QTableWidgetItem(a.get("dob", ""))
             dob_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.client_table.setItem(i, self._TC_DOB, dob_item)
+
+            # Col: Credential sources — Income Tax / TDS / GST tags
+            sources = self.vault.credential_sources(a)
+            src_item = QTableWidgetItem(" · ".join(sources))
+            src_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            src_item.setData(Qt.ItemDataRole.UserRole + 2, sources)
+            if sources:
+                src_item.setForeground(QColor(_t().accent_hover))
+                src_item.setToolTip("Credentials saved for: " + ", ".join(sources))
+            else:
+                src_item.setForeground(QColor(_t().text_muted))
+                src_item.setToolTip("No portal credentials saved for this client yet.")
+            src_item.setData(
+                Qt.ItemDataRole.AccessibleTextRole,
+                f"Credentials for {a.get('name', pan)}: "
+                + (", ".join(sources) if sources else "none"))
+            self.client_table.setItem(i, self._TC_SRCS, src_item)
 
             # Col 4: Last Download Status (from history) — one glyph summarizing
             # the worst outcome across doc types, tooltip breaks down each one.
@@ -3973,7 +4024,6 @@ class AayDocCapioApp(QMainWindow):
         editing = a is not None
         dlg = QDialog(self)
         dlg.setWindowTitle("Edit Client" if editing else "Add New Client")
-        dlg.setFixedWidth(400)
         t = _t()
         dlg.setStyleSheet(
             f"QDialog{{background:{t.bg_window};}}"
@@ -3981,15 +4031,31 @@ class AayDocCapioApp(QMainWindow):
             f"QLineEdit{{border:1px solid {t.border};border-radius:6px;padding:6px 10px;"
             f"font-size:12px;background:{t.bg_input};color:{t.text_primary};}}"
             f"QLineEdit:focus{{border-color:{t.border_focus};background:{t.bg_input_focus};}}"
+            f"QFrame#clientSep{{background:{t.border};border:none;}}"
         )
-        vl = QVBoxLayout(dlg)
-        vl.setContentsMargins(28, 24, 28, 24)
-        vl.setSpacing(0)
+
+        # Two columns side by side so the dialog stays short and wide instead of
+        # becoming a long single strip that overflows a laptop screen.
+        root = QVBoxLayout(dlg)
+        root.setContentsMargins(28, 24, 28, 24)
+        root.setSpacing(0)
 
         title_lbl = QLabel("Edit Client" if editing else "Add New Client")
         title_lbl.setStyleSheet(f"font-size:14px;font-weight:700;color:{t.text_primary};")
-        vl.addWidget(title_lbl)
-        vl.addSpacing(18)
+        root.addWidget(title_lbl)
+        root.addSpacing(16)
+
+        cols = QHBoxLayout()
+        cols.setSpacing(28)
+        cols.setContentsMargins(0, 0, 0, 0)
+        left = QVBoxLayout()
+        right = QVBoxLayout()
+        for col in (left, right):
+            col.setSpacing(0)
+            col.setContentsMargins(0, 0, 0, 0)
+        cols.addLayout(left, 1)
+        cols.addLayout(right, 1)
+        root.addLayout(cols)
 
         fields = {}
 
@@ -3998,37 +4064,46 @@ class AayDocCapioApp(QMainWindow):
             l.setStyleSheet(f"font-size:11px;font-weight:600;color:{t.text_muted};margin-bottom:3px;")
             return l
 
-        # ── Name ──────────────────────────────────────────────────────────────
-        vl.addWidget(_field_label("Full Name"))
-        fields["name"] = QLineEdit()
-        fields["name"].setPlaceholderText("e.g. Deepak Bholusaria")
-        fields["name"].setFixedHeight(34)
-        fields["name"].setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
-        vl.addWidget(fields["name"])
-        vl.addSpacing(10)
+        def _line_edit(ph):
+            e = QLineEdit()
+            e.setPlaceholderText(ph)
+            e.setFixedHeight(34)
+            e.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
+            return e
 
-        # ── Group (F-11, optional) ───────────────────────────────────────────
-        vl.addWidget(_field_label("Group (optional — e.g. a family or firm name)"))
+        def _section_head(text):
+            lbl = QLabel(text.upper())
+            lbl.setStyleSheet(
+                f"font-size:10px;font-weight:700;color:{t.text_muted};"
+                f"letter-spacing:0.6px;background:transparent;border:none;")
+            return lbl
+
+        # ── LEFT COLUMN — identity ────────────────────────────────────────────
+        left.addWidget(_section_head("Client"))
+        left.addSpacing(8)
+
+        left.addWidget(_field_label("Full Name"))
+        fields["name"] = _line_edit("e.g. Deepak Bholusaria")
+        left.addWidget(fields["name"])
+        left.addSpacing(10)
+
+        left.addWidget(_field_label("Group (optional — e.g. a family or firm name)"))
         fields["group"] = self._make_group_combo(a.get("group", "") if editing else "")
-        vl.addWidget(fields["group"])
-        vl.addSpacing(10)
+        left.addWidget(fields["group"])
+        left.addSpacing(10)
 
-        # ── PAN ───────────────────────────────────────────────────────────────
-        vl.addWidget(_field_label("PAN / TAN"))
-        fields["pan"] = QLineEdit()
-        fields["pan"].setPlaceholderText("PAN ABCDE1234F  ·  TAN ABCD12345E")
-        fields["pan"].setFixedHeight(34)
+        left.addWidget(_field_label("PAN / TAN"))
+        fields["pan"] = _line_edit("PAN AABCP1234F  ·  TAN ABCD12345E")
         fields["pan"].setMaxLength(10)
         fields["pan"].setValidator(
             QRegularExpressionValidator(QRegularExpression("[A-Za-z0-9]{0,10}")))
-        fields["pan"].setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
         fields["pan"].textChanged.connect(
             lambda txt, e=fields["pan"]: e.setText(txt.upper()) if txt != txt.upper() else None)
-        vl.addWidget(fields["pan"])
-        vl.addSpacing(10)
+        left.addWidget(fields["pan"])
+        left.addSpacing(10)
 
         # ── Date of Birth — text input + calendar picker + live hint ─────────
-        vl.addWidget(_field_label("Date of Birth (required for PAN, optional for TAN)"))
+        left.addWidget(_field_label("Date of Birth (required for PAN, optional for TAN)"))
         dob_row = QHBoxLayout()
         dob_row.setSpacing(6)
         dob_row.setContentsMargins(0, 0, 0, 0)
@@ -4049,14 +4124,89 @@ class AayDocCapioApp(QMainWindow):
 
         dob_row.addWidget(dob_edit, 1)
         dob_row.addWidget(cal_btn)
-        vl.addLayout(dob_row)
+        left.addLayout(dob_row)
 
-        # Hint label: shows normalised date or error inline
         dob_hint = QLabel("")
         dob_hint.setStyleSheet("font-size:10px;background:transparent;border:none;")
         dob_hint.setFixedHeight(16)
-        vl.addWidget(dob_hint)
-        vl.addSpacing(6)
+        left.addWidget(dob_hint)
+        left.addStretch(1)
+
+        # ── RIGHT COLUMN — contact then each credential set ──────────────────
+        right.addWidget(_section_head("Contact"))
+        right.addSpacing(8)
+
+        right.addWidget(_field_label("Email Address (optional)"))
+        fields["email"] = _line_edit("client@example.com")
+        right.addWidget(fields["email"])
+        right.addSpacing(10)
+
+        right.addWidget(_field_label("CC (optional — separate multiple with  ;)"))
+        fields["cc"] = _line_edit("spouse@example.com;accountant@firm.com")
+        right.addWidget(fields["cc"])
+        right.addSpacing(16)
+
+        # Each credential set is a small labelled block; pairs sit side by side
+        # so three sets still fit in about the height of two.
+        def _cred_block(host, user_key, user_label, user_ph, pass_key, pass_ph,
+                        show_key, show_label):
+            host.addWidget(_field_label(user_label))
+            fields[user_key] = _line_edit(user_ph)
+            host.addWidget(fields[user_key])
+            host.addSpacing(8)
+            host.addWidget(_field_label(show_label.replace("Show ", "")))
+            fields[pass_key] = _line_edit(pass_ph)
+            fields[pass_key].setEchoMode(QLineEdit.EchoMode.Password)
+            host.addWidget(fields[pass_key])
+            cb = QCheckBox(show_label)
+            cb.setStyleSheet(f"color:{t.text_muted};font-size:11px;background:transparent;")
+            host.addWidget(cb)
+            hosts[show_key] = cb
+
+        hosts = {}
+
+        right.addWidget(_section_head("Income Tax portal"))
+        right.addSpacing(8)
+        itd_block = QVBoxLayout(); itd_block.setSpacing(0); itd_block.setContentsMargins(0, 0, 0, 0)
+        right.addLayout(itd_block)
+        itd_block.addWidget(_field_label("Portal Password (PAN login)"))
+        fields["pwd"] = _line_edit("Enter password")
+        fields["pwd"].setEchoMode(QLineEdit.EchoMode.Password)
+        itd_block.addWidget(fields["pwd"])
+        show_cb = QCheckBox("Show password")
+        show_cb.setStyleSheet(f"color:{t.text_muted};font-size:11px;background:transparent;")
+        itd_block.addWidget(show_cb)
+        right.addSpacing(14)
+
+        right.addWidget(_section_head("Optional — separate portals"))
+        right.addSpacing(8)
+
+        pair = QHBoxLayout()
+        pair.setSpacing(14)
+        pair.setContentsMargins(0, 0, 0, 0)
+        tds_col = QVBoxLayout(); tds_col.setSpacing(0); tds_col.setContentsMargins(0, 0, 0, 0)
+        gst_col = QVBoxLayout(); gst_col.setSpacing(0); gst_col.setContentsMargins(0, 0, 0, 0)
+        pair.addLayout(tds_col, 1)
+        pair.addLayout(gst_col, 1)
+        right.addLayout(pair)
+
+        _cred_block(tds_col, "tds_user", "TDS Username", "TDS / TRACES user id",
+                    "tds_pwd", "TDS password", "tds_show", "Show TDS password")
+        _cred_block(gst_col, "gst_user", "GST Username", "e.g. GSTLOGIN01",
+                    "gst_pwd", "GST password", "gst_show", "Show GST password")
+        right.addStretch(1)
+
+        def _toggle_echo(_checked: bool = False):
+            for edit, toggle in ((fields["pwd"], show_cb),
+                                 (fields["tds_pwd"], hosts["tds_show"]),
+                                 (fields["gst_pwd"], hosts["gst_show"])):
+                edit.setEchoMode(
+                    QLineEdit.EchoMode.Normal if toggle.isChecked()
+                    else QLineEdit.EchoMode.Password)
+
+        show_cb.toggled.connect(_toggle_echo)
+        hosts["tds_show"].toggled.connect(_toggle_echo)
+        hosts["gst_show"].toggled.connect(_toggle_echo)
 
         def _smart_normalise(text: str) -> str:
             """Pre-process raw text before vault normalisation.
@@ -4207,79 +4357,97 @@ class AayDocCapioApp(QMainWindow):
             popup.move(pos)
             popup.exec()
 
+        def _show_calendar():
+            from PyQt6.QtCore import QDate
+            from PyQt6.QtGui import QPalette, QColor
+            from vault import _normalise_dob, _DOB_RE
+
+            popup = QDialog(dlg)
+            popup.setWindowTitle("Pick Date of Birth")
+            popup.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
+            popup.setStyleSheet(
+                f"QDialog{{background:{t.bg_panel};border:2px solid {t.border};border-radius:8px;}}"
+                f"QToolButton{{color:{t.text_primary};background:transparent;border:none;"
+                f"border-radius:4px;padding:3px 8px;font-size:12px;font-weight:600;}}"
+                f"QToolButton:hover{{background:{t.accent};color:{t.accent_text};}}"
+                f"QToolButton::menu-indicator{{image:none;}}"
+                f"QSpinBox{{color:{t.text_primary};background:{t.bg_input};"
+                f"border:1px solid {t.border};border-radius:4px;padding:2px 6px;}}"
+                f"QSpinBox::up-button,QSpinBox::down-button{{background:transparent;border:none;}}"
+                f"QMenu{{background:{t.bg_menu};color:{t.text_primary};border:1.5px solid {t.border_menu};}}"
+                f"QMenu::item:selected{{background:{t.accent};color:{t.accent_text};}}"
+                f"QHeaderView::section{{background:{t.bg_header};color:{t.text_muted};"
+                f"border:none;font-size:11px;font-weight:600;padding:4px 0;}}"
+                f"#qt_calendar_navigationbar{{background:{t.bg_header};padding:6px 8px;}}"
+                f"QAbstractItemView{{background:{t.bg_table};color:{t.text_primary};"
+                f"selection-background-color:{t.accent};selection-color:{t.accent_text};"
+                f"outline:none;border:none;}}"
+            )
+
+            pl = QVBoxLayout(popup)
+            pl.setContentsMargins(0, 0, 0, 0)
+            pl.setSpacing(0)
+
+            cal = QCalendarWidget(popup)
+            cal.setGridVisible(False)
+            cal.setVerticalHeaderFormat(QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader)
+
+            # Set QPalette on the calendar so Qt's internal painter uses theme colours
+            pal = QPalette()
+            pal.setColor(QPalette.ColorRole.Window,      QColor(t.bg_table))
+            pal.setColor(QPalette.ColorRole.Base,        QColor(t.bg_table))
+            pal.setColor(QPalette.ColorRole.AlternateBase, QColor(t.bg_table_alt))
+            pal.setColor(QPalette.ColorRole.Text,        QColor(t.text_primary))
+            pal.setColor(QPalette.ColorRole.BrightText,  QColor(t.accent_text))
+            pal.setColor(QPalette.ColorRole.Highlight,   QColor(t.accent))
+            pal.setColor(QPalette.ColorRole.HighlightedText, QColor(t.accent_text))
+            pal.setColor(QPalette.ColorRole.ButtonText,  QColor(t.text_primary))
+            pal.setColor(QPalette.ColorRole.Button,      QColor(t.bg_input))
+            pal.setColor(QPalette.ColorRole.WindowText,  QColor(t.text_primary))
+            pal.setColor(QPalette.ColorRole.ToolTipBase, QColor(t.bg_menu))
+            pal.setColor(QPalette.ColorRole.ToolTipText, QColor(t.text_primary))
+
+            # Disabled role — other-month days
+            pal.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text,
+                         QColor(t.text_muted))
+            cal.setPalette(pal)
+
+            # Apply palette to all child widgets (nav bar, table view, header)
+            for child in cal.findChildren(QWidget):
+                child.setPalette(pal)
+                child.setAutoFillBackground(True)
+
+            # Pre-select current value if valid
+            raw = dob_edit.text().strip()
+            normed = _normalise_dob(raw) if raw else ""
+            if _DOB_RE.match(normed):
+                try:
+                    d, m, y = normed.split("-")
+                    cal.setSelectedDate(QDate(int(y), int(m), int(d)))
+                except Exception:
+                    pass
+
+            cal.setMaximumDate(QDate.currentDate())
+            pl.addWidget(cal)
+
+            def _picked(date):
+                dob_edit.setText(f"{date.day():02d}-{date.month():02d}-{date.year()}")
+                popup.accept()
+
+            cal.clicked.connect(_picked)
+            pos = cal_btn.mapToGlobal(cal_btn.rect().bottomLeft())
+            popup.move(pos)
+            popup.exec()
+
         cal_btn.clicked.connect(_show_calendar)
 
-        # ── Portal Password ───────────────────────────────────────────────────
-        vl.addWidget(_field_label("Portal Password"))
-        fields["pwd"] = QLineEdit()
-        fields["pwd"].setPlaceholderText("Enter password")
-        fields["pwd"].setFixedHeight(34)
-        fields["pwd"].setEchoMode(QLineEdit.EchoMode.Password)
-        fields["pwd"].setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
-        vl.addWidget(fields["pwd"])
-        vl.addSpacing(10)
-
-        # Show password toggle
-        show_cb = QCheckBox("Show password")
-        show_cb.setStyleSheet(f"color:{t.text_muted};font-size:11px;background:transparent;")
-        vl.addWidget(show_cb)
-        vl.addSpacing(14)
-
-        # ── GST Portal (optional, F-20) ───────────────────────────────────────
-        vl.addWidget(_field_label("GST Username (optional)"))
-        fields["gst_user"] = QLineEdit()
-        fields["gst_user"].setPlaceholderText("GST portal login, e.g. GSTLOGIN01")
-        fields["gst_user"].setFixedHeight(34)
-        fields["gst_user"].setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
-        vl.addWidget(fields["gst_user"])
-        vl.addSpacing(10)
-
-        vl.addWidget(_field_label("GST Password (optional)"))
-        fields["gst_pwd"] = QLineEdit()
-        fields["gst_pwd"].setPlaceholderText("GST portal password")
-        fields["gst_pwd"].setFixedHeight(34)
-        fields["gst_pwd"].setEchoMode(QLineEdit.EchoMode.Password)
-        fields["gst_pwd"].setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
-        vl.addWidget(fields["gst_pwd"])
-
-        show_gst_cb = QCheckBox("Show GST password")
-        show_gst_cb.setStyleSheet(f"color:{t.text_muted};font-size:11px;background:transparent;")
-        vl.addWidget(show_gst_cb)
-
-        def _toggle_echo(_checked: bool = False):
-            fields["pwd"].setEchoMode(
-                QLineEdit.EchoMode.Normal if show_cb.isChecked()
-                else QLineEdit.EchoMode.Password)
-            fields["gst_pwd"].setEchoMode(
-                QLineEdit.EchoMode.Normal if show_gst_cb.isChecked()
-                else QLineEdit.EchoMode.Password)
-
-        show_cb.toggled.connect(_toggle_echo)
-        show_gst_cb.toggled.connect(_toggle_echo)
-        vl.addSpacing(14)
-
-        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"background:{t.border};border:none;max-height:1px;")
-        vl.addWidget(sep)
-        vl.addSpacing(10)
-
-        # ── Email ─────────────────────────────────────────────────────────────
-        vl.addWidget(_field_label("Email Address (optional)"))
-        fields["email"] = QLineEdit()
-        fields["email"].setPlaceholderText("client@example.com")
-        fields["email"].setFixedHeight(34)
-        fields["email"].setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
-        vl.addWidget(fields["email"])
-        vl.addSpacing(10)
-
-        # ── CC ────────────────────────────────────────────────────────────────
-        vl.addWidget(_field_label("CC (optional — separate multiple with  ;)"))
-        fields["cc"] = QLineEdit()
-        fields["cc"].setPlaceholderText("spouse@example.com;accountant@firm.com")
-        fields["cc"].setFixedHeight(34)
-        fields["cc"].setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
-        vl.addWidget(fields["cc"])
-        vl.addSpacing(18)
+        # ── Footer ────────────────────────────────────────────────────────────
+        root.addSpacing(16)
+        sep = QFrame(); sep.setObjectName("clientSep")
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setFixedHeight(1)
+        root.addWidget(sep)
+        root.addSpacing(14)
 
         # Pre-fill if editing
         if editing:
@@ -4289,6 +4457,8 @@ class AayDocCapioApp(QMainWindow):
             fields["pwd"].setText(a.get("password", ""))
             fields["email"].setText(a.get("email", ""))
             fields["cc"].setText(a.get("cc", ""))
+            fields["tds_user"].setText(a.get("tds_username", ""))
+            fields["tds_pwd"].setText(a.get("tds_password", ""))
             fields["gst_user"].setText(a.get("gst_username", ""))
             fields["gst_pwd"].setText(a.get("gst_password", ""))
 
@@ -4299,7 +4469,7 @@ class AayDocCapioApp(QMainWindow):
         btn_row.addWidget(btn_cancel)
         btn_row.addStretch()
         btn_row.addWidget(btn_save)
-        vl.addLayout(btn_row)
+        root.addLayout(btn_row)
 
         btn_cancel.clicked.connect(dlg.reject)
 
@@ -4313,7 +4483,9 @@ class AayDocCapioApp(QMainWindow):
                     cc=fields["cc"].text(),
                     group=fields["group"].currentText(),
                     gst_username=fields["gst_user"].text(),
-                    gst_password=fields["gst_pwd"].text())
+                    gst_password=fields["gst_pwd"].text(),
+                    tds_username=fields["tds_user"].text(),
+                    tds_password=fields["tds_pwd"].text())
                 action = "updated" if editing else "added"
                 self.log(f"[Vault] Client {action}: {fields['pan'].text()} — {fields['name'].text()}")
                 dlg.accept()
@@ -6483,7 +6655,7 @@ class AayDocCapioApp(QMainWindow):
         dob_lbl.setStyleSheet("font-size:11px;font-weight:600;")
         lay.addWidget(dob_lbl)
         dob_edit = QLineEdit()
-        dob_edit.setPlaceholderText("DD-MM-YYYY  (e.g. 09-07-1979)")
+        dob_edit.setPlaceholderText("DD-MM-YYYY  (e.g. 01-01-1980)")
         dob_edit.setFixedHeight(34)
         lay.addWidget(dob_edit)
 

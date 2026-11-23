@@ -94,7 +94,7 @@ def test_classify_error(text, verdict):
 
 
 def test_mask_never_leaks_username():
-    assert mask("GSTLOGIN01") == "adg***"
+    assert mask("GSTLOGIN01") == "GST***"
     assert mask("ab") == "***"
     assert mask("") == "***"
 

@@ -44,8 +44,8 @@ python app.py
 | 1 | Client Master → Add Single Client | Dialog opens |
 | 2 | Enter PAN: `INVALIDPAN` | — |
 | 3 | Click Save | Inline error: "Invalid PAN format" with format explanation |
-| 4 | Enter PAN: `aaapt0001a` (lowercase) | — |
-| 5 | Click Save | Accepted (auto-uppercased) OR inline error — PAN saved as `AAAPT0001A` |
+| 4 | Enter PAN: `AABCP1234F` (lowercase) | — |
+| 5 | Click Save | Accepted (auto-uppercased) OR inline error — PAN saved as `AABCP1234F` |
 
 ---
 

@@ -252,18 +252,18 @@ def test_vault_credential_flag_and_password_update():
     with tempfile.TemporaryDirectory() as tmp:
         vault = VaultManager(vault_path=os.path.join(tmp, "vault.json"))
         client_id = vault.add_update_assessee(
-            "Test Client", "ABCPE1234F", "01-01-1990", "old-password")
+            "Test Client", "AABCP1234F", "01-01-1990", "old-password")
         assert vault.get_credential_invalid() == set()
-        assert vault.set_client_credential_invalid("abcpe1234f", True) is True
-        assert vault.get_credential_invalid() == {"ABCPE1234F"}
+        assert vault.set_client_credential_invalid("aabcp1234f", True) is True
+        assert vault.get_credential_invalid() == {"AABCP1234F"}
 
         vault.add_update_assessee(
-            "Test Client", "ABCPE1234F", "01-01-1990", "old-password",
+            "Test Client", "AABCP1234F", "01-01-1990", "old-password",
             assessee_id=client_id)
-        assert vault.get_credential_invalid() == {"ABCPE1234F"}
+        assert vault.get_credential_invalid() == {"AABCP1234F"}
 
         vault.add_update_assessee(
-            "Test Client", "ABCPE1234F", "01-01-1990", "new-password",
+            "Test Client", "AABCP1234F", "01-01-1990", "new-password",
             assessee_id=client_id)
         assert vault.get_credential_invalid() == set()
 

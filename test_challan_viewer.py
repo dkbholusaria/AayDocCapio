@@ -26,10 +26,10 @@ def _build_tree(root: str):
         "AABCP1234F-Challan-TY_2026_27-Advance_Tax-111111.pdf": 1_000,
         "AABCP1234F-Sample Client/TY_2026_27/Tax Challans (Paid)/"
         "AABCP1234F-Challan-2026_27-CIN123-Advance_Tax.pdf": 2_000,
-        "ABCD12345E-Altaf/TY_2026_27/Tax Challans (Payable)/"
-        "ABCD12345E-TDS-Challan-TY_2026_27-222222.pdf": 3_000,
-        "AABCP1237J-Legacy/Challans/"
-        "AABCP1237J-Challan-2025_26-old-Self_Assessment.pdf": 4_000,
+        "AMRA12345D-Sample Client/TY_2026_27/Tax Challans (Payable)/"
+        "AMRA12345D-TDS-Challan-TY_2026_27-222222.pdf": 3_000,
+        "AABCP1235G-Legacy/Challans/"
+        "AABCP1235G-Challan-2025_26-old-Self_Assessment.pdf": 4_000,
         "AABCP1236H-Old/Tax Challans (Generated)/"
         "AABCP1236H-Challan-AY_2025_26-Self_Assessment-333333.pdf": 5_000,
         "Unrelated/random.pdf": 6_000,
@@ -41,7 +41,7 @@ def _build_tree(root: str):
 
 CLIENTS = [
     {"pan": "AABCP1234F", "name": "Sample Client"},
-    {"pan": "ABCD12345E", "name": "Sample Deductor"},
+    {"pan": "ABCD12345E", "name": "Sample Client"},
 ]
 
 
@@ -57,7 +57,7 @@ def test_classification_helpers():
     assert parse_year("AABCP1234F-Challan-2026_27-CIN-Advance.pdf") == "2026-27"
     assert parse_year("nothing here") == ""
     assert parse_identity("AABCP1234F-Sample Client") == "AABCP1234F"
-    assert parse_identity("", "ABCD12345E-TDS-Challan-TY.pdf") == "ABCD12345E"
+    assert parse_identity("", "AMRA12345D-TDS-Challan-TY.pdf") == "AMRA12345D"
     assert parse_identity("random-folder") == ""
     assert format_size(999) == "999 B"
     assert format_size(1500) == "1.5 KB"
@@ -82,13 +82,13 @@ def test_scan_saved_challans():
         assert sample_paid["payment_type"] == "Advance Tax"
         assert sample_paid["doc_type"] == "Income Tax"
 
-        tds = by_name["ABCD12345E-TDS-Challan-TY_2026_27-222222.pdf"]
-        assert tds["client_name"] == "Sample Deductor"
+        tds = by_name["AMRA12345D-TDS-Challan-TY_2026_27-222222.pdf"]
+        assert tds["client_name"] == "Sample Client"
         assert tds["doc_type"] == "TDS/TCS"
         assert tds["payment_type"] == "TDS/TCS"
         assert tds["status"] == "Unpaid"
 
-        legacy_paid = by_name["AABCP1237J-Challan-2025_26-old-Self_Assessment.pdf"]
+        legacy_paid = by_name["AABCP1235G-Challan-2025_26-old-Self_Assessment.pdf"]
         assert legacy_paid["status"] == "Paid"
         assert legacy_paid["payment_type"] == "Self Assessment"
 

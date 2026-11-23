@@ -9,7 +9,7 @@ from vault import VaultManager, identify_type, _validate_fields
 
 def test_identify_type():
     assert identify_type("AABCP1234F") == "PAN"
-    assert identify_type("amra16635d") == "TAN"
+    assert identify_type("ABCD12345E") == "TAN"
     assert identify_type("") == ""
     assert identify_type("ABCDE1234") == ""
 
@@ -27,13 +27,13 @@ def test_vault_accepts_tan_without_dob():
 def test_vault_still_accepts_pan_with_dob():
     with tempfile.TemporaryDirectory() as tmp:
         v = VaultManager(vault_path=os.path.join(tmp, "v.json"))
-        v.add_update_assessee("Sample Client", "AABCP1234F", "01-01-1980", "secret1")
+        v.add_update_assessee("Sample Client", "AABCP1234F", "01-01-1980", "testpass")
         assert v.get_all_assessees()[0]["id_type"] == "PAN"
 
 
 def test_pan_still_requires_dob():
     try:
-        _validate_fields("Sample Client", "AABCP1234F", "", "secret1")
+        _validate_fields("Sample Client", "AABCP1234F", "", "testpass")
     except ValueError as e:
         assert "Date of Birth" in str(e)
     else:
@@ -42,7 +42,7 @@ def test_pan_still_requires_dob():
 
 def test_bad_identity_rejected():
     try:
-        _validate_fields("Sample Client", "ABCDE1234", "01-01-1980", "secret1")
+        _validate_fields("Sample Client", "ABCDE1234", "01-01-1980", "testpass")
     except ValueError as e:
         assert "PAN / TAN" in str(e)
     else:
@@ -143,7 +143,7 @@ def test_download_dialog_lists_only_tan_clients():
     with tempfile.TemporaryDirectory() as tmp:
         v = VaultManager(vault_path=os.path.join(tmp, "v.json"))
         v.add_update_assessee("Sample Deductor", "ABCD12345E", "", "testpass")
-        v.add_update_assessee("Sample Client", "AABCP1234F", "01-01-1980", "secret1")
+        v.add_update_assessee("Sample Client", "AABCP1234F", "01-01-1980", "testpass")
         years = [
             {"label": "TY 2026-27 (FY 2026-27)", "enabled": True,
              "year": {"TY": "2026-27", "FY": "2026-27"}},

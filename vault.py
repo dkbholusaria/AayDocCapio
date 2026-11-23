@@ -612,7 +612,7 @@ class VaultManager:
         """Generates an Excel import template with sample columns."""
         headers = ["Name", "Group", "PAN", "DOB", "Password", "Email", "CC",
                    "GST Username", "GST Password"]
-        sample = ["John Doe", "", "AABCP1234F", "01-01-1980", "YourPortalPassword",
+        sample = ["Sample Client", "", "AABCP1234F", "01-01-1980", "YourPortalPassword",
                   "client@example.com", "spouse@example.com;accountant@firm.com",
                   "gstuser01", "YourGstPassword"]
         target = file_path if (file_path.endswith('.csv') or file_path.endswith('.xlsx')) else file_path + ".xlsx"

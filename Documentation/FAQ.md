@@ -111,8 +111,8 @@ This condition is handled by requirement D-11: the app detects it, stops that cl
 The app attempts to unlock PDFs automatically using standard ITD password combinations (PAN + DOB variants). If none match, the file is saved locked.
 
 The standard passwords to try manually:
-- AIS/TIS PDFs: `<PAN><DOB as DDMMYYYY>` (e.g. `AAAPT0001A01011980`)
-- Sometimes lowercase PAN: `aaapt0001a01011980`
+- AIS/TIS PDFs: `<PAN><DOB as DDMMYYYY>` (e.g. `AABCP1234F01011980`)
+- Sometimes lowercase PAN: `AABCP1234F01011980`
 
 If the DOB stored in the vault is wrong, PDF unlock will always fail — verify the DOB first.
 
