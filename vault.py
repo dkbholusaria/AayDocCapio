@@ -30,9 +30,11 @@ def identify_type(value: str) -> str:
 def credential_sources(client: dict) -> list:
     """Which portal flows this client belongs to: "Income Tax", "TDS", "GST".
 
-    Driven by the explicit enable_* flags so a client can be GST-only (no PAN,
-    absent from every income-tax list) or TDS-only. Records saved before the
-    flags existed fall back to "has usable credentials".
+    The three are independent: a client can be any combination — all three at
+    once is normal for a taxpayer who also has a deductor and GST login, and
+    each module simply uses its own user id. A client can also be GST-only
+    (no PAN, absent from every income-tax list) or TDS-only. Records saved
+    before the flags existed fall back to "has usable credentials".
     """
     def flag(key, fallback):
         value = client.get(key)

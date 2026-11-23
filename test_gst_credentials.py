@@ -249,3 +249,58 @@ def test_enable_columns_round_trip_csv():
         by_name = {c["name"]: c for c in v2.get_all_assessees()}
         assert credential_sources(by_name["GST Only Trader"]) == ["GST"]
         assert credential_sources(by_name["Sample Client"]) == ["Income Tax"]
+
+
+def test_client_can_have_all_three_portals():
+    """A taxpayer with a PAN login, a deductor login and a GST login is normal
+    — the three are independent, each module uses its own user id."""
+    with tempfile.TemporaryDirectory() as tmp:
+        v = _vault(tmp)
+        v.add_update_assessee(
+            "Sample Client", "AABCP1234F", "01-01-1980", "testpass",
+            tds_username="tdsu", tds_password="tdsp",
+            gst_username="gstu", gst_password="gstp",
+            enable_income_tax=True, enable_gst=True, enable_tds=True)
+        c = v.get_all_assessees()[0]
+        assert credential_sources(c) == ["Income Tax", "TDS", "GST"]
+        assert c["password"] == "testpass"
+        assert c["tds_password"] == "tdsp"
+        assert c["gst_password"] == "gstp"
+
+
+def test_csv_import_can_enable_all_three_at_once():
+    with tempfile.TemporaryDirectory() as tmp:
+        v = _vault(tmp)
+        path = os.path.join(tmp, "clients.csv")
+        with open(path, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["Name", "PAN", "DOB", "Password",
+                        "TDS Username", "TDS Password",
+                        "GST Username", "GST Password",
+                        "Enable Income Tax", "Enable GST", "Enable TDS"])
+            w.writerow(["Sample Client", "AABCP1234F", "01-01-1980", "testpass",
+                        "tdsu", "tdsp", "gstu", "gstp", "Yes", "Yes", "Yes"])
+        added, updated, errors = v.import_bulk(path)
+        assert (added, errors) == (1, [])
+        c = v.get_all_assessees()[0]
+        assert credential_sources(c) == ["Income Tax", "TDS", "GST"]
+        # each login keeps its own credentials
+        assert c["password"] == "testpass"
+        assert (c["tds_username"], c["tds_password"]) == ("tdsu", "tdsp")
+        assert (c["gst_username"], c["gst_password"]) == ("gstu", "gstp")
+
+
+def test_imported_gst_only_row_carries_no_income_tax_tag():
+    with tempfile.TemporaryDirectory() as tmp:
+        v = _vault(tmp)
+        path = os.path.join(tmp, "clients.csv")
+        with open(path, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["Name", "PAN", "DOB", "Password",
+                        "GST Username", "GST Password",
+                        "Enable Income Tax", "Enable GST", "Enable TDS"])
+            w.writerow(["GST Only Trader", "", "", "", "gstu", "gstp",
+                        "No", "Yes", "No"])
+        added, updated, errors = v.import_bulk(path)
+        assert (added, errors) == (1, [])
+        assert credential_sources(v.get_all_assessees()[0]) == ["GST"]

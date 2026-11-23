@@ -4230,7 +4230,7 @@ class AayDocCapioApp(QMainWindow):
         right.addSpacing(12)
 
         # ── TDS / TRACES ─────────────────────────────────────────────────────
-        enable_tds = _enable_row("Enable TDS (TDS hub only)")
+        enable_tds = _enable_row("Enable TDS (TDS / TRACES login)")
         right.addWidget(enable_tds)
         right.addSpacing(8)
         tds_box, tds_lay = _inset_box()
@@ -4276,18 +4276,6 @@ class AayDocCapioApp(QMainWindow):
         enable_it.toggled.connect(_sync_enable)
         enable_tds.toggled.connect(_sync_enable)
         enable_gst.toggled.connect(_sync_enable)
-
-        def _tds_exclusive(checked: bool):
-            # A TDS-only client has no PAN login and no GST login.
-            if checked:
-                for cb in (enable_it, enable_gst):
-                    if cb.isChecked():
-                        cb.setChecked(False)
-            enable_it.setEnabled(not checked)
-            enable_gst.setEnabled(not checked)
-            _sync_enable()
-
-        enable_tds.toggled.connect(_tds_exclusive)
 
         def _toggle_echo(_checked: bool = False):
             fields["pwd"].setEchoMode(
@@ -4562,8 +4550,6 @@ class AayDocCapioApp(QMainWindow):
             enable_it.setChecked(bool(a.get("enable_income_tax", "Income Tax" in _src)))
             enable_gst.setChecked(bool(a.get("enable_gst", "GST" in _src)))
             enable_tds.setChecked(bool(a.get("enable_tds", "TDS" in _src)))
-            if enable_tds.isChecked():
-                _tds_exclusive(True)
         else:
             enable_it.setChecked(True)   # a new client starts as a PAN client
         _sync_enable()
