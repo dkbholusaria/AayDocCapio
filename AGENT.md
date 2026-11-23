@@ -10,6 +10,7 @@ AayDocCapio is a PyQt6 desktop app for Indian CAs and tax professionals. It auto
 
 Follow these steps in order — no step is optional:
 
+0. **Work on a dedicated branch** — at the start of a new chat/session, always create and switch to a fresh branch off `main` (`git checkout -b <type>/<short-description>`, e.g. `feature/bulk-ais-export` or `fix/26as-timeout`). If the task relates to an existing GitHub issue, switch to (or create) that issue's own branch and name it after the issue (`<type>/<issue-number>_<short-description>`, e.g. `fix/42_26as-timeout`). Never do feature/bug work directly on `main`, and never share a branch across unrelated tasks — this keeps the code clean and avoids confusion when other agents are working simultaneously.
 1. **Open a GitHub issue** — before anything else, create a GitHub issue for the task (`gh issue create`). Use the appropriate label (`bug`, `enhancement`,'Feature') and priority (`P1`/`P2`/`P3`). Record the issue number.
    - Every issue body must mention the creation/report date in `YYYY-MM-DD` format.
 2. **Plan** — prepare an implementation plan, save it as a `.md` file in the untracked `PlansofThisProject/` subfolder, and get user approval before writing any code.
