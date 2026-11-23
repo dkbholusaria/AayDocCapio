@@ -2303,8 +2303,32 @@ class AayDocCapioApp(QMainWindow):
         return card
 
     def _dl_toggle_all_clients(self, checked: bool):
+        """Check/uncheck only the clients currently visible (matching the
+        active search filter) — so a filtered "Select all" can't silently
+        touch rows the user can't see."""
         for cb in self._dl_client_cbs.values():
+            cb.blockSignals(True)
             cb.setChecked(checked)
+            cb.blockSignals(False)
+        visible_ids = set(self._dl_client_cbs.keys())
+        if checked:
+            self._dl_selected_ids |= visible_ids
+        else:
+            self._dl_selected_ids -= visible_ids
+        self._dl_update_summary()
+
+    def _dl_on_client_toggle(self, client_id: str, checked: bool):
+        if checked:
+            self._dl_selected_ids.add(client_id)
+        else:
+            self._dl_selected_ids.discard(client_id)
+        self._dl_update_summary()
+
+    def _dl_apply_client_filter(self, text: str):
+        """Rebuild Section A's rows filtered by `text` (name / PAN / group).
+        Selection state lives in self._dl_selected_ids so filtering never
+        loses which clients were already ticked."""
+        self._dl_refresh_clients()
 
     def _dl_refresh_clients(self):
         """(Re)build Section A's client rows from self.assessee_list. Called
@@ -2333,6 +2357,23 @@ class AayDocCapioApp(QMainWindow):
         table.setRowCount(0)
         self._dl_client_cbs = {}
         assessees = getattr(self, "assessee_list", [])
+
+        q = ""
+        search = getattr(self, "_dl_search", None)
+        if search is not None:
+            q = search.text().strip().lower()
+        if not hasattr(self, "_dl_selected_ids"):
+            self._dl_selected_ids = {a.get("id") for a in assessees}
+        else:
+            known = {a.get("id") for a in assessees}
+            self._dl_selected_ids &= known
+
+        if q:
+            assessees = [a for a in assessees
+                         if q in (a.get("name") or "").lower()
+                         or q in (a.get("pan") or "").lower()
+                         or q in (a.get("group") or "").lower()]
+
         table.setRowCount(len(assessees))
         for i, a in enumerate(assessees):
             cb_container = QWidget()
@@ -2348,9 +2389,10 @@ class AayDocCapioApp(QMainWindow):
                 f"border-radius:3px;background:{t.bg_checkbox};}}"
                 f"QCheckBox::indicator:checked{{background:{t.accent_it};border-color:{t.accent_it};"
                 f"image:url(resources/check_white.png);}}")
-            cb.setChecked(True)
-            cb.toggled.connect(self._dl_update_summary)
-            self._dl_client_cbs[a.get("id")] = cb
+            cid = a.get("id")
+            cb.setChecked(cid in self._dl_selected_ids)
+            cb.toggled.connect(lambda checked, _cid=cid: self._dl_on_client_toggle(_cid, checked))
+            self._dl_client_cbs[cid] = cb
             cl.addWidget(cb)
             table.setCellWidget(i, 0, cb_container)
 
@@ -2425,7 +2467,8 @@ class AayDocCapioApp(QMainWindow):
         if n_docs == 0:
             QMessageBox.warning(self, "Nothing Selected", "Please select at least one document type.")
             return
-        checked_ids = {a_id for a_id, cb in self._dl_client_cbs.items() if cb.isChecked()}
+        known_ids = {a.get("id") for a in getattr(self, "assessee_list", [])}
+        checked_ids = set(getattr(self, "_dl_selected_ids", set())) & known_ids
         if not checked_ids:
             QMessageBox.warning(self, "Selection Required", "Please select at least one client.")
             return
@@ -4146,63 +4189,116 @@ class AayDocCapioApp(QMainWindow):
         right.addWidget(fields["cc"])
         right.addSpacing(16)
 
-        # Each credential set is a small labelled block; pairs sit side by side
-        # so three sets still fit in about the height of two.
-        def _cred_block(host, user_key, user_label, user_ph, pass_key, pass_ph,
-                        show_key, show_label):
-            host.addWidget(_field_label(user_label))
-            fields[user_key] = _line_edit(user_ph)
-            host.addWidget(fields[user_key])
-            host.addSpacing(8)
-            host.addWidget(_field_label(show_label.replace("Show ", "")))
-            fields[pass_key] = _line_edit(pass_ph)
-            fields[pass_key].setEchoMode(QLineEdit.EchoMode.Password)
-            host.addWidget(fields[pass_key])
-            cb = QCheckBox(show_label)
-            cb.setStyleSheet(f"color:{t.text_muted};font-size:11px;background:transparent;")
-            host.addWidget(cb)
-            hosts[show_key] = cb
+        # Each portal is opt-in. The tick box decides whether this client is
+        # part of that portal's flows at all, and reveals its credential
+        # boxes only when ticked — so a GST-only client never appears in the
+        # income-tax lists, and a TDS client only in the TDS flows.
+        def _enable_row(text):
+            cb = QCheckBox(text)
+            cb.setStyleSheet(
+                f"QCheckBox{{color:{t.text_primary};font-size:12px;"
+                f"font-weight:600;background:transparent;}}")
+            return cb
+
+        def _pw_cb(label):
+            cb = QCheckBox(label)
+            cb.setStyleSheet(
+                f"color:{t.text_muted};font-size:11px;background:transparent;")
+            return cb
+
+        def _inset_box():
+            box = QWidget()
+            lay = QVBoxLayout(box)
+            lay.setContentsMargins(20, 0, 0, 0)
+            lay.setSpacing(0)
+            return box, lay
 
         hosts = {}
 
-        right.addWidget(_section_head("Income Tax portal"))
+        # ── Income Tax (PAN) ─────────────────────────────────────────────────
+        enable_it = _enable_row("Enable Income Tax (26AS · AIS/TIS · returns)")
+        right.addWidget(enable_it)
         right.addSpacing(8)
-        itd_block = QVBoxLayout(); itd_block.setSpacing(0); itd_block.setContentsMargins(0, 0, 0, 0)
-        right.addLayout(itd_block)
-        itd_block.addWidget(_field_label("Portal Password (PAN login)"))
+        it_box, it_lay = _inset_box()
+        it_lay.addWidget(_field_label("Portal Password"))
         fields["pwd"] = _line_edit("Enter password")
         fields["pwd"].setEchoMode(QLineEdit.EchoMode.Password)
-        itd_block.addWidget(fields["pwd"])
-        show_cb = QCheckBox("Show password")
-        show_cb.setStyleSheet(f"color:{t.text_muted};font-size:11px;background:transparent;")
-        itd_block.addWidget(show_cb)
-        right.addSpacing(14)
+        it_lay.addWidget(fields["pwd"])
+        show_cb = _pw_cb("Show password")
+        it_lay.addWidget(show_cb)
+        right.addWidget(it_box)
+        right.addSpacing(12)
 
-        right.addWidget(_section_head("Optional — separate portals"))
+        # ── TDS / TRACES ─────────────────────────────────────────────────────
+        enable_tds = _enable_row("Enable TDS (TDS hub only)")
+        right.addWidget(enable_tds)
         right.addSpacing(8)
+        tds_box, tds_lay = _inset_box()
+        tds_lay.addWidget(_field_label("TDS / TRACES Username"))
+        fields["tds_user"] = _line_edit("TDS / TRACES user id")
+        tds_lay.addWidget(fields["tds_user"])
+        tds_lay.addSpacing(8)
+        tds_lay.addWidget(_field_label("TDS / TRACES Password"))
+        fields["tds_pwd"] = _line_edit("TDS password")
+        fields["tds_pwd"].setEchoMode(QLineEdit.EchoMode.Password)
+        tds_lay.addWidget(fields["tds_pwd"])
+        tds_show = _pw_cb("Show TDS password")
+        tds_lay.addWidget(tds_show)
+        hosts["tds_show"] = tds_show
+        right.addWidget(tds_box)
+        right.addSpacing(12)
 
-        pair = QHBoxLayout()
-        pair.setSpacing(14)
-        pair.setContentsMargins(0, 0, 0, 0)
-        tds_col = QVBoxLayout(); tds_col.setSpacing(0); tds_col.setContentsMargins(0, 0, 0, 0)
-        gst_col = QVBoxLayout(); gst_col.setSpacing(0); gst_col.setContentsMargins(0, 0, 0, 0)
-        pair.addLayout(tds_col, 1)
-        pair.addLayout(gst_col, 1)
-        right.addLayout(pair)
-
-        _cred_block(tds_col, "tds_user", "TDS Username", "TDS / TRACES user id",
-                    "tds_pwd", "TDS password", "tds_show", "Show TDS password")
-        _cred_block(gst_col, "gst_user", "GST Username", "e.g. GSTLOGIN01",
-                    "gst_pwd", "GST password", "gst_show", "Show GST password")
+        # ── GST ──────────────────────────────────────────────────────────────
+        enable_gst = _enable_row("Enable GST")
+        right.addWidget(enable_gst)
+        right.addSpacing(8)
+        gst_box, gst_lay = _inset_box()
+        gst_lay.addWidget(_field_label("GST Username"))
+        fields["gst_user"] = _line_edit("GST portal login")
+        gst_lay.addWidget(fields["gst_user"])
+        gst_lay.addSpacing(8)
+        gst_lay.addWidget(_field_label("GST Password"))
+        fields["gst_pwd"] = _line_edit("GST password")
+        fields["gst_pwd"].setEchoMode(QLineEdit.EchoMode.Password)
+        gst_lay.addWidget(fields["gst_pwd"])
+        gst_show = _pw_cb("Show GST password")
+        gst_lay.addWidget(gst_show)
+        hosts["gst_show"] = gst_show
+        right.addWidget(gst_box)
         right.addStretch(1)
 
+        def _sync_enable(_checked: bool = False):
+            it_box.setVisible(enable_it.isChecked())
+            tds_box.setVisible(enable_tds.isChecked())
+            gst_box.setVisible(enable_gst.isChecked())
+            dlg.adjustSize()
+
+        enable_it.toggled.connect(_sync_enable)
+        enable_tds.toggled.connect(_sync_enable)
+        enable_gst.toggled.connect(_sync_enable)
+
+        def _tds_exclusive(checked: bool):
+            # A TDS-only client has no PAN login and no GST login.
+            if checked:
+                for cb in (enable_it, enable_gst):
+                    if cb.isChecked():
+                        cb.setChecked(False)
+            enable_it.setEnabled(not checked)
+            enable_gst.setEnabled(not checked)
+            _sync_enable()
+
+        enable_tds.toggled.connect(_tds_exclusive)
+
         def _toggle_echo(_checked: bool = False):
-            for edit, toggle in ((fields["pwd"], show_cb),
-                                 (fields["tds_pwd"], hosts["tds_show"]),
-                                 (fields["gst_pwd"], hosts["gst_show"])):
-                edit.setEchoMode(
-                    QLineEdit.EchoMode.Normal if toggle.isChecked()
-                    else QLineEdit.EchoMode.Password)
+            fields["pwd"].setEchoMode(
+                QLineEdit.EchoMode.Normal if show_cb.isChecked()
+                else QLineEdit.EchoMode.Password)
+            fields["tds_pwd"].setEchoMode(
+                QLineEdit.EchoMode.Normal if hosts["tds_show"].isChecked()
+                else QLineEdit.EchoMode.Password)
+            fields["gst_pwd"].setEchoMode(
+                QLineEdit.EchoMode.Normal if hosts["gst_show"].isChecked()
+                else QLineEdit.EchoMode.Password)
 
         show_cb.toggled.connect(_toggle_echo)
         hosts["tds_show"].toggled.connect(_toggle_echo)
@@ -4461,6 +4557,16 @@ class AayDocCapioApp(QMainWindow):
             fields["tds_pwd"].setText(a.get("tds_password", ""))
             fields["gst_user"].setText(a.get("gst_username", ""))
             fields["gst_pwd"].setText(a.get("gst_password", ""))
+            from vault import credential_sources as _sources
+            _src = _sources(a)
+            enable_it.setChecked(bool(a.get("enable_income_tax", "Income Tax" in _src)))
+            enable_gst.setChecked(bool(a.get("enable_gst", "GST" in _src)))
+            enable_tds.setChecked(bool(a.get("enable_tds", "TDS" in _src)))
+            if enable_tds.isChecked():
+                _tds_exclusive(True)
+        else:
+            enable_it.setChecked(True)   # a new client starts as a PAN client
+        _sync_enable()
 
         # Buttons
         btn_row = QHBoxLayout()
@@ -4476,16 +4582,33 @@ class AayDocCapioApp(QMainWindow):
         def _save():
             try:
                 edit_id = a.get("id") if editing else None
+                it_on = enable_it.isChecked()
+                tds_on = enable_tds.isChecked()
+                gst_on = enable_gst.isChecked()
+                if not (it_on or tds_on or gst_on):
+                    raise ValueError("Tick at least one portal for this client.")
+                if gst_on and not (fields["gst_user"].text().strip()
+                                   and fields["gst_pwd"].text()):
+                    raise ValueError(
+                        "GST is enabled — enter the GST username and password.")
+                if tds_on and not (fields["tds_user"].text().strip()
+                                   and fields["tds_pwd"].text()):
+                    raise ValueError(
+                        "TDS is enabled — enter the TDS / TRACES username and password.")
                 self.vault.add_update_assessee(
                     fields["name"].text(), fields["pan"].text(),
-                    fields["dob"].text(), fields["pwd"].text(), edit_id,
+                    fields["dob"].text(),
+                    fields["pwd"].text() if it_on else "", edit_id,
                     email=fields["email"].text(),
                     cc=fields["cc"].text(),
                     group=fields["group"].currentText(),
-                    gst_username=fields["gst_user"].text(),
-                    gst_password=fields["gst_pwd"].text(),
-                    tds_username=fields["tds_user"].text(),
-                    tds_password=fields["tds_pwd"].text())
+                    gst_username=fields["gst_user"].text() if gst_on else "",
+                    gst_password=fields["gst_pwd"].text() if gst_on else "",
+                    tds_username=fields["tds_user"].text() if tds_on else "",
+                    tds_password=fields["tds_pwd"].text() if tds_on else "",
+                    enable_income_tax=it_on,
+                    enable_gst=gst_on,
+                    enable_tds=tds_on)
                 action = "updated" if editing else "added"
                 self.log(f"[Vault] Client {action}: {fields['pan'].text()} — {fields['name'].text()}")
                 dlg.accept()

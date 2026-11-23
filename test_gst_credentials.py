@@ -7,7 +7,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from vault import VaultManager
+from vault import VaultManager, credential_sources
 
 
 def _vault(tmp):
@@ -163,3 +163,89 @@ def test_template_contains_gst_columns():
         wb = load_workbook(os.path.join(tmp, "template.xlsx"))
         headers = [c.value for c in wb["Clients"][1]]
         assert "GST Username" in headers and "GST Password" in headers
+
+
+# ── Enable flags: which portal flows a client belongs to (F-23) ─────────────
+
+def test_gst_only_client_needs_no_pan_or_password():
+    with tempfile.TemporaryDirectory() as tmp:
+        v = _vault(tmp)
+        v.add_update_assessee("GST Only Trader", "", "", "",
+                              gst_username="gstuser1", gst_password="gstpass1",
+                              enable_income_tax=False, enable_gst=True,
+                              enable_tds=False)
+        c = v.get_all_assessees()[0]
+        assert c["pan"] == ""
+        assert c["password"] == ""
+        assert credential_sources(c) == ["GST"]
+
+
+def test_tds_only_client_is_tagged_tds_and_nothing_else():
+    with tempfile.TemporaryDirectory() as tmp:
+        v = _vault(tmp)
+        v.add_update_assessee("Sample Deductor", "ABCD12345E", "", "",
+                              tds_username="tdsu", tds_password="tdsp",
+                              enable_income_tax=False, enable_gst=False,
+                              enable_tds=True)
+        c = v.get_all_assessees()[0]
+        assert credential_sources(c) == ["TDS"]
+
+
+def test_disabling_a_portal_removes_it_from_the_lists():
+    with tempfile.TemporaryDirectory() as tmp:
+        v = _vault(tmp)
+        cid = v.add_update_assessee("Sample Client", "AABCP1234F", "01-01-1980",
+                                    "testpass", gst_username="gu",
+                                    gst_password="gp", enable_income_tax=True,
+                                    enable_gst=True, enable_tds=False)
+        assert credential_sources(v.get_all_assessees()[0]) == ["Income Tax", "GST"]
+        # turn GST off but keep the stored credentials around
+        v.add_update_assessee("Sample Client", "AABCP1234F", "01-01-1980",
+                              "testpass", assessee_id=cid, gst_username="gu",
+                              gst_password="gp", enable_income_tax=True,
+                              enable_gst=False, enable_tds=False)
+        assert credential_sources(v.get_all_assessees()[0]) == ["Income Tax"]
+
+
+def test_enable_flags_default_to_inferring_from_credentials():
+    """Callers that predate the flags (imports, old code) keep working."""
+    with tempfile.TemporaryDirectory() as tmp:
+        v = _vault(tmp)
+        v.add_update_assessee("Sample Client", "AABCP1234F", "01-01-1980",
+                              "testpass", gst_username="gu", gst_password="gp")
+        assert credential_sources(v.get_all_assessees()[0]) == ["Income Tax", "GST"]
+
+
+def test_pan_without_password_rejected_when_income_tax_enabled():
+    with tempfile.TemporaryDirectory() as tmp:
+        v = _vault(tmp)
+        try:
+            v.add_update_assessee("Sample Client", "AABCP1234F", "01-01-1980", "",
+                                  enable_income_tax=True)
+        except ValueError as e:
+            assert "password" in str(e).lower()
+        else:
+            raise AssertionError("income-tax client without password should fail")
+
+
+def test_enable_columns_round_trip_csv():
+    with tempfile.TemporaryDirectory() as tmp:
+        v = _vault(tmp)
+        v.add_update_assessee("GST Only Trader", "", "", "",
+                              gst_username="gstuser1", gst_password="gstpass1",
+                              enable_income_tax=False, enable_gst=True,
+                              enable_tds=False)
+        v.add_update_assessee("Sample Client", "AABCP1234F", "01-01-1980",
+                              "testpass", enable_income_tax=True,
+                              enable_gst=False, enable_tds=False)
+        out = os.path.join(tmp, "export.csv")
+        v.export_data(out)
+        headers = next(csv.reader(open(out)))
+        assert "Enable Income Tax" in headers and "Enable GST" in headers
+
+        v2 = VaultManager(vault_path=os.path.join(tmp, "v2.json"))
+        added, updated, errors = v2.import_bulk(out)
+        assert errors == []
+        by_name = {c["name"]: c for c in v2.get_all_assessees()}
+        assert credential_sources(by_name["GST Only Trader"]) == ["GST"]
+        assert credential_sources(by_name["Sample Client"]) == ["Income Tax"]
