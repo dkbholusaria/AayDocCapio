@@ -94,7 +94,9 @@ class Doc:
     ``issued``, ``served`` and ``reply_deadline`` use the portal display
     format ``DD-Mon-YYYY`` (or ``""`` when unknown).  ``status`` is filled by
     :func:`derive_status`; ``responded`` records portal/file evidence that the
-    client filed a reply and is used by that derivation.
+    client filed a reply and is used by that derivation.  ``viewed_by_ao`` is
+    the portal's "Response viewed by AO on" stamp for that reply (same display
+    format, ``""`` when the AO has not opened it).
     """
 
     id: str
@@ -113,6 +115,7 @@ class Doc:
     inferred: dict = field(default_factory=dict)
     status: str = ""
     responded: bool = False
+    viewed_by_ao: str = ""
 
 
 @dataclass
@@ -638,6 +641,7 @@ def _build_meta_docs(case_id: str, proc_name: str, meta: dict) -> list[Doc]:
         issued = _display_date(notice.get("issued_on"))
         responded = (bool(notice.get("responded"))
                      or bool(notice.get("response_files")))
+        viewed_by_ao = _display_date(notice.get("viewed_by_ao"))
 
         doc = Doc(
             id=_doc_id(case_id, kind, index),
@@ -650,6 +654,7 @@ def _build_meta_docs(case_id: str, proc_name: str, meta: dict) -> list[Doc]:
             urg="",
             files=list(notice.get("files") or []),
             responded=responded,
+            viewed_by_ao=viewed_by_ao,
         )
         docs.append(doc)
         notice_docs_by_index[index] = doc
@@ -673,6 +678,7 @@ def _build_meta_docs(case_id: str, proc_name: str, meta: dict) -> list[Doc]:
                 parent=doc.id,
                 files=[rel],
                 responded=True,
+                viewed_by_ao=viewed_by_ao,
             )
             docs.append(reply)
             doc.responded = True
@@ -937,22 +943,39 @@ def _case_ays(year_name: str, proc_ay: str) -> list[str]:
     return ays
 
 
+_CLOSED_PROCEEDING_STATUSES = frozenset({
+    "closed",
+    "disposed",
+    "completed",
+    "concluded",
+    # The portal closes/provides relief on a proceeding with these status
+    # texts; treat both as a finished case (currently reported live).
+    "closed by officer",
+    "extinguished",
+})
+
+
 def _case_open_from_meta(meta: dict) -> bool:
     """Portal status -> open flag.
 
     A proceeding whose download recorded order documents (closure order /
     assessment order) is a CLOSED case even when the status text is blank —
     confirmed live: closed appeal cards carry a "Download Closure Order"
-    button while showing no explicit status."""
+    button while showing no explicit status.
+
+    Closed statuses ("Closed", "Closed by officer", "Extinguished", ...) are
+    matched case- and whitespace-insensitively so free-form portal text does
+    not leave an actually-closed case marked open."""
 
     if meta.get("closed") is True:
         return False
     if any(o.get("files") for o in (meta.get("orders") or [])):
         return False
-    status = ((meta.get("proceeding") or {}).get("status") or "").strip().lower()
-    if not status:
+    raw = ((meta.get("proceeding") or {}).get("status") or "").strip()
+    if not raw:
         return True
-    return status not in {"closed", "disposed", "completed", "concluded"}
+    status = " ".join(raw.lower().split())
+    return status not in _CLOSED_PROCEEDING_STATUSES
 
 
 def build_cases(root: str, assessees: list[dict],
