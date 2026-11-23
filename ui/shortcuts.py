@@ -34,6 +34,7 @@ ACTIONS: tuple[ShortcutAction, ...] = (
     ShortcutAction("nav.tds", "TDS", "Pages", "Ctrl+3"),
     ShortcutAction("nav.mail", "Mail Docs to Clients", "Pages", "Ctrl+4"),
     ShortcutAction("nav.activity", "Activity Log", "Pages", "Ctrl+5"),
+    ShortcutAction("nav.litigation", "Litigation", "Pages", "Ctrl+6"),
     ShortcutAction("nav.settings", "Settings", "Pages", "Ctrl+,"),
     ShortcutAction("nav.help", "Help", "Pages", "F1"),
 

@@ -81,6 +81,7 @@ class ThemeColors:
     accent_gst:  str   # GST (placeholder hub)
     accent_tds:  str   # TDS (placeholder hub)
     accent_mca:  str   # MCA (placeholder hub)
+    accent_litigation: str   # Litigation hub (F-26)
 
     # Semantic status colours (B-01) — text colour + light background per
     # status, mirroring the accent/accent_light pattern above.
@@ -158,6 +159,7 @@ THEMES: dict[str, ThemeColors] = {
         accent_gst      = "#15803D",
         accent_tds      = "#0F766E",
         accent_mca      = "#7E22CE",
+        accent_litigation = "#B45309",
 
         success         = "#166534",
         success_bg      = "#D1FAE5",
@@ -210,6 +212,7 @@ THEMES: dict[str, ThemeColors] = {
         accent_gst      = "#4ADE80",
         accent_tds      = "#2DD4BF",
         accent_mca      = "#C084FC",
+        accent_litigation = "#FBBF24",
 
         success         = "#16A34A",
         success_bg      = "#0F2B1C",

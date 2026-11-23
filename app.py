@@ -23,7 +23,7 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QToolButton, QMenu, QCalendarWidget, QSystemTrayIcon, QButtonGroup,
     QGraphicsDropShadowEffect, QStackedWidget, QRadioButton,
-    QGridLayout, QAbstractButton,
+    QGridLayout, QAbstractButton, QScrollArea,
 )
 from PyQt6.QtCore import (
     Qt, pyqtSignal, pyqtSlot, QTimer, QMetaObject, Q_ARG, QUrl,
@@ -50,6 +50,7 @@ from ui.dialogs import (
 )
 from ui.log_history import LogHistoryDialog, LogStore
 from ui.eproceedings import EProceedingsWorkspace
+from ui.litigation import LitigationPage
 from automation.errors import _friendly_error
 
 sys.path.insert(0, _bundled_dir())
@@ -689,6 +690,8 @@ class AayDocCapioApp(QMainWindow):
             accent_key="accent_gst", section="top")
         self._nav_shell.add_hub("tds", "TDS", self._mk_tds_page(),
                                  accent_key="accent_tds", section="top")
+        self._nav_shell.add_hub("litigation", "Litigation", self._mk_litigation_page(),
+                                 accent_key="accent_litigation", section="top")
         self._nav_shell.add_hub("mca", "MCA", self._mk_placeholder_page(
             "MCA / ROC", "Coming soon — see F-72 for the MCA/ROC filings roadmap."),
             accent_key="accent_mca", section="top")
@@ -746,6 +749,7 @@ class AayDocCapioApp(QMainWindow):
             ("nav.home", "home"),
             ("nav.income_tax", "it"),
             ("nav.tds", "tds"),
+            ("nav.litigation", "litigation"),
             ("nav.mail", "mail"),
             ("nav.activity", "activity"),
             ("nav.settings", "settings"),
@@ -1091,6 +1095,11 @@ class AayDocCapioApp(QMainWindow):
         # ── Nav shell (rail + breadcrumb, F-77a) ──────────────────────────────
         if hasattr(self, "_nav_shell"):
             self._nav_shell.repaint_theme(t)
+        if getattr(self, "_litigation_page", None) is not None:
+            try:
+                self._litigation_page.repaint_theme(t)
+            except Exception:
+                pass
 
         # ── Main panel + settings/control bar backgrounds ─────────────────────
         if hasattr(self, "_main_panel"):
@@ -2493,9 +2502,29 @@ class AayDocCapioApp(QMainWindow):
         self._dl_doc_cbs: dict[str, QCheckBox] = {}
 
         page = QWidget()
-        outer = QVBoxLayout(page)
-        outer.setContentsMargins(24, 24, 24, 20)
-        outer.setSpacing(18)
+        page.setObjectName("dlDocPage")
+        page.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        page.setStyleSheet(f"QWidget#dlDocPage{{background:{t.bg_window};}}")
+        page_v = QVBoxLayout(page)
+        page_v.setContentsMargins(0, 0, 0, 0)
+
+        # Whole tab body scrolls as one page so short windows degrade
+        # gracefully instead of clipping the footer / doc grid.
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet(
+            f"QScrollArea{{background:transparent;border:none;}}"
+            f"QScrollArea > QWidget > QWidget{{background:transparent;}}")
+        content = QWidget()
+        content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        content.setStyleSheet(f"QWidget{{background:{t.bg_window};}}")
+        outer = QVBoxLayout(content)
+        outer.setContentsMargins(24, 20, 24, 16)
+        outer.setSpacing(12)
+        scroll.setWidget(content)
+        page_v.addWidget(scroll)
 
         outer.addWidget(_lbl("Download Documents", 14, bold=True))
         sub = QLabel("Pick clients, pick documents, then run — one batch, unattended.")
@@ -2506,8 +2535,15 @@ class AayDocCapioApp(QMainWindow):
         sec_a = QVBoxLayout()
         sec_a.setSpacing(8)
         a_hdr = QHBoxLayout()
+        a_hdr.setSpacing(8)
         a_hdr.addWidget(_lbl("A   Select Clients", 12, bold=True, color=t.accent_it))
-        a_hdr.addStretch(1)
+        self._dl_search = QLineEdit()
+        self._dl_search.setPlaceholderText("🔍  Search by name, PAN or group…")
+        self._dl_search.setMinimumHeight(30)
+        self._dl_search.setClearButtonEnabled(True)
+        self._dl_search.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
+        self._dl_search.textChanged.connect(self._dl_apply_client_filter)
+        a_hdr.addWidget(self._dl_search, 1)
         select_all_cb = QCheckBox("Select all")
         select_all_cb.setChecked(True)
         select_all_cb.toggled.connect(self._dl_toggle_all_clients)
@@ -2547,7 +2583,8 @@ class AayDocCapioApp(QMainWindow):
         self._dl_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._dl_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self._dl_table.setShowGrid(False)
-        self._dl_table.setMaximumHeight(220)
+        self._dl_table.setMinimumHeight(260)
+        self._dl_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self._dl_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self._dl_table.setColumnWidth(0, 34)
         self._dl_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -2561,8 +2598,8 @@ class AayDocCapioApp(QMainWindow):
             f"QHeaderView::section{{background-color:{t.bg_header};border:none;"
             f"border-bottom:1px solid {t.border};font-weight:bold;color:{t.text_muted};"
             f"font-size:10px;height:28px;padding-left:4px;}}")
-        sec_a.addWidget(self._dl_table)
-        outer.addLayout(sec_a)
+        sec_a.addWidget(self._dl_table, 1)
+        outer.addLayout(sec_a, 1)
         self._dl_refresh_clients()
 
         # ── Section B: Select Documents ──────────────────────────────────────
@@ -2616,13 +2653,12 @@ class AayDocCapioApp(QMainWindow):
         sec_c.setStyleSheet(
             f"QFrame#execBar{{background:{t.bg_panel};border:1px solid {t.border};border-radius:10px;}}")
         c_layout = QHBoxLayout(sec_c)
-        c_layout.setContentsMargins(16, 12, 16, 12)
-        c_layout.addWidget(_lbl("C", 12, bold=True, color=t.accent_it))
-        c_layout.addSpacing(10)
-        self._dl_summary_lbl = _lbl("", 12, bold=True)
+        c_layout.setContentsMargins(14, 6, 14, 6)
+        c_layout.setSpacing(12)
+        self._dl_summary_lbl = _lbl("", 11, bold=True)
         c_layout.addWidget(self._dl_summary_lbl)
         c_layout.addStretch(1)
-        run_btn = _btn("Download Selected", "primary", height=36, icon="btn_run.png")
+        run_btn = _btn("Download Selected", "primary", height=30, icon="btn_run.png")
         run_btn.clicked.connect(self._dl_run)
         c_layout.addWidget(run_btn)
         outer.addWidget(sec_c)
@@ -3461,6 +3497,52 @@ class AayDocCapioApp(QMainWindow):
 
         self._switch_it_tab(0)
         return page
+
+    def _mk_litigation_page(self):
+        """F-26: Litigation hub - unified e-proceedings across modules."""
+        try:
+            self._litigation_page = LitigationPage(
+                self.vault,
+                lambda: getattr(self, "assessee_list", []) or [],
+                self,
+            )
+            self._litigation_page.dataChanged.connect(self._on_litigation_changed)
+            self._litigation_page.openCaseRequested.connect(self._open_litigation_case)
+            return self._litigation_page
+        except Exception as exc:
+            self._litigation_page = None
+            self.log(f"[Error] Litigation hub failed to build: {exc}")
+            page = QWidget()
+            lay = QVBoxLayout(page)
+            lay.setContentsMargins(24, 24, 24, 24)
+            lay.addStretch(1)
+            lay.addWidget(_lbl("Litigation view could not load.", 14, bold=True))
+            lay.addWidget(_lbl(str(exc), 11, color=_t().text_muted))
+            lay.addStretch(1)
+            return page
+
+    def _on_litigation_changed(self):
+        ws = getattr(self, "_eproc_ws", None)
+        if ws is not None:
+            try:
+                ws.refresh()
+            except Exception as exc:
+                self.log(f"[Error] e-Proceedings refresh failed: {exc}")
+
+    def _open_litigation_case(self, module, native_id):
+        if module == "it":
+            self._nav_shell.go("it")
+            try:
+                self._switch_it_tab(5)
+            except Exception:
+                pass
+            ws = getattr(self, "_eproc_ws", None)
+            if ws is not None:
+                try:
+                    ws.refresh()
+                    ws.goto_case(native_id)
+                except Exception as exc:
+                    self.log(f"[Error] Opening case {native_id}: {exc}")
 
     def _mk_mail_docs_page(self):
         page = QWidget()
