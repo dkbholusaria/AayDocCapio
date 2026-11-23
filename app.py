@@ -45,7 +45,7 @@ from ui.widgets import StyledComboBox, CheckableComboBox, ClickableCard
 from ui.dialogs import (
     ManageYearsDialog, BatchProgressDialog, DownloadPickerDialog,
     GenerateChallansDialog, ChallanGenerationProgressDialog,
-    ReturnStatusDialog, ReturnStatusProgressDialog, EmailLogDialog,
+    ReturnStatusDialog, ReturnStatusProgressDialog, ReturnStatusTab, EmailLogDialog,
     EProceedingsDialog, EAutoFetchSettingsDialog,
 )
 from ui.log_history import LogHistoryDialog, LogStore
@@ -2653,6 +2653,36 @@ class AayDocCapioApp(QMainWindow):
         outer.addStretch(1)
         return page
 
+    def _mk_it_return_status_tab(self):
+        """Income Tax hub ▸ Return Status (F-121) — inline FY selector + a
+        filterable table of every client with Income Tax credentials, built
+        from the persisted return-status data. "Fetch Selected" re-checks the
+        ticked clients live from the portal via start_return_status_check()
+        (the same worker/progress-dialog flow as before); this tab refreshes
+        itself when that batch finishes. Replaces the old ReturnStatusDialog.
+        """
+        def _root_getter():
+            try:
+                return self.dir_lbl.text()
+            except Exception:
+                return ""
+
+        self._retstatus_tab = ReturnStatusTab(
+            self.vault, self._ay_entries,
+            download_root_getter=_root_getter,
+            start_fetch=self._on_retstatus_tab_fetch,
+            log_callback=self.log,
+            parent=self,
+        )
+        return self._retstatus_tab
+
+    def _on_retstatus_tab_fetch(self, ay_value, targets):
+        """ReturnStatusTab 'Fetch Selected' → run the live scan, then
+        refresh the tab when the batch is done."""
+        tab = getattr(self, "_retstatus_tab", None)
+        self.start_return_status_check(
+            ay_value, targets, on_done=(tab.refresh if tab else None))
+
     def _mk_it_eproceedings_tab(self):
         """Income Tax hub ▸ e-Proceedings (F-60 v3 — case workspace).
 
@@ -3421,10 +3451,7 @@ class AayDocCapioApp(QMainWindow):
             extra_actions=[
                 ("View Challans…", "document", self._open_view_challans_dialog),
             ]))
-        self._it_stack.addWidget(self._mk_it_dialog_tab(
-            "Return Status",
-            "See where every client's return actually stands, straight from the portal.",
-            "Check Processing Status…", "", self._open_return_status_dialog))
+        self._it_stack.addWidget(self._mk_it_return_status_tab())
 
         # ── Tab 4: Tools (fully inline) ──────────────────────────────────────
         self._it_stack.addWidget(self._mk_it_tools_tab())
@@ -5936,7 +5963,15 @@ class AayDocCapioApp(QMainWindow):
                             pan, ay_value, result["status"],
                             status_date=result.get("status_date", ""),
                             filing_date=result.get("filing_date", ""),
-                            ack_no=result.get("ack_no", ""))
+                            ack_no=result.get("ack_no", ""),
+                            filed=result.get("filed"),
+                            section=result.get("section", ""),
+                            revised=result.get("revised"),
+                            revised_section=result.get("revised_section", ""),
+                            rectified=result.get("rectified"),
+                            e_verified=result.get("e_verified"),
+                            processed=result.get("processed"),
+                            refund_status=result.get("refund_status", ""))
                         status_display = result["status"]
                         if result.get("status_date"):
                             status_display += f" ({result['status_date']})"

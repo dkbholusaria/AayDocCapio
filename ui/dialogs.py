@@ -6893,3 +6893,338 @@ class EAutoFetchSettingsDialog(QDialog):
             return
         self._cfg = self.vault.save_eproc_autofetch_config(cfg)
         self.accept()
+
+
+# ── Return Status Tab (F-121) ─────────────────────────────────────────────
+class ReturnStatusTab(QWidget):
+    """Income Tax hub ▸ Return Status — an inline FY selector + a filterable
+    table of every client that has Income Tax (PAN + e-Filing password)
+    credentials. Replaces the old ReturnStatusDialog modal.
+
+    Rows come from the vault: clients from get_all_assessees() (filtered via
+    VaultManager.credential_sources), status fields from
+    get_return_status(ay). The table also shows cached data offline; "Fetch
+    Selected" hands the checked clients up to the parent via start_fetch()
+    to run the live portal scan, then this tab refreshes when the batch is
+    done.
+
+    The audit-applicable flag is per client *per year*, persisted via
+    vault.set_audit_applicable(); toggling it rewrites that one entry.
+    Whether an audit report is actually filed is read from the downloaded
+    Income-Tax-Forms tree (no portal hit) via has_audit_report().
+    """
+
+    _COL_CHECK = 0
+    _COL_NAME = 1
+    _COL_GROUP = 2
+    _COL_PAN = 3
+    _COL_FILED = 4
+    _COL_SECTION = 5
+    _COL_REVISED = 6
+    _COL_REV_SEC = 7
+    _COL_RECTIFIED = 8
+    _COL_STATUS = 9
+    _COL_REFUND = 10
+    _COL_AUDIT = 11
+    _COL_AUDIT_REPORT = 12
+
+    _HEADERS = [
+        "", "Client", "Group", "PAN", "Filed", "Section", "Revised",
+        "Revised §", "Rectified", "Last Status", "Refund / Demand",
+        "Audit Applicable", "Audit Report",
+    ]
+
+    def __init__(self, vault, ay_entries, download_root_getter, start_fetch,
+                 log_callback=None, parent=None):
+        super().__init__(parent)
+        self._vault = vault
+        self._ay_entries = [e for e in ay_entries if e.get("year", {}).get("AY")]
+        self._download_root_getter = download_root_getter
+        self._start_fetch = start_fetch
+        self._log = log_callback or (lambda *_a, **_k: None)
+        self._row_data: list = []
+        self._checked_keys: set = set()
+
+        self._build_ui()
+        self.refresh()
+
+    # ── UI ──
+    def _build_ui(self):
+        t = _t()
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(24, 16, 24, 16)
+        outer.setSpacing(10)
+
+        # Row 1: FY selector + search + group + fetch
+        top = QHBoxLayout()
+        top.setSpacing(10)
+        top.addWidget(_lbl("Financial Year:", 11, bold=True))
+        self._ay_combo = QComboBox()
+        self._ay_combo.setMinimumWidth(210)
+        for e in self._ay_entries:
+            y = e.get("year", {})
+            self._ay_combo.addItem(e.get("label", y.get("AY", "")), y.get("AY", ""))
+        self._ay_combo.currentIndexChanged.connect(self.refresh)
+        top.addWidget(self._ay_combo)
+
+        self._search = QLineEdit()
+        self._search.setPlaceholderText("Search name or PAN…")
+        self._search.setClearButtonEnabled(True)
+        self._search.textChanged.connect(self._refresh_table)
+        top.addWidget(self._search, 1)
+
+        top.addWidget(_lbl("Group:", 11, bold=True))
+        self._group_combo = QComboBox()
+        self._group_combo.addItem("All Groups", "")
+        try:
+            for g in self._vault.get_all_groups():
+                self._group_combo.addItem(g, g)
+        except Exception:
+            pass
+        self._group_combo.currentIndexChanged.connect(self._refresh_table)
+        top.addWidget(self._group_combo)
+
+        self._btn_fetch = _btn("Fetch Selected", "primary", height=32)
+        self._btn_fetch.clicked.connect(self._on_fetch_clicked)
+        top.addWidget(self._btn_fetch)
+        outer.addLayout(top)
+
+        # Row 2: quick filters
+        filt = QHBoxLayout()
+        filt.setSpacing(14)
+        filt.addWidget(_lbl("Show:", 11, bold=True, color=t.text_muted))
+        self._chk_pending = QCheckBox("Pending")
+        self._chk_outstanding = QCheckBox("Outstanding")
+        self._chk_pending_everify = QCheckBox("Pending e-verification")
+        self._chk_audit = QCheckBox("Audit applicable")
+        for c in (self._chk_pending, self._chk_outstanding,
+                  self._chk_pending_everify, self._chk_audit):
+            c.setStyleSheet(f"QCheckBox{{background:transparent;color:{t.text_primary};font-size:11px;}}")
+            c.stateChanged.connect(self._refresh_table)
+            filt.addWidget(c)
+        filt.addStretch(1)
+        self._counts = _lbl("", 11, color=t.text_muted)
+        filt.addWidget(self._counts)
+        outer.addLayout(filt)
+
+        # Table
+        self._table = QTableWidget(0, len(self._HEADERS))
+        self._table.setHorizontalHeaderLabels(self._HEADERS)
+        hdr = self._table.horizontalHeader()
+        hdr.setSectionResizeMode(self._COL_CHECK, QHeaderView.ResizeMode.Fixed)
+        hdr.setSectionResizeMode(self._COL_NAME, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(self._COL_GROUP, QHeaderView.ResizeMode.Interactive)
+        for col in range(self._COL_PAN, len(self._HEADERS)):
+            hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+        self._table.setColumnWidth(self._COL_CHECK, 30)
+        self._table.setColumnWidth(self._COL_GROUP, 100)
+        self._table.setColumnWidth(self._COL_PAN, 100)
+        for col in (self._COL_FILED, self._COL_REVISED, self._COL_RECTIFIED):
+            self._table.setColumnWidth(col, 60)
+        self._table.setColumnWidth(self._COL_SECTION, 80)
+        self._table.setColumnWidth(self._COL_REV_SEC, 80)
+        self._table.setColumnWidth(self._COL_STATUS, 220)
+        self._table.setColumnWidth(self._COL_REFUND, 130)
+        self._table.setColumnWidth(self._COL_AUDIT, 110)
+        self._table.setColumnWidth(self._COL_AUDIT_REPORT, 110)
+        self._table.verticalHeader().setVisible(False)
+        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._table.setStyleSheet(
+            f"QTableWidget{{border:1.5px solid {t.border};border-radius:8px;"
+            f"background:{t.bg_table};outline:0;gridline-color:{t.grid};}}"
+            f"QTableWidget::item{{border-bottom:1px solid {t.grid};padding:0 8px;}}")
+        hdr.setStyleSheet(
+            f"QHeaderView::section{{background-color:{t.bg_header};border:none;"
+            f"border-right:1px solid {t.border};border-bottom:1px solid {t.border};"
+            f"font-weight:bold;color:{t.text_muted};font-size:11px;height:32px;padding:0 8px;}}")
+        outer.addWidget(self._table, 1)
+
+        hint = _lbl(
+            "Tick clients and click Fetch Selected to re-check them live from the portal. "
+            "Audit Applicable is saved per client per year; Audit Report reflects downloaded "
+            "Income Tax Forms (3CB-3CD / 3CA-3CD).", 10, color=t.text_muted)
+        hint.setWordWrap(True)
+        outer.addWidget(hint)
+
+    # ── data ──
+    def _current_ay(self) -> str:
+        return self._ay_combo.currentData() or ""
+
+    def refresh(self, *_a):
+        self._refresh_table()
+
+    def _client_rows(self) -> list:
+        """One row per Income-Tax-credential client for the selected AY."""
+        ay = self._current_ay()
+        if not ay:
+            return []
+        try:
+            clients = self._vault.get_all_assessees()
+        except Exception as exc:
+            self._log(f"[Return Status] Could not load clients: {exc}")
+            return []
+        status_map = self._vault.get_return_status(ay)
+        audit_years = self._vault.get_audit_applicable_for_year(ay)
+        root = ""
+        try:
+            root = self._download_root_getter() or ""
+        except Exception:
+            root = ""
+        rows = []
+        for c in clients:
+            try:
+                sources = self._vault.credential_sources(c)
+            except Exception:
+                sources = []
+            if "Income Tax" not in sources:
+                continue
+            pan = (c.get("pan") or "").upper()
+            entry = status_map.get(pan, {}) or {}
+            audit_on = bool(audit_years.get(pan, False))
+            audit_report = None
+            if audit_on and root:
+                try:
+                    from automation.return_status import has_audit_report
+                    audit_report = has_audit_report(root, pan, ay)
+                except Exception:
+                    audit_report = None
+            rows.append({
+                "pan": pan, "name": c.get("name", ""),
+                "group": (c.get("group") or "").strip(),
+                "filed": entry.get("filed"), "section": entry.get("section", ""),
+                "revised": entry.get("revised"), "revised_section": entry.get("revised_section", ""),
+                "rectified": entry.get("rectified"), "status": entry.get("status", ""),
+                "status_date": entry.get("status_date", ""),
+                "e_verified": entry.get("e_verified"), "processed": entry.get("processed"),
+                "refund_status": entry.get("refund_status", ""),
+                "checked": bool(entry), "audit_on": audit_on,
+                "audit_report": audit_report,
+            })
+        return rows
+
+    def _passes_filters(self, r: dict) -> bool:
+        search = self._search.text().strip().lower()
+        if search and search not in r["name"].lower() and search not in r["pan"].lower():
+            return False
+        group = self._group_combo.currentData()
+        if group and r["group"] != group:
+            return False
+        if self._chk_pending.isChecked():
+            if r["filed"] and r["processed"]:
+                return False
+        if self._chk_outstanding.isChecked():
+            if r["refund_status"] not in ("pending", "adjusted"):
+                return False
+        if self._chk_pending_everify.isChecked():
+            if not (r["filed"] and r["e_verified"] is False):
+                return False
+        if self._chk_audit.isChecked():
+            if not r["audit_on"]:
+                return False
+        return True
+
+    def _refresh_table(self, *_a):
+        t = _t()
+        all_rows = self._client_rows()
+        rows = [r for r in all_rows if self._passes_filters(r)]
+        self._row_data = rows
+        table = self._table
+        table.setRowCount(len(rows))
+        for i, r in enumerate(rows):
+            table.setRowHeight(i, 32)
+            key = (r["pan"], self._current_ay())
+            chk = QCheckBox()
+            chk.setChecked(key in self._checked_keys)
+            chk.setStyleSheet(
+                f"QCheckBox{{background:transparent;}}"
+                f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {t.border};"
+                f"border-radius:3px;background:{t.bg_checkbox};}}"
+                f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};}}")
+            chk.stateChanged.connect(
+                lambda state, k=key: self._checked_keys.add(k) if state
+                else self._checked_keys.discard(k))
+            table.setCellWidget(i, self._COL_CHECK, chk)
+
+            def _set(col, text, muted=False, warn=False):
+                item = QTableWidgetItem(text)
+                item.setForeground(QColor(t.warning if warn else (t.text_muted if muted else t.text_primary)))
+                if col == self._COL_PAN:
+                    item.setFont(QFont(_MONO_FONT, 10))
+                table.setItem(i, col, item)
+
+            _set(self._COL_NAME, r["name"] or "—")
+            _set(self._COL_GROUP, r["group"] or "—", muted=True)
+            _set(self._COL_PAN, r["pan"], muted=True)
+
+            def _yn(v, blank="—"):
+                return "Yes" if v is True else ("No" if v is False else blank)
+            _set(self._COL_FILED, _yn(r["filed"]), muted=(r["filed"] is None))
+            _set(self._COL_SECTION, r["section"] or "—", muted=not r["section"])
+            _set(self._COL_REVISED, _yn(r["revised"]), muted=(r["revised"] is None))
+            _set(self._COL_REV_SEC, r["revised_section"] or "—", muted=not r["revised_section"])
+            _set(self._COL_RECTIFIED, _yn(r["rectified"]), muted=(r["rectified"] is None))
+
+            if r["checked"]:
+                status_text = r["status"] or "—"
+                if r["status_date"]:
+                    status_text += f" ({r['status_date']})"
+                _set(self._COL_STATUS, status_text)
+            else:
+                _set(self._COL_STATUS, "Not yet fetched", muted=True, warn=True)
+
+            rs = r["refund_status"]
+            rs_label = {"paid": "Refund paid", "adjusted": "Adjusted vs demand",
+                        "pending": "Refund pending"}.get(rs, "—")
+            _set(self._COL_REFUND, rs_label, muted=(not rs))
+
+            audit_chk = QCheckBox()
+            audit_chk.setChecked(r["audit_on"])
+            audit_chk.setStyleSheet(f"QCheckBox{{background:transparent;}}")
+            audit_chk.stateChanged.connect(
+                lambda state, pan=r["pan"], ay=self._current_ay(): self._on_audit_toggled(pan, ay, bool(state)))
+            table.setCellWidget(i, self._COL_AUDIT, audit_chk)
+
+            if not r["audit_on"]:
+                _set(self._COL_AUDIT_REPORT, "—", muted=True)
+            elif r["audit_report"] is True:
+                _set(self._COL_AUDIT_REPORT, "Filed")
+            elif r["audit_report"] is False:
+                _set(self._COL_AUDIT_REPORT, "Not filed", warn=True)
+            else:
+                _set(self._COL_AUDIT_REPORT, "Unknown", muted=True)
+
+        self._counts.setText(f"{len(rows)} of {len(all_rows)} client(s)")
+
+    def _on_audit_toggled(self, pan: str, ay: str, value: bool):
+        try:
+            self._vault.set_audit_applicable(pan, ay, value)
+        except Exception as exc:
+            self._log(f"[Return Status] Could not save audit flag: {exc}")
+        self._refresh_table()
+
+    def _on_fetch_clicked(self):
+        ay = self._current_ay()
+        if not ay:
+            return
+        pans = [pan for (pan, a) in self._checked_keys if a == ay]
+        if not pans:
+            QMessageBox.information(self, "Nothing Selected",
+                                    "Tick at least one client to fetch.")
+            return
+        by_pan = {c.get("pan", "").upper(): c for c in self._vault.get_all_assessees()}
+        targets = [by_pan[p] for p in pans if p in by_pan]
+        if not targets:
+            return
+        self._start_fetch(ay, targets)
+
+    def select_all_visible(self):
+        for r in self._row_data:
+            self._checked_keys.add((r["pan"], self._current_ay()))
+        self._refresh_table()
+
+    def clear_selection(self):
+        ay = self._current_ay()
+        self._checked_keys = {k for k in self._checked_keys if k[1] != ay}
+        self._refresh_table()
