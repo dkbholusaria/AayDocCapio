@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ui._theme import _t
+from automation.doc_types import e_proceeding_attachment_text
 from ui.eproceedings_model import _parse_date
 from ui.widgets import ClickableCard
 
@@ -300,6 +301,11 @@ class EprocTimeline(QScrollArea):
             body.addWidget(annotation)
 
         if doc.files:
+            if len(doc.files) > 1:
+                summary = _muted_label(e_proceeding_attachment_text(doc.files))
+                summary.setObjectName("EprocAttachSummary")
+                summary.setWordWrap(True)
+                body.addWidget(summary)
             path = self._file_path(doc.files[0])
             open_btn = QPushButton("Open file")
             open_btn.setFlat(True)

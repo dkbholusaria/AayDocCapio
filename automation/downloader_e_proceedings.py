@@ -71,6 +71,7 @@ from datetime import datetime
 
 from playwright.async_api import Page
 
+from automation.doc_types import e_proceeding_doc_label
 from automation.downloader import make_step_logger, update_browser_status
 
 # e-Proceedings SPA route fragments (confirmed live)
@@ -1083,19 +1084,13 @@ async def _close_extra_pages(page: Page) -> None:
 def _order_title(modal_title: str, filename: str) -> str:
     """Prefer the document type encoded in the portal filename — assessment
     and penalty closures publish an Order, a Computation sheet and a Demand
-    notice together, all under one 'Closure Order' modal caption."""
-    low = (filename or "").lower()
-    if "computation" in low:
-        return "Computation Sheet"
-    if "demand" in low:
-        return "Demand Notice"
-    if "order" in low:
-        section = ""
-        m = re.search(r"order\s*(?:pass\s*)?u/?s\s*([0-9]{1,3}[A-Za-z]?(?:\([^)]*\))?)",
-                      low)
-        if m:
-            section = f" u/s {m.group(1).upper()}"
-        return f"Order{section}"
+    notice together, all under one 'Closure Order' modal caption.
+
+    Shares :func:`automation.doc_types.e_proceeding_doc_label` with the UI so
+    the stored title and the displayed attachment label cannot drift."""
+    recognized = e_proceeding_doc_label(filename, default="")
+    if recognized:
+        return recognized
     return (modal_title or "Order").strip()
 
 
