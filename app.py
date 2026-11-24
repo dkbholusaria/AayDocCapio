@@ -5456,8 +5456,17 @@ class AayDocCapioApp(QMainWindow):
         # Match each row's PAN against the vault once, up front, so a client
         # removed/renamed between dialog-open and Generate-click can't crash
         # the batch mid-run — same defensiveness as start_automation's
-        # targets list build.
-        by_pan = {a.get("pan", "").upper(): a for a in self.assessee_list}
+        # targets list build. Income Tax challans are PAN-login only (#30):
+        # a TDS-only (TAN) or GST-only client has no PAN password, so it is
+        # never a valid target even if an old draft carries its PAN.
+        by_pan = {}
+        for a in self.assessee_list:
+            try:
+                if "Income Tax" not in self.vault.credential_sources(a):
+                    continue
+            except Exception:
+                pass
+            by_pan[a.get("pan", "").upper()] = a
         targets = []
         for row in rows:
             client = by_pan.get(row["pan"].upper())

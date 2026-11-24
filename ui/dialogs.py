@@ -2933,7 +2933,12 @@ class ChallanRowDetailDialog(QDialog):
         self._pan_combo = QComboBox()
         self._pan_combo.setEditable(True)
         self._pan_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        for a in sorted(vault.get_all_assessees(), key=lambda a: a.get("name", "")):
+        # Income Tax challans are filed under a PAN login only (#30) — offer
+        # just the clients with Income Tax capacity, never TDS-only (TAN) or
+        # GST-only logins, which have no PAN password to authenticate with.
+        it_clients = [a for a in vault.get_all_assessees()
+                      if "Income Tax" in vault.credential_sources(a)]
+        for a in sorted(it_clients, key=lambda a: a.get("name", "")):
             self._pan_combo.addItem(f"{a.get('pan','')} — {a.get('name','')}", a.get("pan", ""))
         # Qt's auto-created completer for an editable combo defaults to
         # "starts with" matching against the item text — since items read
@@ -3961,11 +3966,21 @@ class GenerateChallansDialog(QDialog):
     def _row_missing_bank(self, row: dict) -> bool:
         return bool(self._row_bank_problem(row)) or bool(self._row_drawee_problem(row))
 
+    def _income_tax_clients(self) -> list:
+        """Clients a PAN challan can actually be filed for — Income Tax
+        capacity only (#30). A TDS-only (TAN) or GST-only client has no PAN
+        password to authenticate against the Income Tax portal, so it must
+        not count as a known/ready target even if a draft or imported sheet
+        happens to carry its PAN."""
+        return [a for a in self._vault.get_all_assessees()
+                if "Income Tax" in self._vault.credential_sources(a)]
+
     def _row_is_ready(self, row: dict) -> bool:
         pan = (row.get("pan") or "").upper()
         if not pan:
             return False
-        matched = any(a.get("pan", "").upper() == pan for a in self._vault.get_all_assessees())
+        matched = any(a.get("pan", "").upper() == pan
+                      for a in self._income_tax_clients())
         if not matched:
             return False
         total = self._row_total(row)
@@ -3979,10 +3994,11 @@ class GenerateChallansDialog(QDialog):
 
     def _refresh_table(self):
         _bt = _t()
+        clients = self._income_tax_clients()
         self._table.setRowCount(len(self._row_data))
         for i, row in enumerate(self._row_data):
             pan = (row.get("pan") or "").upper()
-            matched = next((a for a in self._vault.get_all_assessees() if a.get("pan", "").upper() == pan), None)
+            matched = next((a for a in clients if a.get("pan", "").upper() == pan), None)
             self._table.setRowHeight(i, 36)
 
             pan_item = QTableWidgetItem(pan)
