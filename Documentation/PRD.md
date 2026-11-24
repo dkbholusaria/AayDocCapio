@@ -81,6 +81,7 @@ A local, encrypted desktop app that:
 | D-09 | Name files: `<PAN>-26AS-<AY>.txt`, `<PAN>-AIS-<FY>.pdf`, `<PAN>-TIS-<FY>.pdf` | Must |
 | D-10 | Detect "AIS too large for PDF" and fail fast with instructions to use AIS Utility | Must |
 | D-11 | Detect "26AS too large for inline download" and fail fast with TRACES-direct instructions | Must |
+| D-12 | Download all e-Proceedings documents (notices/letters/orders PDFs, client response attachments, acknowledgements) and view them in-app | Must |
 
 ### 4.3 Assessment Year Management
 

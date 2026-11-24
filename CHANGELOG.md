@@ -2,6 +2,77 @@
 
 All notable changes to AayDocCapio are documented here.
 
+## [Unreleased]
+
+### New Features
+
+#### GST portal login with captcha solving (F-21)
+- **Automated GST portal login** — a Playwright-based async login that reads the portal's login captcha and signs in, matching the existing ITD automation conventions
+- **Confident captcha reading** — four independent readers (a local CNN via `onnxruntime`, ddddocr at two thresholds, and a multi-render ddddocr vote) with conservative submit rules; unsure reads are refreshed rather than guessed
+- **Bundled model** — a compact 6-head CNN (≈1.68M params) trained on synthetic data covering the three observed captcha styles plus captchas harvested from accepted live logins; PyTorch is a dev-only dependency, runtime uses `onnxruntime`
+- **Robust retries** — up to six refreshes until confident, credential fields are refilled when the portal clears them after a rejected captcha, and the verdict is read from the portal's error text
+- Synthetic generator, trainer and ONNX exporter are included for reproducibility, with an ADR and model card
+
+#### GST credentials per client (F-20)
+- **Optional GST Username + GST Password on each client** in the Add/Edit Client modal, each with its own show/hide toggle; stored Fernet-encrypted in the vault alongside the ITD password
+- **Import/export support** — vault add/update, CSV/Excel import, export and the import template gain optional GST columns; existing files without them import exactly as before
+- **Legacy records keep working** — clients with no GST credentials are unchanged
+
+#### Dark mode, accessibility, and customizable keyboard shortcuts (F-17, #101)
+- **Dark mode across the whole app** — the saved theme is applied before the UI is built and pages are rebuilt when it changes, so there are no light cards or unreadable text left over; "Follow system theme" is supported too
+- **Accessibility improvements** — WCAG AA contrast checks, visible focus styles, accessible widget names, and white check marks in the dark palette
+- **Customizable keyboard shortcuts** — a shortcut registry with sensible defaults, menu hints, and a Settings/Help editor that blocks conflicting or unsafe keys and saves your choices to the vault
+- **Theme-invariant log colours** — Live Logs now use theme tokens instead of hardcoded hex colours
+
+#### Faster repeat downloads — skip files that are already saved (F-14, #14)
+- **Every document type now checks the client folder before contacting the portal** — if a file is already saved (and not empty), that download is skipped. This is the same "diff fetch" behaviour e-Proceedings has had since F-2, extended to Form 26AS, Form 168, Filed Returns (Form/Receipt/JSON/Intimation), Tax Challans and AIS/TIS
+- **Re-running a batch for an already-downloaded client is now fast** — no portal clicks, no re-waiting for the same PDF to generate, no repeated PDF unlocking
+- **Partial downloads are handled per file** — e.g. if the 26AS PDF is present but the TXT is missing, only the TXT is fetched; the same applies to Form 168's PDF/Excel/TXT and each Filed Return artifact
+- **Status text distinguishes "already present" from "downloaded"** — e.g. "✅ 26AS — Already present (PDF + TXT)", "✅ Filed Returns — Up to date (N file(s) already present)"
+
+To force a fresh copy of a document, delete that file from the client folder and download again.
+
+#### Scheduled e-Proceedings auto-fetch (F-13)
+- **Optional background sync** — a Settings switch keeps e-Proceedings up to date automatically at a chosen time on chosen days; it is off by default
+- **You decide the workload** — set clients per day (1–500), then either continue every day or spread the work across 1–3 days, split by client count or by group; cases can also rotate so the same clients are not always fetched first
+- **IP-protection pacing** — adjustable cooldowns between clients and between documents, random extra delay, a per-run time budget, timeout retries, and a longer back-off if the portal signals a rate limit
+- **Password-change protection** — if the portal rejects a saved password, that client is marked "Password needs update", you are notified, and auto-fetch skips the client until the password is changed
+- **Full control while it runs** — a progress window with Skip current, Skip future, Pause/Resume, Restart and Stop; the remaining queue is saved so a restart or crash resumes where it left off
+
+#### View saved challans (F-12)
+- **New "View Challans" window** under E-Pay Tax (also on the Income Tax E-Pay Tax tab and the TDS hub) — see every challan already generated (Unpaid) or downloaded (Paid) in an earlier session, without logging in or fetching anything again
+- **Filter by client, Paid / Unpaid, and year**, or search by filename/CRN; the list shows the client, year, type, date and size
+- **Double-click a row to open the challan PDF/PNG, or use Open Folder** to jump to the exact folder it is saved in
+- Recognises older folder names too, so files saved by previous app versions still appear
+
+#### e-Proceedings Documents (F-60)
+- **Download every e-Proceedings document for a client in one pass** — all notices, letters and orders the department issued (via each notice's "Notice/Letter Pdf"), plus the client's own submitted responses: their attachments ("View Response") and acknowledgements. PDFs are not password-protected; any owner-encrypted client-uploaded attachments are unlocked automatically
+- **Everything is organized per proceeding** — files land in `e-Proceedings/<NN>-<Proceeding Name>/notice-…/response-…/` folders inside the client's year folder, keeping portal filenames
+- **A new "e-Proceedings Documents" checkbox** in the Download picker and the inline Download Documents tab, alongside the other document types; e-Proceedings is not year-scoped (the portal itself often shows "Assessment Year: Not Available"), so the result is recorded against every selected year
+- **A new "View e-Proceedings" window** (Tools menu, or right-click a client in the grid) — browse proceedings with file counts and sizes, see each file tagged as Notice or Response, and open any file or the whole proceeding folder with a double-click
+- **Clear per-client outcomes** — "✅ Downloaded (n file(s))", "⬜ No e-Proceedings found" when the portal shows no records, and partial-failure warnings instead of silent gaps
+- **Incremental sync (F-2)** — repeat downloads no longer re-fetch everything. Each sync compares the portal's notices with what's already saved (by reference ID and issue date) and downloads **only new or changed documents**; a run with nothing new finishes with "✅ e-Proceedings — Up to date (N unchanged)" and creates no duplicates
+
+### Bug Fixes
+
+#### Real client details removed from the codebase, docs and examples (#25)
+- **All examples, placeholders, sample mockups, tests and docs now use clearly fake data** — no real client name, username, company name, TAN, PAN, GSTIN, email or password appears anywhere in the repository or its history going forward
+- **Approved placeholders are standardised** — names `Sample Client` / `Sample Pvt Ltd` / `Test User`, PAN `AABCP1234F`, TAN `ABCD12345E`, GST username `GSTLOGIN01`, email `client@example.com`, and only obvious test passwords such as `testpass`
+- **A guard test now blocks regressions** — `test_no_real_identifiers.py` fails the build if a known real identifier or a non-placeholder PAN/TAN value is committed
+- **Contributor rule added** — `AGENT.md` now forbids using a real client's details as an example in code, docs, tests, CHANGELOG, commit messages or PR text
+- Leaked details previously posted in an upstream pull-request discussion were also redacted
+
+#### Starting an ITR Processing Status check no longer crashes the app (F-67)
+- **Fixed the app closing as soon as a Return Status check was started** — the progress dialog referenced Pause/Restart/Skip-Future handlers that only exist on the challan-generation dialog; in PyQt6 the resulting `AttributeError` inside the signal slot aborted the process. The unused buttons are removed, so status checks run normally
+
+#### Auto-fetch password warning shown in client grid (#13)
+- **Clients whose saved portal password was rejected now show a warning directly in the main client grid**, instead of only in the scheduled auto-fetch status — so you can spot a password that needs updating without opening the auto-fetch window
+
+#### Download Documents tab can now pick the year and run (B-1)
+- **Fixed downloads started from Income Tax ▸ Download Documents always being blocked** with "Please select at least one Assessment / Tax Year" — that tab had no year selector of its own, and the only one in the app lives on the Home screen, which isn't visible from the Income Tax hub
+- **The tab now has its own Assessment / Tax Year selector**, with the same multi-year picking and ⚙ Manage Years shortcut as Home; the two stay in step both ways, so a year chosen in either place applies everywhere
+- **The year selector is greyed out while a batch is running**, like the Home one already was
+
 ## [2.4.6] — 2026-09-22
 
 ### New Features

@@ -33,6 +33,7 @@ from playwright.async_api import Page
 from automation.downloader import update_browser_status, make_step_logger
 from automation._nav_helpers import open_hamburger
 from automation.diagnostics import capture_failure
+from automation.fs_util import is_present
 from automation.pdf_unlocker import unlock_pdf
 from utils import migrate_challan_subfolder_names
 
@@ -394,6 +395,7 @@ async def _download_challans_for_year(
         saved_files: list[dict] = []
         warnings: list[str] = []
         found_any = False
+        skipped = 0
         seen_cins: set = set()
 
         for _page_num in range(20):  # hard cap: confirmed up to 18 pages of history in testing
@@ -433,6 +435,18 @@ async def _download_challans_for_year(
                 except Exception:
                     payment_type = ""
 
+                # F-14 (#14): a paid challan is immutable and its filename is
+                # deterministic (CIN + payment type), so an existing file means
+                # this payment is already downloaded — skip the actions menu and
+                # the portal download entirely.
+                filename = f"{prefix}Challan-{year_value.replace('-', '_')}-{cin}-{_slug(payment_type)}.pdf"
+                output_path = os.path.join(challan_dir, filename)
+                if is_present(output_path):
+                    step(f"Row {i}: challan already present (CIN {cin}) — skipped")
+                    skipped += 1
+                    saved_files.append({"cin": cin, "payment_type": payment_type, "path": output_path})
+                    continue
+
                 try:
                     actions_btn = row.locator('[col-id="0"] .mat-mdc-menu-trigger').first
                     await actions_btn.click()
@@ -442,8 +456,6 @@ async def _download_challans_for_year(
                     # only once opened — not present in a static HTML
                     # capture taken with the menu closed.
                     download_item = payment_history_page.locator("//*[normalize-space(.)='Download']").first
-                    filename = f"{prefix}Challan-{year_value.replace('-', '_')}-{cin}-{_slug(payment_type)}.pdf"
-                    output_path = os.path.join(challan_dir, filename)
                     async with payment_history_page.expect_download() as download_info:
                         await download_item.click()
                     await (await download_info.value).save_as(output_path)
@@ -469,7 +481,9 @@ async def _download_challans_for_year(
                 break
 
         await update_browser_status(payment_history_page, "Challans: Download Complete!")
-        step(f"Done: {len(saved_files)} file(s) saved, {len(warnings)} warning(s)")
+        step(f"Done: {len(saved_files)} file(s) present "
+             f"({skipped} already on disk, {len(saved_files) - skipped} new), "
+             f"{len(warnings)} warning(s)")
 
         if not found_any:
             return False, f"No challans found for {year_value}", []

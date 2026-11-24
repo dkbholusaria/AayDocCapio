@@ -11,7 +11,51 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 _PAN_RE = re.compile(r'^[A-Z]{3}[PCHFATBLJG][A-Z][0-9]{4}[A-Z]$')
+# A deductor TAN is 4 letters + 5 digits + 1 letter, e.g. ABCD12345E.
+# Deliberately a separate regex, not a loosened PAN rule — the app must be
+# able to tell the two apart (TDS flows are TAN-only).
+_TAN_RE = re.compile(r'^[A-Z]{4}[0-9]{5}[A-Z]$')
 _DOB_RE = re.compile(r'^(\d{2})-(\d{2})-(\d{4})$')
+
+
+def identify_type(value: str) -> str:
+    """Return "PAN", "TAN", or "" for a client identity value."""
+    v = (value or "").strip().upper()
+    if _PAN_RE.match(v):
+        return "PAN"
+    if _TAN_RE.match(v):
+        return "TAN"
+    return ""
+
+def credential_sources(client: dict) -> list:
+    """Which portal flows this client belongs to: "Income Tax", "TDS", "GST".
+
+    The three are independent: a client can be any combination — all three at
+    once is normal for a taxpayer who also has a deductor and GST login, and
+    each module simply uses its own user id. A client can also be GST-only
+    (no PAN, absent from every income-tax list) or TDS-only. Records saved
+    before the flags existed fall back to "has usable credentials".
+    """
+    def flag(key, fallback):
+        value = client.get(key)
+        return fallback if value is None else bool(value)
+
+    gst_has = bool((client.get("gst_username") or "")
+                   and (client.get("gst_password") or ""))
+    tds_has = bool((client.get("tds_username") or "")
+                   and (client.get("tds_password") or ""))
+    it_has = bool(client.get("id_type") == "PAN"
+                  and (client.get("pan") or "") and (client.get("password") or ""))
+
+    out = []
+    if flag("enable_income_tax", it_has) and it_has:
+        out.append("Income Tax")
+    if flag("enable_tds", tds_has) and tds_has:
+        out.append("TDS")
+    if flag("enable_gst", gst_has) and gst_has:
+        out.append("GST")
+    return out
+
 
 # Accepted import formats → normalised DD-MM-YYYY
 _DOB_FORMATS = [
@@ -39,7 +83,8 @@ def _normalise_dob(raw: str) -> str:
             continue
     return raw.strip()  # let _validate_fields report the error with the original value
 
-def _validate_fields(name: str, pan: str, dob: str, password: str):
+def _validate_fields(name: str, pan: str, dob: str, password: str,
+                     enable_income_tax: bool = True):
     name = name.strip()
     pan  = pan.strip().upper()
     dob  = dob.strip()
@@ -49,38 +94,42 @@ def _validate_fields(name: str, pan: str, dob: str, password: str):
     if len(name) < 2:
         raise ValueError("Full Name must be at least 2 characters.")
 
+    # A GST-only client is identified purely by name + GST login, so it may
+    # legitimately have no PAN at all.
     if not pan:
-        raise ValueError("PAN Number is required.")
-    if not _PAN_RE.match(pan):
-        raise ValueError(
-            "Invalid PAN format.\n\n"
-            "Format: AAA · T · N · 0001 · Z\n"
-            "  · Characters 1–3 : any letters (A–Z)\n"
-            "  · Character 4    : P/C/H/F/A/T/B/L/J/G (taxpayer type)\n"
-            "  · Character 5    : any letter (A–Z)\n"
-            "  · Characters 6–9 : 4 digits\n"
-            "  · Character 10   : any letter (A–Z)\n\n"
-            "Example: AAAPT0001A")
+        if enable_income_tax:
+            raise ValueError("PAN / TAN is required.")
+        id_type = ""
+    else:
+        id_type = identify_type(pan)
+        if not id_type:
+            raise ValueError(
+                "Invalid PAN / TAN format.\n\n"
+                "PAN: 5 letters + 4 digits + 1 letter   (e.g. AABCP1234F)\n"
+                "TAN: 4 letters + 5 digits + 1 letter   (e.g. ABCD12345E)")
 
-    if not dob:
-        raise ValueError("Date of Birth is required.")
-    m = _DOB_RE.match(dob)
-    if not m:
-        raise ValueError("Date of Birth must be in DD-MM-YYYY format.\nExample: 01-01-1980")
-    day, month, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
-    try:
-        dt = datetime.date(year, month, day)
-    except ValueError:
-        raise ValueError(f"'{dob}' is not a valid date. Please use DD-MM-YYYY.")
-    today = datetime.date.today()
-    if dt >= today:
-        raise ValueError("Date of Birth cannot be today or a future date.")
-    if year < 1900:
-        raise ValueError("Date of Birth year seems incorrect (before 1900).")
+    # A deductor TAN never needs a date of birth — TDS challans are not
+    # password-protected PDFs, so DOB is not used anywhere in that flow.
+    if id_type == "PAN" and enable_income_tax and not dob:
+        raise ValueError("Date of Birth is required for a PAN client.")
 
-    if not password:
+    if dob:
+        m = _DOB_RE.match(dob)
+        if not m:
+            raise ValueError("Date of Birth must be in DD-MM-YYYY format.\nExample: 01-01-1980")
+        day, month, year = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        try:
+            dt = datetime.date(year, month, day)
+        except ValueError:
+            raise ValueError(f"'{dob}' is not a valid date. Please use DD-MM-YYYY.")
+        if dt >= datetime.date.today():
+            raise ValueError("Date of Birth cannot be today or a future date.")
+        if year < 1900:
+            raise ValueError("Date of Birth year seems incorrect (before 1900).")
+
+    if enable_income_tax and not password:
         raise ValueError("Portal Password is required.")
-    if len(password) < 4:
+    if password and len(password) < 4:
         raise ValueError("Password is too short (minimum 4 characters).")
 
 class VaultManager:
@@ -136,11 +185,17 @@ class VaultManager:
                     updated = True
                 if "pan" in entry:
                     entry["pan"] = entry["pan"].strip().upper()
+                if "id_type" not in entry:
+                    entry["id_type"] = identify_type(entry.get("pan", ""))
+                    updated = True
                 if "email" not in entry:
                     entry["email"] = ""
                     updated = True
                 if "cc" not in entry:
                     entry["cc"] = ""
+                    updated = True
+                if "credential_invalid" not in entry:
+                    entry["credential_invalid"] = False
                     updated = True
 
             if updated:
@@ -179,33 +234,84 @@ class VaultManager:
         for a in raw_data.get("assessees", []):
             decrypted = a.copy()
             decrypted["password"] = self.decrypt_password(a.get("password_enc", ""))
+            decrypted["gst_password"] = self.decrypt_password(
+                a.get("gst_password_enc", ""))
+            decrypted["gst_username"] = a.get("gst_username", "")
+            decrypted["tds_username"] = a.get("tds_username", "")
+            decrypted["tds_password"] = self.decrypt_password(
+                a.get("tds_password_enc", ""))
             assessees.append(decrypted)
         return assessees
 
     def add_update_assessee(self, name: str, pan: str, dob: str, password: str,
                             assessee_id: str = None, email: str = "", cc: str = "",
-                            group: str = "") -> str:
-        """Adds or updates a single assessee."""
+                            group: str = "", gst_username: str = "",
+                            gst_password: str = "", tds_username: str = "",
+                            tds_password: str = "", enable_income_tax=None,
+                            enable_gst=None, enable_tds=None) -> str:
+        """Adds or updates a single assessee.
+
+        ``gst_username`` / ``gst_password`` are the optional GST portal login
+        (F-20) and ``tds_username`` / ``tds_password`` the optional TDS/TRACES
+        login (a second e-Filing login some clients use instead of their PAN).
+        An empty value clears the stored one — callers such as the
+        Add/Edit Client dialog always pass the current field contents, so this
+        stays predictable.
+
+        ``enable_income_tax`` / ``enable_gst`` / ``enable_tds`` record which
+        portal flows the client belongs to. ``None`` means "infer from the
+        credentials", so callers that predate the flags keep working; the dialog
+        passes explicit booleans.
+        """
         raw_data = self._get_raw()
-        _validate_fields(name, pan, dob, password)
+        it_on = (bool(password) if enable_income_tax is None
+                 else bool(enable_income_tax))
+        _validate_fields(name, pan, dob, password, enable_income_tax=it_on)
         pan = pan.strip().upper()
 
         password_enc = self.encrypt_password(password)
+        gst_username = (gst_username or "").strip()
+        gst_password_enc = (self.encrypt_password(gst_password)
+                            if gst_password else "")
+        tds_username = (tds_username or "").strip()
+        tds_password_enc = (self.encrypt_password(tds_password)
+                            if tds_password else "")
+
+        gst_on = (bool(gst_username and gst_password) if enable_gst is None
+                  else bool(enable_gst))
+        tds_on = (bool(tds_username and tds_password) if enable_tds is None
+                  else bool(enable_tds))
+        flags = {
+            "enable_income_tax": it_on,
+            "enable_gst": gst_on,
+            "enable_tds": tds_on,
+        }
 
         found = False
         if assessee_id:
             # Update by ID
             for i, a in enumerate(raw_data["assessees"]):
                 if a.get("id") == assessee_id:
+                    credential_invalid = (
+                        bool(a.get("credential_invalid", False))
+                        if self.decrypt_password(a.get("password_enc", "")) == password
+                        else False)
                     raw_data["assessees"][i] = {
                         "id": assessee_id,
                         "name": name.strip(),
                         "pan": pan,
+                        "id_type": identify_type(pan),
                         "dob": dob.strip(),
                         "password_enc": password_enc,
                         "email": email.strip(),
                         "cc": cc.strip(),
                         "group": group.strip(),
+                        "credential_invalid": credential_invalid,
+                        "gst_username": gst_username,
+                        "gst_password_enc": gst_password_enc,
+                        "tds_username": tds_username,
+                        "tds_password_enc": tds_password_enc,
+                        **flags,
                     }
                     found = True
                     break
@@ -214,15 +320,26 @@ class VaultManager:
             for i, a in enumerate(raw_data["assessees"]):
                 if a.get("pan") == pan:
                     assessee_id = a.get("id") or str(uuid.uuid4())
+                    credential_invalid = (
+                        bool(a.get("credential_invalid", False))
+                        if self.decrypt_password(a.get("password_enc", "")) == password
+                        else False)
                     raw_data["assessees"][i] = {
                         "id": assessee_id,
                         "name": name.strip(),
                         "pan": pan,
+                        "id_type": identify_type(pan),
                         "dob": dob.strip(),
                         "password_enc": password_enc,
                         "email": email.strip(),
                         "cc": cc.strip(),
                         "group": group.strip(),
+                        "credential_invalid": credential_invalid,
+                        "gst_username": gst_username,
+                        "gst_password_enc": gst_password_enc,
+                        "tds_username": tds_username,
+                        "tds_password_enc": tds_password_enc,
+                        **flags,
                     }
                     found = True
                     break
@@ -233,11 +350,18 @@ class VaultManager:
                 "id": new_id,
                 "name": name.strip(),
                 "pan": pan,
+                "id_type": identify_type(pan),
                 "dob": dob.strip(),
                 "password_enc": password_enc,
                 "email": email.strip(),
                 "cc": cc.strip(),
                 "group": group.strip(),
+                "credential_invalid": False,
+                "gst_username": gst_username,
+                "gst_password_enc": gst_password_enc,
+                "tds_username": tds_username,
+                "tds_password_enc": tds_password_enc,
+                **flags,
             })
             assessee_id = new_id
 
@@ -249,6 +373,11 @@ class VaultManager:
     # same lightweight model download_history already uses for AY labels
     # (a plain string, not a managed entity with its own storage), so no
     # migration is needed for vault files written before this feature.
+
+    @staticmethod
+    def credential_sources(client: dict) -> list:
+        """See module-level credential_sources()."""
+        return credential_sources(client)
 
     def get_all_groups(self) -> list:
         """Distinct group names, sorted — the union of an explicit roster
@@ -413,11 +542,17 @@ class VaultManager:
     # any download having happened.
 
     def record_return_status(self, pan: str, ay_label: str, status: str,
-                              status_date: str = "", filing_date: str = "", ack_no: str = ""):
+                              status_date: str = "", filing_date: str = "", ack_no: str = "",
+                              filed=None, section: str = "", revised=None,
+                              revised_section: str = "", rectified=None,
+                              e_verified=None, processed=None, refund_status: str = ""):
         """Record the latest known ITR processing status for a client/AY.
         `ts` is when THIS app last checked, distinct from both `status_date`
         (the date the PORTAL itself shows against that status step, e.g.
-        "Aug 3, 2026") and `filing_date` (when the return was filed)."""
+        "Aug 3, 2026") and `filing_date` (when the return was filed).
+        The optional flags (filed/revised/rectified/e_verified/processed)
+        default to None when unknown; `refund_status` is "paid", "adjusted",
+        "pending" or "" for unspecified."""
         raw_data = self._get_raw()
         pan = pan.strip().upper()
         hist = raw_data.setdefault("return_status_history", {})
@@ -427,6 +562,14 @@ class VaultManager:
             "status_date": status_date,
             "filing_date": filing_date,
             "ack_no": ack_no,
+            "filed": filed,
+            "section": section,
+            "revised": revised,
+            "revised_section": revised_section,
+            "rectified": rectified,
+            "e_verified": e_verified,
+            "processed": processed,
+            "refund_status": refund_status,
             "ts": datetime.datetime.now().strftime("%d-%b-%Y %H:%M:%S"),
         }
         self._save_raw(raw_data)
@@ -450,13 +593,41 @@ class VaultManager:
         raw_data = self._get_raw()
         return raw_data.get("return_status_history", {})
 
+    def get_audit_applicable(self, pan: str, ay_label: str) -> bool:
+        """Whether the client/PAN has a tax audit flagged for that AY.
+        Returns False when unset."""
+        raw_data = self._get_raw()
+        audit = raw_data.get("audit_applicable", {})
+        return bool(audit.get(pan.strip().upper(), {}).get(ay_label, False))
+
+    def set_audit_applicable(self, pan: str, ay_label: str, value: bool):
+        """Upsert the per-client/per-AY audit flag, saved to the vault."""
+        raw_data = self._get_raw()
+        pan = pan.strip().upper()
+        audit = raw_data.setdefault("audit_applicable", {})
+        audit.setdefault(pan, {})[ay_label] = bool(value)
+        self._save_raw(raw_data)
+
+    def get_audit_applicable_for_year(self, ay_label: str) -> dict:
+        """{pan: bool} for one AY — only PANs that have an audit entry
+        for that year."""
+        raw_data = self._get_raw()
+        audit = raw_data.get("audit_applicable", {})
+        return {
+            pan: ay_map[ay_label]
+            for pan, ay_map in audit.items()
+            if ay_label in ay_map
+        }
+
     # --- Bulk Import / Export ---
 
     def import_bulk(self, file_path: str) -> tuple:
         """
         Imports assessees from an Excel (.xlsx) or CSV (.csv) file.
-        Expects columns: Name, PAN, DOB, Password
-        Returns: (success_count, error_messages_list)
+        Expects columns: Name, PAN, DOB, Password.
+        Optional columns: Group, Email, CC, GST Username, GST Password,
+        TDS Username, TDS Password.
+        Returns: (added_count, updated_count, errors)
         """
         if not os.path.exists(file_path):
             return 0, [f"File {file_path} does not exist."]
@@ -488,7 +659,7 @@ class VaultManager:
                     raw_rows = list(reader)
                 if not raw_rows:
                     return 0, ["File is empty."]
-                headers = [c.strip().lower() for c in raw_rows[0]]
+                headers = [str(c).strip().lower() for c in raw_rows[0]]
                 data_rows = [row for row in raw_rows[1:] if any(c.strip() for c in row)]
             else:
                 return 0, ["Unsupported file format. Please use Excel (.xlsx) or CSV (.csv)."]
@@ -529,17 +700,54 @@ class VaultManager:
                 email = _cell('email') if 'email' in col else ""
                 cc = _cell('cc') if 'cc' in col else ""
                 group = _cell('group') if 'group' in col else ""
+                gst_username = _cell('gst username') if 'gst username' in col else ""
+                gst_password = _cell('gst password') if 'gst password' in col else ""
+                tds_username = _cell('tds username') if 'tds username' in col else ""
+                tds_password = _cell('tds password') if 'tds password' in col else ""
 
-                if not name or not pan or not dob or not password:
+                def _flag(*names):
+                    """Optional yes/no columns; None when the file omits them."""
+                    for nm in names:
+                        if nm in col:
+                            raw = _cell(nm).lower()
+                            if raw in ("yes", "y", "true", "1", "enabled"):
+                                return True
+                            if raw in ("no", "n", "false", "0", "disabled"):
+                                return False
+                    return None
+
+                en_it = _flag('enable income tax', 'income tax enabled')
+                en_gst = _flag('enable gst', 'gst enabled')
+                en_tds = _flag('enable tds', 'tds enabled')
+
+                if en_tds or en_gst or en_it is False:
+                    needed = (not name) or (not password and en_it is not False)
+                    if en_it is not False:
+                        needed = needed or (not pan)
+                    else:
+                        needed = not name
+                    if needed:
+                        errors.append(
+                            f"Row {row_num}: Missing values for the enabled portal.")
+                        continue
+                elif not name or not pan or not dob or not password:
                     errors.append(f"Row {row_num}: Missing values in Name, PAN, DOB, or Password.")
                     continue
 
-                if len(pan) != 10:
+                if pan and len(pan) != 10:
                     errors.append(f"Row {row_num}: Invalid PAN length (must be 10 characters).")
                     continue
 
                 is_existing = pan in existing_pans
-                self.add_update_assessee(name, pan, dob, password, email=email, cc=cc, group=group)
+                self.add_update_assessee(name, pan, dob, password, email=email,
+                                         cc=cc, group=group,
+                                         gst_username=gst_username,
+                                         gst_password=gst_password,
+                                         tds_username=tds_username,
+                                         tds_password=tds_password,
+                                         enable_income_tax=en_it,
+                                         enable_gst=en_gst,
+                                         enable_tds=en_tds)
                 if is_existing:
                     updated_count += 1
                 else:
@@ -552,19 +760,37 @@ class VaultManager:
 
     def generate_template(self, file_path: str):
         """Generates an Excel import template with sample columns."""
-        headers = ["Name", "Group", "PAN", "DOB", "Password", "Email", "CC"]
-        sample = ["John Doe", "", "AAAPT0001A", "01-01-1980", "YourPortalPassword",
-                  "client@example.com", "spouse@example.com;accountant@firm.com"]
+        headers = ["Name", "Group", "PAN", "DOB", "Password", "Email", "CC",
+                   "TDS Username", "TDS Password", "GST Username", "GST Password",
+                   "Enable Income Tax", "Enable GST", "Enable TDS"]
+        sample = ["Sample Client", "", "AABCP1234F", "01-01-1980", "testpass",
+                  "client@example.com", "spouse@example.com;accountant@firm.com",
+                  "tdsuser01", "YourTdsPassword", "gstuser01", "YourGstPassword",
+                  "Yes", "No", "No"]
         target = file_path if (file_path.endswith('.csv') or file_path.endswith('.xlsx')) else file_path + ".xlsx"
         self._write_client_table_file(target, headers, [sample])
 
     def export_data(self, file_path: str):
         """Exports all saved assessees (with decrypted passwords) to Excel or CSV."""
         assessees = self.get_all_assessees()
-        headers = ["Name", "Group", "PAN", "DOB", "Password", "Email", "CC"]
-        rows = [[a.get("name", ""), a.get("group", ""), a.get("pan", ""), a.get("dob", ""),
-                 a.get("password", ""), a.get("email", ""), a.get("cc", "")]
-                for a in assessees]
+        headers = ["Name", "Group", "PAN", "DOB", "Password", "Email", "CC",
+                   "TDS Username", "TDS Password", "GST Username", "GST Password",
+                   "Enable Income Tax", "Enable GST", "Enable TDS"]
+
+        def _yn(enabled):
+            return "Yes" if enabled else "No"
+
+        rows = []
+        for a in assessees:
+            src = credential_sources(a)
+            rows.append([
+                a.get("name", ""), a.get("group", ""), a.get("pan", ""),
+                a.get("dob", ""), a.get("password", ""), a.get("email", ""),
+                a.get("cc", ""), a.get("tds_username", ""),
+                a.get("tds_password", ""), a.get("gst_username", ""),
+                a.get("gst_password", ""),
+                _yn("Income Tax" in src), _yn("GST" in src), _yn("TDS" in src),
+            ])
         self._write_client_table_file(file_path, headers, rows)
 
     def _client_instructions_text(self) -> str:
@@ -592,7 +818,7 @@ class VaultManager:
             "dropdown here instead of free text — CSV doesn't support that.)",
             "",
             "PAN",
-            "  The client's 10-character PAN, e.g. AAAPT0001A. If a PAN already "
+            "  The client's 10-character PAN, e.g. AABCP1234F. If a PAN already "
             "exists in AayDocCapio, importing it again updates that client instead "
             "of adding a duplicate.",
             "",
@@ -603,12 +829,30 @@ class VaultManager:
             "Password",
             "  The client's ITD e-Filing portal password.",
             "",
+            "TDS Username / TDS Password",
+            "  Optional. The client's TDS / TRACES login on the income-tax "
+            "e-Filing portal. Some clients log in there with a different user "
+            "than their PAN, so it is stored separately.",
+            "",
+            "Enable Income Tax / Enable GST / Enable TDS",
+            "  Yes or No. Which portal flows the client belongs to. A GST-only "
+            "client (Yes for GST only) does not appear in the income-tax lists; "
+            "a TDS client appears only in the TDS hub. Leave blank to infer "
+            "from the credentials you filled in.",
+            "",
+            "GST Username / GST Password",
+            "  Optional. The client's GST portal login (services.gst.gov.in), used "
+            "for GST work. Leave both blank if the client has no GST login — the "
+            "rest of the row still imports normally.",
+            "",
             "Email / CC",
             "  Optional. Email is who reports get sent to; CC can have more than "
             "one address, separated by semicolons.",
             "",
             "Note: Name, PAN, DOB, and Password are all required — a row missing "
-            "any of these is skipped and listed as an error when you import it.",
+            "any of these is skipped and listed as an error when you import it. "
+            "Group, Email, CC, TDS Username, TDS Password, GST Username and "
+            "GST Password are optional.",
             "",
             "Note: this file has real portal passwords in plain text once you fill "
             "it in (or once you export your saved clients) — keep it somewhere safe "
@@ -654,7 +898,10 @@ class VaultManager:
         )
         ws.add_table(tab)
         ws.freeze_panes = "A2"
-        col_widths = {"Name": 22, "Group": 20, "PAN": 14, "DOB": 12, "Password": 20, "Email": 26, "CC": 30}
+        col_widths = {"Name": 22, "Group": 20, "PAN": 14, "DOB": 12, "Password": 20,
+                      "Email": 26, "CC": 30, "GST Username": 18, "GST Password": 20,
+                      "TDS Username": 18, "TDS Password": 20,
+                      "Enable Income Tax": 17, "Enable GST": 12, "Enable TDS": 12}
         for i, label in enumerate(headers, start=1):
             ws.column_dimensions[get_column_letter(i)].width = col_widths.get(label, 16)
         for row_cells in ws.iter_rows(min_row=2, max_row=max(table_last_row, 2), max_col=len(headers)):
@@ -773,13 +1020,25 @@ class VaultManager:
              'group. To add a new group, type its name on the "Groups" sheet first '
              '— it then shows up in this dropdown.'),
             ("PAN",
-             "The client's 10-character PAN, e.g. AAAPT0001A. If a PAN already exists "
+             "The client's 10-character PAN, e.g. AABCP1234F. If a PAN already exists "
              "in AayDocCapio, importing it again updates that client instead of adding "
              "a duplicate."),
             ("DOB",
              "Date of birth, as DD-MM-YYYY (e.g. 01-01-1980). A few other common date "
              "formats are also accepted."),
             ("Password", "The client's ITD e-Filing portal password."),
+            ("TDS Username / TDS Password",
+             "Optional. The client's TDS / TRACES login on the income-tax e-Filing "
+             "portal. Some clients log in there with a different user than their PAN, "
+             "so it is stored separately."),
+            ("Enable Income Tax / Enable GST / Enable TDS",
+             "Yes or No — which portal flows this client belongs to. A GST-only "
+             "client does not appear in the income-tax lists, and a TDS client "
+             "appears only in the TDS hub. Blank means \"infer from credentials\"."),
+            ("GST Username / GST Password",
+             "Optional. The client's GST portal login (services.gst.gov.in), used for "
+             "GST work. Leave both blank if the client has no GST login — the rest of "
+             "the row still imports normally."),
             ("Email / CC",
              "Optional. Email is who reports get sent to; CC can have more than one "
              "address, separated by semicolons."),
@@ -803,7 +1062,9 @@ class VaultManager:
         note_cell = ws_help.cell(
             row=r, column=1,
             value="Note: Name, PAN, DOB, and Password are all required — a row missing "
-                  "any of these is skipped and listed as an error when you import it.",
+                  "any of these is skipped and listed as an error when you import it. "
+                  "Group, Email, CC, TDS Username, TDS Password, GST Username and "
+                  "GST Password are optional.",
         )
         note_cell.font = Font(bold=True, color="7F6000")
         note_cell.fill = NOTE_FILL
@@ -852,6 +1113,39 @@ class VaultManager:
         raw_data = self._get_raw()
         raw_data["settings"][key] = value
         self._save_raw(raw_data)
+
+    # --- e-Proceedings auto-fetch (F-13) ---
+
+    def set_client_credential_invalid(self, pan: str, invalid: bool) -> bool:
+        """Flag (or clear) a client whose portal password appears to have changed."""
+        raw_data = self._get_raw()
+        target = pan.strip().upper()
+        found = False
+        for entry in raw_data.get("assessees", []):
+            if entry.get("pan", "").upper() == target:
+                entry["credential_invalid"] = bool(invalid)
+                found = True
+        if found:
+            self._save_raw(raw_data)
+        return found
+
+    def get_credential_invalid(self) -> set:
+        """Return PANs currently blocked from automatic sync."""
+        return {
+            entry.get("pan", "").upper()
+            for entry in self._get_raw().get("assessees", [])
+            if entry.get("credential_invalid")
+        }
+
+    def get_eproc_autofetch_config(self) -> dict:
+        from automation.eproc_scheduler import normalise_config
+        return normalise_config(self.get_setting("eproc_autofetch", {}))
+
+    def save_eproc_autofetch_config(self, cfg: dict) -> dict:
+        from automation.eproc_scheduler import normalise_config
+        normalised = normalise_config(cfg)
+        self.update_setting("eproc_autofetch", normalised)
+        return normalised
 
     # --- Email / SMTP Settings ---
 

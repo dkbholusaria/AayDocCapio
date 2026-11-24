@@ -2,6 +2,67 @@
 
 All notable changes to AayDocCapio are documented here.
 
+## [Unreleased]
+
+### New Features
+
+#### Virtual hearings in e-Proceedings — VC date, link and recording (F-118, #118)
+- **Virtual-conferencing (VC) hearings are now captured** alongside notices whenever a faceless proceeding offers "Seek Video Conferencing"
+- **Hearing details saved** — VC date & time, status, assessee request date, ITD response date and reason, stored in each proceeding's `_meta.json`
+- **VC documents downloaded** — the "VC Schedule Notice" and "VC Minutes of Meeting" PDFs land in a `vc-NN/` folder next to the notices
+- **Recording kept as a link** — where the portal exposes a hearing recording, its link is saved (opened in your browser) rather than downloading the video
+- **Open requests and requestable cases are flagged** — an open (not-yet-scheduled) VC request shows "Requested … — awaiting schedule", and a notice that still offers "Seek Video Conferencing" raises a prompt so you can apply
+- **Join link + password captured when available** — the portal only reveals these within 2 hours of the scheduled VC, so they are filled in only then
+- **Repeat runs stay fast** — an unchanged hearing is not re-opened or re-downloaded
+
+#### Faster repeat downloads — skip files that are already saved (F-14, #14)
+- **Every document type now checks the client folder before contacting the portal** — if a file is already saved (and not empty), that download is skipped. This is the same "diff fetch" behaviour e-Proceedings has had since F-2, extended to Form 26AS, Form 168, Filed Returns (Form/Receipt/JSON/Intimation), Tax Challans and AIS/TIS
+- **Re-running a batch for an already-downloaded client is now fast** — no portal clicks, no re-waiting for the same PDF to generate, no repeated PDF unlocking
+- **Partial downloads are handled per file** — e.g. if the 26AS PDF is present but the TXT is missing, only the TXT is fetched; the same applies to Form 168's PDF/Excel/TXT and each Filed Return artifact
+- **Status text distinguishes "already present" from "downloaded"** — e.g. "✅ 26AS — Already present (PDF + TXT)", "✅ Filed Returns — Up to date (N file(s) already present)"
+
+To force a fresh copy of a document, delete that file from the client folder and download again.
+
+#### Filed IT Forms download (F-63)
+- **New "Filed IT Forms" option** in Download Documents and the download picker, alongside 26AS, ITR, challans and e-Proceedings — it is not part of e-Proceedings
+- **Downloads every form you filed** under e-File > Income Tax Forms: Form 15CA, 15CB, 10IE, 10-IC, 35, 3CB-3CD / 3CA-3CD (Form 3CD is inside the "Download Form" ZIP), Form 146 and any other form the portal lists — including forms filed by the client's CA
+- **Each filing keeps its full set** — Filed Form, Acknowledgement/Receipt, JSON or XML where available, and the attachments ZIP
+- **Files are organised and never overwrite each other**: `Filed IT Forms/<Form>/<AY or FY>/<Form>_<Acknowledgement No>_<file>`, with attachments saved alongside
+- **Repeat runs only fetch what's new** — already-saved files are skipped, so a second run finishes with "☑ Filed IT Forms — Up to date"
+- **Handles both Act tabs** (2025 and 1961) plus Other Acts, and pages through long lists automatically
+
+#### Scheduled e-Proceedings auto-fetch (F-13)
+- **Optional background sync** — a Settings switch keeps e-Proceedings up to date automatically at a chosen time on chosen days; it is off by default
+- **You decide the workload** — set clients per day (1–500), then either continue every day or spread the work across 1–3 days, split by client count or by group; cases can also rotate so the same clients are not always fetched first
+- **IP-protection pacing** — adjustable cooldowns between clients and between documents, random extra delay, a per-run time budget, timeout retries, and a longer back-off if the portal signals a rate limit
+- **Password-change protection** — if the portal rejects a saved password, that client is marked "Password needs update", you are notified, and auto-fetch skips the client until the password is changed
+- **Full control while it runs** — a progress window with Skip current, Skip future, Pause/Resume, Restart and Stop; the remaining queue is saved so a restart or crash resumes where it left off
+
+#### View saved challans (F-12)
+- **New "View Challans" window** under E-Pay Tax (also on the Income Tax E-Pay Tax tab and the TDS hub) — see every challan already generated (Unpaid) or downloaded (Paid) in an earlier session, without logging in or fetching anything again
+- **Filter by client, Paid / Unpaid, and year**, or search by filename/CRN; the list shows the client, year, type, date and size
+- **Double-click a row to open the challan PDF/PNG, or use Open Folder** to jump to the exact folder it is saved in
+- Recognises older folder names too, so files saved by previous app versions still appear
+
+#### e-Proceedings Documents (F-60)
+- **Download every e-Proceedings document for a client in one pass** — all notices, letters and orders the department issued (via each notice's "Notice/Letter Pdf"), plus the client's own submitted responses: their attachments ("View Response") and acknowledgements. PDFs are not password-protected; any owner-encrypted client-uploaded attachments are unlocked automatically
+- **Everything is organized per proceeding** — files land in `e-Proceedings/<NN>-<Proceeding Name>/notice-…/response-…/` folders inside the client's year folder, keeping portal filenames
+- **A new "e-Proceedings Documents" checkbox** in the Download picker and the inline Download Documents tab, alongside the other document types; e-Proceedings is not year-scoped (the portal itself often shows "Assessment Year: Not Available"), so the result is recorded against every selected year
+- **A new "View e-Proceedings" window** (Tools menu, or right-click a client in the grid) — browse proceedings with file counts and sizes, see each file tagged as Notice or Response, and open any file or the whole proceeding folder with a double-click
+- **Clear per-client outcomes** — "✅ Downloaded (n file(s))", "⬜ No e-Proceedings found" when the portal shows no records, and partial-failure warnings instead of silent gaps
+
+### Improvements
+
+#### e-Proceedings now syncs incrementally (F-2)
+- **Repeat downloads no longer re-fetch everything** — each sync compares the portal's notices against what's already saved (by reference ID and issue date) and downloads **only new or changed documents**. A run over unchanged data finishes instantly with "✅ e-Proceedings — Up to date (N unchanged)" and creates no duplicates. Unchanged notices are still listed and viewable from the saved data.
+
+### Bug Fixes
+
+#### Download Documents tab can now pick the year and run (B-1)
+- **Fixed downloads started from Income Tax ▸ Download Documents always being blocked** with "Please select at least one Assessment / Tax Year" — that tab had no year selector of its own, and the only one in the app lives on the Home screen, which isn't visible from the Income Tax hub
+- **The tab now has its own Assessment / Tax Year selector**, with the same multi-year picking and ⚙ Manage Years shortcut as Home; the two stay in step both ways, so a year chosen in either place applies everywhere
+- **The year selector is greyed out while a batch is running**, like the Home one already was
+
 ## [2.4.6] — 2026-09-22
 
 ### New Features
