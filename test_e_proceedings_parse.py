@@ -323,8 +323,10 @@ def test_parse_vc_table_empty():
 def test_hearing_key():
     from automation.downloader_e_proceedings import _hearing_key
     assert _hearing_key({"notice_ref": "1", "vc_datetime": "X"}) == "1|X"
+    # Open request with no VC date yet falls back to the request date.
+    assert _hearing_key({"notice_ref": "1", "request_date": "D0"}) == "1|D0"
     assert _hearing_key({"notice_ref": "", "vc_datetime": "X"}) == ""
-    assert _hearing_key({"notice_ref": "1", "vc_datetime": ""}) == ""
+    assert _hearing_key({"notice_ref": "1", "vc_datetime": ""}) == "1|"
 
 
 def test_synced_hearing_helpers():
@@ -333,10 +335,10 @@ def test_synced_hearing_helpers():
     meta = {"hearings": [
         {"notice_ref": "1", "vc_datetime": "D1", "recording_url": "u"},
         {"notice_ref": "2", "vc_datetime": "D2", "files": ["vc-01/a.pdf"]},
-        {"notice_ref": "3", "vc_datetime": "", "recording_url": "u"},
+        {"notice_ref": "3", "request_date": "D0", "status": "Open"},
     ]}
-    assert _synced_hearing_keys(meta) == {"1|D1", "2|D2"}
-    assert _synced_hearing_notice_refs(meta) == {"1", "2"}
+    assert _synced_hearing_keys(meta) == {"1|D1", "2|D2", "3|D0"}
+    assert _synced_hearing_notice_refs(meta) == {"1", "2", "3"}
 
 
 def test_merge_hearings_keeps_cached():

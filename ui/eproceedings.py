@@ -1447,7 +1447,9 @@ class EProceedingsWorkspace(QWidget):
             bl = QVBoxLayout(block)
             bl.setContentsMargins(9, 7, 9, 7)
             bl.setSpacing(2)
-            title = h.vc_datetime or "VC (date not shown)"
+            title = h.vc_datetime or (
+                f"Requested {h.request_date} \u2014 awaiting schedule"
+                if h.request_date else "VC (date not shown)")
             status = f"  \u00b7  {h.status}" if h.status else ""
             bl.addWidget(_lbl(f"{title}{status}", 11, bold=True,
                               color=t.text_primary))
