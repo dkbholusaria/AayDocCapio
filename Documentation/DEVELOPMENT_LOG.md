@@ -1003,3 +1003,53 @@ incremental sync from F-2 so repeat runs only fetch new/changed documents.
 
 A supervised real-portal auto-fetch run with live client credentials. All
 browser interaction paths are the existing manual e-Proceedings code.
+
+---
+
+## Virtual hearings (VC) in e-Proceedings — F-118 (#118)
+
+**Goal.** Capture the virtual-conferencing (video hearing) data some faceless
+proceedings expose, alongside notices/orders/responses.
+
+**Confirmed live (2026-11-23, AVQPB4769C & BGVPM5888C).** Virtual hearings
+appear only in faceless proceedings (assessment u/s 147/148A, first appeals,
+penalties). On the View Notices screen a notice may carry a third button
+`Seek Video Conferencing` (non-faceless shows `Seek/View Adjournment`). It
+opens `#/dashboard/eProceedings/viewNotices/seekVideoConferencing`, an ag-Grid
+request table with columns `date` (request date), `rfsvca` (reason),
+`vcdt` (VC date & time), `sa` (status), `itdrd` (ITD response date),
+`vcld` (VC Recording link), `itdR` (VC Schedule Notice / Status and VC
+recording). Each hyperlink opens an `#attachmentsPopup` modal; the recording
+modal shows a `.webm` URL; the Schedule Notice / Minutes-of-Meeting modals
+download PDFs. The live join link + password live in `#linkPassModal` and are
+only populated within 2 hours of the scheduled time. Three states observed:
+(a) request form only (can apply), (b) open request awaiting schedule (VC date
+"-"), (c) scheduled/completed (full details + recording).
+
+**Design.**
+- `automation/downloader_e_proceedings.py`: pure `_parse_vc_table` (normalizes
+  '-' placeholders), `_hearing_key` (ref + VC date, falling back to request
+  date), `_merge_hearings`, `_synced_hearing_*`; async readers
+  `_vc_button_notice_refs`, `_read_vc_rows`, `_vc_recording_url`,
+  `_vc_join_credentials`, `_download_vc_pdf`, `_sync_notice_hearing`. Integrated
+  into `_process_proceeding` after the notice-PDF loop; meta gains `hearings[]`
+  and `vc_requestable`. Recording is stored as a link only.
+- `ui/eproceedings_model.py`: new `Hearing` dataclass; `Case.hearings` and
+  `Case.vc_requestable` parsed from `_meta.json`.
+- `ui/eproceedings.py`: Overview "Virtual hearings" card — date/time/status,
+  recording + join buttons (open in browser), schedule/Minutes PDFs, and a
+  banner when a VC can still be requested. Open requests show
+  "Requested … — awaiting schedule".
+- Navigation robustness: `navigate_to_e_proceedings` now no-ops when already on
+  the e-Proceedings route (resumed sessions), fixing a hover-menu failure.
+
+**Verification.**
+- `test_e_proceedings_parse.py` extended with VC parser, key, sync-helper,
+  merge and model tests — 23/23 pass.
+- Live BGVPM5888C: VC buttons located on First Appeal (open request), Penalty
+  (open request), Assessment u/s 147 (scheduled 07-Mar-2024, Approved → past)
+  and 148A (request form). Targeted run on 147 captured the hearing row and
+  downloaded its VC Schedule Notice PDF into `vc-01/`.
+
+**Deferred.** Downloading the `.webm` recording file (link only, per decision);
+the join link/password appear only inside the 2-hour window.
