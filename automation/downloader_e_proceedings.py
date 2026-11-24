@@ -122,6 +122,13 @@ async def navigate_to_e_proceedings(page: Page, log_callback) -> Page:
     step("Navigating: Pending Actions → e-Proceedings")
     await update_browser_status(page, "e-Proceedings: Opening section...")
 
+    # Already on the e-Proceedings SPA route (resumed session / prior nav) —
+    # the hover menu is not rendered there, so skip straight to the list.
+    if _EPROC_HASH in page.url:
+        step("Already on e-Proceedings — skipping navigation")
+        await asyncio.sleep(3)
+        return page
+
     # The hover menu needs its item clicked as a BUTTON — confirmed live that
     # clicking the inner <span> leaves the dashboard unchanged.
     pa_btn = page.locator("a:has-text('Pending Actions')").first
