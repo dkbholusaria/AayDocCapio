@@ -2340,7 +2340,11 @@ class AayDocCapioApp(QMainWindow):
         self._dl_refresh_clients()
 
     def _dl_refresh_clients(self):
-        """(Re)build Section A's client rows from self.assessee_list. Called
+        """(Re)build Section A's client rows from self.assessee_list, keeping
+        only clients with Income Tax capacity (B-30) — this tab downloads
+        from the Income Tax portal only, so GST-only and TDS-only clients
+        must not appear here. Uses the same vault.credential_sources()
+        predicate as the Return Status tab. Called
         once when the tab is first built (assessee_list doesn't exist yet
         at that point — _build_ui() runs before the first refresh_grid())
         and again every time refresh_grid() runs (including on every theme
@@ -2366,6 +2370,18 @@ class AayDocCapioApp(QMainWindow):
         table.setRowCount(0)
         self._dl_client_cbs = {}
         assessees = getattr(self, "assessee_list", [])
+
+        # Income Tax only (B-30): this tab never downloads from the TDS or
+        # GST portals, so a client with no Income Tax login is not a valid
+        # target. credential_sources() is the single source of truth for the
+        # tag; fall back to the unfiltered list if the vault read fails so a
+        # transient error can't blank the whole tab.
+        try:
+            assessees = [a for a in assessees
+                         if "Income Tax" in self.vault.credential_sources(a)]
+        except Exception:
+            self.log("[Download] Could not read client credential sources; "
+                     "showing all clients.")
 
         q = ""
         search = getattr(self, "_dl_search", None)
