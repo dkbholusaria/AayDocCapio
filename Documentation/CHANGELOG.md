@@ -6,6 +6,15 @@ All notable changes to AayDocCapio are documented here.
 
 ### New Features
 
+#### Virtual hearings in e-Proceedings — VC date, link and recording (F-118, #118)
+- **Virtual-conferencing (VC) hearings are now captured** alongside notices whenever a faceless proceeding offers "Seek Video Conferencing"
+- **Hearing details saved** — VC date & time, status, assessee request date, ITD response date and reason, stored in each proceeding's `_meta.json`
+- **VC documents downloaded** — the "VC Schedule Notice" and "VC Minutes of Meeting" PDFs land in a `vc-NN/` folder next to the notices
+- **Recording kept as a link** — where the portal exposes a hearing recording, its link is saved (opened in your browser) rather than downloading the video
+- **Open requests and requestable cases are flagged** — an open (not-yet-scheduled) VC request shows "Requested … — awaiting schedule", and a notice that still offers "Seek Video Conferencing" raises a prompt so you can apply
+- **Join link + password captured when available** — the portal only reveals these within 2 hours of the scheduled VC, so they are filled in only then
+- **Repeat runs stay fast** — an unchanged hearing is not re-opened or re-downloaded
+
 #### Faster repeat downloads — skip files that are already saved (F-14, #14)
 - **Every document type now checks the client folder before contacting the portal** — if a file is already saved (and not empty), that download is skipped. This is the same "diff fetch" behaviour e-Proceedings has had since F-2, extended to Form 26AS, Form 168, Filed Returns (Form/Receipt/JSON/Intimation), Tax Challans and AIS/TIS
 - **Re-running a batch for an already-downloaded client is now fast** — no portal clicks, no re-waiting for the same PDF to generate, no repeated PDF unlocking

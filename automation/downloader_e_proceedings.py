@@ -122,6 +122,13 @@ async def navigate_to_e_proceedings(page: Page, log_callback) -> Page:
     step("Navigating: Pending Actions → e-Proceedings")
     await update_browser_status(page, "e-Proceedings: Opening section...")
 
+    # Already on the e-Proceedings SPA route (resumed session / prior nav) —
+    # the hover menu is not rendered there, so skip straight to the list.
+    if _EPROC_HASH in page.url:
+        step("Already on e-Proceedings — skipping navigation")
+        await asyncio.sleep(3)
+        return page
+
     # The hover menu needs its item clicked as a BUTTON — confirmed live that
     # clicking the inner <span> leaves the dashboard unchanged.
     pa_btn = page.locator("a:has-text('Pending Actions')").first
@@ -268,11 +275,18 @@ _VC_COLS = ("date", "rfsvca", "vcdt", "sa", "itdrd", "vcld", "itdR")
 def _parse_vc_table(rows: list[dict]) -> list[dict]:
     """Normalize raw ag-Grid rows into hearing dicts. Pure function
     (unit-testable). Each raw row is {col_id: {"text": str,
-    "links": [{"txt", "cls"}]}} as extracted from the DOM."""
+    "links": [{"txt", "cls"}]}}. The portal renders '-' as a placeholder for
+    a value it has not set yet (e.g. an open VC request not yet scheduled),
+    which is normalized to ''."""
     out: list[dict] = []
+
+    def _clean(value: str) -> str:
+        value = (value or "").strip()
+        return "" if value in ("-", "--", "\u2013", "\u2014") else value
+
     for row in rows or []:
         def _text(cid: str) -> str:
-            return ((row.get(cid) or {}).get("text") or "").strip()
+            return _clean((row.get(cid) or {}).get("text") or "")
 
         vc_datetime = _text("vcdt")
         status = _text("sa")
@@ -300,32 +314,37 @@ def _parse_vc_table(rows: list[dict]) -> list[dict]:
 
 
 def _hearing_key(hearing: dict) -> str:
-    """Diff key for one hearing: '<notice_ref>|<vc_datetime>'. Empty when
-    either part is missing — an unknown hearing is never treated as synced."""
+    """Diff key for one hearing: '<notice_ref>|<when>' where 'when' is the VC
+    date/time, falling back to the assessee request date for an open (not yet
+    scheduled) VC request. Empty only when the ref is missing."""
     ref = (hearing.get("notice_ref") or "").strip()
-    when = (hearing.get("vc_datetime") or "").strip()
-    return f"{ref}|{when}" if ref and when else ""
+    when = ((hearing.get("vc_datetime") or "").strip()
+            or (hearing.get("request_date") or "").strip())
+    return f"{ref}|{when}" if ref else ""
 
 
 def _synced_hearing_keys(meta: dict) -> set[str]:
-    """Keys of hearings already recorded with a recording URL or file."""
+    """Keys of hearings already recorded (recording URL, files, VC date or an
+    open-request request_date)."""
     out: set[str] = set()
     for hearing in (meta.get("hearings") or []):
         key = _hearing_key(hearing)
-        if key and (hearing.get("recording_url") or hearing.get("files")
-                    or hearing.get("vc_datetime")):
+        if not key:
+            continue
+        if (hearing.get("recording_url") or hearing.get("files")
+                or hearing.get("vc_datetime") or hearing.get("request_date")
+                or hearing.get("status")):
             out.add(key)
     return out
 
 
 def _synced_hearing_notice_refs(meta: dict) -> set[str]:
-    """Notice refs that already have a recorded hearing with a known VC
-    datetime — used to skip re-opening that notice's VC screen."""
+    """Notice refs that already have a recorded hearing (scheduled, completed
+    or an open request) — used to skip re-opening that notice's VC screen."""
     refs: set[str] = set()
     for hearing in (meta.get("hearings") or []):
         ref = (hearing.get("notice_ref") or "").strip()
-        when = (hearing.get("vc_datetime") or "").strip()
-        if ref and when:
+        if ref:
             refs.add(ref)
     return refs
 
