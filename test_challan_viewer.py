@@ -160,6 +160,39 @@ def test_view_dialog_filters_and_actions():
             app.processEvents()
 
 
+def test_view_dialog_scoped_by_challan_type():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PyQt6.QtWidgets import QApplication
+    import ui.challan_viewer as viewer
+
+    app = QApplication.instance() or QApplication([])
+    with tempfile.TemporaryDirectory() as tmp:
+        _build_tree(tmp)
+        clients = [
+            {"pan": "AABCP1234F", "name": "Sample Client"},
+            {"pan": "AMRA12345D", "name": "Sample Client"},
+        ]
+
+        tds = viewer.ViewChallansDialog(None, tmp, clients, challan_type="TDS/TCS")
+        try:
+            assert tds._table.rowCount() == 1
+            assert "TDS/TCS" in tds.windowTitle()
+            assert all(r["doc_type"] == "TDS/TCS" for r in tds._row_records)
+            assert tds._client_combo.findData("AABCP1234F") < 0
+        finally:
+            tds.deleteLater()
+            app.processEvents()
+
+        it = viewer.ViewChallansDialog(None, tmp, clients, challan_type="Income Tax")
+        try:
+            assert it._table.rowCount() == 4
+            assert all(r["doc_type"] == "Income Tax" for r in it._row_records)
+            assert it._client_combo.findData("AMRA12345D") < 0
+        finally:
+            it.deleteLater()
+            app.processEvents()
+
+
 def test_view_dialog_empty_state():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PyQt6.QtWidgets import QApplication
@@ -182,5 +215,6 @@ if __name__ == "__main__":
     test_scan_saved_challans()
     test_scan_missing_root()
     test_view_dialog_filters_and_actions()
+    test_view_dialog_scoped_by_challan_type()
     test_view_dialog_empty_state()
     print("PASS")

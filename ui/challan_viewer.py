@@ -33,6 +33,7 @@ from config import _open_path
 from themes import MONO_FONT_NAME as _MONO_FONT
 from ui._theme import _t
 from ui.helpers import _btn, _lbl
+from vault import identify_type
 
 
 class ViewChallansDialog(QDialog):
@@ -40,14 +41,18 @@ class ViewChallansDialog(QDialog):
 
     COLUMNS = ("Client", "Year", "Status", "Type", "File", "Date", "Size")
 
-    def __init__(self, parent, root_dir: str, clients=None):
+    def __init__(self, parent, root_dir: str, clients=None, challan_type: str = ""):
         super().__init__(parent)
         self._root_dir = root_dir or ""
         self._clients = clients or []
+        self._challan_type = (challan_type or "").strip()
         self._records: list[dict] = []
         self._row_records: list[dict] = []
 
-        self.setWindowTitle("View Challans")
+        title = "View Challans"
+        if self._challan_type:
+            title = f"View {self._challan_type} Challans"
+        self.setWindowTitle(title)
         self.setMinimumSize(920, 560)
         self._build_ui()
         self.refresh()
@@ -64,7 +69,10 @@ class ViewChallansDialog(QDialog):
         outer.setSpacing(9)
 
         head = QHBoxLayout()
-        head.addWidget(_lbl("Saved Challans", 15, bold=True))
+        heading = "Saved Challans"
+        if self._challan_type:
+            heading = f"Saved {self._challan_type} Challans"
+        head.addWidget(_lbl(heading, 15, bold=True))
         head.addStretch(1)
         self._summary = _lbl("", 10, color=t.text_muted)
         head.addWidget(self._summary)
@@ -173,6 +181,9 @@ class ViewChallansDialog(QDialog):
         year_filter = self._year_combo.currentData()
 
         self._records = scan_saved_challans(self._root_dir, self._clients)
+        if self._challan_type:
+            self._records = [r for r in self._records
+                             if r["doc_type"] == self._challan_type]
         self._rebuild_filters(client_filter, status_filter, year_filter)
         self._apply_filters()
 
@@ -187,6 +198,8 @@ class ViewChallansDialog(QDialog):
             for rec in self._records:
                 cid = rec["client_id"] or rec["client_label"]
                 if not cid or cid in seen_ids:
+                    continue
+                if not self._client_matches_type(cid):
                     continue
                 seen_ids.add(cid)
                 label = cid
@@ -213,6 +226,13 @@ class ViewChallansDialog(QDialog):
         idx = combo.findData(value) if value not in (None, "") else 0
         combo.setCurrentIndex(idx if idx >= 0 else 0)
 
+    def _client_matches_type(self, client_id: str) -> bool:
+        if self._challan_type == "TDS/TCS":
+            return identify_type(client_id) == "TAN"
+        if self._challan_type == "Income Tax":
+            return identify_type(client_id) == "PAN"
+        return True
+
     @staticmethod
     def _matches_search(rec: dict, needle: str) -> bool:
         if not needle:
@@ -229,7 +249,8 @@ class ViewChallansDialog(QDialog):
         needle = self._search.text().strip().casefold()
         return [
             r for r in self._records
-            if (not client_id
+            if (not self._challan_type or r["doc_type"] == self._challan_type)
+            and (not client_id
                 or r["client_id"] == client_id
                 or r["client_label"] == client_id)
             and (not status or r["status"] == status)

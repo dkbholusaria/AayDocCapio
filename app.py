@@ -624,7 +624,8 @@ class AayDocCapioApp(QMainWindow):
         epay_menu.addAction(act_dl_tds_challans)
         epay_menu.addSeparator()
         act_view_challans = QAction("View Challans…", self)
-        act_view_challans.triggered.connect(self._open_view_challans_dialog)
+        act_view_challans.triggered.connect(
+            lambda _checked=False: self._open_view_challans_dialog())
         epay_menu.addAction(act_view_challans)
         act_challan_template = QAction("Download Import Template…", self)
         act_challan_template.triggered.connect(self._download_challan_template)
@@ -3501,7 +3502,8 @@ class AayDocCapioApp(QMainWindow):
             "Already saved a challan? Open it without fetching it again.",
             "Generate Tax Challans…", "", self._open_generate_challans_dialog,
             extra_actions=[
-                ("View Challans…", "document", self._open_view_challans_dialog),
+                ("View Challans…", "document",
+                 lambda _checked=False: self._open_view_challans_dialog("Income Tax")),
             ]))
         self._it_stack.addWidget(self._mk_it_return_status_tab())
 
@@ -3641,7 +3643,7 @@ class AayDocCapioApp(QMainWindow):
             "Browse challans already generated or downloaded in an earlier "
             "session — filter by client and Paid / Unpaid, then open the "
             "file or its folder.",
-            "list", self._open_view_challans_dialog))
+            "list", lambda _checked=False: self._open_view_challans_dialog("TDS/TCS")))
         layout.addStretch(1)
         return page
 
@@ -5423,13 +5425,18 @@ class AayDocCapioApp(QMainWindow):
 
     # ── F-12: View saved challans (Paid / Unpaid) ────────────────────────────
 
-    def _open_view_challans_dialog(self):
+    def _open_view_challans_dialog(self, challan_type: str = ""):
         """Read-only browser for challans already saved on disk. No portal
         login — the files are the source of truth, since generation does not
-        write a download-history record into the vault."""
+        write a download-history record into the vault.
+
+        ``challan_type`` scopes the view to a single flavour: ``"TDS/TCS"``
+        shows only TAN-downloaded challans, ``"Income Tax"`` only PAN ones.
+        Empty shows everything (used by the generic menu entry)."""
         from ui.challan_viewer import ViewChallansDialog
         root = self.dir_lbl.text() or self.vault.get_setting("download_root_dir", "")
-        dlg = ViewChallansDialog(self, root, self.vault.get_all_assessees())
+        dlg = ViewChallansDialog(self, root, self.vault.get_all_assessees(),
+                                 challan_type=challan_type)
         dlg.exec()
 
     # ── F-64: Generate Tax Challans ──────────────────────────────────────────
