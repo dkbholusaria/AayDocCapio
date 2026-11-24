@@ -6,6 +6,22 @@ All notable changes to AayDocCapio are documented here.
 
 ### New Features
 
+#### Faster repeat downloads — skip files that are already saved (F-14, #14)
+- **Every document type now checks the client folder before contacting the portal** — if a file is already saved (and not empty), that download is skipped. This is the same "diff fetch" behaviour e-Proceedings has had since F-2, extended to Form 26AS, Form 168, Filed Returns (Form/Receipt/JSON/Intimation), Tax Challans and AIS/TIS
+- **Re-running a batch for an already-downloaded client is now fast** — no portal clicks, no re-waiting for the same PDF to generate, no repeated PDF unlocking
+- **Partial downloads are handled per file** — e.g. if the 26AS PDF is present but the TXT is missing, only the TXT is fetched; the same applies to Form 168's PDF/Excel/TXT and each Filed Return artifact
+- **Status text distinguishes "already present" from "downloaded"** — e.g. "✅ 26AS — Already present (PDF + TXT)", "✅ Filed Returns — Up to date (N file(s) already present)"
+
+To force a fresh copy of a document, delete that file from the client folder and download again.
+
+#### Filed IT Forms download (F-63)
+- **New "Filed IT Forms" option** in Download Documents and the download picker, alongside 26AS, ITR, challans and e-Proceedings — it is not part of e-Proceedings
+- **Downloads every form you filed** under e-File > Income Tax Forms: Form 15CA, 15CB, 10IE, 10-IC, 35, 3CB-3CD / 3CA-3CD (Form 3CD is inside the "Download Form" ZIP), Form 146 and any other form the portal lists — including forms filed by the client's CA
+- **Each filing keeps its full set** — Filed Form, Acknowledgement/Receipt, JSON or XML where available, and the attachments ZIP
+- **Files are organised and never overwrite each other**: `Filed IT Forms/<Form>/<AY or FY>/<Form>_<Acknowledgement No>_<file>`, with attachments saved alongside
+- **Repeat runs only fetch what's new** — already-saved files are skipped, so a second run finishes with "☑ Filed IT Forms — Up to date"
+- **Handles both Act tabs** (2025 and 1961) plus Other Acts, and pages through long lists automatically
+
 #### Scheduled e-Proceedings auto-fetch (F-13)
 - **Optional background sync** — a Settings switch keeps e-Proceedings up to date automatically at a chosen time on chosen days; it is off by default
 - **You decide the workload** — set clients per day (1–500), then either continue every day or spread the work across 1–3 days, split by client count or by group; cases can also rotate so the same clients are not always fetched first

@@ -818,7 +818,7 @@ class VaultManager:
             "dropdown here instead of free text — CSV doesn't support that.)",
             "",
             "PAN",
-            "  The client's 10-character PAN, e.g. AAAPT0001A. If a PAN already "
+            "  The client's 10-character PAN, e.g. AABCP1234F. If a PAN already "
             "exists in AayDocCapio, importing it again updates that client instead "
             "of adding a duplicate.",
             "",
@@ -1020,7 +1020,7 @@ class VaultManager:
              'group. To add a new group, type its name on the "Groups" sheet first '
              '— it then shows up in this dropdown.'),
             ("PAN",
-             "The client's 10-character PAN, e.g. AAAPT0001A. If a PAN already exists "
+             "The client's 10-character PAN, e.g. AABCP1234F. If a PAN already exists "
              "in AayDocCapio, importing it again updates that client instead of adding "
              "a duplicate."),
             ("DOB",

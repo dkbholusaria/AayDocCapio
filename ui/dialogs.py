@@ -3620,7 +3620,7 @@ def download_challan_template(path: str):
         "payment_mode": DEFAULT_PAYMENT_MODE, "bank": DEFAULT_BANK, "drawee_bank": "",
         "tax": 15000, "surcharge": 0, "cess": 0, "interest": 0, "penalty": 0, "others": 0,
     }
-    sample_row = ["AAAPT0001A", "Sample Client Name"] + [
+    sample_row = ["AABCP1234F", "Sample Client Name"] + [
         sample_values.get(key, "") for key, _, _ in CHALLAN_INPUT_COLUMNS if key != "pan"
     ]
     write_challan_table_file(path, headers, [sample_row])

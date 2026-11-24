@@ -6873,7 +6873,7 @@ class AayDocCapioApp(QMainWindow):
         pan_lbl.setStyleSheet("font-size:11px;font-weight:600;")
         lay.addWidget(pan_lbl)
         pan_edit = QLineEdit()
-        pan_edit.setPlaceholderText("e.g. AFCPB9287R")
+        pan_edit.setPlaceholderText("e.g. AABCP1234F")
         pan_edit.setFixedHeight(34)
         lay.addWidget(pan_edit)
 

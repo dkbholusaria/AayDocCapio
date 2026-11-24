@@ -31,7 +31,7 @@ python app.py
 | Step | Action | Expected result |
 |---|---|---|
 | 1 | Client Master → Add Single Client | Popup dialog opens |
-| 2 | Enter Name: `Test User`, PAN: `AAAPT0001A`, DOB: `01-01-1980`, Password: `testpass` | Fields accept input |
+| 2 | Enter Name: `Test User`, PAN: `AABCP1234F`, DOB: `01-01-1980`, Password: `testpass` | Fields accept input |
 | 3 | Click Save | Dialog closes; new client appears in table |
 | 4 | Relaunch app | Client is still present (persisted in vault) |
 
