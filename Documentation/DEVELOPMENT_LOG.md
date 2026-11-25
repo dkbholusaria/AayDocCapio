@@ -1097,3 +1097,42 @@ timeline card only linked `doc.files[0]`.
 
 A live portal download after this change. Existing downloads already contain
 the files, so no re-download is needed.
+
+## 31. Closure-order modal saves every document — B-126 (2026-11-25)
+
+Issue #126: the "Download Closure Order" modal can list several documents
+(Order / Demand Notice / Computation Sheet, or the penalty equivalents), but
+the downloader saved only the first one and dropped the rest.
+
+### Root cause
+
+`_download_proceeding_orders` clicked `_visible_download_button(page)` in a
+loop. That helper always returns the _first_ visible Download button, so after
+the first download it returned the same button again; the duplicate-filename
+guard then ended the loop and the other rows were never clicked.
+
+### Implementation
+
+- `automation/downloader_e_proceedings.py` — new pure
+  `_order_download_targets()` (dedupes blank/repeated filenames, keeps printed
+  order) and `_read_order_modal_rows()` (reads `#downloadClosurePopup`
+  `.row.marginTopModel` → `.modelName` + its button). The order loop now clicks
+  each row's own Download button by index, with a generic all-buttons fallback
+  for overlays without rows. Modal closing now targets
+  `#downloadClosurePopup` first so the overlay cannot block the next card.
+
+### Verification
+
+- New `test_eproc_order_download_rows.py`; together with the #123 tests,
+  `test_e_proceedings_parse.py`, `test_eproc_case_open.py`,
+  `test_eproc_viewed_by_ao.py` and `test_no_real_identifiers.py`: 57 pass.
+- Live portal run into a clean folder: the 3-document assessment and penalty
+  modals each saved all three files; single-document modals saved one. A second
+  run reported every order document "Cached (unchanged)" — no duplicates.
+
+### Not yet verified
+
+The "For your Information" tab click still occasionally times out at the end
+of a run when a lingering overlay blocks it (order downloads themselves were
+verified). Folders downloaded before this fix still lack their extra order
+documents — re-running e-Proceedings for those clients will fill them in.

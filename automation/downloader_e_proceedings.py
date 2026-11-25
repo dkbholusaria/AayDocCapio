@@ -1113,13 +1113,68 @@ async def _visible_download_button(page: Page):
     return None
 
 
+def _order_download_targets(rows: list[dict]) -> list[dict]:
+    """Return one target per distinct document row in a closure-order modal.
+
+    The portal lists each document in its own ``.row.marginTopModel`` block
+    with a filename and its own Download button. Iterating visible Download
+    buttons by position is not enough: the first button stays first after a
+    download, so a "click the first visible button" loop re-downloads the
+    same file. Targets keep the original row order, drop blank filenames and
+    ignore duplicate filenames (some modals repeat a row).
+    """
+    targets: list[dict] = []
+    seen: set[str] = set()
+    for row in rows or []:
+        filename = (row.get("filename") or "").strip()
+        if not filename or filename in seen:
+            continue
+        seen.add(filename)
+        targets.append({"row_index": row.get("row_index", 0),
+                        "filename": filename})
+    return targets
+
+
+async def _read_order_modal_rows(page: Page) -> list[dict]:
+    """Read the per-document rows of the open Closure Order modal.
+
+    Returns ``[{"row_index": int, "filename": str}]``. Empty when the open
+    overlay is not the closure-order modal (the caller then falls back to the
+    generic Download-button scan).
+    """
+    try:
+        return await page.evaluate(
+            """() => {
+                const root = document.querySelector('#downloadClosurePopup')
+                          || document.querySelector('.modal.show');
+                if (!root) return [];
+                const rows = [...root.querySelectorAll('.row.marginTopModel')];
+                const out = [];
+                rows.forEach((row, i) => {
+                    const nameEl = row.querySelector('.modelName');
+                    const btn = row.querySelector('button.downloadTemplate')
+                              || row.querySelector('button');
+                    if (!nameEl || !btn) return;
+                    out.push({
+                        row_index: i,
+                        filename: (nameEl.innerText || '').trim(),
+                    });
+                });
+                return out;
+            }"""
+        )
+    except Exception:
+        return []
+
+
 async def _download_proceeding_orders(page: Page, card_index: int, proc_dir: str,
                                       proc_label: str, old_orders: list[dict],
                                       step, before_download=None) -> tuple[list[str], list[dict], list[str]]:
     """Download order documents attached to a proceeding CARD (e.g. the
     'Download Closure Order' button on a closed appeal). Confirmed live:
-    clicking it opens a modal titled e.g. 'Closure Order' with the order PDF
-    name and a Download button; the PDF is then a normal browser download.
+    clicking it opens a modal titled e.g. 'Closure Order' with one row per
+    document (order + computation sheet + demand notice on assessment/penalty
+    closures) and a Download button per row.
 
     Orders already recorded in `_meta.json` with their file still on disk are
     skipped (incremental sync), same as notices.
@@ -1189,41 +1244,98 @@ async def _download_proceeding_orders(page: Page, card_index: int, proc_dir: str
         os.makedirs(order_dir, exist_ok=True)
         downloads_here = []
         seen_this_modal: set[str] = set()
-        for _ in range(6):
-            btn = await _visible_download_button(page)
-            if btn is None:
-                break
+
+        # Each document is its own row with its own Download button. Read the
+        # rows first, then click the button for each row by index — never
+        # "the first visible button", which would return the same document
+        # again after the first download and drop the rest.
+        rows = await _read_order_modal_rows(page)
+        targets = _order_download_targets(rows)
+
+        if targets:
+            for target in targets:
+                row_index = target["row_index"]
+                row = page.locator(
+                    "#downloadClosurePopup .row.marginTopModel"
+                    ", .modal.show .row.marginTopModel").nth(row_index)
+                btn = row.locator("button.downloadTemplate, button").first
+                try:
+                    if not await btn.is_visible(timeout=2000):
+                        continue
+                    if before_download:
+                        await before_download()
+                    async with page.expect_download(timeout=45000) as dl_info:
+                        await btn.click(timeout=10000)
+                    download = await dl_info.value
+                    fname = _sanitize_name(
+                        download.suggested_filename or target["filename"]
+                        or "order.pdf")
+                    staging = os.path.join(proc_dir, ".staging_order.pdf")
+                    await download.save_as(staging)
+                    if fname in seen_this_modal:
+                        os.remove(staging)
+                        continue
+                    seen_this_modal.add(fname)
+                    if fname in known_files:
+                        os.remove(staging)
+                        step(f"Cached (unchanged): order document '{fname}'")
+                        downloads_here.append(fname)
+                        continue
+                    path = _dedupe_path(order_dir, fname)
+                    os.replace(staging, path)
+                    saved.append(path)
+                    downloads_here.append(os.path.basename(path))
+                    step(f"[Victory] Saved order document: "
+                         f"{os.path.basename(path)}")
+                except Exception as e:
+                    step(f"[Warning] Order download failed for row "
+                         f"{row_index}: {e}")
+                    warns.append(f"{proc_label}: order download failed")
+                await asyncio.sleep(2)
+        else:
+            # Generic overlays have no filename rows: click each visible
+            # Download button once, in order, instead of only the first.
+            btns = page.locator(
+                ".cdk-overlay-pane button:has-text('Download'), "
+                ".modal.show button:has-text('Download')")
+            count = 0
             try:
-                if before_download:
-                    await before_download()
-                async with page.expect_download(timeout=45000) as dl_info:
-                    await btn.click(timeout=10000)
-                download = await dl_info.value
-                fname = _sanitize_name(download.suggested_filename or "order.pdf")
-                staging = os.path.join(proc_dir, ".staging_order.pdf")
-                await download.save_as(staging)
-                # The Download button remains enabled after it fires, so a
-                # naive loop re-clicks it. Stop as soon as the same portal
-                # document comes back twice.
-                if fname in seen_this_modal:
-                    os.remove(staging)
-                    break
-                seen_this_modal.add(fname)
-                if fname in known_files:
-                    os.remove(staging)
-                    step(f"Cached (unchanged): order document '{fname}'")
-                    downloads_here.append(fname)
-                    continue
-                path = _dedupe_path(order_dir, fname)
-                os.replace(staging, path)
-                saved.append(path)
-                downloads_here.append(os.path.basename(path))
-                step(f"[Victory] Saved order document: {os.path.basename(path)}")
-            except Exception as e:
-                step(f"[Warning] Order download failed: {e}")
-                warns.append(f"{proc_label}: order download failed")
-                break
-            await asyncio.sleep(2)
+                count = await btns.count()
+            except Exception:
+                count = 0
+            for i in range(count):
+                try:
+                    btn = btns.nth(i)
+                    if not await btn.is_visible(timeout=800):
+                        continue
+                    if before_download:
+                        await before_download()
+                    async with page.expect_download(timeout=45000) as dl_info:
+                        await btn.click(timeout=10000)
+                    download = await dl_info.value
+                    fname = _sanitize_name(
+                        download.suggested_filename or "order.pdf")
+                    staging = os.path.join(proc_dir, ".staging_order.pdf")
+                    await download.save_as(staging)
+                    if fname in seen_this_modal:
+                        os.remove(staging)
+                        continue
+                    seen_this_modal.add(fname)
+                    if fname in known_files:
+                        os.remove(staging)
+                        step(f"Cached (unchanged): order document '{fname}'")
+                        downloads_here.append(fname)
+                        continue
+                    path = _dedupe_path(order_dir, fname)
+                    os.replace(staging, path)
+                    saved.append(path)
+                    downloads_here.append(os.path.basename(path))
+                    step(f"[Victory] Saved order document: "
+                         f"{os.path.basename(path)}")
+                except Exception as e:
+                    step(f"[Warning] Order download failed: {e}")
+                    warns.append(f"{proc_label}: order download failed")
+                await asyncio.sleep(2)
 
         if downloads_here:
             entries.append({
@@ -1232,8 +1344,10 @@ async def _download_proceeding_orders(page: Page, card_index: int, proc_dir: str
                 "files": [f"order-{n:02d}/{f}" for f in downloads_here],
             })
         # Close the modal so the next button is clickable.
-        for sel in (".cdk-overlay-pane button:has-text('Cancel')",
+        for sel in ("#downloadClosurePopup button:has-text('Cancel')",
+                    "#downloadClosurePopup .close-btn",
                     ".modal.show button:has-text('Cancel')",
+                    ".cdk-overlay-pane button:has-text('Cancel')",
                     ".cdk-overlay-pane button:has-text('close')"):
             try:
                 loc = page.locator(sel).first
