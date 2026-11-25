@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from automation.doc_types import e_proceeding_doc_label
 from ui._theme import _t
 from ui.helpers import _btn, _lbl
 
@@ -34,6 +35,7 @@ class EprocDocModal(QDialog):
         self._current = doc_id
         self._history: list[str] = []
         self._related_ids: list[str] = []
+        self.attachment_rows: list[str] = []
         self._toast_seq = 0
         self._content_layout: QVBoxLayout | None = None
 
@@ -195,6 +197,7 @@ class EprocDocModal(QDialog):
         self._back_btn.setVisible(bool(self._history))
 
         self._clear_layout(self._content_layout)
+        self.attachment_rows = []
 
         chips = QHBoxLayout()
         chips.setSpacing(6)
@@ -217,6 +220,8 @@ class EprocDocModal(QDialog):
         self._content_layout.addWidget(self._section_label("Assessee"))
         self._content_layout.addWidget(self._assessee_block())
 
+        self._add_documents_section(doc)
+
         self._content_layout.addWidget(self._section_label("Related documents"))
         entries = self._related_entries(doc)
         self._related_ids = [target_id for target_id, _label in entries]
@@ -229,6 +234,71 @@ class EprocDocModal(QDialog):
                 _lbl("No linked documents.", 11, color=t.text_muted))
 
         self._content_layout.addStretch(1)
+
+    def _add_documents_section(self, doc) -> None:
+        """List every file saved for this document.
+
+        Order folders can carry an Order/Assessment Order, a Demand Notice and
+        a Computation Sheet together, so one doc may own several attachments.
+        """
+        files = [rel for rel in (doc.files or []) if (rel or "").strip()]
+        if not files:
+            return
+
+        self._content_layout.addWidget(self._section_label("Documents"))
+        for rel in files:
+            name = os.path.basename(rel)
+            label = e_proceeding_doc_label(name)
+            self.attachment_rows.append(label)
+            self._content_layout.addWidget(self._attachment_row(rel, label, name))
+
+    def _attachment_row(self, rel: str, label: str, name: str) -> QFrame:
+        t = _t()
+        frame = QFrame()
+        frame.setObjectName("docAttachment")
+        frame.setStyleSheet(
+            f"#docAttachment {{ background:{t.bg_panel}; "
+            f"border:1px solid {t.border}; border-radius:6px; }}")
+
+        row = QHBoxLayout(frame)
+        row.setContentsMargins(12, 8, 10, 8)
+        row.setSpacing(10)
+
+        text_col = QVBoxLayout()
+        text_col.setSpacing(1)
+        text_col.addWidget(_lbl(label, 12, bold=True))
+        filename_lbl = _lbl(name, 10, color=t.text_muted)
+        filename_lbl.setWordWrap(True)
+        text_col.addWidget(filename_lbl)
+        row.addLayout(text_col, 1)
+
+        open_btn = _btn("Open", "outline", height=28, min_width=56)
+        open_btn.clicked.connect(
+            lambda _checked=False, target=rel: self._open_file(
+                self._file_path(target)))
+        row.addWidget(open_btn, 0)
+        return frame
+
+    def _file_path(self, rel: str) -> str:
+        rel = (rel or "").strip()
+        if not rel:
+            return ""
+        if os.path.isabs(rel):
+            return rel
+        proc_dir = getattr(self._case, "proc_dir", "") or ""
+        if not proc_dir:
+            return rel
+        return os.path.join(proc_dir, rel.replace("/", os.sep))
+
+    @staticmethod
+    def _open_file(path: str) -> None:
+        if not path:
+            return
+        try:
+            from config import _open_path
+        except Exception:
+            return
+        _open_path(path)
 
     def _date_chip(self, text: str) -> QLabel:
         t = _t()

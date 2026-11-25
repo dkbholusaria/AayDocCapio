@@ -1011,7 +1011,7 @@ browser interaction paths are the existing manual e-Proceedings code.
 **Goal.** Capture the virtual-conferencing (video hearing) data some faceless
 proceedings expose, alongside notices/orders/responses.
 
-**Confirmed live (2026-11-23, AVQPB4769C & BGVPM5888C).** Virtual hearings
+**Confirmed live (2026-11-23, AABCP1234F & AABCP1235G).** Virtual hearings
 appear only in faceless proceedings (assessment u/s 147/148A, first appeals,
 penalties). On the View Notices screen a notice may carry a third button
 `Seek Video Conferencing` (non-faceless shows `Seek/View Adjournment`). It
@@ -1046,10 +1046,54 @@ only populated within 2 hours of the scheduled time. Three states observed:
 **Verification.**
 - `test_e_proceedings_parse.py` extended with VC parser, key, sync-helper,
   merge and model tests — 23/23 pass.
-- Live BGVPM5888C: VC buttons located on First Appeal (open request), Penalty
+- Live AABCP1235G: VC buttons located on First Appeal (open request), Penalty
   (open request), Assessment u/s 147 (scheduled 07-Mar-2024, Approved → past)
   and 148A (request form). Targeted run on 147 captured the hearing row and
   downloaded its VC Schedule Notice PDF into `vc-01/`.
 
 **Deferred.** Downloading the `.webm` recording file (link only, per decision);
 the join link/password appear only inside the 2-hour window.
+
+## 30. Order attachments visible in the timeline — B-123 (2026-11-24)
+
+Issue #123: clicking an order in the e-Proceedings timeline showed no
+documents, even though an order normally carries an Order/Assessment Order,
+a Demand Notice and a Computation Sheet.
+
+### Root cause
+
+The downloader already saved every document from one "Closure Order" modal
+into the order entry's `files` list, and the model put that whole list on one
+`Doc`. The UI lost them: `EprocDocModal` had no documents section and the
+timeline card only linked `doc.files[0]`.
+
+### Implementation
+
+- `automation/doc_types.py` — new `e_proceeding_doc_label()` (filename ->
+  Order / Demand Notice / Computation Sheet) and
+  `e_proceeding_attachment_text()` (one-line card summary).
+- `automation/downloader_e_proceedings.py` — `_order_title` now delegates to
+  the shared label helper, so stored titles and displayed labels cannot drift.
+- `ui/eproc_doc_modal.py` — new Documents section lists every file on the
+  document, with its type label, filename and an Open button.
+- `ui/eproc_timeline.py` — multi-file documents show
+  "N documents: Order · Demand Notice · Computation Sheet" on the card.
+- `ui/eproceedings_model.py` — a `_meta.json` with orders but no notices now
+  builds from meta instead of falling back to the legacy scan, so its
+  attachments stay grouped.
+
+### Verification
+
+- New tests: `test_eproc_order_labels.py`, `test_eproc_doc_modal.py`,
+  `test_eproc_order_grouping.py`.
+- Passing: the three new files plus `test_e_proceedings_parse.py`,
+  `test_eproc_case_open.py`, `test_eproc_viewed_by_ao.py`,
+  `test_litigation_store.py`, `test_litigation_adapter.py` and
+  `test_no_real_identifiers.py` (60 tests).
+- Offscreen check: an order doc with three files renders three modal rows and
+  the timeline summary lists all three labels.
+
+### Not yet verified
+
+A live portal download after this change. Existing downloads already contain
+the files, so no re-download is needed.
