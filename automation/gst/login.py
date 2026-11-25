@@ -58,8 +58,11 @@ def mask(username: str) -> str:
 
 
 def classify_error(text: str) -> str:
-    """Map the portal's error text to one of: wrong, credentials, otp, unknown."""
+    """Map the portal's error text to one of: wrong, credentials, otp, locked,
+    unknown."""
     t = (text or "").lower()
+    if "locked" in t or "forgot password" in t:
+        return "locked"
     if "valid letters" in t:
         return "wrong"
     if "invalid username" in t or "invalid user" in t or "does not exist" in t:
@@ -92,7 +95,7 @@ async def _open_captcha(page: Page, username: str, password: str, timeout_ms: in
 
 
 async def login_gst(page: Page, username: str, password: str, log_callback,
-                    max_refresh: int = 6, max_wrong: int = 3,
+                    max_refresh: int = 6, max_wrong: int = 2,
                     pace_ms: int = 1200, timeout_ms: int = 60000) -> dict:
     """Log in and return a result dict.
 
@@ -178,6 +181,9 @@ async def login_gst(page: Page, username: str, password: str, log_callback,
                     await page.wait_for_timeout(pace_ms)
                 continue
 
+            if verdict == "locked":
+                log("[GST] Account is locked by the portal — stopping immediately.")
+                return _result(False, "locked", page, attempts, reads, error_text)
             if verdict == "credentials":
                 return _result(True, "credentials", page, attempts, reads, error_text)
             if verdict == "otp":

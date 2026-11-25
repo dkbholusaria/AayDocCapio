@@ -36,6 +36,7 @@ from automation.downloader_filed_returns import download_filed_returns
 from automation.downloader_challans import download_challans
 from automation.downloader_e_proceedings import download_e_proceedings
 from automation.downloader_filed_forms import download_filed_forms
+from automation.gst.notices import download_gst_notices
 from forms import form_spec, DEFAULT_FORM
 
 DOC_TYPE_LABELS = {
@@ -47,6 +48,7 @@ DOC_TYPE_LABELS = {
     "tds_challans": "TDS/TCS Challans",
     "e_proceedings": "e-Proceedings",
     "filed_forms": "Filed IT Forms",
+    "gst_proceedings": "GST Proceedings",
 }
 
 
@@ -426,6 +428,57 @@ async def handle_e_proceedings(page, pan, dob, year_specs, out_for_year, log_cal
                        "kind": s.get("kind", "")} for s in saved]}
 
 
+async def handle_gst_proceedings(page, pan, dob, year_specs, out_for_year, log_callback,
+                                 set_status, filing_scope="all", is_running=None,
+                                 doc_delay=None, client_dir=None) -> dict:
+    """GST notices/orders from Services → User Services → View Notices and
+    Orders. GST is not year-scoped (notices carry their own tax period), so
+    everything found is downloaded into one GST-Proceedings folder under the
+    client folder and the same terminal status is recorded against every
+    selected year row. `page` must already be logged in to the GST portal."""
+    if client_dir:
+        download_root = os.path.join(client_dir, "GST-Proceedings")
+    elif year_specs:
+        first_spec = year_specs[0]
+        download_root = os.path.join(
+            out_for_year(first_spec["year_type"], first_spec["value"]),
+            "GST-Proceedings")
+    else:
+        return {}
+
+    for s in year_specs:
+        set_status(pan, s["ay_label"], "⏳ Queued — GST Proceedings")
+    if year_specs:
+        set_status(pan, year_specs[0]["ay_label"], "⏳ Downloading GST notices...")
+
+    ok, msg, saved = await download_gst_notices(
+        page, download_root, log_callback, is_running=is_running,
+        before_download=doc_delay)
+
+    if ok and not saved and msg.startswith("Up to date"):
+        for s in year_specs:
+            set_status(pan, s["ay_label"], f"✅ GST Proceedings — {msg}")
+        return {"saved": []}
+
+    if not saved and not ok:
+        for s in year_specs:
+            set_status(
+                pan, s["ay_label"],
+                f"⬜ GST Proceedings — {msg}" if "No GST notices" in msg
+                else f"❌ GST Proceedings Failed — {msg}")
+        return {"saved": []}
+
+    total = len(saved)
+    for s in year_specs:
+        if ok and msg:
+            set_status(pan, s["ay_label"], f"⚠ GST Partially Completed — {msg}")
+        elif ok:
+            set_status(pan, s["ay_label"], f"✅ GST Proceedings Downloaded ({total} file(s))")
+        else:
+            set_status(pan, s["ay_label"], f"❌ GST Proceedings Failed — {msg}")
+    return {"saved": saved}
+
+
 HANDLERS = {
     "26as": handle_26as,
     "request_ais": handle_request_ais,
@@ -438,6 +491,7 @@ HANDLERS = {
     "tds_challans": handle_challans,
     "e_proceedings": handle_e_proceedings,
     "filed_forms": handle_filed_forms,
+    "gst_proceedings": handle_gst_proceedings,
 }
 
 # Filed Returns has only ever been tested (and confirmed working) running
@@ -457,7 +511,7 @@ HANDLERS = {
 # is also Pending-Actions/e-File-adjacent and brand new — same policy, placed
 # after Challans until live multi-select testing proves it safe elsewhere.
 HANDLER_ORDER = ["filed_returns", "filed_forms", "26as", "challans", "tds_challans",
-                 "e_proceedings", "request_ais", "ais_tis"]
+                 "e_proceedings", "gst_proceedings", "request_ais", "ais_tis"]
 
 
 def ordered_doc_types(selected_docs):

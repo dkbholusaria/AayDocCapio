@@ -6758,6 +6758,15 @@ class EAutoFetchSettingsDialog(QDialog):
         self.chk_alternate.setChecked(self._cfg["alternate_cases"])
         layout.addWidget(self.chk_alternate)
 
+        section("WHAT TO FETCH")
+        self.chk_fetch_it = QCheckBox("Income Tax e-Proceedings")
+        self.chk_fetch_it.setChecked(self._cfg.get("fetch_income_tax", True))
+        self.chk_fetch_gst = QCheckBox("GST Notices & Orders")
+        self.chk_fetch_gst.setChecked(self._cfg.get("fetch_gst", True))
+        for _cb in (self.chk_fetch_it, self.chk_fetch_gst):
+            _cb.toggled.connect(self._update_estimate)
+            layout.addWidget(_cb)
+
         section("PACING AND SAFETY")
         grid = QGridLayout()
         grid.setHorizontalSpacing(10)
@@ -6854,6 +6863,8 @@ class EAutoFetchSettingsDialog(QDialog):
             "on_backoff_action": ("resume_same_evening" if self.combo_backoff_action.currentIndex() == 0
                                   else "next_day"),
             "stop_keeps_remainder": self.combo_stop.currentIndex() == 0,
+            "fetch_income_tax": self.chk_fetch_it.isChecked(),
+            "fetch_gst": self.chk_fetch_gst.isChecked(),
             "last_run_finished": self._cfg.get("last_run_finished", ""),
             "last_run_summary": self._cfg.get("last_run_summary", {}),
             "next_run_at": self._cfg.get("next_run_at", ""),
