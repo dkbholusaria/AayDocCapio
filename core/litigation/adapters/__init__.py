@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from core.litigation.adapters.income_tax import IncomeTaxAdapter
+from core.litigation.adapters.gst import GstAdapter
 
 ADAPTERS = [
     IncomeTaxAdapter(),
+    GstAdapter(),
 ]
 
 _BY_KEY = {adapter.key: adapter for adapter in ADAPTERS}

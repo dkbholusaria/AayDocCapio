@@ -26,6 +26,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "on_backoff_action": "resume_same_evening",
     "timeout_retries": 2,
     "stop_keeps_remainder": True,
+    "fetch_income_tax": True,
+    "fetch_gst": True,
     "last_run_finished": "",
     "last_run_summary": {},
     "next_run_at": "",
@@ -154,6 +156,8 @@ def normalise_config(raw: dict | None) -> dict[str, Any]:
         source.get("on_backoff_action"), ("resume_same_evening", "next_day"), "resume_same_evening")
     cfg["timeout_retries"] = _as_int(source.get("timeout_retries"), 2, 0, 5)
     cfg["stop_keeps_remainder"] = _as_bool(source.get("stop_keeps_remainder"), True)
+    cfg["fetch_income_tax"] = _as_bool(source.get("fetch_income_tax"), True)
+    cfg["fetch_gst"] = _as_bool(source.get("fetch_gst"), True)
 
     cfg["last_run_finished"] = str(source.get("last_run_finished", "") or "")
     summary = source.get("last_run_summary", {})
@@ -202,9 +206,59 @@ def is_due(now: datetime, cfg: dict) -> bool:
     return now >= _combine(now.date(), run_at)
 
 
+def client_key(client: dict) -> str:
+    """Stable identity for queueing: PAN when present, else GST username.
+
+    GST-only clients have no PAN, so keying only by PAN silently dropped them
+    from the auto-fetch queue.
+    """
+    pan = str(client.get("pan", "")).strip().upper()
+    if pan:
+        return pan
+    gst_user = str(client.get("gst_username", "")).strip().upper()
+    if gst_user:
+        return f"GST:{gst_user}"
+    name = str(client.get("name", "")).strip().upper()
+    return f"NAME:{name}" if name else ""
+
+
+def client_modules(client: dict) -> list[str]:
+    """Modules this client can be fetched for: ``["it", "gst"]``.
+
+    A client with a PAN and no explicit credential fields is treated as
+    Income-Tax eligible (the legacy vault/test shape). This keeps old data and
+    tests working while letting GST-only clients in.
+    """
+    explicit = any(key in client for key in (
+        "password", "password_enc", "enable_income_tax",
+        "gst_username", "gst_password", "gst_password_enc", "enable_gst"))
+    pan = str(client.get("pan", "")).strip()
+    has_password = bool(client.get("password") or client.get("password_enc"))
+    has_it = bool(pan) and client.get("enable_income_tax", True) and (
+        has_password or not explicit)
+    has_gst = (bool(client.get("gst_username")) and bool(client.get("gst_password"))
+               and client.get("enable_gst", True))
+    modules = []
+    if has_it:
+        modules.append("it")
+    if has_gst:
+        modules.append("gst")
+    return modules
+
+
+def _module_allowed(client: dict, config: dict) -> bool:
+    modules = client_modules(client)
+    if config["fetch_income_tax"] and "it" in modules:
+        return True
+    if config["fetch_gst"] and "gst" in modules:
+        return True
+    return False
+
+
 def in_scope(clients: list[dict], cfg: dict) -> list[dict]:
     config = normalise_config(cfg)
-    result = [c for c in clients if not c.get("credential_invalid")]
+    result = [c for c in clients
+              if not c.get("credential_invalid") and _module_allowed(c, config)]
     if config["scope"] == "group":
         groups = {g.strip().lower() for g in config["scope_groups"] if g.strip()}
         if not groups:
@@ -214,7 +268,8 @@ def in_scope(clients: list[dict], cfg: dict) -> list[dict]:
         pans = {p.upper() for p in config["scope_pans"]}
         if not pans:
             return []
-        return [c for c in result if str(c.get("pan", "")).upper() in pans]
+        return [c for c in result
+                if str(c.get("pan", "")).upper() in pans or client_key(c) in pans]
     return result
 
 
@@ -284,18 +339,18 @@ def assign_rotation(clients: list[dict], cursor: int, n: int) -> tuple[list[dict
 
 
 def _pans(clients: list[dict]) -> list[str]:
-    return [str(c.get("pan", "")).upper() for c in clients if str(c.get("pan", "")).strip()]
+    return [client_key(c) for c in clients if client_key(c)]
 
 
 def build_queue(clients: list[dict], cfg: dict, today: date | None = None) -> tuple[list[dict], dict]:
     config = normalise_config(cfg)
     cap = config["clients_per_day"]
     scoped = in_scope(clients, config)
-    by_pan = {str(c.get("pan", "")).upper(): c for c in scoped if str(c.get("pan", "")).strip()}
+    by_key = {client_key(c): c for c in scoped if client_key(c)}
 
     pending = []
-    for pan in config["queue_remaining"]:
-        client = by_pan.get(pan.upper())
+    for key in config["queue_remaining"]:
+        client = by_key.get(str(key).upper())
         if client is not None and client not in pending:
             pending.append(client)
 

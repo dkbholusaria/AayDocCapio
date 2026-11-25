@@ -50,6 +50,7 @@ from ui.dialogs import (
 )
 from ui.log_history import LogHistoryDialog, LogStore
 from ui.eproceedings import EProceedingsWorkspace
+from ui.gst_proceedings import GstProceedingsWorkspace
 from ui.litigation import LitigationPage
 from automation.errors import _friendly_error
 
@@ -686,9 +687,8 @@ class AayDocCapioApp(QMainWindow):
                                  accent_key="accent_home", section="top")
         self._nav_shell.add_hub("it", "Income Tax", self._mk_income_tax_page(),
                                  accent_key="accent_it", section="top")
-        self._nav_shell.add_hub("gst", "GST", self._mk_placeholder_page(
-            "GST", "Coming soon — see F-70 for the GST vs. Income Tax turnover reconciliation roadmap."),
-            accent_key="accent_gst", section="top")
+        self._nav_shell.add_hub("gst", "GST", self._mk_gst_page(),
+                                 accent_key="accent_gst", section="top")
         self._nav_shell.add_hub("tds", "TDS", self._mk_tds_page(),
                                  accent_key="accent_tds", section="top")
         self._nav_shell.add_hub("litigation", "Litigation", self._mk_litigation_page(),
@@ -3516,6 +3516,327 @@ class AayDocCapioApp(QMainWindow):
         self._switch_it_tab(0)
         return page
 
+    def _mk_gst_page(self):
+        """GST hub — its own Action / Download Documents / Proceedings tabs.
+
+        GST keeps a separate navigation, download flow and data format from
+        Income Tax; only the auto-fetch scheduler plumbing is shared.
+        """
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        tab_row = QWidget()
+        tab_row.setFixedHeight(46)
+        tr = QHBoxLayout(tab_row)
+        tr.setContentsMargins(24, 8, 24, 8)
+        tr.setSpacing(4)
+        labels = ["Actions", "Download Documents", "Proceedings"]
+        self._gst_tab_btns = []
+        for i, label in enumerate(labels):
+            btn = self._mk_it_tab_btn(label, 0)
+            try:
+                btn.clicked.disconnect()
+            except Exception:
+                pass
+            btn.clicked.connect(lambda _=False, _i=i: self._switch_gst_tab(_i))
+            self._gst_tab_btns.append(btn)
+            tr.addWidget(btn)
+        tr.addStretch(1)
+        outer.addWidget(tab_row)
+
+        self._gst_stack = QStackedWidget()
+        outer.addWidget(self._gst_stack, 1)
+
+        # ── Tab 0: Actions ───────────────────────────────────────────────────
+        actions_page = QWidget()
+        av = QVBoxLayout(actions_page)
+        av.setContentsMargins(24, 20, 24, 20)
+        av.setSpacing(14)
+        av.addWidget(_lbl("What do you want to do?", 11, bold=True, color=_t().text_muted))
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(14)
+        grid.setVerticalSpacing(14)
+        grid.addWidget(self._mk_action_card(
+            "Download Documents",
+            "Fetch GST notices and orders — with replies and attachments — for the selected GST clients.",
+            "document", lambda: self._switch_gst_tab(1)), 0, 0)
+        grid.addWidget(self._mk_action_card(
+            "Notices & Orders",
+            "Every downloaded GST notice, order, reply and attachment for all clients, in one place.",
+            "list", lambda: self._switch_gst_tab(2)), 0, 1)
+        for col in range(2):
+            grid.setColumnStretch(col, 1)
+        av.addLayout(grid)
+        av.addStretch(1)
+        self._gst_stack.addWidget(actions_page)
+
+        # ── Tab 1: Download Documents ────────────────────────────────────────
+        self._gst_stack.addWidget(self._mk_gst_download_tab())
+
+        # ── Tab 2: Proceedings ───────────────────────────────────────────────
+        try:
+            self._gst_ws = GstProceedingsWorkspace(
+                self.vault,
+                lambda: getattr(self, "assessee_list", []) or [],
+                self,
+            )
+            self._gst_stack.addWidget(self._gst_ws)
+        except Exception as exc:
+            self._gst_ws = None
+            self.log(f"[Error] GST Proceedings workspace failed to build: {exc}")
+            fallback = QWidget()
+            fl = QVBoxLayout(fallback)
+            fl.setContentsMargins(24, 24, 24, 24)
+            fl.addWidget(_lbl("GST Proceedings view could not load.", 14, bold=True))
+            fl.addWidget(_lbl(str(exc), 11, color=_t().text_muted))
+            fl.addStretch(1)
+            self._gst_stack.addWidget(fallback)
+
+        self._switch_gst_tab(0)
+        return page
+
+    def _mk_gst_download_tab(self):
+        """GST-only download screen: pick clients with GST credentials and
+        fetch notices/orders. Separate from the Income Tax Download Documents
+        tab because the eligible clients and the process are different."""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(12)
+        layout.addWidget(_lbl("Download GST Notices & Orders", 14, bold=True))
+        layout.addWidget(_lbl(
+            "Fetches Services ▸ User Services ▸ View Notices and Orders for every "
+            "selected client, saving notices, replies, orders and attachments under "
+            "GST-Proceedings in each client folder.", 11, color=_t().text_muted))
+
+        info = QFrame()
+        info.setStyleSheet(
+            f"QFrame{{background:{_t().bg_table_alt};border:1px solid {_t().border};"
+            f"border-radius:8px;}}")
+        iv = QVBoxLayout(info)
+        iv.setContentsMargins(12, 8, 12, 8)
+        self._gst_dl_count_lbl = _lbl("", 11, color=_t().text_muted)
+        iv.addWidget(self._gst_dl_count_lbl)
+        self._gst_auto_chk = QCheckBox(
+            "Include GST notices in the scheduled auto-fetch (shared scheduler)")
+        self._gst_auto_chk.toggled.connect(self._on_gst_auto_toggle)
+        iv.addWidget(self._gst_auto_chk)
+        layout.addWidget(info)
+
+        btn_row = QHBoxLayout()
+        self._gst_dl_btn = _btn("Download Notices for Selected Clients", "primary", height=38)
+        self._gst_dl_btn.clicked.connect(self._start_gst_download)
+        btn_row.addWidget(self._gst_dl_btn)
+        btn_row.addStretch(1)
+        layout.addLayout(btn_row)
+        layout.addStretch(1)
+        return page
+
+    def _refresh_gst_download_tab(self):
+        clients = self._gst_clients()
+        cfg = self.vault.get_eproc_autofetch_config()
+        chk = getattr(self, "_gst_auto_chk", None)
+        if chk is not None:
+            chk.blockSignals(True)
+            chk.setChecked(bool(cfg.get("fetch_gst", True)))
+            chk.blockSignals(False)
+        selected = set(getattr(self, "selected_ids", set()) or set())
+        if selected:
+            clients = [c for c in clients if c.get("id") in selected or
+                       (c.get("pan") or "").upper() in
+                       {str(s).upper() for s in selected}]
+        label = getattr(self, "_gst_dl_count_lbl", None)
+        if label is not None:
+            nxt = cfg.get("next_run_at", "")
+            suffix = f" Next scheduled run: {nxt}." if nxt else ""
+            scope = ("selected client(s)" if selected
+                     else "all GST clients (select client rows on Home to narrow)")
+            label.setText(f"{len(clients)} GST client(s) — {scope}.{suffix}")
+        btn = getattr(self, "_gst_dl_btn", None)
+        if btn is not None:
+            btn.setEnabled(bool(clients) and not getattr(self, "_gst_dl_running", False))
+
+    def _on_gst_auto_toggle(self, checked: bool):
+        cfg = self.vault.get_eproc_autofetch_config()
+        cfg["fetch_gst"] = bool(checked)
+        self.vault.save_eproc_autofetch_config(cfg)
+        state = "enabled" if checked else "disabled"
+        self.log(f"[Auto-Fetch] GST notices {state} in the shared scheduler.")
+
+    def _switch_gst_tab(self, idx: int):
+        try:
+            self._gst_stack.setCurrentIndex(idx)
+        except Exception:
+            return
+        for i, b in enumerate(getattr(self, "_gst_tab_btns", [])):
+            b.setChecked(i == idx)
+        if idx == 1:
+            self._refresh_gst_download_tab()
+        if idx == 2:
+            ws = getattr(self, "_gst_ws", None)
+            if ws is not None:
+                try:
+                    ws.refresh()
+                except Exception as exc:
+                    self.log(f"[Error] GST Proceedings refresh failed: {exc}")
+        label = getattr(self, "_gst_tab_btns", [])
+        self._on_hub_changed("GST", label[idx].text() if idx < len(label) else "")
+
+    def _gst_clients(self):
+        clients = []
+        for assessee in getattr(self, "assessee_list", []) or []:
+            try:
+                sources = self.vault.credential_sources(assessee)
+            except Exception:
+                sources = []
+            if "GST" in sources:
+                clients.append(assessee)
+        return clients
+
+    def _start_gst_download(self):
+        if getattr(self, "is_running", False) or getattr(self, "_gst_dl_running", False):
+            self.log("[GST] A batch is already running — please wait.")
+            return
+        clients = self._gst_clients()
+        selected_ids = set(getattr(self, "selected_ids", set()) or set())
+        if selected_ids:
+            clients = [c for c in clients if c.get("id") in selected_ids or
+                       (c.get("pan") or "").upper() in
+                       {str(s).upper() for s in selected_ids}]
+        if not clients:
+            QMessageBox.information(
+                self, "No GST Clients",
+                "Add GST credentials to at least one client, then select it and try again.")
+            return
+        spec = self._eproc_auto_year_spec()
+        if spec is None:
+            QMessageBox.information(
+                self, "No Year Selected",
+                "Enable at least one Assessment/Tax Year before downloading.")
+            return
+        output_dir = self.dir_lbl.text() or self.vault.get_setting("download_root_dir", "")
+        if not output_dir:
+            QMessageBox.information(self, "No Download Folder",
+                                    "Choose a download folder first.")
+            return
+        self._gst_dl_running = True
+        self._gst_dl_btn.setEnabled(False)
+        self._gst_dl_count_lbl.setText(f"Downloading notices for {len(clients)} client(s)…")
+        dialog = BatchProgressDialog(
+            clients, {"gst_proceedings"}, year_specs=[spec],
+            ay="GST Notices",
+            output_dir=output_dir, parent=self, id_label="GST/PAN")
+        dialog.show()
+        dialog.raise_()
+        self._gst_dl_dialog = dialog
+        threading.Thread(
+            target=self._gst_download_worker,
+            args=(clients, spec, output_dir),
+            daemon=True).start()
+
+    def _gst_download_worker(self, clients, spec, output_dir):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(self._gst_download_run(clients, spec, output_dir))
+        except Exception as exc:
+            self.log(f"[GST] Download run crashed: {exc}")
+        finally:
+            try:
+                loop.close()
+            except Exception:
+                pass
+            self._gst_dl_running = False
+
+    async def _gst_download_run(self, clients, spec, output_dir):
+        from automation.batch_handlers import handle_gst_proceedings
+        from automation.gst.login import login_gst
+
+        context = None
+        dialog = getattr(self, "_gst_dl_dialog", None)
+        try:
+            context = await browser_manager.get_context(
+                log_callback=self.log, interactive=not self.chk_headless.isChecked())
+            for index, client in enumerate(clients):
+                ident = (str(client.get("pan") or "").upper()
+                         or (client.get("gst_username") or "").upper())
+                ay_label = spec["ay_label"]
+
+                def _status(_p, _ay, text, _ident=ident):
+                    try:
+                        if dialog is not None:
+                            dialog.set_status(_ident, ay_label, text)
+                        if any(text.startswith(p) for p in ("✅", "❌", "🕐", "⬜", "⚠")):
+                            self.vault.record_download(_ident, ay_label,
+                                                       "gst_proceedings", text, "")
+                    except Exception:
+                        pass
+
+                client_dir = os.path.dirname(
+                    self._eproc_auto_client_dir(client, output_dir, spec))
+                if dialog is not None:
+                    dialog.set_client_path(ident, ay_label,
+                                           os.path.join(client_dir, "GST-Proceedings"))
+                page = await context.new_page()
+                try:
+                    _status(ident, ay_label, "⏳ Logging in to GST portal...")
+                    result = await login_gst(
+                        page, client.get("gst_username", ""),
+                        client.get("gst_password", ""), self.log)
+                    reason = (result or {}).get("reason")
+                    login_ok = bool(result.get("ok")) and reason not in (
+                        "credentials", "otp", "locked", "exhausted", "too-many-wrong", "error")
+                    if not login_ok:
+                        if reason == "otp":
+                            _status(ident, ay_label, "⚠ GST OTP required — sign in manually")
+                        elif reason == "locked":
+                            _status(ident, ay_label,
+                                    "⚠ GST account locked — reset the password on the portal")
+                        elif reason == "credentials":
+                            _status(ident, ay_label, "⚠ GST login failed — check credentials")
+                            pan_value = str(client.get("pan", "")).upper()
+                            if pan_value:
+                                self.vault.set_client_credential_invalid(pan_value, True)
+                        else:
+                            _status(ident, ay_label,
+                                    f"⚠ GST login not completed ({reason})")
+                        continue
+                    await handle_gst_proceedings(
+                        page, ident, client.get("dob", ""), [spec],
+                        lambda yt, val: client_dir, self.log, _status,
+                        client_dir=client_dir)
+                except Exception as exc:
+                    self.log(f"[GST] {ident} failed: {exc}")
+                    _status(ident, ay_label, f"❌ GST download failed — {_friendly_error(str(exc))}")
+                finally:
+                    try:
+                        await page.close()
+                    except Exception:
+                        pass
+                    if dialog is not None:
+                        dialog.client_finished(ident, ay_label)
+                if index < len(clients) - 1:
+                    await asyncio.sleep(2)
+        finally:
+            if context is not None:
+                try:
+                    await browser_manager.close()
+                except Exception:
+                    pass
+            if dialog is not None:
+                dialog.batch_finished()
+                self._gst_dl_btn.setEnabled(True)
+                self._gst_dl_count_lbl.setText(
+                    f"Last run finished — {len(clients)} client(s) processed.")
+            ws = getattr(self, "_gst_ws", None)
+            if ws is not None:
+                try:
+                    ws.refresh()
+                except Exception:
+                    pass
+
     def _mk_litigation_page(self):
         """F-26: Litigation hub - unified e-proceedings across modules."""
         try:
@@ -6210,10 +6531,11 @@ class AayDocCapioApp(QMainWindow):
         return pan[:3] + "XXXXXXX" if pan and len(pan) >= 3 else "UNKNOWN"
 
     def _eproc_auto_client_dir(self, target: dict, output_dir: str, spec: dict) -> str:
-        pan = target.get("pan", "")
+        ident = (str(target.get("pan") or "").strip().upper()
+                 or str(target.get("gst_username") or "").strip().upper())
         name_safe = "".join(c if c.isalnum() or c in " _-" else "" for c in target.get("name", ""))
         return os.path.join(
-            output_dir, f"{pan}-{name_safe}",
+            output_dir, f"{ident}-{name_safe}",
             f"{spec['year_type']}_{spec['value'].replace('-', '_')}")
 
     def _eproc_auto_start(self, cfg=None, clients_override=None):
@@ -6223,6 +6545,10 @@ class AayDocCapioApp(QMainWindow):
         if self.is_running or self._challan_running or self._tds_challan_running or self._retstatus_running:
             return
         cfg = dict(cfg or self.vault.get_eproc_autofetch_config())
+        if not cfg.get("fetch_income_tax", True) and not cfg.get("fetch_gst", True):
+            self.log("[Auto-Fetch] Both Income Tax and GST fetching are disabled — nothing to do.")
+            self._eproc_auto_schedule_next(cfg)
+            return
         all_clients = self.vault.get_all_assessees()
         if clients_override is None:
             clients, cfg = build_queue(all_clients, cfg)
@@ -6241,8 +6567,9 @@ class AayDocCapioApp(QMainWindow):
             self._eproc_auto_schedule_next(cfg)
             return
 
+        from automation.eproc_scheduler import client_key
         output_dir = self.dir_lbl.text() or self.vault.get_setting("download_root_dir", "")
-        pending = [str(c.get("pan", "")).upper() for c in clients if str(c.get("pan", "")).strip()]
+        pending = [client_key(c) for c in clients if client_key(c)]
         tail = list(cfg.get("queue_remaining") or [])
         cfg["queue_remaining"] = pending + tail
         self.vault.save_eproc_autofetch_config(cfg)
@@ -6263,9 +6590,16 @@ class AayDocCapioApp(QMainWindow):
         self._eproc_auto_stop_keeps = None
         self._eproc_auto_started_at = datetime.datetime.now()
 
+        all_modules = set()
+        for client in clients:
+            if cfg.get("fetch_income_tax", True) and str(client.get("pan", "")).strip():
+                all_modules.add("e_proceedings")
+            if cfg.get("fetch_gst", True) and client.get("gst_username") and client.get("gst_password"):
+                all_modules.add("gst_proceedings")
+        all_modules = all_modules or {"e_proceedings"}
         self._eproc_auto_dialog = BatchProgressDialog(
-            clients, {"e_proceedings"}, year_specs=[spec],
-            ay="e-Proceedings Auto-Fetch",
+            clients, all_modules, year_specs=[spec],
+            ay="Notices Auto-Fetch",
             stop_callback=self._eproc_auto_stop,
             skip_callback=self._eproc_auto_skip_client,
             tray_callback=self._tray_to_system_manual,
@@ -6278,10 +6612,12 @@ class AayDocCapioApp(QMainWindow):
         self._eproc_auto_dialog.raise_()
 
         for client in clients:
-            key = (client.get("pan", ""), spec["ay_label"])
-            path = os.path.join(self._eproc_auto_client_dir(client, output_dir, spec), "e-Proceedings")
-            self._eproc_auto_paths[key] = path
-            self._eproc_auto_dialog.set_client_path(client.get("pan", ""), spec["ay_label"], path)
+            ident = client_key(client)
+            key = (ident, spec["ay_label"])
+            client_dir = self._eproc_auto_client_dir(client, output_dir, spec)
+            client_base = os.path.dirname(client_dir)
+            self._eproc_auto_paths[key] = client_base
+            self._eproc_auto_dialog.set_client_path(ident, spec["ay_label"], client_base)
 
         self.log(f"[Auto-Fetch] Starting — {len(clients)} client(s), "
                  f"run time {cfg['run_time']}, mode {cfg['distribution']}.")
@@ -6317,7 +6653,7 @@ class AayDocCapioApp(QMainWindow):
             self._eproc_auto_done_signal.emit()
 
     async def _eproc_auto_run(self, clients, year_specs, output_dir):
-        from automation.eproc_scheduler import cooldown_for
+        from automation.eproc_scheduler import client_key, cooldown_for
         context = None
         try:
             interactive = not self.chk_headless.isChecked()
@@ -6331,22 +6667,23 @@ class AayDocCapioApp(QMainWindow):
                     self._eproc_auto_aborted = True
                     break
                 pan = str(target.get("pan", "")).upper()
-                if pan in self.vault.get_credential_invalid():
+                ident = client_key(target) or pan
+                if pan and pan in self.vault.get_credential_invalid():
                     self._eproc_auto_counts["flagged"] += 1
                     self._eproc_auto_set_status(
-                        pan, year_specs[0]["ay_label"],
+                        ident, year_specs[0]["ay_label"],
                         "⚠ Password needs update — skipped")
-                    self._eproc_auto_mark_processed(pan)
+                    self._eproc_auto_mark_processed(ident)
                     if self._eproc_auto_dialog is not None:
-                        self._eproc_auto_dialog.client_finished(pan, year_specs[0]["ay_label"])
+                        self._eproc_auto_dialog.client_finished(ident, year_specs[0]["ay_label"])
                     continue
                 self._eproc_auto_skip_current = False
                 processed = await self._eproc_auto_sync_client(
                     context, target, year_specs, output_dir, self._eproc_auto_cfg)
                 if processed:
-                    self._eproc_auto_mark_processed(pan)
+                    self._eproc_auto_mark_processed(ident)
                     if self._eproc_auto_dialog is not None:
-                        self._eproc_auto_dialog.client_finished(pan, year_specs[0]["ay_label"])
+                        self._eproc_auto_dialog.client_finished(ident, year_specs[0]["ay_label"])
                 if index < len(clients) - 1 and self._eproc_auto_running and not self._eproc_auto_skip_future:
                     seconds = cooldown_for(
                         self._eproc_auto_cfg["client_cooldown_sec"],
@@ -6364,21 +6701,55 @@ class AayDocCapioApp(QMainWindow):
                     pass
 
     async def _eproc_auto_sync_client(self, context, target, year_specs, output_dir, cfg):
+        """Fetch every enabled module for one client in a single pass.
+
+        Income Tax e-Proceedings and GST notices are both driven here, each in
+        its own runner, so one scheduler run covers a client's IT, GST, or both
+        credentials. The per-client identity is the PAN when present, else the
+        GST username, so GST-only clients are not dropped.
+        """
+        from automation.eproc_scheduler import client_key, client_modules
+
+        pan = str(target.get("pan", "")).upper()
+        ident = client_key(target) or pan
+        modules = client_modules(target)
+        want_it = cfg.get("fetch_income_tax", True) and "it" in modules
+        want_gst = cfg.get("fetch_gst", True) and "gst" in modules
+
+        if not (want_it or want_gst):
+            return True
+
+        processed = True
+        if want_it:
+            processed = await self._eproc_auto_run_income_tax(
+                context, target, year_specs, output_dir, cfg, pan, ident) and processed
+        if want_gst and (self._eproc_auto_running
+                         and not self._eproc_auto_skip_future):
+            processed = await self._eproc_auto_run_gst(
+                context, target, year_specs, output_dir, cfg, ident) and processed
+        return processed
+
+    def _auto_out_for_year(self, output_dir, key, name, year_specs):
+        def _out_for_year(year_type, value, _root=output_dir, _pan=key,
+                          _name_safe="".join(c if c.isalnum() or c in " _-" else ""
+                                             for c in (name or ""))):
+            return os.path.join(_root, f"{_pan}-{_name_safe}",
+                                f"{year_type}_{value.replace('-', '_')}")
+        return _out_for_year
+
+    async def _eproc_auto_run_income_tax(self, context, target, year_specs, output_dir,
+                                         cfg, pan, ident):
         from automation.batch_handlers import handle_e_proceedings
         from automation.eproc_scheduler import cooldown_for, is_timeout, should_backoff
 
-        pan = str(target.get("pan", "")).upper()
+        if not pan:
+            return True
         name = target.get("name", "")
         spec = year_specs[0]
         ay_label = spec["ay_label"]
         token = self._eproc_auto_token(pan)
         attempts = int(cfg["timeout_retries"]) + 1
-
-        def _out_for_year(year_type, value, _root=output_dir, _pan=pan,
-                          _name_safe="".join(c if c.isalnum() or c in " _-" else ""
-                                             for c in name)):
-            return os.path.join(_root, f"{_pan}-{_name_safe}",
-                                f"{year_type}_{value.replace('-', '_')}")
+        _out_for_year = self._auto_out_for_year(output_dir, pan, name, year_specs)
 
         for attempt in range(attempts):
             if not self._eproc_auto_running or self._eproc_auto_skip_future:
@@ -6386,7 +6757,7 @@ class AayDocCapioApp(QMainWindow):
             page = None
             last_status = {}
             try:
-                self._eproc_auto_set_status(pan, ay_label, "⏳ Logging in to ITD...")
+                self._eproc_auto_set_status(ident, ay_label, "⏳ Logging in to ITD...")
                 page = await login_itd(
                     pan, target.get("password"), self.log, context,
                     is_running=lambda: (self._eproc_auto_running
@@ -6394,12 +6765,12 @@ class AayDocCapioApp(QMainWindow):
                                         and not self._eproc_auto_skip_future))
                 if self._eproc_auto_skip_current:
                     self._eproc_auto_counts["skipped"] += 1
-                    self._eproc_auto_set_status(pan, ay_label, "⬜ Skipped")
+                    self._eproc_auto_set_status(ident, ay_label, "⬜ Skipped")
                     return True
 
-                def _set_status(pan_, ay_, text_):
+                def _set_status(_id, ay_, text_):
                     last_status[ay_] = text_
-                    self._eproc_auto_set_status(pan_, ay_, text_)
+                    self._eproc_auto_set_status(_id, ay_, text_)
 
                 async def _doc_delay():
                     seconds = cooldown_for(cfg["doc_cooldown_sec"], cfg["jitter_sec"])
@@ -6417,7 +6788,7 @@ class AayDocCapioApp(QMainWindow):
 
                 if self._eproc_auto_skip_current:
                     self._eproc_auto_counts["skipped"] += 1
-                    self._eproc_auto_set_status(pan, ay_label, "⬜ Skipped")
+                    self._eproc_auto_set_status(ident, ay_label, "⬜ Skipped")
                 elif any(str(v).startswith("❌") for v in last_status.values()):
                     self._eproc_auto_counts["failed"] += 1
                 else:
@@ -6429,16 +6800,16 @@ class AayDocCapioApp(QMainWindow):
                 text = str(exc)
                 if self._eproc_auto_skip_current or self._eproc_auto_skip_future:
                     self._eproc_auto_counts["skipped"] += 1
-                    self._eproc_auto_set_status(pan, ay_label, "⬜ Skipped")
+                    self._eproc_auto_set_status(ident, ay_label, "⬜ Skipped")
                     return True
                 if not self._eproc_auto_running:
                     return False
                 if self._eproc_auto_is_credential_error(text):
                     self.vault.set_client_credential_invalid(pan, True)
                     self._eproc_auto_counts["flagged"] += 1
-                    self._eproc_auto_set_status(pan, ay_label, "⚠ Password needs update")
-                    self.log(f"[Auto-Fetch] {token} needs a password update — "
-                             f"auto-fetch will skip this client until it is updated.")
+                    self._eproc_auto_set_status(ident, ay_label, "⚠ ITD password needs update")
+                    self.log(f"[Auto-Fetch] {token} needs an ITD password update — "
+                             f"skipping the Income Tax fetch until it is updated.")
                     notify_windows("AayDocCapio — Password needs update",
                                    f"{name or token}: portal login failed. Update the password; "
                                    f"auto-fetch will skip this client until then.")
@@ -6446,7 +6817,7 @@ class AayDocCapioApp(QMainWindow):
                 if should_backoff(text):
                     self._eproc_auto_set_backoff()
                     self._eproc_auto_counts["failed"] += 1
-                    self._eproc_auto_set_status(pan, ay_label, "❌ Portal rate limit — backing off")
+                    self._eproc_auto_set_status(ident, ay_label, "❌ Portal rate limit — backing off")
                     self._eproc_auto_aborted = True
                     self._eproc_auto_running = False
                     self.log("[Auto-Fetch] Portal rate-limit signal — run stopped and back-off applied.")
@@ -6455,13 +6826,13 @@ class AayDocCapioApp(QMainWindow):
                     self._eproc_auto_counts["timeouts"] += 1
                     self.log(f"[Auto-Fetch] {token} timed out — retry "
                              f"{attempt + 1}/{attempts - 1}.")
-                    self._eproc_auto_set_status(pan, ay_label, "🕐 Timed out — retrying...")
+                    self._eproc_auto_set_status(ident, ay_label, "🕐 Timed out — retrying...")
                     seconds = cooldown_for(
                         cfg["client_cooldown_sec"], cfg["jitter_sec"])
                     await self._eproc_auto_wait(seconds, "Retry in")
                     continue
                 self._eproc_auto_counts["failed"] += 1
-                self._eproc_auto_set_status(pan, ay_label, f"❌ Failed — {_friendly_error(text)}")
+                self._eproc_auto_set_status(ident, ay_label, f"❌ Failed — {_friendly_error(text)}")
                 self.log(f"[Auto-Fetch] {token} failed: {text}")
                 return False
             finally:
@@ -6470,6 +6841,132 @@ class AayDocCapioApp(QMainWindow):
                         await logout_itd(page, self.log)
                     except Exception:
                         pass
+        return True
+
+    async def _eproc_auto_run_gst(self, context, target, year_specs, output_dir,
+                                  cfg, ident):
+        from automation.batch_handlers import handle_gst_proceedings
+        from automation.eproc_scheduler import cooldown_for, is_timeout, should_backoff
+        from automation.gst.login import login_gst
+
+        username = target.get("gst_username", "")
+        password = target.get("gst_password", "")
+        if not (username and password):
+            return True
+        name = target.get("name", "")
+        spec = year_specs[0]
+        ay_label = spec["ay_label"]
+        token = self._eproc_auto_token(ident)
+        attempts = int(cfg["timeout_retries"]) + 1
+        client_dir = os.path.dirname(
+            self._eproc_auto_client_dir(target, output_dir, spec))
+
+        for attempt in range(attempts):
+            if not self._eproc_auto_running or self._eproc_auto_skip_future:
+                return False
+            page = None
+            last_status = {}
+            try:
+                self._eproc_auto_set_status(ident, ay_label, "⏳ Logging in to GST...",
+                                            doc_type="gst_proceedings")
+                page = await context.new_page()
+                result = await login_gst(page, username, password, self.log)
+                if self._eproc_auto_skip_current:
+                    self._eproc_auto_counts["skipped"] += 1
+                    self._eproc_auto_set_status(ident, ay_label, "⬜ Skipped")
+                    return True
+                reason = (result or {}).get("reason")
+                login_ok = bool(result.get("ok")) and reason not in (
+                    "credentials", "otp", "locked", "exhausted", "too-many-wrong", "error")
+                if not login_ok:
+                    if reason == "otp":
+                        self._eproc_auto_counts["flagged"] += 1
+                        self._eproc_auto_set_status(
+                            ident, ay_label, "⚠ GST OTP required — sign in manually")
+                    elif reason == "locked":
+                        self._eproc_auto_counts["flagged"] += 1
+                        self._eproc_auto_set_status(
+                            ident, ay_label,
+                            "⚠ GST account locked — reset the password on the portal")
+                        pan_value = str(target.get("pan", "")).upper()
+                        if pan_value:
+                            self.vault.set_client_credential_invalid(pan_value, True)
+                    elif reason == "credentials":
+                        self._eproc_auto_counts["flagged"] += 1
+                        self._eproc_auto_set_status(
+                            ident, ay_label, "⚠ GST login failed — check credentials")
+                        pan_value = str(target.get("pan", "")).upper()
+                        if pan_value:
+                            self.vault.set_client_credential_invalid(pan_value, True)
+                    else:
+                        self._eproc_auto_counts["failed"] += 1
+                        self._eproc_auto_set_status(
+                            ident, ay_label, f"❌ GST login failed ({reason})")
+                    return True
+
+                def _set_status(_id, ay_, text_):
+                    last_status[ay_] = text_
+                    self._eproc_auto_set_status(_id, ay_, text_,
+                                                doc_type="gst_proceedings")
+
+                async def _doc_delay():
+                    seconds = cooldown_for(cfg["doc_cooldown_sec"], cfg["jitter_sec"])
+                    if seconds:
+                        await self._eproc_auto_wait(seconds, "Next document in")
+
+                await handle_gst_proceedings(
+                    page, ident, target.get("dob", ""), year_specs,
+                    self._auto_out_for_year(output_dir, ident, name, year_specs),
+                    self.log, _set_status, client_dir=client_dir,
+                    is_running=lambda: (self._eproc_auto_running
+                                        and not self._eproc_auto_skip_future
+                                        and not self._eproc_auto_skip_current),
+                    doc_delay=_doc_delay)
+
+                if self._eproc_auto_skip_current:
+                    self._eproc_auto_counts["skipped"] += 1
+                    self._eproc_auto_set_status(ident, ay_label, "⬜ Skipped")
+                elif any(str(v).startswith("❌") for v in last_status.values()):
+                    self._eproc_auto_counts["failed"] += 1
+                else:
+                    self._eproc_auto_counts["synced"] += 1
+                return True
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                text = str(exc)
+                if self._eproc_auto_skip_current or self._eproc_auto_skip_future:
+                    self._eproc_auto_counts["skipped"] += 1
+                    self._eproc_auto_set_status(ident, ay_label, "⬜ Skipped")
+                    return True
+                if not self._eproc_auto_running:
+                    return False
+                if should_backoff(text):
+                    self._eproc_auto_set_backoff()
+                    self._eproc_auto_counts["failed"] += 1
+                    self._eproc_auto_set_status(ident, ay_label, "❌ GST rate limit — backing off")
+                    self._eproc_auto_aborted = True
+                    self._eproc_auto_running = False
+                    self.log("[Auto-Fetch] GST rate-limit signal — run stopped and back-off applied.")
+                    return False
+                if is_timeout(text) and attempt < attempts - 1:
+                    self._eproc_auto_counts["timeouts"] += 1
+                    self._eproc_auto_set_status(ident, ay_label, "🕐 GST timed out — retrying...")
+                    seconds = cooldown_for(
+                        cfg["client_cooldown_sec"], cfg["jitter_sec"])
+                    await self._eproc_auto_wait(seconds, "Retry in")
+                    continue
+                self._eproc_auto_counts["failed"] += 1
+                self._eproc_auto_set_status(ident, ay_label, f"❌ GST failed — {_friendly_error(text)}")
+                self.log(f"[Auto-Fetch] {token} GST failed: {text}")
+                return False
+            finally:
+                if page is not None:
+                    try:
+                        await page.close()
+                    except Exception:
+                        pass
+        return True
 
     async def _eproc_auto_wait(self, seconds, label):
         from automation.eproc_scheduler import format_countdown, interruptible_sleep
@@ -6497,7 +6994,7 @@ class AayDocCapioApp(QMainWindow):
         minutes = (datetime.datetime.now() - self._eproc_auto_started_at).total_seconds() / 60
         return minutes >= self._eproc_auto_cfg.get("run_budget_min", 60)
 
-    def _eproc_auto_set_status(self, pan, ay_label, text):
+    def _eproc_auto_set_status(self, pan, ay_label, text, doc_type="e_proceedings"):
         dialog = self._eproc_auto_dialog
         if dialog is not None:
             dialog.set_status(pan, ay_label, text)
@@ -6505,7 +7002,7 @@ class AayDocCapioApp(QMainWindow):
         if ay_label and any(text.startswith(p) for p in terminal):
             try:
                 self.vault.record_download(
-                    pan, ay_label, "e_proceedings", text,
+                    pan, ay_label, doc_type, text,
                     self._eproc_auto_paths.get((pan, ay_label), ""))
             except Exception:
                 pass

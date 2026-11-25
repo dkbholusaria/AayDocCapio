@@ -12,6 +12,8 @@ from automation.eproc_scheduler import (
     assign_rotation,
     assign_split,
     build_queue,
+    client_key,
+    client_modules,
     cooldown_for,
     compute_next_run,
     estimate_nights,
@@ -287,6 +289,57 @@ def test_vault_eproc_autofetch_config_roundtrip():
         assert saved["clients_per_day"] == 500
         assert saved["stop_keeps_remainder"] is False
         assert vault.get_setting("eproc_autofetch")["enabled"] is True
+
+
+def test_client_modules_income_tax_and_gst():
+    gst_only = {"name": "G", "pan": "", "gst_username": "GSTLOGIN01",
+                "gst_password": "testpass", "enable_gst": True}
+    both = {"name": "B", "pan": "AABCP1234F", "password": "testpass",
+            "enable_income_tax": True, "gst_username": "GSTLOGIN02",
+            "gst_password": "testpass", "enable_gst": True}
+    legacy = {"name": "L", "pan": "AABCP1234F"}
+    assert client_modules(gst_only) == ["gst"]
+    assert client_modules(both) == ["it", "gst"]
+    assert client_modules(legacy) == ["it"]
+    assert client_modules({"name": "None"}) == []
+
+
+def test_client_key_prefers_pan_then_gst():
+    assert client_key({"pan": "aabcp1234f"}) == "AABCP1234F"
+    assert client_key({"pan": "", "gst_username": "GSTLOGIN01"}) == "GST:GSTLOGIN01"
+
+
+def test_in_scope_includes_gst_only_clients():
+    clients = [
+        {"pan": "AABCP1234F", "password": "p", "enable_income_tax": True},
+        {"name": "GST Client", "gst_username": "GSTLOGIN01",
+         "gst_password": "testpass", "enable_gst": True},
+    ]
+    result = in_scope(clients, _cfg())
+    assert len(result) == 2
+
+
+def test_in_scope_respects_fetch_flags():
+    clients = [
+        {"pan": "AABCP1234F", "password": "p", "enable_income_tax": True},
+        {"name": "GST Client", "gst_username": "GSTLOGIN01",
+         "gst_password": "testpass", "enable_gst": True},
+    ]
+    only_it = in_scope(clients, _cfg(fetch_gst=False))
+    assert len(only_it) == 1 and only_it[0]["pan"] == "AABCP1234F"
+    only_gst = in_scope(clients, _cfg(fetch_income_tax=False))
+    assert len(only_gst) == 1 and only_gst[0]["gst_username"] == "GSTLOGIN01"
+
+
+def test_build_queue_keeps_gst_only_clients():
+    clients = [
+        {"pan": "AABCP1234F", "password": "p", "enable_income_tax": True},
+        {"name": "GST Client", "gst_username": "GSTLOGIN01",
+         "gst_password": "testpass", "enable_gst": True},
+    ]
+    selected, state = build_queue(clients, _cfg(clients_per_day=10))
+    keys = {client_key(c) for c in selected}
+    assert keys == {"AABCP1234F", "GST:GSTLOGIN01"}
 
 
 if __name__ == "__main__":
