@@ -1011,7 +1011,7 @@ browser interaction paths are the existing manual e-Proceedings code.
 **Goal.** Capture the virtual-conferencing (video hearing) data some faceless
 proceedings expose, alongside notices/orders/responses.
 
-**Confirmed live (2026-11-23, AVQPB4769C & BGVPM5888C).** Virtual hearings
+**Confirmed live (2026-11-23, AABCP1234F & AABCP1235G).** Virtual hearings
 appear only in faceless proceedings (assessment u/s 147/148A, first appeals,
 penalties). On the View Notices screen a notice may carry a third button
 `Seek Video Conferencing` (non-faceless shows `Seek/View Adjournment`). It
@@ -1046,7 +1046,7 @@ only populated within 2 hours of the scheduled time. Three states observed:
 **Verification.**
 - `test_e_proceedings_parse.py` extended with VC parser, key, sync-helper,
   merge and model tests — 23/23 pass.
-- Live BGVPM5888C: VC buttons located on First Appeal (open request), Penalty
+- Live AABCP1235G: VC buttons located on First Appeal (open request), Penalty
   (open request), Assessment u/s 147 (scheduled 07-Mar-2024, Approved → past)
   and 148A (request form). Targeted run on 147 captured the hearing row and
   downloaded its VC Schedule Notice PDF into `vc-01/`.
