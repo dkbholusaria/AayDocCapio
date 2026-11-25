@@ -4429,8 +4429,19 @@ class TdsChallanRowDetailDialog(QDialog):
 
         vl.addWidget(_lbl("Deductor (TAN)", 11, bold=True))
         self._tan_combo = QComboBox()
-        for c in tan_clients:
+        self._tan_combo.setEditable(True)
+        self._tan_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        for c in sorted(tan_clients, key=lambda c: c.get("name", "")):
             self._tan_combo.addItem(f"{c['pan']} — {c['name']}", c["pan"])
+        # Make the deductor searchable by TAN or name (mirrors the PAN combo
+        # in ChallanRowDetailDialog): items read "TAN — Name", so default
+        # "starts-with" matching would miss name queries — switch to
+        # contains + case-insensitive.
+        completer = self._tan_combo.completer()
+        if completer:
+            completer.setFilterMode(Qt.MatchFlag.MatchContains)
+            completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self._tan_combo.setMaxVisibleItems(18)
         if self.row.get("tan"):
             idx = self._tan_combo.findData(self.row["tan"])
             if idx >= 0:
@@ -4587,9 +4598,18 @@ class TdsChallanRowDetailDialog(QDialog):
         del self.row["sections"][r]
         self._fill_sections()
 
+    def _current_tan(self) -> str:
+        idx = self._tan_combo.currentIndex()
+        text = self._tan_combo.currentText().strip()
+        if idx >= 0 and self._tan_combo.itemText(idx) == text:
+            return (self._tan_combo.itemData(idx) or "").upper()
+        if " — " in text:
+            return text.split(" — ")[0].strip().upper()
+        return text.upper()
+
     def _row_from_widgets(self) -> dict:
         row = dict(self.row)
-        row["tan"] = self._tan_combo.currentData() or ""
+        row["tan"] = self._current_tan()
         row["payment_mode"] = self._mode_combo.currentText()
         row["bank"] = self._bank_combo.currentText()
         row["drawee_bank"] = self._drawee.text().strip()
