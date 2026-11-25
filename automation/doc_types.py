@@ -12,6 +12,9 @@ this preserves suffix-specific checks (e.g. "-itd.xlsx") needing to be
 tested before a more generic fallback (".xlsx") for the same doc family.
 """
 
+import os
+import re
+
 DOC_TYPES = [
     {
         "key": "26as_pdf", "template_key": "26as_pdf",
@@ -172,6 +175,47 @@ DOC_TYPES = [
         "emailable": False,  # download-only until emailer gains a 2-level glob
     },
 ]
+
+
+def e_proceeding_doc_label(filename: str, default: str = "Document") -> str:
+    """Readable label for one e-Proceedings order attachment.
+
+    Assessment and penalty closures publish an Order, a Demand notice and a
+    Computation sheet together, all under one "Closure Order" modal caption.
+    The portal filename is the only per-document type marker available, so the
+    UI and the downloader both resolve labels through this function.
+    """
+    low = (filename or "").lower()
+    if not low:
+        return default
+    if "computation" in low:
+        return "Computation Sheet"
+    if "demand" in low:
+        return "Demand Notice"
+    if "order" in low:
+        match = re.search(
+            r"order\s*(?:pass\s*)?u/?s\s*([0-9]{1,3}[A-Za-z]?(?:\([^)]*\))?)",
+            low,
+        )
+        if match:
+            return f"Order u/s {match.group(1).upper()}"
+        return "Order"
+    return filename or default
+
+
+def e_proceeding_attachment_text(files) -> str:
+    """One-line summary of a document's attachments for a timeline card.
+
+    Returns "" when there are no files, "1 document: <label>" for a single
+    attachment (the card keeps its plain "Open file" link in that case) and
+    "N documents: <label> · <label> ..." for several.
+    """
+    names = [os.path.basename(rel) for rel in (files or []) if (rel or "").strip()]
+    if not names:
+        return ""
+    labels = [e_proceeding_doc_label(name) for name in names]
+    word = "document" if len(labels) == 1 else "documents"
+    return f"{len(labels)} {word}: " + " · ".join(labels)
 
 
 def match_doc_type(basename_upper: str) -> dict | None:
