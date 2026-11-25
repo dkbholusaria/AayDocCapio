@@ -100,7 +100,7 @@ async def _dismiss_portal_popups(page: Page, step) -> None:
                     const r = b.getBoundingClientRect();
                     if (r.width === 0) continue;
                     const t = (b.innerText || '').trim();
-                    if (/^(OK|Close|Confirm|Continue Session|Proceed)$/.test(t)) {
+                    if (/^(OK|Close|Confirm|Continue Session|Proceed|Continue)$/.test(t)) {
                         b.click(); return t;
                     }
                 }
@@ -113,6 +113,78 @@ async def _dismiss_portal_popups(page: Page, step) -> None:
             return
         step(f"Dismissed portal popup: {clicked}")
         await asyncio.sleep(1.2)
+
+
+async def _close_blocking_overlays(page: Page) -> None:
+    """Best-effort removal of lingering Bootstrap/Angular overlays that
+    intercept pointer events (e.g. a stuck #downloadClosurePopup backdrop).
+    Never raises — every click/evaluation is individually guarded."""
+    for selector in (
+        "#downloadClosurePopup button:has-text('Cancel')",
+        "#downloadClosurePopup .close",
+        ".modal.show button:has-text('Cancel')",
+        ".modal.show .close",
+        "#efNotificationPopUp_continue",
+        "#securityReasonPopup button:has-text('No')",
+    ):
+        try:
+            loc = page.locator(selector).first
+            if await loc.is_visible():
+                await loc.click(timeout=3000)
+        except Exception:
+            pass
+    try:
+        await page.evaluate(
+            """() => {
+            document.querySelectorAll(
+                '.modal-backdrop, .cdk-overlay-backdrop-showing'
+            ).forEach(el => el.remove());
+            document.querySelectorAll('.modal.show').forEach(el => {
+                el.classList.remove('show');
+                el.style.display = 'none';
+                el.setAttribute('aria-hidden', 'true');
+            });
+        }"""
+        )
+    except Exception:
+        pass
+
+
+async def _activate_eproc_tab(page: Page, tab_label: str, step) -> bool:
+    """Switch to an e-Proceedings tab, clearing lingering overlays before each
+    attempt. Falls back to a JS click when Playwright's click keeps being
+    intercepted. Returns True when the tab was activated."""
+    for attempt in range(1, 4):
+        await _close_blocking_overlays(page)
+        try:
+            tab = page.locator(f".mat-mdc-tab:has-text('{tab_label}')").first
+            await tab.click(timeout=15000)
+            step(f"Opened tab '{tab_label}' (attempt {attempt})")
+            return True
+        except Exception as e:
+            step(f"[Warning] Tab '{tab_label}' click attempt {attempt} failed: {e}")
+            if attempt < 3:
+                await asyncio.sleep(2)
+    try:
+        clicked = await page.evaluate(
+            """(label) => {
+            const tabs = [...document.querySelectorAll('.mat-mdc-tab')];
+            const tab = tabs.find(t => (t.innerText || '').includes(label));
+            if (!tab) return false;
+            tab.click();
+            return true;
+        }""",
+            tab_label,
+        )
+    except Exception as e:
+        step(f"[Warning] JS tab click for '{tab_label}' failed: {e}")
+        return False
+    ok = bool(clicked)
+    if ok:
+        step(f"Opened tab '{tab_label}' via JS fallback")
+    else:
+        step(f"[Warning] Could not open tab '{tab_label}'")
+    return ok
 
 
 async def navigate_to_e_proceedings(page: Page, log_callback) -> Page:
@@ -1640,11 +1712,7 @@ async def download_e_proceedings(page: Page, download_root: str, log_callback,
         if _stopped():
             break
         step(f"Switching to tab: {tab_label}")
-        try:
-            tab = page.locator(f".mat-mdc-tab:has-text('{tab_label}')").first
-            await tab.click(timeout=15000)
-        except Exception as e:
-            step(f"[Warning] Could not open tab '{tab_label}': {e}")
+        if not await _activate_eproc_tab(page, tab_label, step):
             warnings.append(f"{tab_label} tab could not be opened")
             continue
         await asyncio.sleep(5)
