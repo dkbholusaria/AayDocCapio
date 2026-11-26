@@ -96,6 +96,27 @@ def _doc_state(doc, override, case_closed) -> str:
     return EVENT_STATE_OPEN
 
 
+def _vc_hearing_date(vc_datetime: str):
+    """Parse the date portion of a portal VC datetime like
+    '07-Mar-2024 12:30 PM' (or a bare 'DD-Mon-YYYY'). None when unparsable."""
+    model = _model()
+    text = (vc_datetime or "").strip()
+    if not text:
+        return None
+    parsed = model._parse_date(text)
+    if parsed is not None:
+        return parsed
+    # Strip a trailing time (e.g. ' 12:30 PM' / ' 14:30') and retry.
+    tokens = text.split()
+    for n in (3, 2, 1):
+        if len(tokens) >= n:
+            parsed = model._parse_date(" ".join(tokens[:n]))
+            if parsed is not None:
+                return parsed
+    return None
+
+
+
 class IncomeTaxAdapter:
     key = MODULE_IT
     label = "Income Tax"
@@ -214,6 +235,44 @@ class IncomeTaxAdapter:
                 date=parsed,
                 state=EVENT_STATE_CLOSED if closed else EVENT_STATE_OPEN,
                 urgency="High" if open_soon else "Medium",
+            ))
+
+        # Virtual-conferencing (VC) hearings captured from the portal
+        # (F-118). A VC on/after today is open (upcoming); one already past
+        # is closed (held). Open requests without a scheduled date are
+        # skipped — there is no date to place on the calendar.
+        for hearing in getattr(case, "hearings", None) or []:
+            vc_date = _vc_hearing_date(getattr(hearing, "vc_datetime", ""))
+            if vc_date is None:
+                continue
+            ref = getattr(hearing, "notice_ref", "") or "vc"
+            status = (getattr(hearing, "status", "") or "").lower()
+            is_past = vc_date < current or status in ("completed", "held", "closed")
+            if is_past:
+                state = EVENT_STATE_CLOSED
+            elif closed:
+                state = EVENT_STATE_CLOSED
+            else:
+                state = EVENT_STATE_OPEN
+            days_away = (vc_date - current).days
+            if state == EVENT_STATE_OPEN and 0 <= days_away <= 7:
+                urgency = "High"
+            else:
+                urgency = "Medium"
+            title = "Video conferencing"
+            if getattr(hearing, "status", ""):
+                title += f" ({hearing.status})"
+            events.append(UnifiedEvent(
+                eid=event_uid(uc.uid, EVENT_HEARING,
+                              f"vc:{ref}:{vc_date.isoformat()}"),
+                case_uid=uc.uid,
+                module=MODULE_IT,
+                kind=EVENT_HEARING,
+                title=title,
+                date=vc_date,
+                state=state,
+                urgency=urgency,
+                native_doc_id=f"vc:{ref}",
             ))
 
         for lim in model.compute_limitations(case, current):

@@ -1099,8 +1099,7 @@ def build_cases(root: str, assessees: list[dict],
             case_id = f"{pan}:{proc_num:02d}:{year_name}"
             override = state.get(case_id)
 
-            notices = meta.get("notices") or []
-            if meta and notices:
+            if meta:
                 docs = _build_meta_docs(case_id, proc_name, meta)
             else:
                 docs = _build_legacy_docs(case_id, proc_name, proc_dir)

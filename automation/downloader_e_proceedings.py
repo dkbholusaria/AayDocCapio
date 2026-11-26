@@ -71,6 +71,7 @@ from datetime import datetime
 
 from playwright.async_api import Page
 
+from automation.doc_types import e_proceeding_doc_label
 from automation.downloader import make_step_logger, update_browser_status
 
 # e-Proceedings SPA route fragments (confirmed live)
@@ -99,7 +100,7 @@ async def _dismiss_portal_popups(page: Page, step) -> None:
                     const r = b.getBoundingClientRect();
                     if (r.width === 0) continue;
                     const t = (b.innerText || '').trim();
-                    if (/^(OK|Close|Confirm|Continue Session|Proceed)$/.test(t)) {
+                    if (/^(OK|Close|Confirm|Continue Session|Proceed|Continue)$/.test(t)) {
                         b.click(); return t;
                     }
                 }
@@ -112,6 +113,78 @@ async def _dismiss_portal_popups(page: Page, step) -> None:
             return
         step(f"Dismissed portal popup: {clicked}")
         await asyncio.sleep(1.2)
+
+
+async def _close_blocking_overlays(page: Page) -> None:
+    """Best-effort removal of lingering Bootstrap/Angular overlays that
+    intercept pointer events (e.g. a stuck #downloadClosurePopup backdrop).
+    Never raises — every click/evaluation is individually guarded."""
+    for selector in (
+        "#downloadClosurePopup button:has-text('Cancel')",
+        "#downloadClosurePopup .close",
+        ".modal.show button:has-text('Cancel')",
+        ".modal.show .close",
+        "#efNotificationPopUp_continue",
+        "#securityReasonPopup button:has-text('No')",
+    ):
+        try:
+            loc = page.locator(selector).first
+            if await loc.is_visible():
+                await loc.click(timeout=3000)
+        except Exception:
+            pass
+    try:
+        await page.evaluate(
+            """() => {
+            document.querySelectorAll(
+                '.modal-backdrop, .cdk-overlay-backdrop-showing'
+            ).forEach(el => el.remove());
+            document.querySelectorAll('.modal.show').forEach(el => {
+                el.classList.remove('show');
+                el.style.display = 'none';
+                el.setAttribute('aria-hidden', 'true');
+            });
+        }"""
+        )
+    except Exception:
+        pass
+
+
+async def _activate_eproc_tab(page: Page, tab_label: str, step) -> bool:
+    """Switch to an e-Proceedings tab, clearing lingering overlays before each
+    attempt. Falls back to a JS click when Playwright's click keeps being
+    intercepted. Returns True when the tab was activated."""
+    for attempt in range(1, 4):
+        await _close_blocking_overlays(page)
+        try:
+            tab = page.locator(f".mat-mdc-tab:has-text('{tab_label}')").first
+            await tab.click(timeout=15000)
+            step(f"Opened tab '{tab_label}' (attempt {attempt})")
+            return True
+        except Exception as e:
+            step(f"[Warning] Tab '{tab_label}' click attempt {attempt} failed: {e}")
+            if attempt < 3:
+                await asyncio.sleep(2)
+    try:
+        clicked = await page.evaluate(
+            """(label) => {
+            const tabs = [...document.querySelectorAll('.mat-mdc-tab')];
+            const tab = tabs.find(t => (t.innerText || '').includes(label));
+            if (!tab) return false;
+            tab.click();
+            return true;
+        }""",
+            tab_label,
+        )
+    except Exception as e:
+        step(f"[Warning] JS tab click for '{tab_label}' failed: {e}")
+        return False
+    ok = bool(clicked)
+    if ok:
+        step(f"Opened tab '{tab_label}' via JS fallback")
+    else:
+        step(f"[Warning] Could not open tab '{tab_label}'")
+    return ok
 
 
 async def navigate_to_e_proceedings(page: Page, log_callback) -> Page:
@@ -1083,19 +1156,13 @@ async def _close_extra_pages(page: Page) -> None:
 def _order_title(modal_title: str, filename: str) -> str:
     """Prefer the document type encoded in the portal filename — assessment
     and penalty closures publish an Order, a Computation sheet and a Demand
-    notice together, all under one 'Closure Order' modal caption."""
-    low = (filename or "").lower()
-    if "computation" in low:
-        return "Computation Sheet"
-    if "demand" in low:
-        return "Demand Notice"
-    if "order" in low:
-        section = ""
-        m = re.search(r"order\s*(?:pass\s*)?u/?s\s*([0-9]{1,3}[A-Za-z]?(?:\([^)]*\))?)",
-                      low)
-        if m:
-            section = f" u/s {m.group(1).upper()}"
-        return f"Order{section}"
+    notice together, all under one 'Closure Order' modal caption.
+
+    Shares :func:`automation.doc_types.e_proceeding_doc_label` with the UI so
+    the stored title and the displayed attachment label cannot drift."""
+    recognized = e_proceeding_doc_label(filename, default="")
+    if recognized:
+        return recognized
     return (modal_title or "Order").strip()
 
 
@@ -1118,13 +1185,68 @@ async def _visible_download_button(page: Page):
     return None
 
 
+def _order_download_targets(rows: list[dict]) -> list[dict]:
+    """Return one target per distinct document row in a closure-order modal.
+
+    The portal lists each document in its own ``.row.marginTopModel`` block
+    with a filename and its own Download button. Iterating visible Download
+    buttons by position is not enough: the first button stays first after a
+    download, so a "click the first visible button" loop re-downloads the
+    same file. Targets keep the original row order, drop blank filenames and
+    ignore duplicate filenames (some modals repeat a row).
+    """
+    targets: list[dict] = []
+    seen: set[str] = set()
+    for row in rows or []:
+        filename = (row.get("filename") or "").strip()
+        if not filename or filename in seen:
+            continue
+        seen.add(filename)
+        targets.append({"row_index": row.get("row_index", 0),
+                        "filename": filename})
+    return targets
+
+
+async def _read_order_modal_rows(page: Page) -> list[dict]:
+    """Read the per-document rows of the open Closure Order modal.
+
+    Returns ``[{"row_index": int, "filename": str}]``. Empty when the open
+    overlay is not the closure-order modal (the caller then falls back to the
+    generic Download-button scan).
+    """
+    try:
+        return await page.evaluate(
+            """() => {
+                const root = document.querySelector('#downloadClosurePopup')
+                          || document.querySelector('.modal.show');
+                if (!root) return [];
+                const rows = [...root.querySelectorAll('.row.marginTopModel')];
+                const out = [];
+                rows.forEach((row, i) => {
+                    const nameEl = row.querySelector('.modelName');
+                    const btn = row.querySelector('button.downloadTemplate')
+                              || row.querySelector('button');
+                    if (!nameEl || !btn) return;
+                    out.push({
+                        row_index: i,
+                        filename: (nameEl.innerText || '').trim(),
+                    });
+                });
+                return out;
+            }"""
+        )
+    except Exception:
+        return []
+
+
 async def _download_proceeding_orders(page: Page, card_index: int, proc_dir: str,
                                       proc_label: str, old_orders: list[dict],
                                       step, before_download=None) -> tuple[list[str], list[dict], list[str]]:
     """Download order documents attached to a proceeding CARD (e.g. the
     'Download Closure Order' button on a closed appeal). Confirmed live:
-    clicking it opens a modal titled e.g. 'Closure Order' with the order PDF
-    name and a Download button; the PDF is then a normal browser download.
+    clicking it opens a modal titled e.g. 'Closure Order' with one row per
+    document (order + computation sheet + demand notice on assessment/penalty
+    closures) and a Download button per row.
 
     Orders already recorded in `_meta.json` with their file still on disk are
     skipped (incremental sync), same as notices.
@@ -1194,41 +1316,98 @@ async def _download_proceeding_orders(page: Page, card_index: int, proc_dir: str
         os.makedirs(order_dir, exist_ok=True)
         downloads_here = []
         seen_this_modal: set[str] = set()
-        for _ in range(6):
-            btn = await _visible_download_button(page)
-            if btn is None:
-                break
+
+        # Each document is its own row with its own Download button. Read the
+        # rows first, then click the button for each row by index — never
+        # "the first visible button", which would return the same document
+        # again after the first download and drop the rest.
+        rows = await _read_order_modal_rows(page)
+        targets = _order_download_targets(rows)
+
+        if targets:
+            for target in targets:
+                row_index = target["row_index"]
+                row = page.locator(
+                    "#downloadClosurePopup .row.marginTopModel"
+                    ", .modal.show .row.marginTopModel").nth(row_index)
+                btn = row.locator("button.downloadTemplate, button").first
+                try:
+                    if not await btn.is_visible(timeout=2000):
+                        continue
+                    if before_download:
+                        await before_download()
+                    async with page.expect_download(timeout=45000) as dl_info:
+                        await btn.click(timeout=10000)
+                    download = await dl_info.value
+                    fname = _sanitize_name(
+                        download.suggested_filename or target["filename"]
+                        or "order.pdf")
+                    staging = os.path.join(proc_dir, ".staging_order.pdf")
+                    await download.save_as(staging)
+                    if fname in seen_this_modal:
+                        os.remove(staging)
+                        continue
+                    seen_this_modal.add(fname)
+                    if fname in known_files:
+                        os.remove(staging)
+                        step(f"Cached (unchanged): order document '{fname}'")
+                        downloads_here.append(fname)
+                        continue
+                    path = _dedupe_path(order_dir, fname)
+                    os.replace(staging, path)
+                    saved.append(path)
+                    downloads_here.append(os.path.basename(path))
+                    step(f"[Victory] Saved order document: "
+                         f"{os.path.basename(path)}")
+                except Exception as e:
+                    step(f"[Warning] Order download failed for row "
+                         f"{row_index}: {e}")
+                    warns.append(f"{proc_label}: order download failed")
+                await asyncio.sleep(2)
+        else:
+            # Generic overlays have no filename rows: click each visible
+            # Download button once, in order, instead of only the first.
+            btns = page.locator(
+                ".cdk-overlay-pane button:has-text('Download'), "
+                ".modal.show button:has-text('Download')")
+            count = 0
             try:
-                if before_download:
-                    await before_download()
-                async with page.expect_download(timeout=45000) as dl_info:
-                    await btn.click(timeout=10000)
-                download = await dl_info.value
-                fname = _sanitize_name(download.suggested_filename or "order.pdf")
-                staging = os.path.join(proc_dir, ".staging_order.pdf")
-                await download.save_as(staging)
-                # The Download button remains enabled after it fires, so a
-                # naive loop re-clicks it. Stop as soon as the same portal
-                # document comes back twice.
-                if fname in seen_this_modal:
-                    os.remove(staging)
-                    break
-                seen_this_modal.add(fname)
-                if fname in known_files:
-                    os.remove(staging)
-                    step(f"Cached (unchanged): order document '{fname}'")
-                    downloads_here.append(fname)
-                    continue
-                path = _dedupe_path(order_dir, fname)
-                os.replace(staging, path)
-                saved.append(path)
-                downloads_here.append(os.path.basename(path))
-                step(f"[Victory] Saved order document: {os.path.basename(path)}")
-            except Exception as e:
-                step(f"[Warning] Order download failed: {e}")
-                warns.append(f"{proc_label}: order download failed")
-                break
-            await asyncio.sleep(2)
+                count = await btns.count()
+            except Exception:
+                count = 0
+            for i in range(count):
+                try:
+                    btn = btns.nth(i)
+                    if not await btn.is_visible(timeout=800):
+                        continue
+                    if before_download:
+                        await before_download()
+                    async with page.expect_download(timeout=45000) as dl_info:
+                        await btn.click(timeout=10000)
+                    download = await dl_info.value
+                    fname = _sanitize_name(
+                        download.suggested_filename or "order.pdf")
+                    staging = os.path.join(proc_dir, ".staging_order.pdf")
+                    await download.save_as(staging)
+                    if fname in seen_this_modal:
+                        os.remove(staging)
+                        continue
+                    seen_this_modal.add(fname)
+                    if fname in known_files:
+                        os.remove(staging)
+                        step(f"Cached (unchanged): order document '{fname}'")
+                        downloads_here.append(fname)
+                        continue
+                    path = _dedupe_path(order_dir, fname)
+                    os.replace(staging, path)
+                    saved.append(path)
+                    downloads_here.append(os.path.basename(path))
+                    step(f"[Victory] Saved order document: "
+                         f"{os.path.basename(path)}")
+                except Exception as e:
+                    step(f"[Warning] Order download failed: {e}")
+                    warns.append(f"{proc_label}: order download failed")
+                await asyncio.sleep(2)
 
         if downloads_here:
             entries.append({
@@ -1237,8 +1416,10 @@ async def _download_proceeding_orders(page: Page, card_index: int, proc_dir: str
                 "files": [f"order-{n:02d}/{f}" for f in downloads_here],
             })
         # Close the modal so the next button is clickable.
-        for sel in (".cdk-overlay-pane button:has-text('Cancel')",
+        for sel in ("#downloadClosurePopup button:has-text('Cancel')",
+                    "#downloadClosurePopup .close-btn",
                     ".modal.show button:has-text('Cancel')",
+                    ".cdk-overlay-pane button:has-text('Cancel')",
                     ".cdk-overlay-pane button:has-text('close')"):
             try:
                 loc = page.locator(sel).first
@@ -1531,11 +1712,7 @@ async def download_e_proceedings(page: Page, download_root: str, log_callback,
         if _stopped():
             break
         step(f"Switching to tab: {tab_label}")
-        try:
-            tab = page.locator(f".mat-mdc-tab:has-text('{tab_label}')").first
-            await tab.click(timeout=15000)
-        except Exception as e:
-            step(f"[Warning] Could not open tab '{tab_label}': {e}")
+        if not await _activate_eproc_tab(page, tab_label, step):
             warnings.append(f"{tab_label} tab could not be opened")
             continue
         await asyncio.sleep(5)

@@ -127,3 +127,39 @@ def test_event_level_ignore_hides_deadline():
     _, events2 = collect_all(tmp, assessees, store, today=date(2026, 10, 20))
     replies = [e for e in events2 if e.kind == EVENT_REPLY]
     assert replies and replies[0].visible is False
+
+
+META_VC = {
+    "proceeding": {"name": "Assessment u/s 147", "ay": "2015-16"},
+    "notices": [
+        {"index": 1, "description": "Show Cause Notice u/s 147",
+         "section": "147", "issued_on": "01-Feb-2024",
+         "response_due": "08-Feb-2024",
+         "ref_id": "100075092422"},
+    ],
+    "hearings": [
+        {"notice_ref": "100075092422", "vc_datetime": "07-Mar-2024 12:30 PM",
+         "status": "Approved", "files": []},
+        {"notice_ref": "100075092422", "vc_datetime": "20-Dec-2026 11:00 AM",
+         "status": "Scheduled", "files": []},
+    ],
+}
+
+
+def test_vc_hearings_become_hearing_events():
+    from core.litigation.model import EVENT_HEARING
+    tmp = tempfile.mkdtemp()
+    _make_root(tmp, META_VC)
+    _, store = _vault_and_store(tmp)
+    assessees = [{"pan": "AABCP1234F", "name": "Sample Client"}]
+
+    _, events = collect_all(tmp, assessees, store, today=date(2026, 10, 20))
+    vc = [e for e in events if e.kind == EVENT_HEARING
+          and e.title.startswith("Video conferencing")]
+    dates = sorted(e.date for e in vc)
+    assert dates == [date(2024, 3, 7), date(2026, 12, 20)]
+    past = next(e for e in vc if e.date == date(2024, 3, 7))
+    future = next(e for e in vc if e.date == date(2026, 12, 20))
+    # A past VC is closed (held) and hidden; a future one is open + visible.
+    assert past.visible is False
+    assert future.visible is True
