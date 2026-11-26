@@ -668,6 +668,7 @@ class BatchProgressDialog(QDialog):
     _resume_signal = pyqtSignal(list)
     _countdown_signal = pyqtSignal(str)
     _client_done_signal = pyqtSignal(str, str)   # pan, ay_label — ALL selected doc types finished for this (client, year)
+    _batch_finished_signal = pyqtSignal(bool)    # aborted — marshals batch_finished() onto the UI thread
 
     _COL_NAME   = 0
     _COL_YEAR   = 1
@@ -710,6 +711,7 @@ class BatchProgressDialog(QDialog):
             "tds_challans":   "TDS/TCS Challans",
             "e_proceedings":  "e-Proceedings",
             "filed_forms":    "Filed IT Forms",
+            "gst_proceedings": "GST Notices",
         }
         mode_label = " + ".join(
             _doc_labels.get(d, d) for d in sorted(selected_docs)
@@ -790,7 +792,7 @@ class BatchProgressDialog(QDialog):
             pan  = tgt.get("pan", "")
             name = tgt.get("name", "—")
             ay_label = spec["ay_label"]
-            self._row_key_to_row[(pan, ay_label)] = row
+            self._row_key_to_row[(self._client_ident(tgt), ay_label)] = row
             self._table.setRowHeight(row, 40)
 
             name_item = QTableWidgetItem(name)
@@ -971,7 +973,7 @@ class BatchProgressDialog(QDialog):
         self._rows_data  = {}
 
         for tgt, spec in self._client_year_pairs:
-            self._rows_data[(tgt.get("pan", ""), spec["ay_label"])] = {
+            self._rows_data[(self._client_ident(tgt), spec["ay_label"])] = {
                 "name": tgt.get("name", ""), "ay_label": spec["ay_label"],
                 "path": "", "status": "Waiting", "ts": ""}
 
@@ -979,9 +981,29 @@ class BatchProgressDialog(QDialog):
         self._path_signal.connect(self._on_path_update)
         self._countdown_signal.connect(self._set_countdown_ui)
         self._client_done_signal.connect(self._on_client_done)
+        self._batch_finished_signal.connect(self._on_batch_finished)
         self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
 
     # ── internal helpers ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _client_ident(tgt: dict) -> str:
+        """Row identity for a client — PAN when available, else ``GST:<username>``.
+
+        Must match ``client_key()`` (automation/eproc_scheduler.py) used by the
+        worker flows when calling set_status / set_client_path /
+        client_finished. GST-only clients have no PAN, so keying rows purely
+        by PAN left their status/finish updates silently unmatched and the
+        progress bar stalled.
+        """
+        pan = str(tgt.get("pan", "")).strip().upper()
+        if pan:
+            return pan
+        gst_user = str(tgt.get("gst_username", "")).strip().upper()
+        if gst_user:
+            return f"GST:{gst_user}"
+        name = str(tgt.get("name", "")).strip().upper()
+        return f"NAME:{name}" if name else ""
 
     def _row_key_for_row(self, row: int):
         for key, r in self._row_key_to_row.items():
@@ -1135,6 +1157,20 @@ class BatchProgressDialog(QDialog):
         if self._tray_callback:
             self._tray_callback()
 
+    def closeEvent(self, event):
+        """Always allow closing the progress window, even mid-run.
+
+        The Close button only enables after every row is done; if a client
+        hangs (portal timeout, popup left open) the user must still be able to
+        dismiss the window instead of being stuck behind it. Closing here does
+        not stop the worker — use Stop for that.
+        """
+        try:
+            self._batch_finished_signal.emit(False)
+        except Exception:
+            pass
+        event.accept()
+
     def _on_stop_clicked(self):
         if self._stop_callback:
             self._stop_callback()
@@ -1236,6 +1272,16 @@ class BatchProgressDialog(QDialog):
         self._path_signal.emit(pan, ay_label, folder)
 
     def batch_finished(self, aborted: bool = False):
+        """Thread-safe: marshals the work onto the UI thread via a signal.
+
+        The GST fetch runs in a plain threading.Thread (not the Qt main
+        thread), so touching widgets here directly was a cross-thread UI
+        mutation — the dialog could freeze or fail to repaint. Emitting a
+        signal delivers _on_batch_finished to the main thread's event loop.
+        """
+        self._batch_finished_signal.emit(aborted)
+
+    def _on_batch_finished(self, aborted: bool):
         """Enable Close/Report and hide Stop. If aborted, sweeps non-terminal rows to ⏹ Stopped."""
         terminal = ("✅", "❌", "🕐", "⏹", "⬜ Skipped")
         if aborted:

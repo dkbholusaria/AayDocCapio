@@ -680,8 +680,16 @@ async def _js_click_row(page: Page, ref: str, description: str, ri: int) -> bool
 
 
 async def _open_row(page: Page, row: dict) -> Page:
-    """Open a row's View action (visible-row DOM click, then Playwright)."""
+    """Open a row's View action (visible-row DOM click, then Playwright).
+
+    Case-task rows (the litigation feed) and rows whose index exceeds the
+    rendered table have no clickable ``View`` in place; opening them is done
+    by :func:`_fetch_notice`. For those, return the row's own page without a
+    long locator timeout so one unopenable row never stalls the whole run.
+    """
     ref = (row.get("ref_id") or "").strip()
+    if ref.upper() == "NA":
+        ref = ""
     description = (row.get("description") or "").strip()
     ti = int(row.get("table_index", 0))
     ri = int(row.get("row_index", 0))
@@ -690,27 +698,33 @@ async def _open_row(page: Page, row: dict) -> Page:
     if not clicked:
         # The grid silently resets to 10 rows after a popup is closed.
         if await _set_page_size(page, 100):
-            await asyncio.sleep(2)
+            await asyncio.sleep(1.5)
             clicked = await _js_click_row(page, ref, description, ri)
+    if clicked:
+        await asyncio.sleep(3)
+        return await _resolve_viewer_page(page)
 
-    if not clicked:
-        try:
-            by_ref = page.locator("tbody tr:visible").filter(has_text=ref).first if ref else None
-            if by_ref is not None and await by_ref.count():
-                handle = by_ref
-            elif ti >= 0:
-                handle = page.locator("table").nth(ti).locator("tbody tr:visible").nth(ri)
-            else:
-                handle = page.locator(".ag-row:visible").nth(ri)
-            target = handle.locator("a,button").filter(has_text=_ACTION_RE).first
-            if await target.count():
-                await target.click(timeout=8000)
-            else:
-                await handle.click(timeout=8000)
-        except Exception as exc:
-            raise RuntimeError(f"could not open notice row {ri + 1}: {exc}") from exc
+    # Bounded Playwright fallback with a short timeout; never block 8s per row.
+    try:
+        by_ref = page.locator("tbody tr:visible").filter(has_text=ref).first if ref else None
+        handle = None
+        if by_ref is not None and await by_ref.count():
+            handle = by_ref
+        elif ti >= 0:
+            handle = page.locator("table").nth(ti).locator("tbody tr:visible").nth(ri)
+        else:
+            handle = page.locator(".ag-row:visible").nth(ri)
+        if handle is None or not await handle.count():
+            return page
+        target = handle.locator("a,button").filter(has_text=_ACTION_RE).first
+        if await target.count():
+            await target.click(timeout=3000)
+        else:
+            await handle.click(timeout=3000)
+    except Exception as exc:
+        raise RuntimeError(f"could not open notice row {ri + 1}: {exc}") from exc
 
-    await asyncio.sleep(4)
+    await asyncio.sleep(3)
     return await _resolve_viewer_page(page)
 
 
@@ -1102,6 +1116,7 @@ async def download_gst_notices(page: Page, download_root: str, log_callback,
                                is_running=None, before_download=None,
                                max_rows: int | None = None,
                                only_description: str | None = None,
+                               progress_callback=None,
                                ) -> tuple[bool, str, list[dict]]:
     """Sync GST notices/orders for one already-logged-in client.
 
@@ -1212,9 +1227,15 @@ async def download_gst_notices(page: Page, download_root: str, log_callback,
                               + str(r.get("notice_type", ""))).lower()]
     if max_rows:
         rows = rows[:max_rows]
-    for row in rows:
+    total_rows = len(rows)
+    for position, row in enumerate(rows, start=1):
         if _stopped():
             break
+        if progress_callback:
+            try:
+                progress_callback("progress", position, total_rows, row)
+            except Exception:
+                pass
         if await _visible_row_count(page) < len(rows):
             await _set_page_size(page, 100)
             await asyncio.sleep(1.5)
