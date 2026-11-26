@@ -668,6 +668,7 @@ class BatchProgressDialog(QDialog):
     _resume_signal = pyqtSignal(list)
     _countdown_signal = pyqtSignal(str)
     _client_done_signal = pyqtSignal(str, str)   # pan, ay_label — ALL selected doc types finished for this (client, year)
+    _batch_finished_signal = pyqtSignal(bool)    # aborted — marshals batch_finished() onto the UI thread
 
     _COL_NAME   = 0
     _COL_YEAR   = 1
@@ -710,6 +711,7 @@ class BatchProgressDialog(QDialog):
             "tds_challans":   "TDS/TCS Challans",
             "e_proceedings":  "e-Proceedings",
             "filed_forms":    "Filed IT Forms",
+            "gst_proceedings": "GST Notices",
         }
         mode_label = " + ".join(
             _doc_labels.get(d, d) for d in sorted(selected_docs)
@@ -790,7 +792,7 @@ class BatchProgressDialog(QDialog):
             pan  = tgt.get("pan", "")
             name = tgt.get("name", "—")
             ay_label = spec["ay_label"]
-            self._row_key_to_row[(pan, ay_label)] = row
+            self._row_key_to_row[(self._client_ident(tgt), ay_label)] = row
             self._table.setRowHeight(row, 40)
 
             name_item = QTableWidgetItem(name)
@@ -971,7 +973,7 @@ class BatchProgressDialog(QDialog):
         self._rows_data  = {}
 
         for tgt, spec in self._client_year_pairs:
-            self._rows_data[(tgt.get("pan", ""), spec["ay_label"])] = {
+            self._rows_data[(self._client_ident(tgt), spec["ay_label"])] = {
                 "name": tgt.get("name", ""), "ay_label": spec["ay_label"],
                 "path": "", "status": "Waiting", "ts": ""}
 
@@ -979,9 +981,29 @@ class BatchProgressDialog(QDialog):
         self._path_signal.connect(self._on_path_update)
         self._countdown_signal.connect(self._set_countdown_ui)
         self._client_done_signal.connect(self._on_client_done)
+        self._batch_finished_signal.connect(self._on_batch_finished)
         self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
 
     # ── internal helpers ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _client_ident(tgt: dict) -> str:
+        """Row identity for a client — PAN when available, else ``GST:<username>``.
+
+        Must match ``client_key()`` (automation/eproc_scheduler.py) used by the
+        worker flows when calling set_status / set_client_path /
+        client_finished. GST-only clients have no PAN, so keying rows purely
+        by PAN left their status/finish updates silently unmatched and the
+        progress bar stalled.
+        """
+        pan = str(tgt.get("pan", "")).strip().upper()
+        if pan:
+            return pan
+        gst_user = str(tgt.get("gst_username", "")).strip().upper()
+        if gst_user:
+            return f"GST:{gst_user}"
+        name = str(tgt.get("name", "")).strip().upper()
+        return f"NAME:{name}" if name else ""
 
     def _row_key_for_row(self, row: int):
         for key, r in self._row_key_to_row.items():
@@ -1135,6 +1157,20 @@ class BatchProgressDialog(QDialog):
         if self._tray_callback:
             self._tray_callback()
 
+    def closeEvent(self, event):
+        """Always allow closing the progress window, even mid-run.
+
+        The Close button only enables after every row is done; if a client
+        hangs (portal timeout, popup left open) the user must still be able to
+        dismiss the window instead of being stuck behind it. Closing here does
+        not stop the worker — use Stop for that.
+        """
+        try:
+            self._batch_finished_signal.emit(False)
+        except Exception:
+            pass
+        event.accept()
+
     def _on_stop_clicked(self):
         if self._stop_callback:
             self._stop_callback()
@@ -1236,6 +1272,16 @@ class BatchProgressDialog(QDialog):
         self._path_signal.emit(pan, ay_label, folder)
 
     def batch_finished(self, aborted: bool = False):
+        """Thread-safe: marshals the work onto the UI thread via a signal.
+
+        The GST fetch runs in a plain threading.Thread (not the Qt main
+        thread), so touching widgets here directly was a cross-thread UI
+        mutation — the dialog could freeze or fail to repaint. Emitting a
+        signal delivers _on_batch_finished to the main thread's event loop.
+        """
+        self._batch_finished_signal.emit(aborted)
+
+    def _on_batch_finished(self, aborted: bool):
         """Enable Close/Report and hide Stop. If aborted, sweeps non-terminal rows to ⏹ Stopped."""
         terminal = ("✅", "❌", "🕐", "⏹", "⬜ Skipped")
         if aborted:
@@ -2933,7 +2979,12 @@ class ChallanRowDetailDialog(QDialog):
         self._pan_combo = QComboBox()
         self._pan_combo.setEditable(True)
         self._pan_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        for a in sorted(vault.get_all_assessees(), key=lambda a: a.get("name", "")):
+        # Income Tax challans are filed under a PAN login only (#30) — offer
+        # just the clients with Income Tax capacity, never TDS-only (TAN) or
+        # GST-only logins, which have no PAN password to authenticate with.
+        it_clients = [a for a in vault.get_all_assessees()
+                      if "Income Tax" in vault.credential_sources(a)]
+        for a in sorted(it_clients, key=lambda a: a.get("name", "")):
             self._pan_combo.addItem(f"{a.get('pan','')} — {a.get('name','')}", a.get("pan", ""))
         # Qt's auto-created completer for an editable combo defaults to
         # "starts with" matching against the item text — since items read
@@ -3961,11 +4012,21 @@ class GenerateChallansDialog(QDialog):
     def _row_missing_bank(self, row: dict) -> bool:
         return bool(self._row_bank_problem(row)) or bool(self._row_drawee_problem(row))
 
+    def _income_tax_clients(self) -> list:
+        """Clients a PAN challan can actually be filed for — Income Tax
+        capacity only (#30). A TDS-only (TAN) or GST-only client has no PAN
+        password to authenticate against the Income Tax portal, so it must
+        not count as a known/ready target even if a draft or imported sheet
+        happens to carry its PAN."""
+        return [a for a in self._vault.get_all_assessees()
+                if "Income Tax" in self._vault.credential_sources(a)]
+
     def _row_is_ready(self, row: dict) -> bool:
         pan = (row.get("pan") or "").upper()
         if not pan:
             return False
-        matched = any(a.get("pan", "").upper() == pan for a in self._vault.get_all_assessees())
+        matched = any(a.get("pan", "").upper() == pan
+                      for a in self._income_tax_clients())
         if not matched:
             return False
         total = self._row_total(row)
@@ -3979,10 +4040,11 @@ class GenerateChallansDialog(QDialog):
 
     def _refresh_table(self):
         _bt = _t()
+        clients = self._income_tax_clients()
         self._table.setRowCount(len(self._row_data))
         for i, row in enumerate(self._row_data):
             pan = (row.get("pan") or "").upper()
-            matched = next((a for a in self._vault.get_all_assessees() if a.get("pan", "").upper() == pan), None)
+            matched = next((a for a in clients if a.get("pan", "").upper() == pan), None)
             self._table.setRowHeight(i, 36)
 
             pan_item = QTableWidgetItem(pan)
@@ -4413,8 +4475,19 @@ class TdsChallanRowDetailDialog(QDialog):
 
         vl.addWidget(_lbl("Deductor (TAN)", 11, bold=True))
         self._tan_combo = QComboBox()
-        for c in tan_clients:
+        self._tan_combo.setEditable(True)
+        self._tan_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        for c in sorted(tan_clients, key=lambda c: c.get("name", "")):
             self._tan_combo.addItem(f"{c['pan']} — {c['name']}", c["pan"])
+        # Make the deductor searchable by TAN or name (mirrors the PAN combo
+        # in ChallanRowDetailDialog): items read "TAN — Name", so default
+        # "starts-with" matching would miss name queries — switch to
+        # contains + case-insensitive.
+        completer = self._tan_combo.completer()
+        if completer:
+            completer.setFilterMode(Qt.MatchFlag.MatchContains)
+            completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self._tan_combo.setMaxVisibleItems(18)
         if self.row.get("tan"):
             idx = self._tan_combo.findData(self.row["tan"])
             if idx >= 0:
@@ -4571,9 +4644,18 @@ class TdsChallanRowDetailDialog(QDialog):
         del self.row["sections"][r]
         self._fill_sections()
 
+    def _current_tan(self) -> str:
+        idx = self._tan_combo.currentIndex()
+        text = self._tan_combo.currentText().strip()
+        if idx >= 0 and self._tan_combo.itemText(idx) == text:
+            return (self._tan_combo.itemData(idx) or "").upper()
+        if " — " in text:
+            return text.split(" — ")[0].strip().upper()
+        return text.upper()
+
     def _row_from_widgets(self) -> dict:
         row = dict(self.row)
-        row["tan"] = self._tan_combo.currentData() or ""
+        row["tan"] = self._current_tan()
         row["payment_mode"] = self._mode_combo.currentText()
         row["bank"] = self._bank_combo.currentText()
         row["drawee_bank"] = self._drawee.text().strip()

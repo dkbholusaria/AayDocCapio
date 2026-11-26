@@ -265,6 +265,7 @@ class AayDocCapioApp(QMainWindow):
     _return_status_done_signal = pyqtSignal()
     _show_return_status_progress_signal = pyqtSignal(list, str)   # (targets, ay_value)
     _eproc_auto_done_signal = pyqtSignal()
+    _gst_dl_done_signal = pyqtSignal()   # worker → main thread: finish GST dialog + re-enable controls
 
     def __init__(self):
         super().__init__()
@@ -361,6 +362,7 @@ class AayDocCapioApp(QMainWindow):
         self._eproc_auto_dialog = None
         self._eproc_auto_timer = None
         self._eproc_auto_done_signal.connect(self._on_eproc_auto_done)
+        self._gst_dl_done_signal.connect(self._on_gst_dl_done)
 
         try:
             log_path = os.path.join(_app_dir(), "app.log")
@@ -3722,14 +3724,17 @@ class AayDocCapioApp(QMainWindow):
                                     "Choose a download folder first.")
             return
         self._gst_dl_running = True
+        self.is_running = True
         self._gst_dl_btn.setEnabled(False)
         self._gst_dl_count_lbl.setText(f"Downloading notices for {len(clients)} client(s)…")
         dialog = BatchProgressDialog(
             clients, {"gst_proceedings"}, year_specs=[spec],
             ay="GST Notices",
             output_dir=output_dir, parent=self, id_label="GST/PAN")
+        dialog.setWindowModality(Qt.WindowModality.WindowModal)
         dialog.show()
         dialog.raise_()
+        dialog.activateWindow()
         self._gst_dl_dialog = dialog
         threading.Thread(
             target=self._gst_download_worker,
@@ -3749,10 +3754,12 @@ class AayDocCapioApp(QMainWindow):
             except Exception:
                 pass
             self._gst_dl_running = False
+            self.is_running = False
 
     async def _gst_download_run(self, clients, spec, output_dir):
         from automation.batch_handlers import handle_gst_proceedings
         from automation.gst.login import login_gst
+        from automation.eproc_scheduler import client_key
 
         context = None
         dialog = getattr(self, "_gst_dl_dialog", None)
@@ -3760,8 +3767,7 @@ class AayDocCapioApp(QMainWindow):
             context = await browser_manager.get_context(
                 log_callback=self.log, interactive=not self.chk_headless.isChecked())
             for index, client in enumerate(clients):
-                ident = (str(client.get("pan") or "").upper()
-                         or (client.get("gst_username") or "").upper())
+                ident = client_key(client)
                 ay_label = spec["ay_label"]
 
                 def _status(_p, _ay, text, _ident=ident):
@@ -3803,10 +3809,18 @@ class AayDocCapioApp(QMainWindow):
                             _status(ident, ay_label,
                                     f"⚠ GST login not completed ({reason})")
                         continue
+                    def _progress(kind, pos, total, row_obj, _ident=ident, _ay=ay_label):
+                        if kind == "progress":
+                            _status(
+                                _ident, _ay,
+                                f"⏳ Downloading GST notices… "
+                                f"{(row_obj.get('notice_type') or 'Notice')} "
+                                f"{pos}/{total}")
+
                     await handle_gst_proceedings(
                         page, ident, client.get("dob", ""), [spec],
                         lambda yt, val: client_dir, self.log, _status,
-                        client_dir=client_dir)
+                        client_dir=client_dir, progress_callback=_progress)
                 except Exception as exc:
                     self.log(f"[GST] {ident} failed: {exc}")
                     _status(ident, ay_label, f"❌ GST download failed — {_friendly_error(str(exc))}")
@@ -3825,17 +3839,32 @@ class AayDocCapioApp(QMainWindow):
                     await browser_manager.close()
                 except Exception:
                     pass
+            # Route UI updates to the main thread — this runs on a plain
+            # asyncio worker thread, so touching widgets directly here left
+            # the dialog frozen / the progress window un-refreshed.
             if dialog is not None:
-                dialog.batch_finished()
-                self._gst_dl_btn.setEnabled(True)
-                self._gst_dl_count_lbl.setText(
+                self._gst_dl_count_label_text = (
                     f"Last run finished — {len(clients)} client(s) processed.")
+                self._gst_dl_done_signal.emit()
             ws = getattr(self, "_gst_ws", None)
             if ws is not None:
                 try:
                     ws.refresh()
                 except Exception:
                     pass
+
+    def _on_gst_dl_done(self):
+        """Main-thread: finish the GST progress dialog and re-enable controls."""
+        dialog = getattr(self, "_gst_dl_dialog", None)
+        if dialog is not None:
+            try:
+                dialog.batch_finished()
+            except Exception:
+                pass
+        self._gst_dl_btn.setEnabled(True)
+        text = getattr(self, "_gst_dl_count_label_text", "")
+        if text:
+            self._gst_dl_count_lbl.setText(text)
 
     def _mk_litigation_page(self):
         """F-26: Litigation hub - unified e-proceedings across modules."""
@@ -5800,8 +5829,17 @@ class AayDocCapioApp(QMainWindow):
         # Match each row's PAN against the vault once, up front, so a client
         # removed/renamed between dialog-open and Generate-click can't crash
         # the batch mid-run — same defensiveness as start_automation's
-        # targets list build.
-        by_pan = {a.get("pan", "").upper(): a for a in self.assessee_list}
+        # targets list build. Income Tax challans are PAN-login only (#30):
+        # a TDS-only (TAN) or GST-only client has no PAN password, so it is
+        # never a valid target even if an old draft carries its PAN.
+        by_pan = {}
+        for a in self.assessee_list:
+            try:
+                if "Income Tax" not in self.vault.credential_sources(a):
+                    continue
+            except Exception:
+                pass
+            by_pan[a.get("pan", "").upper()] = a
         targets = []
         for row in rows:
             client = by_pan.get(row["pan"].upper())
@@ -6669,12 +6707,18 @@ class AayDocCapioApp(QMainWindow):
                         self._eproc_auto_dialog.client_finished(ident, year_specs[0]["ay_label"])
                     continue
                 self._eproc_auto_skip_current = False
-                processed = await self._eproc_auto_sync_client(
-                    context, target, year_specs, output_dir, self._eproc_auto_cfg)
+                try:
+                    processed = await self._eproc_auto_sync_client(
+                        context, target, year_specs, output_dir, self._eproc_auto_cfg)
+                except Exception as exc:
+                    processed = False
+                    self.log(f"[Auto-Fetch] {ident} sync error: {exc}")
+                # Always finish the row so the progress dialog never stalls
+                # on a client whose sync returned False (timeout/backoff/etc).
                 if processed:
                     self._eproc_auto_mark_processed(ident)
-                    if self._eproc_auto_dialog is not None:
-                        self._eproc_auto_dialog.client_finished(ident, year_specs[0]["ay_label"])
+                if self._eproc_auto_dialog is not None:
+                    self._eproc_auto_dialog.client_finished(ident, year_specs[0]["ay_label"])
                 if index < len(clients) - 1 and self._eproc_auto_running and not self._eproc_auto_skip_future:
                     seconds = cooldown_for(
                         self._eproc_auto_cfg["client_cooldown_sec"],
@@ -6905,6 +6949,14 @@ class AayDocCapioApp(QMainWindow):
                     if seconds:
                         await self._eproc_auto_wait(seconds, "Next document in")
 
+                def _progress(kind, pos, total, row_obj, _id=ident, _ay=ay_label):
+                    if kind == "progress":
+                        self._eproc_auto_set_status(
+                            _id, _ay,
+                            f"⏳ Downloading GST notices… "
+                            f"{(row_obj.get('notice_type') or 'Notice')} {pos}/{total}",
+                            doc_type="gst_proceedings")
+
                 await handle_gst_proceedings(
                     page, ident, target.get("dob", ""), year_specs,
                     self._auto_out_for_year(output_dir, ident, name, year_specs),
@@ -6912,7 +6964,7 @@ class AayDocCapioApp(QMainWindow):
                     is_running=lambda: (self._eproc_auto_running
                                         and not self._eproc_auto_skip_future
                                         and not self._eproc_auto_skip_current),
-                    doc_delay=_doc_delay)
+                    doc_delay=_doc_delay, progress_callback=_progress)
 
                 if self._eproc_auto_skip_current:
                     self._eproc_auto_counts["skipped"] += 1

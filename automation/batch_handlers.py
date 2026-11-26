@@ -430,7 +430,8 @@ async def handle_e_proceedings(page, pan, dob, year_specs, out_for_year, log_cal
 
 async def handle_gst_proceedings(page, pan, dob, year_specs, out_for_year, log_callback,
                                  set_status, filing_scope="all", is_running=None,
-                                 doc_delay=None, client_dir=None) -> dict:
+                                 doc_delay=None, client_dir=None,
+                                 progress_callback=None) -> dict:
     """GST notices/orders from Services → User Services → View Notices and
     Orders. GST is not year-scoped (notices carry their own tax period), so
     everything found is downloaded into one GST-Proceedings folder under the
@@ -453,7 +454,8 @@ async def handle_gst_proceedings(page, pan, dob, year_specs, out_for_year, log_c
 
     ok, msg, saved = await download_gst_notices(
         page, download_root, log_callback, is_running=is_running,
-        before_download=doc_delay)
+        before_download=doc_delay,
+        progress_callback=progress_callback)
 
     if ok and not saved and msg.startswith("Up to date"):
         for s in year_specs:
