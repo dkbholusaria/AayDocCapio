@@ -7017,24 +7017,27 @@ class ReturnStatusTab(QWidget):
     _COL_REV_SEC = 7
     _COL_RECTIFIED = 8
     _COL_STATUS = 9
-    _COL_REFUND = 10
-    _COL_AUDIT = 11
-    _COL_AUDIT_REPORT = 12
+    _COL_EVERIFY = 10
+    _COL_REFUND = 11
+    _COL_AUDIT = 12
+    _COL_AUDIT_REPORT = 13
 
     _HEADERS = [
         "", "Client", "Group", "PAN", "Filed", "Section", "Revised",
-        "Revised §", "Rectified", "Last Status", "Refund / Demand",
-        "Audit Applicable", "Audit Report",
+        "Revised §", "Rectified", "Last Status", "e-Verify",
+        "Refund / Demand", "Audit Applicable", "Audit Report",
     ]
 
     def __init__(self, vault, ay_entries, download_root_getter, start_fetch,
-                 log_callback=None, parent=None):
+                 log_callback=None, parent=None, audit_probe=None):
         super().__init__(parent)
         self._vault = vault
         self._ay_entries = [e for e in ay_entries if e.get("year", {}).get("AY")]
         self._download_root_getter = download_root_getter
         self._start_fetch = start_fetch
         self._log = log_callback or (lambda *_a, **_k: None)
+        self._audit_probe = audit_probe
+        self._audit_report_by_pan: dict = {}
         self._row_data: list = []
         self._checked_keys: set = set()
 
@@ -7080,6 +7083,11 @@ class ReturnStatusTab(QWidget):
         self._btn_fetch = _btn("Fetch Selected", "primary", height=32)
         self._btn_fetch.clicked.connect(self._on_fetch_clicked)
         top.addWidget(self._btn_fetch)
+        self._btn_audit_probe = _btn("Check Audit Reports", "secondary", height=32)
+        self._btn_audit_probe.setToolTip(
+            "Query the portal's Income Tax Forms for the audit-applicable clients shown")
+        self._btn_audit_probe.clicked.connect(self.probe_audit)
+        top.addWidget(self._btn_audit_probe)
         outer.addLayout(top)
 
         # Row 2: quick filters
@@ -7090,8 +7098,11 @@ class ReturnStatusTab(QWidget):
         self._chk_outstanding = QCheckBox("Outstanding")
         self._chk_pending_everify = QCheckBox("Pending e-verification")
         self._chk_audit = QCheckBox("Audit applicable")
+        self._chk_audit_report_filed = QCheckBox("Audit report filed")
+        self._chk_audit_report_not_filed = QCheckBox("Audit report not filed")
         for c in (self._chk_pending, self._chk_outstanding,
-                  self._chk_pending_everify, self._chk_audit):
+                  self._chk_pending_everify, self._chk_audit,
+                  self._chk_audit_report_filed, self._chk_audit_report_not_filed):
             c.setStyleSheet(f"QCheckBox{{background:transparent;color:{t.text_primary};font-size:11px;}}")
             c.stateChanged.connect(self._refresh_table)
             filt.addWidget(c)
@@ -7116,7 +7127,8 @@ class ReturnStatusTab(QWidget):
             self._table.setColumnWidth(col, 60)
         self._table.setColumnWidth(self._COL_SECTION, 80)
         self._table.setColumnWidth(self._COL_REV_SEC, 80)
-        self._table.setColumnWidth(self._COL_STATUS, 220)
+        self._table.setColumnWidth(self._COL_STATUS, 200)
+        self._table.setColumnWidth(self._COL_EVERIFY, 80)
         self._table.setColumnWidth(self._COL_REFUND, 130)
         self._table.setColumnWidth(self._COL_AUDIT, 110)
         self._table.setColumnWidth(self._COL_AUDIT_REPORT, 110)
@@ -7136,8 +7148,9 @@ class ReturnStatusTab(QWidget):
 
         hint = _lbl(
             "Tick clients and click Fetch Selected to re-check them live from the portal. "
-            "Audit Applicable is saved per client per year; Audit Report reflects downloaded "
-            "Income Tax Forms (3CB-3CD / 3CA-3CD).", 10, color=t.text_muted)
+            "Audit Applicable is saved per client per year; Audit Report comes from the "
+            "portal's Income Tax Forms (3CB-3CD / 3CA-3CD) via Check Audit Reports, with a "
+            "downloaded-forms fallback.", 10, color=t.text_muted)
         hint.setWordWrap(True)
         outer.addWidget(hint)
 
@@ -7176,8 +7189,11 @@ class ReturnStatusTab(QWidget):
             pan = (c.get("pan") or "").upper()
             entry = status_map.get(pan, {}) or {}
             audit_on = bool(audit_years.get(pan, False))
-            audit_report = None
-            if audit_on and root:
+            # Portal probe result wins (True/False); when the portal hasn't been
+            # asked yet or errored (None), fall back to the local downloaded-
+            # forms scan so the column still shows something honest.
+            audit_report = self._audit_report_by_pan.get(pan)
+            if audit_report is None and audit_on and root:
                 try:
                     from automation.return_status import has_audit_report
                     audit_report = has_audit_report(root, pan, ay)
@@ -7191,6 +7207,7 @@ class ReturnStatusTab(QWidget):
                 "rectified": entry.get("rectified"), "status": entry.get("status", ""),
                 "status_date": entry.get("status_date", ""),
                 "e_verified": entry.get("e_verified"), "processed": entry.get("processed"),
+                "everify_pending": entry.get("everify_pending"),
                 "refund_status": entry.get("refund_status", ""),
                 "checked": bool(entry), "audit_on": audit_on,
                 "audit_report": audit_report,
@@ -7216,10 +7233,15 @@ class ReturnStatusTab(QWidget):
         if self._chk_audit.isChecked():
             if not r["audit_on"]:
                 return False
+        if self._chk_audit_report_filed.isChecked() and r["audit_report"] is not True:
+            return False
+        if self._chk_audit_report_not_filed.isChecked() and r["audit_report"] is not False:
+            return False
         return True
 
     def _refresh_table(self, *_a):
         t = _t()
+        from automation.return_status import compute_everify_pending
         all_rows = self._client_rows()
         rows = [r for r in all_rows if self._passes_filters(r)]
         self._row_data = rows
@@ -7267,6 +7289,17 @@ class ReturnStatusTab(QWidget):
             else:
                 _set(self._COL_STATUS, "Not yet fetched", muted=True, warn=True)
 
+            everify = r.get("everify_pending")
+            if everify is None:
+                everify = compute_everify_pending(
+                    r["filed"], r["e_verified"], r["status"])
+            if not r["filed"]:
+                _set(self._COL_EVERIFY, "—", muted=True)
+            elif everify:
+                _set(self._COL_EVERIFY, "Pending", warn=True)
+            else:
+                _set(self._COL_EVERIFY, "Done", muted=True)
+
             rs = r["refund_status"]
             rs_label = {"paid": "Refund paid", "adjusted": "Adjusted vs demand",
                         "pending": "Refund pending"}.get(rs, "—")
@@ -7311,6 +7344,21 @@ class ReturnStatusTab(QWidget):
         if not targets:
             return
         self._start_fetch(ay, targets)
+
+    def set_audit_report_results(self, results: dict):
+        """Apply {pan: bool|None} audit-report states from a portal probe."""
+        self._audit_report_by_pan.update(results or {})
+        self._refresh_table()
+
+    def probe_audit(self):
+        """Ask the parent to run the portal audit probe for audit-applicable
+        clients of the selected AY. No-op if no callback was supplied."""
+        if not self._audit_probe:
+            return
+        ay = self._current_ay()
+        pans = [r["pan"] for r in self._client_rows() if r["audit_on"]]
+        if ay and pans:
+            self._audit_probe(ay, pans)
 
     def select_all_visible(self):
         for r in self._row_data:

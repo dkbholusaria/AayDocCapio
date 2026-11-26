@@ -231,8 +231,47 @@ def _derive_refund_status(timeline_text: str) -> str:
     return ""
 
 
+_VERIFIED_RE = re.compile(r"e-?\s*verif", re.IGNORECASE)
+_PROCESSED_RE = re.compile(r"process", re.IGNORECASE)
+
+
+def _is_everify_pending(status_text) -> bool:
+    """Heuristic on a raw portal status string: True if the filing looks like
+    it still awaits e-verification. Never raises on junk input."""
+    text = str(status_text or "")
+    return bool(re.search(r"pending for e-?\s*verif", text, re.IGNORECASE))
+
+
+def compute_everify_pending(filed, e_verified, status_text: str = "") -> bool:
+    """Whether the latest filing is filed-but-not-yet-e-verified.
+
+    An explicit e_verified flag wins: True => not pending, False => pending.
+    When the flag is unknown (None) and the return is filed, fall back to the
+    status text: a verified/processed status means not pending, anything else
+    (including a bare "ITR Filed") means still pending."""
+    if not filed:
+        return False
+    if e_verified is True:
+        return False
+    if e_verified is False:
+        return True
+    text = str(status_text or "")
+    if re.search(r"pending for e-?\s*verif", text, re.IGNORECASE):
+        return True
+    if _VERIFIED_RE.search(text) or _PROCESSED_RE.search(text):
+        return False
+    return True
+
+
 def _extract_section(card_text: str) -> str:
-    # UNCONFIRMED: section source on filed-returns card is best-effort; verify against a real export (F-121).
+    """Best-effort tax-section under which the return was filed, read from the
+    filed-returns card text (e.g. "139(1)", "142(1)").
+
+    UNCONFIRMED (F-121): the portal doesn't expose a dedicated section field on
+    the card, so this scrapes an explicit "u/s"/"section" lead or a bare
+    "NNN(n)" clause. Returns "" — the honest result — when no such clause is
+    present rather than guessing from stray numbers (dates, ack numbers)."""
+    # verify against a real export (F-121).
     m = _SECTION_RE.search(card_text or "")
     if not m:
         return ""
@@ -254,7 +293,7 @@ async def scan_full_status(filed_returns_page, assessment_year: str, step) -> di
         "filing_date": "", "ack_no": "",
         "filing_type": "", "filed": None, "section": "", "revised": None,
         "revised_section": "", "rectified": None, "e_verified": None,
-        "processed": None, "refund_status": "",
+        "processed": None, "refund_status": "", "everify_pending": None,
     }
 
     found = await _find_latest_card(filed_returns_page, assessment_year, step)
@@ -299,6 +338,7 @@ async def scan_full_status(filed_returns_page, assessment_year: str, step) -> di
     if not status_text:
         return {**empty, "reason": "Found the filing but could not read its status", "filed": True}
 
+    everify = compute_everify_pending(True, e_verified, status_text)
     return {
         "ok": True, "reason": "", "status": status_text, "status_date": status_date,
         "filing_date": winner["date_text"], "ack_no": ack_no,
@@ -310,6 +350,7 @@ async def scan_full_status(filed_returns_page, assessment_year: str, step) -> di
         "e_verified": e_verified,
         "processed": ("processed" in latest_low) if status_text else None,
         "refund_status": refund_status,
+        "everify_pending": everify,
     }
 
 
@@ -340,7 +381,7 @@ async def check_return_status(page: Page, assessment_year: str, log_callback,
         "filing_date": "", "ack_no": "",
         "filing_type": "", "filed": None, "section": "", "revised": None,
         "revised_section": "", "rectified": None, "e_verified": None,
-        "processed": None, "refund_status": "",
+        "processed": None, "refund_status": "", "everify_pending": None,
     }
     try:
         step(f"Starting return status check — AY={assessment_year}, pan={'set' if pan else 'blank'}")
@@ -372,21 +413,33 @@ async def check_return_status(page: Page, assessment_year: str, log_callback,
 
 
 def _year_tokens(ay_value: str) -> list[str]:
-    """Filename-safe year tokens to look for inside a filed-forms tree for a
-    given Assessment Year. Accepts the AY itself (2024-25 / 2024_25) and the
-    corresponding Financial Year (AY 2024-25 => FY 2023-24 => 2023-24 /
-    2023_24), since a filed-form's own folder/file may be labelled either
-    way."""
+    """Year spellings to look for inside a filed-forms tree for a given
+    Assessment Year (2024-25 => "2024-25" / "2024_25").
+
+    Audit reports (3CB-3CD / 3CA-3CD) are keyed by Assessment Year on the
+    portal, so only AY spellings are returned — deliberately no Financial Year
+    variant, which for the same AY would be the *previous* year and would let a
+    different year's audit report satisfy this one."""
     raw = (ay_value or "").strip()
     m = re.match(r"(\d{4})\D(\d{2})", raw)
     if not m:
         return [raw.replace("-", "_").lower()] if raw else []
     start = int(m.group(1))
     end = str((start + 1) % 100).zfill(2)
-    fy_start = start - 1
-    fy_end = str(start % 100).zfill(2)
-    tokens = {f"{start}-{end}", f"{start}_{end}", f"{fy_start}-{fy_end}", f"{fy_start}_{fy_end}"}
-    return sorted(t.lower() for t in tokens if t)
+    return sorted([f"{start}-{end}", f"{start}_{end}"])
+
+
+def _path_has_year(rel: str, tokens: list[str]) -> bool:
+    """Whether a filed-form's relative path contains one of the year tokens as
+    a whole number run (not embedded in a longer digit sequence), so
+    "2024-25" never matches inside "2025-26" and vice versa."""
+    low = (rel or "").replace("\\", "/").lower()
+    if not tokens:
+        return True
+    for tok in tokens:
+        if re.search(r"(?<!\d)" + re.escape(tok) + r"(?!\d)", low):
+            return True
+    return False
 
 
 def has_audit_report(download_root: str, pan: str, ay_value: str) -> bool | None:
@@ -430,6 +483,37 @@ def has_audit_report(download_root: str, pan: str, ay_value: str) -> bool | None
             low = rel.lower()
             if "3cb" not in low and "3cd" not in low:
                 continue
-            if not tokens or any(tok in low for tok in tokens):
+            if _path_has_year(rel, tokens):
                 return True
+    return False
+
+
+_AUDIT_CATEGORY_RE = re.compile(r"3c[ab]\s*-\s*3cd", re.IGNORECASE)
+
+
+async def probe_audit_report(page, step) -> bool:
+    """Whether the portal lists an audit-report form (Form 3CB-3CD or
+    3CA-3CD) under Income Tax Forms for this already-logged-in client.
+
+    ``page`` must already be on the Income Tax Forms category-listing screen
+    (navigate_to_filed_forms()). Reads every visible ``.eachMatCardStyle``
+    card text and looks for a "3CB-3CD"/"3CA-3CD" form code — the same card
+    markup downloader_filed_forms._read_category_cards() uses. Returns True
+    if an audit-report category is present, False otherwise. Raises only on
+    page-level failure so the caller can fall back to has_audit_report()."""
+    cards = await page.evaluate("""() => {
+        const visible = el => {
+            const r = el.getBoundingClientRect();
+            return r.width > 0 && r.height > 0;
+        };
+        return [...document.querySelectorAll('.eachMatCardStyle')]
+            .filter(visible)
+            .map(el => (el.innerText || '').replace(/\\s+/g, ' ').trim())
+            .filter(Boolean);
+    }""")
+    for text in cards or []:
+        if _AUDIT_CATEGORY_RE.search(text):
+            step(f"Audit report form present on portal: {text[:80]}")
+            return True
+    step(f"No audit-report (3CB-3CD/3CA-3CD) category found ({len(cards or [])} cards)")
     return False
