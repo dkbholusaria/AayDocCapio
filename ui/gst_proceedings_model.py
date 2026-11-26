@@ -305,3 +305,59 @@ def amount_value(case: GstCase) -> float:
         return 0.0
     match = re.search(r"-?\d+(\.\d+)?", text)
     return float(match.group(0)) if match else 0.0
+
+
+# ---------------------------------------------------------------------------
+# Proceeding grouping (F-129)
+# ---------------------------------------------------------------------------
+
+def history_key(case: GstCase) -> str:
+    """Stable key used to group related GST rows into one proceeding chain."""
+
+    return (case.case_id or case.ref_id or case.id or "").strip()
+
+
+def proceedings_groups(cases: list[GstCase]) -> list[dict]:
+    """Group GST cases into proceeding chains, newest chain first.
+
+    Each group carries the most recent row as ``latest`` plus every related
+    row (same ``case_id`` / ARN, else reference) newest-first.  This is the
+    data behind the expandable "proceedings history" table; grouping is a
+    presentation concern and does not change storage.
+    """
+
+    buckets: dict[str, list[GstCase]] = {}
+    for case in cases or []:
+        key = history_key(case)
+        if not key:
+            continue
+        buckets.setdefault(key, []).append(case)
+
+    groups: list[dict] = []
+    for key, rows in buckets.items():
+        rows = sorted(rows, key=lambda c: (_sort_date(c.issued), c.id),
+                      reverse=True)
+        latest = rows[0]
+        groups.append({
+            "key": key,
+            "client": latest.client_name,
+            "client_key": latest.client_key,
+            "gstin": latest.gstin,
+            "latest": latest,
+            "cases": rows,
+            "count": len(rows),
+        })
+
+    groups.sort(key=lambda g: (_sort_date(g["latest"].issued),
+                               g["client"].lower()), reverse=True)
+    return groups
+
+
+def group_for_case(cases: list[GstCase], case: GstCase) -> dict | None:
+    """Return the proceeding group that contains ``case`` (or ``None``)."""
+
+    key = history_key(case)
+    for group in proceedings_groups(cases):
+        if group["key"] == key:
+            return group
+    return None

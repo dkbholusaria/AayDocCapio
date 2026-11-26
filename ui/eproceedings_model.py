@@ -1706,3 +1706,101 @@ def sections_in(cases: list[Case]) -> list[str]:
             if section and section.lower() not in seen:
                 seen[section.lower()] = section
     return sorted(seen.values(), key=_section_sort_key)
+
+
+# ---------------------------------------------------------------------------
+# Dashboard radar (F-129)
+# ---------------------------------------------------------------------------
+
+_RADAR_WINDOWS = (("today", 0), ("d7", 7), ("d15", 15), ("d30", 30))
+
+_RADAR_ORDER_KINDS = ("order", "appeal-order")
+
+
+def _radar_age(value, current: date) -> int | None:
+    """Days since a past date; ``None`` when unparsable or in the future."""
+
+    parsed = _parse_date(value)
+    if parsed is None:
+        return None
+    age = _days_between(current, parsed)
+    return age if age >= 0 else None
+
+
+def _radar_until(value, current: date) -> int | None:
+    """Days until a future date; ``None`` when unparsable or in the past."""
+
+    parsed = _parse_date(value)
+    if parsed is None:
+        return None
+    days = _days_between(parsed, current)
+    return days if days >= 0 else None
+
+
+def deadline_radar(cases: list[Case], today: date | None = None) -> dict:
+    """Rolling-window counts behind the e-Proceedings deadline radar.
+
+    Returns four rows, each with ``today`` / ``d7`` / ``d15`` / ``d30``
+    buckets:
+
+    * ``notices_issued`` - notice/penalty docs issued in the last N days.
+    * ``replies_due``    - unreplied notice/penalty docs due in the next N
+      days (overdue docs are excluded; they are surfaced separately).
+    * ``replies_filed``  - reply docs filed in the last N days.
+    * ``orders_passed``  - order/appeal-order docs passed in the last N days.
+
+    A doc is counted once per row in the widest matching bucket only, matching
+    the "today / 7 / 15 / 30" reading of the dashboard (not cumulative).
+    """
+
+    current = today or _today()
+    rows = ("notices_issued", "replies_due", "replies_filed", "orders_passed")
+    radar = {row: {key: 0 for key, _ in _RADAR_WINDOWS} for row in rows}
+
+    for case in cases:
+        for doc in case.docs:
+            if doc.kind in ("notice", "penalty"):
+                age = _radar_age(doc.issued, current)
+                if age is not None:
+                    _bump(radar["notices_issued"], age)
+                if _is_unreplied(doc):
+                    until = _radar_until(doc.reply_deadline, current)
+                    if until is not None:
+                        _bump(radar["replies_due"], until)
+            if doc.kind == "reply":
+                age = _radar_age(doc.issued, current)
+                if age is None:
+                    age = _radar_age(doc.served, current)
+                if age is not None:
+                    _bump(radar["replies_filed"], age)
+            if doc.kind in _RADAR_ORDER_KINDS:
+                age = _radar_age(doc.issued, current)
+                if age is not None:
+                    _bump(radar["orders_passed"], age)
+
+    return radar
+
+
+def _bump(bucket: dict, days: int) -> None:
+    """Increment the narrowest window in ``bucket`` that contains ``days``."""
+
+    for key, limit in _RADAR_WINDOWS:
+        if days <= limit:
+            bucket[key] += 1
+            return
+
+
+def related_proceedings(case: Case, cases: list[Case]) -> list[Case]:
+    """Other cases for the same assessee (same PAN), newest first.
+
+    Used by the "linked documents & cases" card to surface the same client's
+    other assessment years without inventing a new relationship model.
+    """
+
+    pan = (case.pan or "").upper()
+    if not pan:
+        return []
+    siblings = [other for other in cases
+                if other is not case
+                and (other.pan or "").upper() == pan]
+    return sort_cases(siblings, mode="deadline")
