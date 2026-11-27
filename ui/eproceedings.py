@@ -38,9 +38,11 @@ from ui.eproceedings_model import (
     _parse_date,
     build_cases,
     compute_limitations,
+    deadline_radar,
     derive_status,
     filter_cases,
     kpis,
+    related_proceedings,
     sections_in,
     sort_cases,
     visible_docs,
@@ -101,6 +103,20 @@ _DOC_MIX = (
     ("penalty", "Penalties / demands"),
     ("appeal-order", "Appeal orders"),
     ("remand", "Remands"),
+)
+
+_RADAR_COLS = (
+    ("today", "Today"),
+    ("d7", "7 days"),
+    ("d15", "15 days"),
+    ("d30", "30 days"),
+)
+
+_RADAR_ROWS = (
+    ("notices_issued", "Notices issued"),
+    ("replies_due", "Replies due"),
+    ("replies_filed", "Replies filed"),
+    ("orders_passed", "Orders passed"),
 )
 
 _KIND_DOT = {
@@ -303,6 +319,7 @@ class EProceedingsWorkspace(QWidget):
         self._case_cards = []
         self._kpi_cards = {}
         self._kpi_numbers = {}
+        self._radar_labels = {}
         self._kpi_pill = None
         self._kpi_pill_label = None
         self._kpi_clear_btn = None
@@ -344,6 +361,7 @@ class EProceedingsWorkspace(QWidget):
         }
 
         self._refresh_kpis()
+        self._refresh_radar()
         self._refresh_section_filter()
 
         filtered = self._filtered_cases()
@@ -437,6 +455,9 @@ class EProceedingsWorkspace(QWidget):
             kpi_row.addWidget(card, 1)
         outer.addLayout(kpi_row)
 
+        self._radar_panel = self._build_radar_panel()
+        outer.addWidget(self._radar_panel)
+
         split = QHBoxLayout()
         split.setSpacing(14)
         self._case_panel = self._build_case_panel()
@@ -457,6 +478,68 @@ class EProceedingsWorkspace(QWidget):
             f"font-size:11px; font-weight:600;")
         self._toast_label.setVisible(False)
         self._toast_label.raise_()
+
+    def _build_radar_panel(self) -> QFrame:
+        """Compact Today / 7 / 15 / 30 deadline radar (F-129).
+
+        Shown in browse mode above the case list; hidden once a case is opened
+        so the detail workspace keeps its vertical room.
+        """
+        t = _t()
+        frame = QFrame()
+        frame.setObjectName("EprocRadar")
+        frame.setFixedHeight(104)
+        frame.setStyleSheet(
+            f"QFrame#EprocRadar {{ background:{t.bg_panel};"
+            f"border:1px solid {t.border}; border-radius:10px; }}")
+        row = QHBoxLayout(frame)
+        row.setContentsMargins(14, 10, 14, 10)
+        row.setSpacing(18)
+
+        intro = QVBoxLayout()
+        intro.setSpacing(1)
+        intro.addWidget(_lbl("Deadline radar", 12, bold=True))
+        intro.addWidget(_lbl(
+            "Rolling windows \u00b7 overdue items are counted separately",
+            9, color=t.text_muted))
+        intro.addStretch(1)
+        row.addLayout(intro, 0)
+
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(0)
+        grid.setVerticalSpacing(3)
+        grid.addWidget(QLabel(""), 0, 0)
+        for col, (_key, caption) in enumerate(_RADAR_COLS, start=1):
+            head = _lbl(caption, 9, bold=True, color=t.text_muted)
+            head.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            grid.addWidget(head, 0, col)
+        for index, (key, label) in enumerate(_RADAR_ROWS, start=1):
+            grid.addWidget(_lbl(label, 10, color=t.text_primary), index, 0)
+            for col, (window, _caption) in enumerate(_RADAR_COLS, start=1):
+                value = _lbl("0", 12, bold=True, color=t.text_muted)
+                value.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                value.setMinimumWidth(74)
+                self._radar_labels[(key, window)] = value
+                grid.addWidget(value, index, col)
+        row.addLayout(grid, 1)
+        return frame
+
+    def _refresh_radar(self) -> None:
+        t = _t()
+        snapshot = deadline_radar(self._cases)
+        for (key, window), label in self._radar_labels.items():
+            value = int((snapshot.get(key) or {}).get(window, 0))
+            label.setText(str(value))
+            if value == 0:
+                color = t.text_muted
+            elif key == "replies_due":
+                color = t.error if window in ("today", "d7") else t.warning
+            else:
+                color = t.text_primary
+            label.setStyleSheet(
+                f"background:transparent; border:none; color:{color};"
+                f"font-size:12px; font-weight:700;")
 
     def _build_case_panel(self) -> QWidget:
         t = _t()
@@ -581,6 +664,8 @@ class EProceedingsWorkspace(QWidget):
         if getattr(self, "_filters_box", None) is not None:
             self._filters_box.setMaximumWidth(16777215)
             self._filters_box.setVisible(True)
+        if getattr(self, "_radar_panel", None) is not None:
+            self._radar_panel.setVisible(True)
 
     def _back_to_browse(self) -> None:
         """Detail header's 'Back to cases' button."""
@@ -599,6 +684,8 @@ class EProceedingsWorkspace(QWidget):
             self._case_panel.setMinimumWidth(420)
         if getattr(self, "_filters_box", None) is not None:
             self._filters_box.setVisible(False)
+        if getattr(self, "_radar_panel", None) is not None:
+            self._radar_panel.setVisible(False)
 
     def _build_detail_panel(self) -> QWidget:
         t = _t()
@@ -926,6 +1013,34 @@ class EProceedingsWorkspace(QWidget):
         top.addWidget(right_host, 0, Qt.AlignmentFlag.AlignTop)
         body.addLayout(top)
 
+        status_text = "Open" if case.case_open else "Closed"
+        s_bg, s_fg = _status_tint(status_text)
+        foot = QHBoxLayout()
+        foot.setContentsMargins(0, 0, 0, 0)
+        foot.setSpacing(4)
+        foot.addWidget(_pill(status_text, s_bg, s_fg))
+        case_urgency = self._case_urgency(case)
+        if case_urgency in ("High", "Medium"):
+            u_bg, u_fg = ((t.error_bg, t.error) if case_urgency == "High"
+                          else (t.warning_bg, t.warning))
+            foot.addWidget(_pill(f"{case_urgency} urgency", u_bg, u_fg))
+        if days is not None:
+            if days == 0:
+                phrase = "Due today"
+            elif days > 0:
+                phrase = f"due in {days} days"
+            else:
+                phrase = f"overdue {abs(days)}d"
+            if days <= 7:
+                p_bg, p_fg = t.error_bg, t.error
+            elif days <= 30:
+                p_bg, p_fg = t.warning_bg, t.warning
+            else:
+                p_bg, p_fg = t.bg_table_alt, t.text_muted
+            foot.addWidget(_pill(phrase, p_bg, p_fg))
+        foot.addStretch(1)
+        body.addLayout(foot)
+
         for doc in visible_docs(case, section, urgency):
             if doc.kind not in ("notice", "penalty"):
                 continue
@@ -1032,6 +1147,17 @@ class EProceedingsWorkspace(QWidget):
         if not dates:
             return None
         return (min(dates) - date.today()).days
+
+    @staticmethod
+    def _case_urgency(case) -> str:
+        """Highest document urgency in a case (High > Medium > Low)."""
+
+        rank = {"High": 3, "Medium": 2, "Low": 1, "": 0}
+        best = ""
+        for doc in case.docs or []:
+            if rank.get(doc.urg, 0) > rank.get(best, 0):
+                best = doc.urg or ""
+        return best or "Low"
 
     # ------------------------------------------------------------------
     # Detail shell
@@ -1367,6 +1493,7 @@ class EProceedingsWorkspace(QWidget):
                 if doc.kind in ("order", "appeal-order", "remand")]
         if not docs:
             body.addWidget(_muted("No orders or appeal links recorded."))
+            self._add_related_proceedings(body, case)
             body.addStretch(1)
             return frame
 
@@ -1409,8 +1536,40 @@ class EProceedingsWorkspace(QWidget):
                 block.addWidget(_muted("No links yet.", 9))
             body.addLayout(block)
 
+        self._add_related_proceedings(body, case)
         body.addStretch(1)
         return frame
+
+    def _add_related_proceedings(self, body: QVBoxLayout, case) -> None:
+        """List the same client's other assessment years (same PAN)."""
+
+        t = _t()
+        related = related_proceedings(case, self._cases)
+        if not related:
+            return
+        body.addSpacing(6)
+        body.addWidget(_lbl("Related proceedings", 9, bold=True,
+                            color=t.text_muted))
+        for other in related[:6]:
+            row = QHBoxLayout()
+            row.setSpacing(6)
+            link = QPushButton(f"{other.year_label}  \u00b7  {other.proc_name}")
+            link.setFlat(True)
+            link.setCursor(Qt.CursorShape.PointingHandCursor)
+            link.setStyleSheet(
+                f"QPushButton {{ background:transparent; border:none;"
+                f"color:{t.accent}; font-size:9px; padding:0;"
+                f"text-align:left; }}"
+                f"QPushButton:hover {{ color:{t.accent_hover}; }}")
+            link.setToolTip(f"Open {other.year_label} for {other.name}")
+            link.clicked.connect(
+                lambda clicked=False, cid=other.id: self.goto_case(cid))
+            row.addWidget(link, 1)
+            status_color = t.success if other.case_open else t.text_muted
+            row.addWidget(_lbl(
+                "Open" if other.case_open else "Closed", 8,
+                color=status_color))
+            body.addLayout(row)
 
     def _build_hearings_card(self, case) -> QFrame:
         """Virtual hearing (VC) data: date/time, status, recording link,
