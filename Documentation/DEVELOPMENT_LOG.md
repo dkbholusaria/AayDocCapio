@@ -1136,3 +1136,78 @@ The "For your Information" tab click still occasionally times out at the end
 of a run when a lingering overlay blocks it (order downloads themselves were
 verified). Folders downloaded before this fix still lack their extra order
 documents — re-running e-Proceedings for those clients will fill them in.
+
+---
+
+## F-129 — e-Proceedings, GST and Litigation UX refresh (2026-11-26)
+
+Issue: #129. Plan: `PlansofThisProject/F-129_eproc_gst_litigation_ux.md`.
+Mockup: `docs/eproc_gst_litigation_mockup.html`.
+
+### Goal
+
+Align the three compliance surfaces with the reviewed mockup (built after
+studying SaralKar, GST NoticeDesk and VIDYATOM): clearer dates/times, status
+and urgency, and explicit links between related documents, years and cases.
+Presentation only — no automation, storage-schema or portal-flow change.
+
+### Model helpers (pure, tested)
+
+- `ui/eproceedings_model.py`
+  - `deadline_radar(cases, today=None)` — Today / 7 / 15 / 30 day buckets for
+    notices issued, replies due, replies filed and orders passed.
+  - `related_proceedings(case, cases)` — same-PAN sibling cases for the
+    "related proceedings" card.
+- `ui/gst_proceedings_model.py`
+  - `history_key`, `proceedings_groups`, `group_for_case` — group related GST
+    rows by case/ARN into newest-first proceeding chains for the expandable
+    history table.
+- Tests: `test_eproc_radar.py`, `test_gst_proceedings_groups.py` (synthetic
+  placeholders only).
+
+### Income Tax e-Proceedings (`ui/eproceedings.py`)
+
+- New compact **Deadline radar** above the case list (browse mode only), fed by
+  `deadline_radar()`; replies-due cells are tinted by urgency.
+- Case cards now show status, urgency and a due-in-N-days / overdue badge.
+- Overview "Linked chain" card additionally lists the same client's other
+  assessment years and opens them via `goto_case()`.
+
+### GST e-Proceedings (`ui/gst_proceedings.py`)
+
+- Register table expanded to Issued · Client/GSTIN · Type · Description ·
+  ARN/Reference · Due · Amount · Status.
+- Type filter added beside the status filter; KPI row now includes
+  "Due in 7 days" and total "Demand" (parsed via `amount_value`).
+- New **Proceedings history** table under the register (newest first, grouped
+  by case/ARN via `proceedings_groups`); selecting a history row selects the
+  matching register row.
+- Attachments in the detail pane grouped under Notices / Replies / Orders.
+
+### Litigation hub (`ui/litigation/*`)
+
+- Dashboard: selected-case side panel with module, client, title, status,
+  urgency and next milestone; "Open case" emits the existing
+  `openCaseRequested` signal. Table selection updates the panel.
+- Calendar: deadline summary (due this month / overdue / hearings /
+  limitations); existing open-only event rule preserved.
+- Matters: fee-exposure cards (agreed / billed / received / outstanding) above
+  the ledger.
+
+### Verification
+
+- `test_e_proceedings_parse.py`, `test_eproc_radar.py`,
+  `test_eproc_scheduler.py`, `test_eproc_tab_switch.py`,
+  `test_eproc_doc_modal.py`, `test_eproc_order_grouping.py`,
+  `test_gst_proceedings.py`, `test_gst_proceedings_groups.py`,
+  `test_litigation_adapter.py`, `test_litigation_calendar.py`,
+  `test_litigation_store.py`, `test_theme_contrast.py`,
+  `test_no_real_identifiers.py` — 105 passed.
+- Offscreen construction/refresh smoke tests for all three workspaces, plus a
+  synthetic GST `_meta.json` run to exercise the register + history tables.
+
+### Notes
+
+- Sample data in the mockup and tests uses only allowlisted placeholders.
+- Existing KPI filters, case selection, `goto_case()`, open-file/open-folder
+  and auto-fetch flows are unchanged.
