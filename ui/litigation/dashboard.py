@@ -7,6 +7,7 @@ from datetime import date
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QHeaderView, QAbstractItemView, QComboBox, QMenu, QFrame, QLabel, QLineEdit,
+    QPushButton, QSizePolicy,
 )
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QColor
@@ -31,6 +32,7 @@ class LitigationDashboard(QWidget):
         self._events = []
         self._rows = []
         self._matter_names = {}
+        self._selected_case = None
         self._build()
 
     def _build(self):
@@ -68,6 +70,9 @@ class LitigationDashboard(QWidget):
         filt.addWidget(self._search, 1)
         outer.addLayout(filt)
 
+        split = QHBoxLayout()
+        split.setSpacing(12)
+
         self._table = QTableWidget(0, len(_COLS))
         self._table.setHorizontalHeaderLabels(list(_COLS))
         self._table.verticalHeader().setVisible(False)
@@ -80,6 +85,7 @@ class LitigationDashboard(QWidget):
         self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._table.customContextMenuRequested.connect(self._on_menu)
         self._table.cellDoubleClicked.connect(self._on_double_click)
+        self._table.itemSelectionChanged.connect(self._on_selection_changed)
         self._table.setStyleSheet(self._table_qss(t))
         hdr = self._table.horizontalHeader()
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
@@ -91,7 +97,87 @@ class LitigationDashboard(QWidget):
         self._table.setColumnWidth(5, 110)
         self._table.setColumnWidth(6, 80)
         hdr.setStretchLastSection(True)
-        outer.addWidget(self._table, 1)
+        split.addWidget(self._table, 1)
+
+        self._side = self._mk_side(t)
+        split.addWidget(self._side)
+
+        outer.addLayout(split, 1)
+        self._render_detail(None)
+
+    def _mk_side(self, t):
+        side = QFrame()
+        side.setObjectName("litSide")
+        side.setFixedWidth(300)
+        side.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        side.setStyleSheet(self._side_qss(t))
+        lay = QVBoxLayout(side)
+        lay.setContentsMargins(14, 12, 14, 14)
+        lay.setSpacing(6)
+
+        head = QHBoxLayout()
+        heading = QLabel("Case detail")
+        heading.setStyleSheet(
+            f"color:{t.text_muted}; font-size:11px; font-weight:bold;"
+            " border:none; background:transparent;")
+        head.addWidget(heading)
+        head.addStretch(1)
+        self._side_module = QLabel("")
+        self._side_module.setStyleSheet(
+            f"color:{t.accent_litigation}; font-size:11px; font-weight:bold;"
+            " border:none; background:transparent;")
+        head.addWidget(self._side_module)
+        lay.addLayout(head)
+
+        self._side_title = QLabel("")
+        self._side_title.setWordWrap(True)
+        self._side_title.setStyleSheet(
+            f"color:{t.text_primary}; font-size:13px; font-weight:bold;"
+            " border:none; background:transparent;")
+        lay.addWidget(self._side_title)
+
+        self._side_client = QLabel("")
+        self._side_client.setWordWrap(True)
+        self._side_client.setStyleSheet(
+            f"color:{t.text_muted}; font-size:11px;"
+            " border:none; background:transparent;")
+        lay.addWidget(self._side_client)
+
+        self._side_badges = QLabel("")
+        self._side_badges.setWordWrap(True)
+        self._side_badges.setTextFormat(Qt.TextFormat.RichText)
+        self._side_badges.setStyleSheet("border:none; background:transparent;")
+        lay.addWidget(self._side_badges)
+
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setStyleSheet(f"color:{t.border}; background:{t.border}; border:none;")
+        line.setFixedHeight(1)
+        lay.addWidget(line)
+
+        self._side_meta = QLabel("")
+        self._side_meta.setWordWrap(True)
+        self._side_meta.setTextFormat(Qt.TextFormat.RichText)
+        self._side_meta.setStyleSheet(
+            f"color:{t.text_primary}; font-size:11px;"
+            " border:none; background:transparent;")
+        lay.addWidget(self._side_meta)
+
+        self._side_milestone = QLabel("")
+        self._side_milestone.setWordWrap(True)
+        self._side_milestone.setStyleSheet(
+            f"color:{t.text_primary}; font-size:11.5px;"
+            " border:none; background:transparent;")
+        lay.addWidget(self._side_milestone)
+
+        lay.addStretch(1)
+
+        self._side_open = QPushButton("Open case")
+        self._side_open.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._side_open.setStyleSheet(self._open_btn_qss(t))
+        self._side_open.clicked.connect(self._open_selected)
+        lay.addWidget(self._side_open)
+        return side
 
     def _mk_kpi(self, caption, t):
         card = QFrame()
@@ -165,6 +251,7 @@ class LitigationDashboard(QWidget):
     def _render(self, cases):
         t = _t()
         self._rows = cases
+        self._table.blockSignals(True)
         self._table.setRowCount(len(cases))
         for row, case in enumerate(cases):
             matter = self._matter_names.get(case.matter_id, "") if case.matter_id else ""
@@ -190,6 +277,103 @@ class LitigationDashboard(QWidget):
                     item.setForeground(QColor(t.text_muted))
                 self._table.setItem(row, col, item)
         self._table.resizeRowsToContents()
+        self._table.clearSelection()
+        self._table.blockSignals(False)
+        self._selected_case = None
+        self._render_detail(None)
+
+    # -- side panel -----------------------------------------------------
+
+    def _next_milestone(self, case):
+        today = date.today()
+        candidates = [
+            e for e in self._events
+            if e.case_uid == case.uid and getattr(e, "visible", True)
+            and isinstance(e.date, date)
+        ]
+        upcoming = [e for e in candidates if e.date >= today]
+        pool = upcoming or candidates
+        if not pool:
+            return ""
+        ev = min(pool, key=lambda e: e.date)
+        delta = (ev.date - today).days
+        when = ev.date.strftime("%d %b %Y")
+        if delta < 0:
+            rel = f"overdue {abs(delta)}d"
+        elif delta == 0:
+            rel = "today"
+        else:
+            rel = f"in {delta}d"
+        return f"{ev.kind_label} · {when} ({rel})"
+
+    def _render_detail(self, case):
+        t = _t()
+        self._selected_case = case
+        if case is None:
+            self._side_module.setText("")
+            self._side_title.setText("No case selected")
+            self._side_client.setText(
+                "Select a row to see case detail and its next milestone.")
+            self._side_badges.setText("")
+            self._side_meta.setText("")
+            self._side_milestone.setText("")
+            self._side_open.setEnabled(False)
+            return
+        self._side_module.setText(case.module_label)
+        self._side_title.setText(case.title or "Untitled case")
+        client = case.client_name or case.client_pan or "—"
+        if case.client_pan and case.client_name:
+            client = f"{case.client_name} · {case.client_pan}"
+        self._side_client.setText(client)
+
+        st_color = t.success if case.is_open else t.text_muted
+        urg_color = {"High": t.error, "Medium": t.warning,
+                     "Low": t.success}.get(case.urgency, t.text_muted)
+        badges = [f'<span style="color:{st_color}; font-weight:bold;">'
+                  f"{self._esc(case.status or '—')}</span>"]
+        if case.urgency:
+            badges.append(f'<span style="color:{urg_color}; font-weight:bold;">'
+                          f"{self._esc(case.urgency)} urgency</span>")
+        self._side_badges.setText(" &nbsp;·&nbsp; ".join(badges))
+
+        matter = self._matter_names.get(case.matter_id, "") if case.matter_id else ""
+        rows = [
+            ("Type", case.case_type.title() if case.case_type else "—"),
+            ("AY / Period", case.assessment_year or "—"),
+            ("Matter", matter or "—"),
+        ]
+        meta_lines = []
+        for label, val in rows:
+            meta_lines.append(
+                f'<span style="color:{t.text_muted};">{self._esc(label)}</span>'
+                f"&nbsp;&nbsp;{self._esc(str(val))}")
+        self._side_meta.setText("<br>".join(meta_lines))
+
+        milestone = self._next_milestone(case)
+        if milestone:
+            self._side_milestone.setText(
+                f'<span style="color:{t.text_muted};">Next milestone</span><br>'
+                f'<span style="font-weight:bold; color:{t.text_primary};">'
+                f"{self._esc(milestone)}</span>")
+        else:
+            self._side_milestone.setText(
+                f'<span style="color:{t.text_muted};">Next milestone</span><br>'
+                f'<span style="color:{t.text_muted};">No open deadlines</span>')
+        self._side_open.setEnabled(True)
+
+    @staticmethod
+    def _esc(text):
+        return (str(text).replace("&", "&amp;").replace("<", "&lt;")
+                .replace(">", "&gt;"))
+
+    def _on_selection_changed(self):
+        case = self._case_at(self._table.currentRow())
+        self._render_detail(case)
+
+    def _open_selected(self):
+        if self._selected_case is not None:
+            self.openCaseRequested.emit(
+                self._selected_case.module, self._selected_case.native_id)
 
     # -- interaction ----------------------------------------------------
 
@@ -267,6 +451,9 @@ class LitigationDashboard(QWidget):
         self._table.setStyleSheet(self._table_qss(t))
         self._module_filter.setStyleSheet(self._combo_qss(t))
         self._search.setStyleSheet(self._search_qss(t))
+        self._side.setStyleSheet(self._side_qss(t))
+        self._side_open.setStyleSheet(self._open_btn_qss(t))
+        self._render_detail(self._selected_case)
 
     @staticmethod
     def _table_qss(t):
@@ -296,4 +483,23 @@ class LitigationDashboard(QWidget):
             f" background:{t.bg_input}; color:{t.text_primary};"
             f" border:1px solid {t.border}; border-radius:6px; padding:5px 8px; }}"
             f"QLineEdit:focus {{ border:1px solid {t.border_focus}; }}"
+        )
+
+    @staticmethod
+    def _side_qss(t):
+        return (
+            "QFrame#litSide {"
+            f" background:{t.bg_panel}; border:1px solid {t.border};"
+            " border-radius:10px; }"
+        )
+
+    @staticmethod
+    def _open_btn_qss(t):
+        return (
+            "QPushButton {"
+            f" background:{t.accent_litigation}; color:{t.accent_text};"
+            " border:none; border-radius:6px; padding:7px 14px;"
+            " font-weight:bold; font-size:12px; }"
+            f"QPushButton:disabled {{ background:{t.border};"
+            f" color:{t.text_muted}; }}"
         )
