@@ -840,11 +840,17 @@ async def download_filed_returns(
     `on_year_start(assessment_year)`, if given, fires right before that
     year's download begins — lets the caller update a per-year "now
     downloading" status instead of only finding out once it's done."""
-    from automation.return_status import scan_latest_status
+    from automation.return_status import scan_full_status
 
     step = make_step_logger(log_callback, "FILEDRET")
     results: dict[str, tuple[bool, str, list[dict], dict]] = {}
-    empty_status = {"ok": False, "reason": "", "status": "", "status_date": "", "filing_date": "", "ack_no": ""}
+    empty_status = {
+        "ok": False, "reason": "", "status": "", "status_date": "",
+        "filing_date": "", "ack_no": "", "filing_type": "", "filed": None,
+        "section": "", "revised": None, "revised_section": "", "rectified": None,
+        "e_verified": None, "processed": None, "refund_status": "",
+        "everify_pending": None,
+    }
     try:
         filed_returns_page = await navigate_to_view_filed_returns(page, log_callback)
     except Exception as e:
@@ -863,7 +869,7 @@ async def download_filed_returns(
             pan=pan, dob=dob, filing_scope=filing_scope, previous_year=previous_year,
         )
         try:
-            status_info = await scan_latest_status(filed_returns_page, assessment_year, step)
+            status_info = await scan_full_status(filed_returns_page, assessment_year, step)
         except Exception as e:
             step(f"[Warning] Could not read processing status for AY {assessment_year} (continuing): {e}")
             status_info = dict(empty_status)

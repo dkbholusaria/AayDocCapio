@@ -45,7 +45,7 @@ from ui.widgets import StyledComboBox, CheckableComboBox, ClickableCard
 from ui.dialogs import (
     ManageYearsDialog, BatchProgressDialog, DownloadPickerDialog,
     GenerateChallansDialog, ChallanGenerationProgressDialog,
-    ReturnStatusDialog, ReturnStatusProgressDialog, ReturnStatusTab, EmailLogDialog,
+    ReturnStatusProgressDialog, ReturnStatusTab, EmailLogDialog,
     EProceedingsDialog, EAutoFetchSettingsDialog,
 )
 from ui.log_history import LogHistoryDialog, LogStore
@@ -264,6 +264,7 @@ class AayDocCapioApp(QMainWindow):
     _show_tds_challan_progress_signal = pyqtSignal(list, str, str, str)
     _return_status_done_signal = pyqtSignal()
     _show_return_status_progress_signal = pyqtSignal(list, str)   # (targets, ay_value)
+    _audit_probe_done_signal = pyqtSignal(dict)   # {pan: bool|None}
     _eproc_auto_done_signal = pyqtSignal()
     _gst_dl_done_signal = pyqtSignal()   # worker → main thread: finish GST dialog + re-enable controls
 
@@ -342,6 +343,8 @@ class AayDocCapioApp(QMainWindow):
         self._retstatus_on_done = None
         self._return_status_done_signal.connect(self._on_return_status_batch_done)
         self._show_return_status_progress_signal.connect(self._show_return_status_progress_dialog)
+        self._audit_probe_running = False
+        self._audit_probe_done_signal.connect(self._on_audit_probe_done)
 
         self._eproc_auto_running = False
         self._eproc_auto_loop = None
@@ -639,8 +642,8 @@ class AayDocCapioApp(QMainWindow):
         # occasionally, not a per-run action like Downloads/E-Pay Tax, so it
         # only gets a menu entry, no toolbar button.
         return_status_menu = menubar.addMenu("Return Status")
-        act_return_status = QAction("Check Processing Status…", self)
-        act_return_status.triggered.connect(self._open_return_status_dialog)
+        act_return_status = QAction("Open Return Status tab", self)
+        act_return_status.triggered.connect(self._open_return_status_tab)
         return_status_menu.addAction(act_return_status)
         self._return_status_menu = return_status_menu
 
@@ -2714,7 +2717,7 @@ class AayDocCapioApp(QMainWindow):
         from the persisted return-status data. "Fetch Selected" re-checks the
         ticked clients live from the portal via start_return_status_check()
         (the same worker/progress-dialog flow as before); this tab refreshes
-        itself when that batch finishes. Replaces the old ReturnStatusDialog.
+        itself when that batch finishes. Replaces the old modal dialog.
         """
         def _root_getter():
             try:
@@ -2728,6 +2731,7 @@ class AayDocCapioApp(QMainWindow):
             start_fetch=self._on_retstatus_tab_fetch,
             log_callback=self.log,
             parent=self,
+            audit_probe=self.start_audit_probe,
         )
         return self._retstatus_tab
 
@@ -6322,15 +6326,18 @@ class AayDocCapioApp(QMainWindow):
 
     # ── F-67: ITR Processing Status ──────────────────────────────────────────
 
-    def _open_return_status_dialog(self):
-        """Menu entry point — opens the browse/filter/select window. The
-        dialog itself calls back into start_return_status_check() below
-        when the user actually wants to re-check something; it never runs
-        Playwright itself."""
-        ReturnStatusDialog(self, self.vault, self._ay_entries).exec()
+    def _open_return_status_tab(self):
+        """Menu entry point — jumps to the inline Income Tax ▸ Return Status
+        tab (F-121). The old modal dialog is retired; everything now lives in
+        the hub tab, which can still re-check clients live via Fetch Selected."""
+        try:
+            self._nav_shell.go("it")
+        except Exception:
+            pass
+        self._switch_it_tab(3)
 
     def start_return_status_check(self, ay_value: str, targets: list, on_done=None):
-        """Called by ReturnStatusDialog with the clients/AY the user picked
+        """Called by the Return Status tab with the clients/AY the user picked
         and checked. `on_done` is a plain callback (not a Qt signal) —
         _on_return_status_batch_done invokes it once the batch actually
         finishes, safely on the main thread, since that method is itself
@@ -6435,7 +6442,8 @@ class AayDocCapioApp(QMainWindow):
                             rectified=result.get("rectified"),
                             e_verified=result.get("e_verified"),
                             processed=result.get("processed"),
-                            refund_status=result.get("refund_status", ""))
+                            refund_status=result.get("refund_status", ""),
+                            everify_pending=result.get("everify_pending"))
                         status_display = result["status"]
                         if result.get("status_date"):
                             status_display += f" ({result['status_date']})"
@@ -6458,6 +6466,95 @@ class AayDocCapioApp(QMainWindow):
             for idx in range(len(targets)):
                 if idx not in processed_indices:
                     set_status(idx, "⏹ Stopped")
+
+    def start_audit_probe(self, ay_value: str, pans: list):
+        """ReturnStatusTab "Check Audit Reports" → query the portal's Income
+        Tax Forms listing for each audit-applicable client and report whether
+        a 3CB-3CD / 3CA-3CD audit report is present. Runs in a background
+        thread (never blocks the UI); results land via _audit_probe_done_signal.
+
+        No PAN/name is logged here beyond the masked form the rest of the app
+        already uses."""
+        if not pans:
+            return
+        if self._audit_probe_running:
+            self.log("[Audit Probe] A check is already running — ignoring.")
+            return
+        if self._retstatus_running:
+            self.log("[Audit Probe] Return-status check is running — try again after it finishes.")
+            return
+        self._audit_probe_running = True
+        targets = []
+        by_pan = {c.get("pan", "").upper(): c for c in self.vault.get_all_assessees()}
+        for pan in pans:
+            c = by_pan.get(pan)
+            if c:
+                targets.append(c)
+        self.log(f"[System] Checking audit reports for {len(targets)} client(s) | AY {ay_value}")
+        threading.Thread(
+            target=self._run_audit_probe_wrapper,
+            args=(targets,), daemon=True).start()
+
+    def _on_audit_probe_done(self, results: dict):
+        self._audit_probe_running = False
+        tab = getattr(self, "_retstatus_tab", None)
+        if tab is not None:
+            try:
+                tab.set_audit_report_results(results)
+            except Exception as e:
+                self.log(f"[Audit Probe] Could not apply results: {e}")
+
+    def _run_audit_probe_wrapper(self, targets):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(self._execute_audit_probe(targets))
+        except Exception as e:
+            self.log(f"[System Error] Audit report check crashed: {e}")
+        finally:
+            loop.close()
+            self._audit_probe_running = False
+
+    async def _execute_audit_probe(self, targets):
+        from automation.return_status import probe_audit_report
+        from automation.downloader_filed_forms import navigate_to_filed_forms
+        from automation.downloader import make_step_logger
+
+        step = make_step_logger(self.log, "AUDITPROBE")
+        results: dict = {}
+        try:
+            interactive = not self.chk_headless.isChecked()
+            context = await browser_manager.get_context(
+                log_callback=self.log, interactive=interactive)
+        except Exception as e:
+            self.log(f"[System Error] Browser init failed: {e}")
+            self._audit_probe_done_signal.emit(results)
+            return
+
+        try:
+            for target in targets:
+                pan = target.get("pan", "")
+                name = target.get("name", "")
+                masked = pan[:3] + "XXXXXXX" if pan and len(pan) >= 3 else "UNKNOWN"
+                page = None
+                try:
+                    page = await login_itd(pan, target.get("password"), self.log, context,
+                                           is_running=lambda: self._audit_probe_running)
+                    await navigate_to_filed_forms(page, self.log)
+                    results[pan.upper()] = await probe_audit_report(page, step)
+                    self.log(f"[Audit Probe] {masked} ({name}): "
+                             f"{'filed' if results[pan.upper()] else 'not filed'}")
+                except Exception as e:
+                    results[pan.upper()] = None
+                    self.log(f"[Audit Probe] {masked} ({name}): could not check — {e}")
+                finally:
+                    if page:
+                        try:
+                            await logout_itd(page, self.log)
+                        except Exception:
+                            pass
+        finally:
+            self._audit_probe_done_signal.emit(results)
 
     def _on_return_status_batch_done(self):
         self.log("[System] ITR Processing Status check idle.")
@@ -7691,7 +7788,16 @@ class AayDocCapioApp(QMainWindow):
                                         pan, _ay_value, _status_info.get("status", ""),
                                         status_date=_status_info.get("status_date", ""),
                                         filing_date=_status_info.get("filing_date", ""),
-                                        ack_no=_status_info.get("ack_no", ""))
+                                        ack_no=_status_info.get("ack_no", ""),
+                                        filed=_status_info.get("filed"),
+                                        section=_status_info.get("section", ""),
+                                        revised=_status_info.get("revised"),
+                                        revised_section=_status_info.get("revised_section", ""),
+                                        rectified=_status_info.get("rectified"),
+                                        e_verified=_status_info.get("e_verified"),
+                                        processed=_status_info.get("processed"),
+                                        refund_status=_status_info.get("refund_status", ""),
+                                        everify_pending=_status_info.get("everify_pending"))
                                 except Exception as _rs_err:
                                     self.log(f"[Warning] Could not save processing status for AY {_ay_value}: {_rs_err}")
                         elif doc_type == "request_ais":
@@ -7811,7 +7917,16 @@ class AayDocCapioApp(QMainWindow):
                                             pan, _ay_value, _status_info.get("status", ""),
                                             status_date=_status_info.get("status_date", ""),
                                             filing_date=_status_info.get("filing_date", ""),
-                                            ack_no=_status_info.get("ack_no", ""))
+                                            ack_no=_status_info.get("ack_no", ""),
+                                            filed=_status_info.get("filed"),
+                                            section=_status_info.get("section", ""),
+                                            revised=_status_info.get("revised"),
+                                            revised_section=_status_info.get("revised_section", ""),
+                                            rectified=_status_info.get("rectified"),
+                                            e_verified=_status_info.get("e_verified"),
+                                            processed=_status_info.get("processed"),
+                                            refund_status=_status_info.get("refund_status", ""),
+                                            everify_pending=_status_info.get("everify_pending"))
                                     except Exception as _rs_err:
                                         self.log(f"[Warning] Could not save processing status for AY {_ay_value}: {_rs_err}")
                             elif doc_type == "request_ais":

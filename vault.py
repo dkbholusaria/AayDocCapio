@@ -545,14 +545,15 @@ class VaultManager:
                               status_date: str = "", filing_date: str = "", ack_no: str = "",
                               filed=None, section: str = "", revised=None,
                               revised_section: str = "", rectified=None,
-                              e_verified=None, processed=None, refund_status: str = ""):
+                              e_verified=None, processed=None, refund_status: str = "",
+                              everify_pending=None):
         """Record the latest known ITR processing status for a client/AY.
         `ts` is when THIS app last checked, distinct from both `status_date`
         (the date the PORTAL itself shows against that status step, e.g.
         "Aug 3, 2026") and `filing_date` (when the return was filed).
-        The optional flags (filed/revised/rectified/e_verified/processed)
-        default to None when unknown; `refund_status` is "paid", "adjusted",
-        "pending" or "" for unspecified."""
+        The optional flags (filed/revised/rectified/e_verified/processed/
+        everify_pending) default to None when unknown; `refund_status` is
+        "paid", "adjusted", "pending" or "" for unspecified."""
         raw_data = self._get_raw()
         pan = pan.strip().upper()
         hist = raw_data.setdefault("return_status_history", {})
@@ -570,14 +571,16 @@ class VaultManager:
             "e_verified": e_verified,
             "processed": processed,
             "refund_status": refund_status,
+            "everify_pending": everify_pending,
             "ts": datetime.datetime.now().strftime("%d-%b-%Y %H:%M:%S"),
         }
         self._save_raw(raw_data)
 
     def get_return_status(self, ay_label: str) -> dict:
-        """{pan: {"status", "status_date", "filing_date", "ack_no", "ts"}}
-        for one AY — only clients that have actually been checked at least
-        once."""
+        """{pan: {status, status_date, filing_date, ack_no, filed, section,
+        revised, revised_section, rectified, e_verified, processed,
+        refund_status, everify_pending, ts}} for one AY — only clients that
+        have actually been checked at least once."""
         raw_data = self._get_raw()
         hist = raw_data.get("return_status_history", {})
         return {
@@ -587,8 +590,8 @@ class VaultManager:
         }
 
     def get_return_status_all(self) -> dict:
-        """{pan: {ay_label: {"status", "status_date", "filing_date",
-        "ack_no", "ts"}}} — every client/AY ever checked, for the status
+        """{pan: {ay_label: {status, status_date, ...}}} — every client/AY
+        ever checked (same rich fields as get_return_status), for the status
         window's "All Years" view."""
         raw_data = self._get_raw()
         return raw_data.get("return_status_history", {})
