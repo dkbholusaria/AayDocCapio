@@ -8,6 +8,7 @@ of dates/statuses and their own metadata schema.
 from __future__ import annotations
 
 import os
+from datetime import date
 
 from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtGui import QDesktopServices, QColor
@@ -31,10 +32,13 @@ from PyQt6.QtWidgets import (
 from ui._theme import _t
 from ui.gst_proceedings_model import (
     GstCase,
+    _parse_date,
     amount_value,
     build_cases,
     filter_cases,
+    group_for_case,
     kpis,
+    proceedings_groups,
 )
 from ui.helpers import _btn, _lbl
 
@@ -42,9 +46,17 @@ _KPIS = (
     ("total", "Total"),
     ("open", "Open"),
     ("overdue", "Overdue"),
+    ("due7", "Due in 7 days"),
     ("replied", "Replied"),
     ("orders", "Orders"),
+    ("demand", "Demand"),
     ("files", "Attachments"),
+)
+
+_ATTACHMENT_GROUPS = (
+    ("notice", "Notices"),
+    ("reply", "Replies"),
+    ("order", "Orders"),
 )
 
 _STATUS_FILTERS = ("All", "Open", "Overdue", "Replied", "Closed")
@@ -73,6 +85,7 @@ class GstProceedingsWorkspace(QWidget):
         self._cases = build_cases(root, assessees)
         self._case_by_id = {case.id: case for case in self._cases}
         self._refresh_kpis()
+        self._refresh_type_filter()
         self._render_list()
 
     def goto_case(self, case_id: str) -> None:
@@ -122,12 +135,23 @@ class GstProceedingsWorkspace(QWidget):
         self._status_filter.addItems(_STATUS_FILTERS)
         self._status_filter.currentTextChanged.connect(self._render_list)
         filters.addWidget(self._status_filter)
+        self._type_filter = QComboBox()
+        self._type_filter.addItem("All types", "")
+        self._type_filter.currentIndexChanged.connect(self._render_list)
+        filters.addWidget(self._type_filter)
         outer.addLayout(filters)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        self._table = QTableWidget(0, 6)
+
+        left = QWidget()
+        left_lay = QVBoxLayout(left)
+        left_lay.setContentsMargins(0, 0, 0, 0)
+        left_lay.setSpacing(6)
+
+        self._table = QTableWidget(0, 8)
         self._table.setHorizontalHeaderLabels(
-            ["Client", "Notice / Order", "Reference", "Issued", "Due", "Status"])
+            ["Issued", "Client / GSTIN", "Type", "Description",
+             "ARN / Reference", "Due", "Amount", "Status"])
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -135,9 +159,40 @@ class GstProceedingsWorkspace(QWidget):
         self._table.itemSelectionChanged.connect(self._on_selection)
         header_view = self._table.horizontalHeader()
         header_view.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        header_view.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header_view.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        splitter.addWidget(self._table)
+        header_view.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self._table.setColumnWidth(0, 92)
+        self._table.setColumnWidth(1, 170)
+        self._table.setColumnWidth(2, 82)
+        self._table.setColumnWidth(4, 136)
+        self._table.setColumnWidth(5, 92)
+        self._table.setColumnWidth(6, 92)
+        self._table.setColumnWidth(7, 82)
+        left_lay.addWidget(self._table, 3)
+
+        self._history_title = _lbl("Proceedings history", 11, bold=True)
+        left_lay.addWidget(self._history_title)
+        self._history = QTableWidget(0, 5)
+        self._history.setHorizontalHeaderLabels(
+            ["#", "Reference", "Proceeding / task description",
+             "Issued", "Status"])
+        self._history.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows)
+        self._history.setSelectionMode(
+            QTableWidget.SelectionMode.SingleSelection)
+        self._history.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers)
+        self._history.verticalHeader().setVisible(False)
+        self._history.itemSelectionChanged.connect(self._on_history_selection)
+        hdr = self._history.horizontalHeader()
+        hdr.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self._history.setColumnWidth(0, 28)
+        self._history.setColumnWidth(1, 150)
+        self._history.setColumnWidth(3, 95)
+        self._history.setColumnWidth(4, 80)
+        self._history.setMinimumHeight(110)
+        left_lay.addWidget(self._history, 2)
+        splitter.addWidget(left)
 
         self._detail = QWidget()
         detail_layout = QVBoxLayout(self._detail)
@@ -177,14 +232,50 @@ class GstProceedingsWorkspace(QWidget):
         outer.addWidget(splitter, 1)
 
     def _refresh_kpis(self) -> None:
-        counts = kpis(self._cases)
+        counts = dict(kpis(self._cases))
+        today = date.today()
+        due7 = 0
+        demand = 0.0
+        for case in self._cases:
+            demand += amount_value(case)
+            if case.status in ("Closed", "Replied"):
+                continue
+            due = _parse_date(case.due)
+            if due is not None and 0 <= (due - today).days <= 7:
+                due7 += 1
+        counts["due7"] = due7
+        counts["demand"] = demand
         for key, label in self._kpi_values.items():
-            label.setText(str(counts.get(key, 0)))
+            value = counts.get(key, 0)
+            if key == "demand":
+                label.setText(f"₹{value:,.0f}")
+            else:
+                label.setText(str(value))
+
+    def _refresh_type_filter(self) -> None:
+        if not hasattr(self, "_type_filter"):
+            return
+        current = self._type_filter.currentData() or ""
+        kinds = sorted({case.notice_type for case in self._cases
+                        if case.notice_type})
+        self._type_filter.blockSignals(True)
+        self._type_filter.clear()
+        self._type_filter.addItem("All types", "")
+        for kind in kinds:
+            self._type_filter.addItem(kind, kind)
+        index = self._type_filter.findData(current)
+        self._type_filter.setCurrentIndex(index if index >= 0 else 0)
+        self._type_filter.blockSignals(False)
 
     def _filtered(self) -> list[GstCase]:
         status = self._status_filter.currentText() if hasattr(self, "_status_filter") else "All"
         search = self._search.text() if hasattr(self, "_search") else ""
-        return filter_cases(self._cases, search, "" if status == "All" else status)
+        cases = filter_cases(
+            self._cases, search, "" if status == "All" else status)
+        kind = self._type_filter.currentData() if hasattr(self, "_type_filter") else ""
+        if kind:
+            cases = [case for case in cases if case.notice_type == kind]
+        return cases
 
     def _render_list(self) -> None:
         cases = self._filtered()
@@ -192,26 +283,28 @@ class GstProceedingsWorkspace(QWidget):
         self._row_cases = {}
         for row, case in enumerate(cases):
             self._table.insertRow(row)
+            client = case.client_name or case.client_key
+            if case.gstin:
+                client = f"{client}\n{case.gstin}"
+            amount = f"₹{case.amount}" if amount_value(case) else "—"
             values = (
-                case.client_name,
+                case.issued or "—",
+                client,
                 case.notice_type or "Notice",
-                case.ref_id,
-                case.issued,
-                case.due,
+                case.description or "—",
+                case.case_id or case.ref_id or "—",
+                case.due or "—",
+                amount,
                 case.status,
             )
             for col, value in enumerate(values):
-                item = QTableWidgetItem(value or "")
-                item.setToolTip(value or "")
-                if col == 5:
+                item = QTableWidgetItem(str(value))
+                item.setToolTip(str(value).replace("\n", " · "))
+                if col == 7:
                     item.setForeground(self._status_color(case.status))
                 self._table.setItem(row, col, item)
             self._row_cases[row] = case
-        self._table.resizeColumnsToContents()
-        self._table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.Stretch)
-        self._table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.ResizeMode.Stretch)
+        self._table.resizeRowsToContents()
 
         if self._selected_id in {case.id for case in cases}:
             self._select_row_for_case(self._selected_id)
@@ -221,6 +314,7 @@ class GstProceedingsWorkspace(QWidget):
         else:
             self._selected_id = ""
             self._render_detail()
+            self._render_history(None)
 
     def _status_color(self, status: str) -> QColor:
         t = _t()
@@ -239,6 +333,7 @@ class GstProceedingsWorkspace(QWidget):
                 self._table.blockSignals(False)
                 self._selected_id = case_id
                 self._render_detail()
+                self._render_history(case)
                 return
 
     def _on_selection(self) -> None:
@@ -249,6 +344,56 @@ class GstProceedingsWorkspace(QWidget):
         if case is not None:
             self._selected_id = case.id
             self._render_detail()
+            self._render_history(case)
+
+    def _render_history(self, case) -> None:
+        if not hasattr(self, "_history"):
+            return
+        self._history.blockSignals(True)
+        self._history.setRowCount(0)
+        if case is None:
+            self._history_title.setText("Proceedings history")
+            self._history.blockSignals(False)
+            return
+        group = group_for_case(self._cases, case)
+        rows = group["cases"] if group else [case]
+        key = group["key"] if group else (case.case_id or case.ref_id)
+        self._history_title.setText(
+            f"Proceedings history ({len(rows)} record"
+            f"{'' if len(rows) == 1 else 's'}"
+            + (f" under {key}" if key else "") + ")")
+        for row, item_case in enumerate(rows, start=1):
+            self._history.insertRow(row - 1)
+            values = (
+                str(row),
+                item_case.ref_id or "—",
+                item_case.description or item_case.title,
+                item_case.issued or "—",
+                item_case.status,
+            )
+            for col, value in enumerate(values):
+                cell = QTableWidgetItem(value)
+                cell.setToolTip(value)
+                if col == 0:
+                    cell.setData(Qt.ItemDataRole.UserRole, item_case.id)
+                if col == 4:
+                    cell.setForeground(self._status_color(item_case.status))
+                self._history.setItem(row - 1, col, cell)
+        self._history.resizeRowsToContents()
+        self._history.blockSignals(False)
+
+    def _on_history_selection(self) -> None:
+        rows = {index.row() for index in self._history.selectedIndexes()}
+        if not rows:
+            return
+        cell = self._history.item(min(rows), 0)
+        if cell is None:
+            return
+        case_id = cell.data(Qt.ItemDataRole.UserRole)
+        if case_id in self._case_by_id:
+            self._selected_id = case_id
+            self._select_row_for_case(case_id)
+            self._render_history(self._case_by_id[case_id])
 
     def _selected_case(self) -> GstCase | None:
         return self._case_by_id.get(self._selected_id)
@@ -292,10 +437,23 @@ class GstProceedingsWorkspace(QWidget):
         body = case.description or "No description shown by the portal."
         self._detail_body.setText(body)
 
+        groups: dict[str, list[str]] = {key: [] for key, _ in _ATTACHMENT_GROUPS}
         for doc in case.docs:
             for rel in doc.files:
-                item = QListWidgetItem(f"[{doc.kind.title()}] {os.path.basename(rel)}")
-                item.setData(Qt.ItemDataRole.UserRole, os.path.join(case.root, rel))
+                groups.setdefault(doc.kind, []).append(rel)
+        t = _t()
+        for kind, label in _ATTACHMENT_GROUPS:
+            rels = groups.get(kind) or []
+            if not rels:
+                continue
+            header = QListWidgetItem(f"{label.upper()} ({len(rels)})")
+            header.setFlags(Qt.ItemFlag.NoItemFlags)
+            header.setForeground(QColor(t.text_muted))
+            self._files.addItem(header)
+            for rel in rels:
+                item = QListWidgetItem(f"    {os.path.basename(rel)}")
+                item.setData(Qt.ItemDataRole.UserRole,
+                             os.path.join(case.root, rel))
                 item.setToolTip(os.path.join(case.root, rel))
                 self._files.addItem(item)
         if self._files.count() == 0:
