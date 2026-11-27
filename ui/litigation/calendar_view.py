@@ -12,14 +12,16 @@ from datetime import date
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QCalendarWidget, QListWidget,
-    QListWidgetItem, QLabel, QMenu,
+    QListWidgetItem, QLabel, QMenu, QFrame,
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QDate
 from PyQt6.QtGui import QColor, QTextCharFormat, QBrush, QFont
 
 from ui._theme import _t
 from ui.helpers import _lbl
-from core.litigation.calendar import events_by_day
+from core.litigation.calendar import (
+    events_by_day, month_bounds, overdue, upcoming, visible_events,
+)
 
 _KIND_COLORS = {
     "reply_due": ("#2563EB", "#60A5FA"),
@@ -70,11 +72,32 @@ class LitigationCalendar(QWidget):
         self._cal.setVerticalHeaderFormat(
             QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader)
         self._cal.selectionChanged.connect(self._on_select)
+        self._cal.currentPageChanged.connect(
+            lambda *_args: self._refresh_summary())
         self._cal.setStyleSheet(self._cal_qss(t))
         body.addWidget(self._cal, 3)
 
         right = QVBoxLayout()
         right.setSpacing(6)
+        self._summary = QFrame()
+        self._summary.setObjectName("calSummary")
+        self._summary.setStyleSheet(self._summary_qss(t))
+        sum_lay = QHBoxLayout(self._summary)
+        sum_lay.setContentsMargins(10, 7, 10, 7)
+        sum_lay.setSpacing(12)
+        self._summary_values = {}
+        for key, caption in (("upcoming", "Due this month"),
+                             ("overdue", "Overdue"),
+                             ("hearing", "Hearings"),
+                             ("limitation", "Limitations")):
+            col = QVBoxLayout()
+            col.setSpacing(0)
+            value = _lbl("0", 16, bold=True)
+            col.addWidget(value)
+            col.addWidget(_lbl(caption, 8, color=t.text_muted))
+            self._summary_values[key] = value
+            sum_lay.addLayout(col, 1)
+        right.addWidget(self._summary)
         self._day_title = _lbl("", 13, bold=True)
         right.addWidget(self._day_title)
         self._list = QListWidget()
@@ -99,7 +122,46 @@ class LitigationCalendar(QWidget):
         self._events = events
         self._by_day = events_by_day(events, include_hidden=False)
         self._apply_formats()
+        self._refresh_summary()
         self._on_select()
+
+    def _refresh_summary(self):
+        t = _t()
+        today = date.today()
+        year = self._cal.yearShown()
+        month = self._cal.monthShown()
+        try:
+            first, last = month_bounds(year, month)
+        except Exception:
+            first = last = today
+        open_events = visible_events(self._events)
+        month_upcoming = [e for e in open_events
+                          if isinstance(e.date, date)
+                          and first <= e.date <= last and e.date >= today]
+        values = {
+            "upcoming": len(month_upcoming),
+            "overdue": len(overdue(self._events, today)),
+            "hearing": sum(1 for e in open_events if e.kind == "hearing"
+                           and isinstance(e.date, date) and e.date >= today),
+            "limitation": sum(1 for e in open_events
+                              if e.kind == "limitation"),
+        }
+        colors = {"upcoming": t.text_primary, "overdue": t.error,
+                  "hearing": t.accent_litigation, "limitation": t.warning}
+        for key, label in self._summary_values.items():
+            label.setText(str(values.get(key, 0)))
+            label.setStyleSheet(
+                f"background:transparent; border:none;"
+                f"color:{colors.get(key, t.text_primary)};"
+                f"font-size:16px; font-weight:700;")
+
+    @staticmethod
+    def _summary_qss(t):
+        return (
+            "QFrame#calSummary {"
+            f" background:{t.bg_panel}; border:1px solid {t.border};"
+            " border-radius:8px; }"
+        )
 
     def _apply_formats(self):
         t = _t()
@@ -177,6 +239,8 @@ class LitigationCalendar(QWidget):
     def repaint_theme(self, t):
         self._cal.setStyleSheet(self._cal_qss(t))
         self._list.setStyleSheet(self._list_qss(t))
+        self._summary.setStyleSheet(self._summary_qss(t))
+        self._refresh_summary()
         self._apply_formats()
 
     @staticmethod

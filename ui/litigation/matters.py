@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QAbstractItemView, QComboBox, QLineEdit, QTextEdit, QDialog,
     QDialogButtonBox, QFormLayout, QMessageBox, QDoubleSpinBox, QListWidget,
-    QListWidgetItem,
+    QListWidgetItem, QFrame,
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
@@ -34,6 +34,7 @@ class LitigationMatters(QWidget):
         self._cases = []
         self._matters = []
         self._current_matter = None
+        self._fee_cards = {}
         self._build()
 
     def _build(self):
@@ -84,6 +85,23 @@ class LitigationMatters(QWidget):
 
         right.addWidget(_lbl("Fees / Billing / Reimbursements", 11, bold=True,
                              color=t.text_muted))
+        exposure = QHBoxLayout()
+        exposure.setSpacing(7)
+        for key, caption in (("agreed", "Agreed"), ("billed", "Billed"),
+                             ("received", "Received"), ("outstanding", "Outstanding")):
+            card = QFrame()
+            card.setObjectName("feeCard")
+            card.setStyleSheet(self._fee_card_qss(t))
+            lay = QVBoxLayout(card)
+            lay.setContentsMargins(9, 5, 9, 5)
+            lay.setSpacing(0)
+            cap = _lbl(caption, 8, color=t.text_muted)
+            value = _lbl("₹0", 13, bold=True)
+            lay.addWidget(cap)
+            lay.addWidget(value)
+            self._fee_cards[key] = (card, cap, value)
+            exposure.addWidget(card, 1)
+        right.addLayout(exposure)
         self._fee_table = QTableWidget(0, len(_FEE_COLS))
         self._fee_table.setHorizontalHeaderLabels(list(_FEE_COLS))
         self._fee_table.verticalHeader().setVisible(False)
@@ -136,6 +154,7 @@ class LitigationMatters(QWidget):
             self._cases_list.clear()
             self._fee_table.setRowCount(0)
             self._totals_lbl.setText("")
+            self._set_fee_exposure(None)
 
     def matter_options(self):
         return [(m.id, m.client_name or m.client_pan, m.title)
@@ -193,12 +212,30 @@ class LitigationMatters(QWidget):
                 self._fee_table.setItem(row, col, item)
         self._fee_table.resizeColumnsToContents()
         totals = matter_totals(fees)
+        self._set_fee_exposure(totals)
         self._totals_lbl.setText(
             f"Agreed ₹{totals['agreed']:,.0f}  ·  "
             f"Billed ₹{totals['billed']:,.0f}  ·  "
             f"Received ₹{totals['received']:,.0f}  ·  "
             f"Outstanding ₹{totals['outstanding']:,.0f}  ·  "
             f"Reimbursed ₹{totals['reimbursed']:,.0f}")
+
+    def _set_fee_exposure(self, totals):
+        t = _t()
+        data = totals or {}
+        colors = {
+            "agreed": t.text_primary,
+            "billed": t.accent,
+            "received": t.success,
+            "outstanding": t.error,
+        }
+        for key, (_frame, _cap, value) in self._fee_cards.items():
+            amount = data.get(key, 0) or 0
+            value.setText(f"₹{amount:,.0f}")
+            value.setStyleSheet(
+                f"background:transparent; border:none;"
+                f"color:{colors.get(key, t.text_primary)};"
+                f"font-size:13px; font-weight:700;")
 
     # -- matter actions -------------------------------------------------
 
@@ -287,6 +324,20 @@ class LitigationMatters(QWidget):
         self._matter_list.setStyleSheet(self._list_qss(t))
         self._cases_list.setStyleSheet(self._list_qss(t))
         self._fee_table.setStyleSheet(self._table_qss(t))
+        for frame, _cap, _val in self._fee_cards.values():
+            frame.setStyleSheet(self._fee_card_qss(t))
+        if self._current_matter is not None:
+            self._render_fees()
+        else:
+            self._set_fee_exposure(None)
+
+    @staticmethod
+    def _fee_card_qss(t):
+        return (
+            "QFrame#feeCard {"
+            f" background:{t.bg_panel}; border:1px solid {t.border};"
+            " border-radius:8px; }"
+        )
 
     @staticmethod
     def _list_qss(t):
