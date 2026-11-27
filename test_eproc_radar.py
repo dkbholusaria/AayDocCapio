@@ -73,7 +73,7 @@ def test_radar_empty_is_zeroed():
 def test_related_proceedings_same_pan_only():
     a = _case("c1", "AABCP1234F", [_doc("n1", "notice")])
     b = _case("c2", "AABCP1234F", [_doc("n2", "notice")])
-    c = _case("c3", "AAACD5678K", [_doc("n3", "notice")])
+    c = _case("c3", "AABCP1235G", [_doc("n3", "notice")])
     related = related_proceedings(a, [a, b, c])
     assert [x.id for x in related] == ["c2"]
 
