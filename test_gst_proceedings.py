@@ -249,6 +249,169 @@ def test_merge_api_rows_includes_case_tasks():
     assert by_ref["CASE1"]["is_order"] is True
 
 
+def test_case_folder_bucket_mapping():
+    from automation.gst.notices import case_folder_bucket
+    assert case_folder_bucket("NOTICES") == "notice"
+    assert case_folder_bucket("NOTCE") == "notice"
+    assert case_folder_bucket("INTIMATIONS") == "notice"
+    assert case_folder_bucket("REPLIES") == "reply"
+    assert case_folder_bucket("REPLY") == "reply"
+    assert case_folder_bucket("ORDERS") == "order"
+    assert case_folder_bucket("ORDRS") == "order"
+    assert case_folder_bucket("CLOSURE") == "order"
+    assert case_folder_bucket("unknown-tab") == "notice"
+
+
+def test_split_case_buckets_groups_and_falls_back():
+    from automation.gst.notices import split_case_buckets
+    buckets = split_case_buckets([
+        {"path": "/tmp/a/notice.pdf", "bucket": "notice"},
+        {"path": "/tmp/a/reply.pdf", "bucket": "reply"},
+        {"path": "/tmp/a/order.pdf", "bucket": "order"},
+        {"path": "/tmp/a/other.pdf", "bucket": "weird"},
+        {"bucket": "notice"},
+    ])
+    assert buckets["notice"] == ["/tmp/a/notice.pdf", "/tmp/a/other.pdf"]
+    assert buckets["reply"] == ["/tmp/a/reply.pdf"]
+    assert buckets["order"] == ["/tmp/a/order.pdf"]
+
+
+def test_case_docs_for_row_splits_notice_and_order():
+    from automation.gst.notices import split_case_buckets, case_docs_for_row
+    buckets = split_case_buckets([
+        {"path": "/tmp/a/notice.pdf", "bucket": "notice"},
+        {"path": "/tmp/a/reply.pdf", "bucket": "reply"},
+        {"path": "/tmp/a/order.pdf", "bucket": "order"},
+    ])
+    notice_row = case_docs_for_row(buckets, is_order=False)
+    order_row = case_docs_for_row(buckets, is_order=True)
+    assert [d["bucket"] for d in notice_row] == ["notice", "reply"]
+    assert [d["bucket"] for d in order_row] == ["order"]
+    assert notice_row[0]["label"] == "notice.pdf"
+
+
+def test_case_folder_bucket_covers_all_types():
+    from automation.gst.notices import case_folder_bucket
+    assert case_folder_bucket("APPLICATIONS") == "application"
+    assert case_folder_bucket("RECTIFICATION") == "rectification"
+    assert case_folder_bucket("PROCEEDINGS") == "proceedings"
+    assert case_folder_bucket("ADDITIONAL DOCUMENT") == "additional"
+    assert case_folder_bucket("WITHDRAWAL APPLICATION") == "withdrawal"
+    assert case_folder_bucket("REMAND DETAILS") == "remand"
+    assert case_folder_bucket("UPLOAD OFFLINE APL-04 ORDERS") == "order"
+
+
+def test_split_keeps_new_buckets_and_splits_sides():
+    from automation.gst.notices import split_case_buckets, case_docs_for_row
+    buckets = split_case_buckets([
+        {"path": "/tmp/a/order.pdf", "bucket": "order"},
+        {"path": "/tmp/a/rect.pdf", "bucket": "rectification"},
+        {"path": "/tmp/a/proc.pdf", "bucket": "proceedings"},
+        {"path": "/tmp/a/appl.pdf", "bucket": "application"},
+    ])
+    notice_row = case_docs_for_row(buckets, is_order=False)
+    order_row = case_docs_for_row(buckets, is_order=True)
+    assert sorted(d["bucket"] for d in notice_row) == ["application", "proceedings"]
+    assert sorted(d["bucket"] for d in order_row) == ["order", "rectification"]
+
+
+def test_iter_item_docs_all_doc_lists():
+    from automation.gst.notices import iter_item_docs
+    item = {
+        "sdtls": {"dtscn": {
+            "maindocs": [{"dcupdtls": {"id": "1", "docName": "notice.pdf"}}],
+            "suppdocs": [{"dcupdtls": {"id": "2", "docName": "annex.pdf"}}],
+        }},
+        "reply": {"maindocs": [{"dcupdtls": {"id": "3", "docName": "reply.pdf"}}]},
+        "annxdocs": [{"dcupdtls": {"id": "4", "docName": "extra.pdf"}}],
+        "vp": {"pysum": {"dcupdtls": {"id": "5", "docName": "challan.pdf"}}},
+    }
+    docs = {d["id"]: d["name"] for d in iter_item_docs(item)}
+    assert docs == {"1": "notice.pdf", "2": "annex.pdf", "3": "reply.pdf",
+                    "4": "extra.pdf", "5": "challan.pdf"}
+
+
+def test_parse_item_meta_notice_order_amounts():
+    from automation.gst.notices import parse_item_meta
+    notice = parse_item_meta({
+        "sdtls": {"dtscn": {
+            "type": "SCN u/s 73/74 and GST DRC-01", "sec": "73",
+            "duedt": "31/08/2023", "phdt": "01/09/2023", "pht": "11:00",
+            "venu": "Room 1", "replyDuedt": "20/08/2023",
+            "pymtDuedt": "21/08/2023",
+            "dmddtls": [{"dact": "CGST", "dtot": "1000"},
+                        {"dact": "SGST", "dtot": "2000"}],
+        }},
+    }, "NOTICES")
+    assert notice["bucket"] == "notice"
+    assert notice["section"] == ["73"]
+    assert notice["due_date"] == "31/08/2023"
+    assert notice["hearing_date"] == "01/09/2023"
+    assert notice["hearing_time"] == "11:00"
+    assert notice["venue"] == "Room 1"
+    assert notice["reply_due_date"] == "20/08/2023"
+    assert notice["payment_due_date"] == "21/08/2023"
+    assert notice["demand_total"] == 3000.0
+
+    order = parse_item_meta({
+        "refdt": "18/12/2023",
+        "todtls": {"dt": "18/12/2023"},
+        "sdtls": {"dtorder": {
+            "type": "Assessment order and GST DRC-07", "sec": ["74"],
+            "ntcdt": "27/09/2023", "duedt": "18/01/2024",
+            "othrsn": "reason text",
+            "dmddtls": [{"dact": "CGST", "dtot": "500"}],
+        }},
+    }, "ORDERS")
+    assert order["bucket"] == "order"
+    assert order["order_date"] == "18/12/2023"
+    assert order["notice_date"] == "27/09/2023"
+    assert order["order_reason"] == "reason text"
+    assert order["demand_total"] == 500.0
+    assert order["demand_breakdown"] == [{"act": "CGST", "total": 500.0}]
+
+
+def test_parse_item_meta_appeal_order_decision_and_amounts():
+    from automation.gst.notices import parse_item_meta
+    meta = parse_item_meta({
+        "sdtls": {
+            "orddt": "18/12/2023", "apeldt": "24/01/2024",
+            "ordnum": "ZZZ", "ordtyp": "DEMOR", "ordsts": "Rejected",
+            "dispamt": {"total": {"tot": 564936}},
+            "dtramt": {"total": {"tot": 123456}},
+        },
+        "orddtl": {
+            "orddt": "18/12/2023",
+            "prdofdisp": {"fromdate": "01/07/2017", "todate": "31/03/2018"},
+            "predepotax": 10,
+            "initamt": {"total": {"tot": 900}},
+            "paidamt": {"total": {"tot": 100}},
+            "payableamt": {"total": {"tot": 800}},
+        },
+    }, "ORDERS")
+    assert meta["order_status"] == "Rejected"
+    assert meta["order_number"] == "ZZZ"
+    assert meta["disposed_amount"] == 564936.0
+    assert meta["differential_amount"] == 123456.0
+    assert meta["period_from"] == "01/07/2017"
+    assert meta["period_to"] == "31/03/2018"
+    assert meta["predeposit_tax"] == 10
+    assert meta["initial_amount"] == 900.0
+    assert meta["paid_amount"] == 100.0
+    assert meta["payable_amount"] == 800.0
+
+
+def test_parse_item_meta_hearing_notice():
+    from automation.gst.notices import parse_item_meta
+    meta = parse_item_meta({
+        "sdtls": {"phdt": "05/08/2024", "pht": "11:49 AM", "venu": "DC APPEALS",
+                  "ntcsubj": "PERSONAL HEARING"},
+    }, "NOTICES")
+    assert meta["hearing_date"] == "05/08/2024"
+    assert meta["hearing_time"] == "11:49 AM"
+    assert meta["venue"] == "DC APPEALS"
+
+
 def test_merge_api_rows_attaches_ids_and_amounts():
     from automation.gst.notices import merge_api_rows
     rows = normalise_rows([
@@ -304,3 +467,66 @@ def test_amount_value_parsing():
     assert amount_value(case("₹ 2,000")) == 2000.0
     assert amount_value(case("NA")) == 0.0
     assert amount_value(case("")) == 0.0
+
+
+def test_demand_total_no_double_count_with_summary():
+    from automation.gst.notices import _demand_total
+    assert _demand_total({"dmddtls": [{"dtot": "1000"}], "ttl": "1000"}) == 1000.0
+    assert _demand_total({"dmddtls": [{"dtot": "500"}, {"dtot": "500"}]}) == 1000.0
+    assert _demand_total({"noticetot": "1351882"}) == 1351882.0
+
+
+def test_parse_item_meta_empty_returns_empty():
+    from automation.gst.notices import parse_item_meta
+    assert parse_item_meta({}) == {}
+    assert parse_item_meta({}, "NOTICES") == {}
+    assert parse_item_meta({"unknown": 1}, "ORDERS") == {}
+
+
+def test_notice_date_not_taken_from_hearing_date():
+    from automation.gst.notices import parse_item_meta
+    meta = parse_item_meta({
+        "refdt": "25/05/2024", "arndt": "25/05/2024",
+        "sdtls": {"dtscn": {"phdt": "13/06/2024"}},
+    }, "NOTICES")
+    assert meta["notice_date"] == "25/05/2024"
+    assert meta["hearing_date"] == "13/06/2024"
+
+
+def test_demand_total_ignores_total_rows():
+    from automation.gst.notices import _demand_total, parse_item_meta
+    item = {"sdtls": {"dtscn": {"dmddtls": [
+        {"dact": "CGST", "dtot": "100"},
+        {"dact": "SGST", "dtot": "100"},
+        {"dact": "TOTAL", "dtot": "200"},
+    ]}}}
+    assert _demand_total(item) == 200.0
+    meta = parse_item_meta(item, "NOTICES")
+    assert meta["demand_total"] == 200.0
+    acts = [row.get("act") for row in meta["demand_breakdown"]]
+    assert "TOTAL" not in acts
+    assert sorted(acts) == ["CGST", "SGST"]
+
+
+def test_reminder_notice_date_prefers_refdt():
+    from automation.gst.notices import parse_item_meta
+    meta = parse_item_meta({
+        "arndt": "10/01/2023", "ntcdt": "10/01/2023", "refdt": "18/10/2023",
+        "sdtls": {"remnd": {"remno": "1", "duedt": "18/10/2023"}},
+    }, "NOTICES")
+    assert meta["notice_date"] == "18/10/2023"
+    assert meta["reminder_number"] == "1"
+
+
+def test_details_for_row_filters_sides():
+    from automation.gst.notices import details_for_row
+    details = [
+        {"bucket": "notice", "doc_type": "SCN"},
+        {"bucket": "reply", "reply_reason": "x"},
+        {"bucket": "order", "order_status": "Rejected"},
+        {"bucket": "rectification", "doc_type": "DRC-08"},
+    ]
+    notice_row = details_for_row(details, is_order=False)
+    order_row = details_for_row(details, is_order=True)
+    assert {d["bucket"] for d in notice_row} == {"notice", "reply"}
+    assert {d["bucket"] for d in order_row} == {"order", "rectification"}

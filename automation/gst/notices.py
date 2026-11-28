@@ -19,7 +19,7 @@ import json
 import os
 import re
 from datetime import datetime
-from urllib.parse import urljoin
+from urllib.parse import urlencode, urljoin
 
 from playwright.async_api import Page, TimeoutError as PWTimeout
 
@@ -348,6 +348,7 @@ def merge_meta(old_meta: dict, rows: list[dict], files_by_key: dict,
         files = list(fresh.get("files") or (old or {}).get("files") or [])
         replies = list(fresh.get("reply_files") or (old or {}).get("reply_files") or [])
         orders = list(fresh.get("order_files") or (old or {}).get("order_files") or [])
+        details = list(fresh.get("details") or (old or {}).get("details") or [])
         entries.append({
             "index": position,
             "notice_type": row.get("notice_type", ""),
@@ -365,7 +366,8 @@ def merge_meta(old_meta: dict, rows: list[dict], files_by_key: dict,
             "amount": row.get("amount", ""),
             "doc_id": row.get("doc_id", ""),
             "app_def_id": row.get("app_def_id", ""),
-            "case_id": row.get("app_def_id", "") or row.get("ref_id", ""),
+            "case_id": (row.get("case_id") or row.get("app_def_id", "")
+                        or row.get("ref_id", "")),
             "order_id": row.get("doc_id", "") if row.get("is_order") else "",
             "reply_id": row.get("supp_doc_id", "") or "",
             "appln_cd": row.get("appln_cd", ""),
@@ -375,6 +377,7 @@ def merge_meta(old_meta: dict, rows: list[dict], files_by_key: dict,
             "supp_doc_id": row.get("supp_doc_id", ""),
             "addtnl_docs": row.get("addtnl_docs") or [],
             "detail_url": row.get("detail_url", ""),
+            "details": details,
             "files": files,
             "reply_files": replies,
             "order_files": orders,
@@ -742,6 +745,475 @@ def _classify(label: str) -> str:
     return "notice"
 
 
+# Litigation case-folder sub-tabs (confirmed live 2026-11-26/27). Every folder
+# type is classified so documents land in the right bucket; anything unknown
+# falls back to "notice" so nothing is ever dropped.
+_CASE_FOLDER_BUCKETS = {
+    "NOTICES": "notice",
+    "NOTCE": "notice",
+    "INTIMATIONS": "notice",
+    "INTIM": "notice",
+    "REPLIES": "reply",
+    "REPLY": "reply",
+    "APPLICATIONS": "application",
+    "APLCN": "application",
+    "RECTIFICATION": "rectification",
+    "RECT": "rectification",
+    "PROCEEDINGS": "proceedings",
+    "PROCD": "proceedings",
+    "ADDITIONAL DOCUMENT": "additional",
+    "ADDITIONAL DOCUMENTS": "additional",
+    "WITHDRAWAL APPLICATION": "withdrawal",
+    "REMAND DETAILS": "remand",
+    "ORDERS": "order",
+    "ORDRS": "order",
+    "CLOSURE": "order",
+    "CLOSR": "order",
+    "UPLOAD OFFLINE APL-04 ORDERS": "order",
+}
+
+# Buckets that belong to the order side of a case (shown on the order row);
+# everything else belongs to the notice side (shown on the notice row).
+_ORDER_SIDE_BUCKETS = ("order", "rectification", "closure")
+_NOTICE_SIDE_BUCKETS = ("notice", "reply", "application", "proceedings",
+                        "additional", "withdrawal", "remand")
+
+
+def case_folder_bucket(folder_name: str) -> str:
+    """Map a case-folder tab/type label (e.g. ``"ORDERS"``, ``"ORDRS"``,
+    ``"REPLIES"``) to a document bucket."""
+    return _CASE_FOLDER_BUCKETS.get((folder_name or "").strip().upper(), "notice")
+
+
+def split_case_buckets(items: list[dict]) -> dict[str, list[str]]:
+    """Group a case folder's downloaded documents by bucket.
+
+    ``items`` are ``{"path", "bucket"}`` dicts; unknown buckets fall back to
+    ``notice`` so nothing is dropped.
+    """
+    buckets: dict[str, list[str]] = {}
+    known = set(_NOTICE_SIDE_BUCKETS) | set(_ORDER_SIDE_BUCKETS)
+    for item in items or []:
+        bucket = item.get("bucket") or "notice"
+        if bucket not in known:
+            bucket = "notice"
+        path = (item.get("path") or "").strip()
+        if path:
+            buckets.setdefault(bucket, []).append(path)
+    return buckets
+
+
+def case_docs_for_row(buckets: dict, is_order: bool) -> list[dict]:
+    """Pick the case-folder documents that belong to one task row.
+
+    Order-side buckets (order/rectification/closure) go to the order row;
+    every other bucket (notice/reply/application/proceedings/...) goes to the
+    notice row. This keeps each row's ``_meta`` meaningful when several task
+    rows share one case folder.
+    """
+    keep = _ORDER_SIDE_BUCKETS if is_order else _NOTICE_SIDE_BUCKETS
+    out: list[dict] = []
+    for bucket in keep:
+        for path in (buckets or {}).get(bucket) or []:
+            out.append({"path": path, "label": os.path.basename(path),
+                        "bucket": bucket})
+    return out
+
+
+def details_for_row(details: list[dict], is_order: bool) -> list[dict]:
+    """Filter a case folder's parsed item metadata to one task row's side."""
+    keep = set(_ORDER_SIDE_BUCKETS if is_order else _NOTICE_SIDE_BUCKETS)
+    return [d for d in (details or []) if d.get("bucket") in keep]
+
+
+# --- Case item JSON parsing (pure, Playwright-free) ------------------------
+
+_DOC_LIST_KEYS = frozenset({
+    "maindocs", "suppdocs", "annxdocs", "docModel", "docappeal",
+    "docannexure", "docothers", "dcupdtls",
+})
+
+
+def _doc_entry(info) -> tuple[str, str]:
+    if not isinstance(info, dict):
+        return "", ""
+    name = (info.get("docName") or info.get("docname") or info.get("name")
+            or info.get("docttl") or "")
+    return str(info.get("id") or "").strip(), str(name).strip()
+
+
+def iter_item_docs(item_json) -> list[dict]:
+    """Yield every document in a case item JSON: ``{"id", "name"}``.
+
+    Walks all known document-list keys (maindocs/suppdocs/annxdocs/docModel/
+    docappeal/docannexure/docothers/dcupdtls) wherever they appear, handling both
+    list and single-dict shapes, and de-duplicates by document id.
+    """
+    found: dict[str, str] = {}
+
+    def visit(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in _DOC_LIST_KEYS:
+                    docs = value if isinstance(value, list) else [value]
+                    for doc in docs:
+                        info = doc.get("dcupdtls") if isinstance(doc, dict) else None
+                        doc_id, name = _doc_entry(info or doc)
+                        if doc_id:
+                            found.setdefault(doc_id, name)
+                else:
+                    visit(value)
+        elif isinstance(node, list):
+            for value in node:
+                visit(value)
+
+    visit(item_json if isinstance(item_json, (dict, list)) else {})
+    return [{"id": doc_id, "name": name} for doc_id, name in found.items()]
+
+
+def _deep_get(obj, *path):
+    if not path:
+        return None
+    cur = obj
+    for key in path:
+        if isinstance(cur, dict):
+            cur = cur.get(key)
+        elif isinstance(cur, list) and isinstance(key, int) and 0 <= key < len(cur):
+            cur = cur[key]
+        else:
+            return None
+        if cur is None:
+            return None
+    return cur
+
+
+def _amount_total(node):
+    """Return the numeric total from ``{..., total:{tot:N}}`` or ``{tot:N}``."""
+    if not isinstance(node, dict):
+        return None
+    total = node.get("total")
+    raw = None
+    if isinstance(total, dict):
+        raw = total.get("tot") if total.get("tot") not in (None, "") else total.get("tx")
+    if raw in (None, ""):
+        raw = node.get("tot") if node.get("tot") not in (None, "") else node.get("dtot")
+    try:
+        return float(str(raw).replace(",", ""))
+    except (TypeError, ValueError):
+        return None
+
+
+def _num(value):
+    try:
+        return float(str(value).replace(",", ""))
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_total_act(row: dict) -> bool:
+    act = str(row.get("dact") or row.get("act") or "").strip().upper()
+    return act in ("TOTAL", "TOT", "GRAND TOTAL", "G. TOTAL")
+
+
+def _demand_total(item_json) -> float | None:
+    """Demand grand total.
+
+    Prefers the sum of ``dmddtls[].dtot`` / ``dmdtls[].ttl`` rows; only falls
+    back to a summarising ``noticetot``/``ttl`` when no detail rows exist, so a
+    summary that mirrors the details is never added twice.
+    """
+    detail_sum = 0.0
+    detail_seen = False
+    summary = None
+
+    def visit(node):
+        nonlocal detail_sum, detail_seen, summary
+        if isinstance(node, dict):
+            for key in ("dmddtls", "dmdtls"):
+                rows = node.get(key)
+                if isinstance(rows, list):
+                    for row in rows:
+                        if not isinstance(row, dict):
+                            continue
+                        if _is_total_act(row):
+                            # A "TOTAL" row inside dmddtls summarises the other
+                            # rows; counting it would double the demand.
+                            continue
+                        raw = row.get("dtot")
+                        if raw in (None, ""):
+                            raw = row.get("ttl")
+                        val = _num(raw)
+                        if val is not None:
+                            detail_sum += val
+                            detail_seen = True
+            for key in ("noticetot", "ttl"):
+                if key in node:
+                    val = _num(node[key])
+                    if val is not None and (summary is None or val > summary):
+                        summary = val
+            for value in node.values():
+                visit(value)
+        elif isinstance(node, list):
+            for value in node:
+                visit(value)
+
+    visit(item_json)
+    if detail_seen and detail_sum > 0:
+        return round(detail_sum, 2)
+    if summary is not None:
+        return round(summary, 2)
+    return round(detail_sum, 2) if detail_seen else None
+
+
+_AMOUNT_KEYS = {
+    "tax": ("dtax", "tax", "tx"),
+    "interest": ("dist", "ist", "intr"),
+    "penalty": ("dpnlty", "pnlty", "pen"),
+    "fee": ("dfees", "fee"),
+    "other": ("dothers", "others", "oth"),
+    "total": ("dtot", "ttl", "tot"),
+}
+
+
+def _amount_row(row: dict) -> dict:
+    rec: dict = {}
+    act = row.get("dact") or row.get("act") or ""
+    if act:
+        rec["act"] = act
+    for label, keys in _AMOUNT_KEYS.items():
+        for key in keys:
+            val = _num(row.get(key))
+            if val is not None:
+                rec[label] = val
+                break
+    return rec if len(rec) > (1 if act else 0) else {}
+
+
+def _summ_breakdown(summ) -> list[dict]:
+    """``{cgst:{tax,intr,pen,oth,fee,tot}, ...}`` → per-act rows.
+
+    The synthetic ``total`` block is deliberately excluded so summing the rows
+    never double counts the grand total.
+    """
+    if not isinstance(summ, dict):
+        return []
+    out = []
+    for act in ("igst", "cgst", "sgst", "cess"):
+        node = summ.get(act)
+        if not isinstance(node, dict):
+            continue
+        rec = {"act": act.upper()}
+        for label, keys in (("tax", ("tax", "tx")), ("interest", ("intr",)),
+                            ("penalty", ("pen",)), ("fee", ("fee",)),
+                            ("other", ("oth",)), ("total", ("tot",))):
+            for key in keys:
+                val = _num(node.get(key))
+                if val is not None:
+                    rec[label] = val
+                    break
+        if len(rec) > 1:
+            out.append(rec)
+    return out
+
+
+def _demand_breakdown(item_json) -> list[dict]:
+    """Per-act demand rows from every ``dmddtls``/``dmdtls``/``summ`` block."""
+    rows: list[dict] = []
+    summ_rows: list[dict] = []
+    seen = set()
+
+    def visit(node):
+        if isinstance(node, dict):
+            for key in ("dmddtls", "dmdtls"):
+                for row in (node.get(key) or []):
+                    if isinstance(row, dict) and not _is_total_act(row):
+                        rec = _amount_row(row)
+                        if rec:
+                            try:
+                                isum = round(sum(v for k, v in rec.items()
+                                                 if k != "act"), 2)
+                            except Exception:
+                                isum = None
+                            sig = (rec.get("act"), isum)
+                            if sig not in seen:
+                                seen.add(sig)
+                                rows.append(rec)
+            summ = node.get("summ")
+            if isinstance(summ, dict):
+                summ_rows.extend(_summ_breakdown(summ))
+            for value in node.values():
+                visit(value)
+        elif isinstance(node, list):
+            for value in node:
+                visit(value)
+
+    visit(item_json)
+    if not rows:
+        rows = summ_rows
+    return rows[:30]
+
+
+def parse_item_meta(item_json, folder_name: str = "") -> dict:
+    """Extract dates, amounts and decisions from one case item JSON.
+
+    Returns a flat dict of the fields the portal exposes (missing fields are
+    omitted). Kept defensive: any unexpected shape yields a partial dict.
+    """
+    j = item_json if isinstance(item_json, dict) else {}
+    out: dict = {"folder": folder_name or "", "bucket": case_folder_bucket(folder_name)}
+
+    sections = [("dtscn", ["sdtls", "dtscn"]), ("remnd", ["sdtls", "remnd"]),
+                ("dtorder", ["sdtls", "dtorder"]), ("drprcdt", ["sdtls", "drprcdt"]),
+                ("reply", ["reply"]), ("appln", ["orddtl"]),
+                ("vp", ["vp", "pysum"]), ("enf", ["enfDtls", "ntcscn"])]
+
+    def pick(*paths):
+        for path in paths:
+            value = _deep_get(j, *path)
+            if value not in (None, "", [], {}):
+                return value
+        return None
+
+    doc_type = pick(["sdtls", "dtscn", "type"], ["sdtls", "remnd", "type"],
+                    ["sdtls", "dtorder", "type"], ["sdtls", "drprcdt", "type"],
+                    ["orddtl", "ordtyp"], ["enfDtls", "ntcscn", "type"], ["type"])
+    if doc_type:
+        out["doc_type"] = str(doc_type)
+    section = pick(["sdtls", "dtscn", "sec"], ["sdtls", "dtorder", "sec"],
+                   ["sdtls", "remnd", "sec"], ["sdtls", "drprcdt", "sec"],
+                   ["enfDtls", "ntcscn", "secno"])
+    if section not in (None, "", [], {}):
+        out["section"] = section if isinstance(section, list) else [str(section)]
+
+    # Notice issue date: reference/ARN/notice dates. Never use ``phdt`` — that
+    # is the personal-hearing date, not the issue date. Reminder rows carry the
+    # original SCN date in arndt/ntcdt, so prefer the row's own refdt there.
+    if isinstance(_deep_get(j, "sdtls", "remnd"), dict):
+        out["notice_date"] = pick(["refdt"], ["sdtls", "remnd", "ntcdt"],
+                                  ["ntcdt"], ["arndt"])
+    else:
+        out["notice_date"] = pick(["arndt"], ["sdtls", "dtscn", "refdt"],
+                                  ["ntcdt"], ["sdtls", "dtorder", "ntcdt"],
+                                  ["sdtls", "drprcdt", "ntcdt"], ["ntcDt"],
+                                  ["enfDtls", "ntcscn", "ntcDt"], ["refdt"])
+    out["reference_date"] = pick(["refdt"], ["arndt"])
+    out["due_date"] = pick(["sdtls", "dtscn", "duedt"], ["sdtls", "remnd", "duedt"],
+                           ["sdtls", "dtorder", "duedt"], ["duedt"],
+                           ["enfDtls", "ntcscn", "ntcDuDt"])
+    out["reply_due_date"] = pick(["sdtls", "dtscn", "replyDuedt"])
+    out["payment_due_date"] = pick(["sdtls", "dtscn", "pymtDuedt"])
+    out["hearing_date"] = pick(["sdtls", "dtscn", "phdt"], ["sdtls", "remnd", "phdt"],
+                               ["sdtls", "phdt"], ["enfDtls", "ntcscn", "phdt"])
+    out["hearing_time"] = pick(["sdtls", "dtscn", "pht"], ["sdtls", "remnd", "pht"],
+                               ["sdtls", "pht"])
+    out["prev_hearing_date"] = pick(["sdtls", "prevphdt"])
+    out["venue"] = pick(["sdtls", "dtscn", "venu"], ["sdtls", "remnd", "venu"],
+                        ["sdtls", "venu"], ["sdtls", "ordrplace"],
+                        ["enfDtls", "ntcscn", "place"])
+    out["hearing_subject"] = pick(["sdtls", "ntcsubj"])
+    out["previous_hearing_status"] = pick(["sdtls", "ntcprevstat"])
+    # Order date belongs to order-side folders (or an appeal application's
+    # underlying order). Do not leak the notice/SCN date into order_date.
+    if case_folder_bucket(folder_name) in _ORDER_SIDE_BUCKETS:
+        out["order_date"] = pick(["todtls", "dt"], ["refdt"], ["sdtls", "orddt"],
+                                 ["orddtl", "orddt"], ["orddtl", "ordcommdt"],
+                                 ["sdtls", "apeldt"])
+    else:
+        out["order_date"] = pick(["orddtl", "orddt"], ["orddtl", "ordcommdt"],
+                                 ["sdtls", "orddt"], ["sdtls", "apeldt"])
+    out["appeal_date"] = pick(["sdtls", "apeldt"])
+    out["reference_no"] = pick(["sdtls", "dtscn", "refno"], ["sdtls", "remnd", "ntref"],
+                               ["sdtls", "dtorder", "ntcno"],
+                               ["sdtls", "drprcdt", "ntcno"], ["ntcNo"],
+                               ["enfDtls", "ntcscn", "ntcNo"])
+    out["order_number"] = pick(["sdtls", "dtorder", "ntcno"], ["sdtls", "ordnum"],
+                               ["orddtl", "ordnum"], ["orddtl", "dmdid"])
+    out["order_type"] = pick(["sdtls", "dtorder", "type"], ["sdtls", "type"],
+                             ["sdtls", "ordtyp"], ["orddtl", "ordtyp"])
+    out["order_status"] = pick(["sdtls", "ordsts"])
+    out["order_decision"] = pick(["declarationSelected"], ["aplsts"],
+                                 ["sdtls", "ntcprevstat"], ["sdtls", "type"])
+    out["reminder_number"] = pick(["sdtls", "remnd", "remno"])
+    out["reply_reason"] = pick(["reply", "reason"])
+    out["order_reason"] = pick(["sdtls", "dtorder", "othrsn"],
+                               ["sdtls", "drprcdt", "othrsn"],
+                               ["sdtls", "remnd", "othrsn"], ["reason"])
+    out["reply_date"] = pick(["reply", "decdtls", "dt"], ["reply", "intdt"],
+                             ["reply", "ntcdt"])
+    out["payment_date"] = pick(["vp", "pysum", "paymentdate"], ["vp", "pysum", "scndt"])
+    period = pick(["orddtl", "prdofdisp"])
+    if isinstance(period, dict):
+        out["period_from"] = period.get("fromdate")
+        out["period_to"] = period.get("todate")
+    tpovl = pick(["sdtls", "dtscn", "tpovl"], ["sdtls", "dtorder", "tpovl"],
+                 ["sdtls", "drprcdt", "tpovl"], ["enfDtls", "ntcscn", "ovtp"],
+                 ["vp", "pysum", "ovtp"])
+    if isinstance(tpovl, dict):
+        start = f"{tpovl.get('fromm', '')}/{tpovl.get('fromy', '')}".strip("/")
+        end = f"{tpovl.get('tom', '')}/{tpovl.get('toy', '')}".strip("/")
+        if start or end:
+            out["tax_period"] = f"{start} - {end}".strip(" -")
+    fy = pick(["sdtls", "dtscn", "fy"], ["sdtls", "remnd", "fy"],
+              ["sdtls", "dtorder", "fy"], ["sdtls", "drprcdt", "fy"],
+              ["enfDtls", "ntcscn", "finyr"], ["vp", "pysum", "fy"])
+    if fy:
+        out["financial_year"] = fy
+    if _deep_get(j, "orddtl", "predepotax") is not None:
+        out["predeposit_tax"] = _deep_get(j, "orddtl", "predepotax")
+    awr = _deep_get(j, "orddtl", "appealwithdrawreject")
+    if isinstance(awr, dict):
+        out["appeal_withdraw_reject"] = {
+            k: awr.get(k) for k in ("status", "reappeal", "filedBy", "prn",
+                                    "arn", "caseId", "count")
+            if awr.get(k) not in (None, "")}
+    if _deep_get(j, "reply", "disamt") not in (None, ""):
+        out["reply_disallowed_amount"] = _num(_deep_get(j, "reply", "disamt"))
+    if _deep_get(j, "reply", "dismod") not in (None, ""):
+        out["reply_disallowed_mode"] = _deep_get(j, "reply", "dismod")
+
+    for label, path in (("disposed_amount", ["sdtls", "dispamt"]),
+                        ("differential_amount", ["sdtls", "dtramt"]),
+                        ("initial_amount", ["orddtl", "initamt"]),
+                        ("paid_amount", ["orddtl", "paidamt"]),
+                        ("payable_amount", ["orddtl", "payableamt"]),
+                        ("appeal_disposed_amount", ["orddtl", "dispamt"])):
+        total = _amount_total(_deep_get(j, *path))
+        if total is not None:
+            out[label] = total
+
+    breakdown = _demand_breakdown(j)
+    if breakdown:
+        out["demand_breakdown"] = breakdown
+    demand = _demand_total(j)
+    if demand is not None:
+        out["demand_total"] = demand
+
+    # Enforcement (IETCS) extras.
+    enf_no = pick(["enfDtls", "ntcscn", "ntcNo"], ["ntcNo"])
+    if enf_no:
+        out["enforcement_notice_no"] = enf_no
+    enf_tp = pick(["enfDtls", "ntcscn", "ntcTp"], ["enfDtls", "ntcscn", "type"])
+    if enf_tp:
+        out["enforcement_notice_type"] = enf_tp
+    if _deep_get(j, "enfDtls", "ntcscn", "isReminder") not in (None, ""):
+        out["is_reminder"] = _deep_get(j, "enfDtls", "ntcscn", "isReminder")
+
+    # Voluntary payment (ADJVP) extras.
+    if _deep_get(j, "vp", "pysum", "rsn") not in (None, ""):
+        out["payment_reason"] = _deep_get(j, "vp", "pysum", "rsn")
+    vp_breakdown = _summ_breakdown(_deep_get(j, "vp", "pysum", "lbltydtls", "summ"))
+    if vp_breakdown:
+        out["payment_breakdown"] = vp_breakdown
+
+    result = {key: value for key, value in out.items()
+              if value not in (None, "", [], {})}
+    # Nothing meaningful beyond the folder/bucket tags → treat as empty so the
+    # caller can report a genuinely failed/empty case instead of a false success.
+    if set(result) <= {"folder", "bucket"}:
+        return {}
+    return result
+
+
 _MODAL_DOWNLOAD_JS = """() => {
     const vis = e => e && e.getBoundingClientRect().width > 0;
     const modals = [...document.querySelectorAll('.modal.show, .modal.in, .cdk-overlay-pane, [role=dialog]')]
@@ -902,6 +1374,313 @@ async def _download_attachments(page: Page, save_dir: str, step,
     return saved
 
 
+_CASE_TABS_JS = """() => {
+    const vis = e => e && e.getBoundingClientRect().width > 0;
+    const tabs = [];
+    for (const el of document.querySelectorAll('a,li,button,span')) {
+        if (!vis(el)) continue;
+        const t = (el.innerText || '').replace(/\\s+/g, ' ').trim();
+        const ng = el.getAttribute('data-ng-click') || el.getAttribute('ng-click') || '';
+        if (ng && /listClick/i.test(ng) && t) {
+            if (!tabs.includes(t)) tabs.push(t);
+        }
+    }
+    return tabs;
+}"""
+
+
+async def _click_case_tab(page: Page, label: str) -> bool:
+    try:
+        return bool(await page.evaluate("""(label) => {
+            const vis = e => e && e.getBoundingClientRect().width > 0;
+            const el = [...document.querySelectorAll('a,li,button,span')]
+                .filter(vis).find(e =>
+                    (e.innerText || '').replace(/\\s+/g,' ').trim().toUpperCase() === label);
+            if (!el) return false;
+            el.scrollIntoView({block: 'center'});
+            el.click();
+            return true;
+        }""", label))
+    except Exception:
+        return False
+
+
+async def _download_case_documents(page: Page, save_dir: str, bucket: str, step,
+                                   before_download=None) -> list[dict]:
+    """Click every secure document link in the current case-folder tab.
+
+    Each document renders as ``<a download-doc-secure url="trans.DC_URL_NEW"
+    hashkey=<docId> arn=<arn> ekey=<enc> name.pdf>`` with no href; clicking pops
+    ``window.open('/downloadhb/download/new?...')`` into a new tab. A direct
+    request to that URL is rejected by the portal WAF, so the only working route
+    is to click the link and capture the popup download (confirmed 2026-11-26).
+
+    Downloads are collected via live listeners on the main page and any popup,
+    so it doesn't matter whether the PDF lands in a new tab or in place.
+    """
+    os.makedirs(save_dir, exist_ok=True)
+    saved: list[dict] = []
+    try:
+        anchors = page.locator("a[download-doc-secure]")
+        count = await anchors.count()
+    except Exception:
+        count = 0
+    for index in range(count):
+        anchor = anchors.nth(index)
+        try:
+            if not await anchor.is_visible():
+                continue
+            label = (await anchor.inner_text()).strip() or f"document-{index + 1}.pdf"
+        except Exception:
+            continue
+        if before_download:
+            try:
+                await before_download()
+            except Exception:
+                pass
+
+        captured: list = []
+        popups: list = []
+        wired: set[int] = set()
+        handlers: list[tuple] = []
+
+        def _collect(download, _store=captured):
+            _store.append(download)
+
+        def _wire(pg):
+            if id(pg) in wired:
+                return
+            wired.add(id(pg))
+            handlers.append((pg, _collect))
+            pg.on("download", _collect)
+            if pg is not page:
+                popups.append(pg)
+
+        _wire(page)
+        try:
+            page.context.on("page", _wire)
+        except Exception:
+            pass
+        try:
+            await anchor.scroll_into_view_if_needed()
+            await anchor.click(timeout=10000)
+            for _ in range(20 * 5):
+                if captured:
+                    break
+                await asyncio.sleep(0.2)
+        except Exception as exc:
+            if not captured:
+                step(f"[Warning] GST case document '{label[:50]}' failed: {str(exc)[:80]}")
+        finally:
+            try:
+                page.context.remove_listener("page", _wire)
+            except Exception:
+                pass
+            for pg, handler in handlers:
+                try:
+                    pg.remove_listener("download", handler)
+                except Exception:
+                    pass
+            for pg in popups:
+                try:
+                    await pg.close()
+                except Exception:
+                    pass
+
+        for download in captured:
+            try:
+                fname = sanitize_name(download.suggested_filename or label)
+                path = dedupe_path(save_dir, fname)
+                await download.save_as(path)
+                saved.append({"path": path, "label": os.path.basename(path),
+                              "bucket": bucket})
+                step(f"[Victory] Saved GST document: {os.path.basename(path)}")
+            except Exception as exc:
+                step(f"[Warning] GST case document save failed: {str(exc)[:80]}")
+    return saved
+
+
+async def _download_case_folder(page: Page, save_dir: str, step,
+                                before_download=None) -> list[dict]:
+    """Download all documents from a litigation case folder.
+
+    After ``_open_row`` the page is at ``/litserv/auth/case/folder`` showing the
+    sub-folder tabs (INTIMATIONS / NOTICES / REPLIES / ORDERS / CLOSURE).
+    Documents only render after a tab is clicked, so visit every tab and pull
+    the secure document links from each, classifying by tab name.
+    """
+    try:
+        tabs = await page.evaluate(_CASE_TABS_JS) or []
+    except Exception:
+        tabs = []
+    if not tabs:
+        tabs = ["NOTICES", "REPLIES", "ORDERS"]
+
+    saved: list[dict] = []
+    seen_labels: set[str] = set()
+    for tab in tabs:
+        if not await _click_case_tab(page, tab):
+            continue
+        await asyncio.sleep(2.5)
+        bucket = case_folder_bucket(tab)
+        for item in await _download_case_documents(
+                page, save_dir, bucket, step, before_download=before_download):
+            if item["label"] in seen_labels:
+                continue
+            seen_labels.add(item["label"])
+            saved.append(item)
+    return saved
+
+
+async def _post_json(page: Page, path: str, payload: dict, timeout_ms: int = 30000):
+    """POST a relative portal API path from inside the page (same-origin fetch
+    carries the session + anti-forgery headers the WAF expects). Returns parsed
+    JSON or None. Bounded by an in-page AbortController so a stalled portal
+    call can never hang the whole run."""
+    try:
+        res = await page.evaluate("""async ({path, payload, timeout}) => {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), timeout);
+            try {
+                const r = await fetch(path, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json',
+                              'X-Requested-With': 'XMLHttpRequest'},
+                    body: JSON.stringify(payload),
+                    credentials: 'include',
+                    signal: ctrl.signal
+                });
+                const text = await r.text();
+                let body = null;
+                try { body = JSON.parse(text); }
+                catch (e) { body = null; }
+                return {status: r.status, body};
+            } catch (e) {
+                return {status: 0, body: null, error: String(e)};
+            } finally {
+                clearTimeout(timer);
+            }
+        }""", {"path": path, "payload": payload, "timeout": timeout_ms})
+        return (res or {}).get("body")
+    except Exception:
+        return None
+
+
+async def _download_case_via_api(page: Page, row: dict, save_dir: str, step,
+                                 gstin: str, wait_download, before_download=None,
+                                 is_running=None) -> tuple[list[dict], list[dict]]:
+    """Download a litigation case's documents from the JSON APIs.
+
+    Robust replacement for clicking case rows: enumerate folders + items, read
+    every document id from ``itemJson``, fetch the encrypted ids, then open each
+    ``/downloadhb/download/new`` URL (a plain request is WAF-rejected, but a real
+    browser navigation works). Also returns the parsed per-item metadata
+    (dates/amounts/reasons).
+
+    ``wait_download()`` is an async callable returning the list of downloads
+    captured since the last call (the run-wide popup collector).
+    """
+    os.makedirs(save_dir, exist_ok=True)
+    case_id = (row.get("case_id") or "").strip()
+    ctype = (row.get("case_tpe_cd") or "").strip()
+    arn = (row.get("arn") or "").strip()
+    if not (case_id and ctype and gstin):
+        return [], []
+    try:
+        case_id_val = int(case_id)
+    except ValueError:
+        case_id_val = case_id
+
+    # The portal's SPA calls case/search first to set the "current case"; the
+    # folder/items APIs otherwise return whichever case is currently loaded.
+    await _post_json(page, "/litserv/auth/api/case/search",
+                     {"caseId": case_id_val, "arn": arn, "caseTypeCd": ctype})
+
+    folders = await _post_json(page, "/litserv/auth/api/case/folder",
+                               {"caseId": case_id_val, "gstid": gstin,
+                                "caseTypeCd": ctype})
+    if not isinstance(folders, list):
+        return [], []
+
+    docs: list[dict] = []
+    details: list[dict] = []
+    for folder in folders:
+        if not isinstance(folder, dict):
+            continue
+        fname = folder.get("caseFolderTypeName") or ""
+        folder_id = folder.get("caseFolderId")
+        if not folder_id:
+            continue
+        bucket = case_folder_bucket(fname)
+        items = await _post_json(page, "/litserv/auth/api/case/folder/items",
+                                 {"caseFolderId": folder_id})
+        for item in (items or []):
+            if not isinstance(item, dict):
+                continue
+            raw = item.get("itemJson")
+            if isinstance(raw, dict):
+                item_json = raw
+            else:
+                try:
+                    item_json = json.loads(raw or "{}")
+                except Exception:
+                    item_json = {}
+            meta = parse_item_meta(item_json, fname)
+            if meta:
+                meta["ref_id"] = str(item.get("refId") or "")
+                meta["map"] = str(item.get("caseCfItemMapId") or "")
+                details.append(meta)
+            for doc in iter_item_docs(item_json):
+                docs.append({"id": doc["id"], "name": doc["name"], "bucket": bucket})
+
+    # De-duplicate documents by id across folders.
+    uniq: dict[str, dict] = {}
+    for doc in docs:
+        uniq.setdefault(doc["id"], doc)
+    docs = list(uniq.values())
+    if not docs:
+        return [], details
+
+    enc = await _post_json(page, "/litserv/auth/api/usr/getEncrypDocIds",
+                           {"arn": arn, "docIdList": list(uniq.keys())})
+    enc = enc if isinstance(enc, dict) else {}
+
+    saved: list[dict] = []
+    for doc in docs:
+        if is_running is not None and not is_running():
+            break
+        eh = enc.get(doc["id"])
+        if not eh:
+            continue
+        if before_download:
+            try:
+                await before_download()
+            except Exception:
+                pass
+        await wait_download(0)  # discard anything already pending, no wait
+        query = urlencode({"docId": doc["id"], "arn": arn, "eh": eh})
+        url = f"/downloadhb/download/new?{query}"
+        try:
+            await page.evaluate("(u) => window.open(u, '_blank')", url)
+        except Exception as exc:
+            step(f"[Warning] Case document open failed: {str(exc)[:70]}")
+            continue
+        downloads = await wait_download()
+        for download in downloads:
+            try:
+                fname = sanitize_name(download.suggested_filename or doc["name"]
+                                      or f"{doc['id']}.pdf")
+                path = dedupe_path(save_dir, fname)
+                await download.save_as(path)
+                saved.append({"path": path, "label": os.path.basename(path),
+                              "bucket": doc["bucket"], "doc_id": doc["id"]})
+                step(f"[Victory] Saved GST document: {os.path.basename(path)}")
+            except Exception as exc:
+                step(f"[Warning] Case document save failed: {str(exc)[:70]}")
+        await _close_extra_pages(page)
+    return saved, details
+
+
 async def _close_any_modal(page: Page) -> None:
     """Close a portal modal/overlay so the next row is clickable."""
     try:
@@ -1032,9 +1811,13 @@ async def _fetch_notice(page: Page, row: dict, notice_dir: str, step,
 
     if (row.get("source") == "case") or row.get("case_id"):
         # Appeal / audit / case-folder task: the portal navigates in-place to
-        # the case folder (FormSubmitter), not a new tab.
-        got.extend(await _download_attachments(page, notice_dir, step,
-                                               before_download=before_download))
+        # the case folder (FormSubmitter), not a new tab. Documents live under
+        # the NOTICES / REPLIES / ORDERS sub-tabs as secure download links.
+        got.extend(await _download_case_folder(
+            page, notice_dir, step, before_download=before_download))
+        if not got:
+            got.extend(await _download_attachments(
+                page, notice_dir, step, before_download=before_download))
         await _close_any_modal(page)
         return got, detail_url
 
@@ -1078,6 +1861,13 @@ async def _fetch_notice(page: Page, row: dict, notice_dir: str, step,
 
     # Case D: an external returns-portal detail page; scrape any PDFs.
     if viewer is not page and not viewer.is_closed():
+        # Returns-portal notices (e.g. GSTR-3A return-defaulter) auto-generate
+        # and download their PDF shortly after load; give them time before the
+        # popup is closed so the run-wide download collector can catch it.
+        try:
+            await asyncio.sleep(4)
+        except Exception:
+            pass
         got.extend(await _download_attachments(viewer, notice_dir, step,
                                                before_download=before_download))
         await _close_extra_pages(page)
@@ -1173,8 +1963,47 @@ async def download_gst_notices(page: Page, download_root: str, log_callback,
     def _on_download(download):
         pending_downloads.append(download)
 
+    # Run-wide popup download collector: the returns-portal GSTR3A notice and
+    # litigation document links open a new tab whose PDF download is not seen by
+    # the main page. Wire every popup and let rows drain this list.
+    popup_downloads: list = []
+    wired_pages: set[int] = set()
+
+    def _collect_popup(download):
+        popup_downloads.append(download)
+
+    def _wire_popup(pg):
+        if id(pg) in wired_pages:
+            return
+        wired_pages.add(id(pg))
+        try:
+            pg.on("download", _collect_popup)
+        except Exception:
+            pass
+
+    async def _wait_download(timeout: float = 12.0) -> list:
+        """Wait for the next captured popup download(s) and drain the list.
+
+        Returns as soon as one download is seen, so the poll interval only caps
+        latency to a few tens of ms. ``timeout`` is the per-document ceiling for
+        a download that never arrives.
+        """
+        waited = 0.0
+        while waited < timeout:
+            if popup_downloads:
+                break
+            await asyncio.sleep(0.1)
+            waited += 0.1
+        out = list(popup_downloads)
+        popup_downloads.clear()
+        return out
+
     page.on("response", _on_response)
     page.on("download", _on_download)
+    try:
+        page.context.on("page", _wire_popup)
+    except Exception:
+        pass
 
     try:
         await navigate_to_notices(page, log_callback)
@@ -1197,9 +2026,31 @@ async def download_gst_notices(page: Page, download_root: str, log_callback,
     if not rows:
         return False, "No GST notices found", []
 
+    # GSTIN of the logged-in taxpayer — needed by the case-folder APIs. Prefer
+    # the value carried on the case/notice feeds.
+    gstin = ""
+    for candidate in (max(case_payloads, key=len) if case_payloads else []):
+        if isinstance(candidate, dict) and candidate.get("gstIn"):
+            gstin = candidate["gstIn"]
+            break
+    if not gstin:
+        for candidate in rows:
+            if candidate.get("gstin"):
+                gstin = candidate["gstin"]
+                break
+
     old_meta = load_meta(download_root)
     old_by_key = _entries_by_key(old_meta)
     files_by_key: dict[str, dict] = {}
+    # A litigation case has ONE folder shared by all of its task rows (e.g. the
+    # DRC-01 notice row and the order row point at the same caseId). Download
+    # the folder's documents once, then hand each row the subset that belongs
+    # to it: notice + reply to the notice row, orders to the order row.
+    case_cache: dict[str, dict] = {}
+    saved_paths: set[str] = set()
+
+    def _remember_case(case_id: str, items: list[dict]) -> None:
+        case_cache[case_id] = {"buckets": split_case_buckets(items)}
 
     async def _save_downloads(items, notice_dir, row) -> list[dict]:
         os.makedirs(notice_dir, exist_ok=True)
@@ -1252,42 +2103,103 @@ async def download_gst_notices(page: Page, download_root: str, log_callback,
                 "files": previous.get("files") or [],
                 "reply_files": previous.get("reply_files") or [],
                 "order_files": previous.get("order_files") or [],
+                "details": previous.get("details") or [],
             }
             continue
 
+        case_id = (row.get("case_id") or "").strip()
         pending_downloads.clear()
+        popup_downloads.clear()
         notice_dir = os.path.join(download_root, f"notice-{index:02d}")
         detail_url = ""
         got: list[dict] = []
-        try:
-            got, detail_url = await _fetch_notice(
-                page, row, notice_dir, step, pending_downloads,
-                before_download=before_download)
+        details: list[dict] = []
+        if case_id and case_id in case_cache:
+            got = case_docs_for_row(case_cache[case_id]["buckets"], bool(row.get("is_order")))
+            details = details_for_row(case_cache[case_id].get("details"),
+                                      bool(row.get("is_order")))
+            step(f"Case {case_id} already fetched this run — reusing {len(got)} file(s)")
+        elif case_id and gstin:
+            try:
+                got, details = await _download_case_via_api(
+                    page, row, notice_dir, step, gstin, _wait_download,
+                    before_download=before_download, is_running=is_running)
+            except Exception as exc:
+                step(f"[Warning] Case {case_id} API download failed: {exc}")
+                got, details = [], []
+            if not got:
+                # Fallback to the DOM case-folder path if the API returned
+                # nothing (e.g. an unexpected folder shape).
+                try:
+                    got, detail_url = await _fetch_notice(
+                        page, row, notice_dir, step, pending_downloads,
+                        before_download=before_download)
+                except Exception as exc:
+                    step(f"[Warning] Could not open GST case {index}: {exc}")
+                if not got and not details:
+                    warnings.append(f"{row.get('notice_type') or 'Notice'} {index}: open failed")
+            if got:
+                _remember_case(case_id, got)
+                case_cache[case_id]["details"] = details
+                got = case_docs_for_row(case_cache[case_id]["buckets"], bool(row.get("is_order")))
+                details = details_for_row(details, bool(row.get("is_order")))
+        else:
+            try:
+                got, detail_url = await _fetch_notice(
+                    page, row, notice_dir, step, pending_downloads,
+                    before_download=before_download)
+            except Exception as exc:
+                step(f"[Warning] Could not open GST notice {index}: {exc}")
+                warnings.append(f"{row.get('notice_type') or 'Notice'} {index}: open failed")
+                await _close_any_modal(page)
+                got, detail_url = [], ""
             if not got and pending_downloads:
                 got.extend(await _save_pending(pending_downloads, notice_dir, row, step))
-        except Exception as exc:
-            step(f"[Warning] Could not open GST notice {index}: {exc}")
-            warnings.append(f"{row.get('notice_type') or 'Notice'} {index}: open failed")
-            await _close_any_modal(page)
-            got, detail_url = [], ""
+            # Capture popup downloads (returns-portal GSTR3A for APL3A notices,
+            # and any classic notice that opens its PDF in a new tab).
+            wait_for = 6.0 if (detail_url or (row.get("appln_cd") or "").upper()
+                               in ("APL3A", "APLSM")) else 0.5
+            saved_names = {os.path.basename(i["path"]) for i in got}
+            for download in await _wait_download(timeout=wait_for):
+                try:
+                    fname = sanitize_name(
+                        download.suggested_filename
+                        or f"{row.get('notice_type') or 'notice'}-{index_label(row)}.pdf")
+                    # Skip a popup download already saved by the DOM scraper.
+                    if fname in saved_names:
+                        continue
+                    path = dedupe_path(notice_dir, fname)
+                    await download.save_as(path)
+                    saved_names.add(os.path.basename(path))
+                    got.append({"path": path, "label": os.path.basename(path),
+                                "bucket": "order" if row.get("is_order") else "notice"})
+                    step(f"[Victory] Saved GST document: {os.path.basename(path)}")
+                except Exception as exc:
+                    step(f"[Warning] Popup download save failed: {str(exc)[:70]}")
 
         files, replies, orders = [], [], []
         for item in got:
-            rel = f"notice-{index:02d}/{os.path.basename(item['path'])}"
-            files.append(rel)
+            rel = os.path.relpath(item["path"], download_root).replace("\\", "/")
+            if rel not in files:
+                files.append(rel)
             if item["bucket"] == "reply":
-                replies.append(rel)
+                if rel not in replies:
+                    replies.append(rel)
             elif item["bucket"] == "order" or row.get("is_order"):
-                orders.append(rel)
-            saved.append({"path": item["path"],
-                          "proceeding": (row.get("notice_type") or row.get("ref_id") or ""),
-                          "kind": item["bucket"]})
+                if rel not in orders:
+                    orders.append(rel)
+            if item["path"] not in saved_paths:
+                saved_paths.add(item["path"])
+                saved.append({"path": item["path"],
+                              "proceeding": (row.get("notice_type") or row.get("ref_id") or ""),
+                              "kind": item["bucket"]})
         if not got:
             warnings.append(f"GST notice {index}: no attachment (portal detail only)")
         files_by_key[key] = {
             "files": files,
             "reply_files": replies,
             "order_files": orders,
+            "details": details,
         }
         row["detail_url"] = detail_url
         await _close_any_modal(page)
