@@ -1,0 +1,1499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AayDoc Capio — e-Proceedings &amp; Litigation mockup v1</title>
+<style>
+:root{
+  --bg:#F3F5F8; --panel:#FFFFFF; --line:#E3E8EF; --line-soft:#EDF1F5;
+  --ink:#0F172A; --muted:#5B6B7F; --faint:#8A99AB;
+  --blue:#2563EB; --blue-bg:#EFF4FF; --blue-line:#C9DAFD;
+  --it:#9F1239; --it-bg:#FFF1F4; --it-line:#F5C6D3;
+  --gst:#15803D; --gst-bg:#F0FDF4; --gst-line:#BBF0CC;
+  --lit:#B45309; --lit-bg:#FFFBEB; --lit-line:#F6DFA8;
+  --danger:#B91C1C; --danger-bg:#FEF2F2; --danger-line:#FECACA;
+  --warn:#B45309; --warn-bg:#FFFBEB; --warn-line:#FDE68A;
+  --ok:#166534; --ok-bg:#F0FDF4;
+  --purple:#6D28D9; --purple-bg:#F5F3FF;
+  --radius:10px;
+  --shadow:0 1px 2px rgba(15,23,42,.05),0 10px 28px -18px rgba(15,23,42,.28);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  font-size:13px;line-height:1.45;color:var(--ink);background:var(--bg);
+  -webkit-font-smoothing:antialiased;
+}
+button{font-family:inherit}
+a{color:var(--blue);text-decoration:none}
+a:hover{text-decoration:underline}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;letter-spacing:-.02em}
+.icon{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.muted{color:var(--muted)}
+.faint{color:var(--faint)}
+
+/* ── App bar ── */
+.appbar{position:sticky;top:0;z-index:60;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:26px;padding:0 24px;height:56px}
+.brand{display:flex;align-items:center;gap:10px;flex:none}
+.logo{width:24px;height:24px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:2px}
+.logo i{display:block;border-radius:2px;background:var(--ink)}
+.logo i:nth-child(1){background:var(--blue)}
+.logo i:nth-child(4){background:#CBD5E1}
+.brand b{display:block;font-size:14px;letter-spacing:-.02em;line-height:1}
+.brand small{display:block;font-size:8.5px;letter-spacing:.24em;color:var(--faint);font-weight:700;margin-top:3px}
+.module-nav{display:flex;height:56px;gap:24px}
+.module-nav button{border:0;background:none;height:56px;padding:0 1px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;display:flex;align-items:center;gap:7px;transition:color .15s}
+.module-nav button:hover{color:var(--ink)}
+.module-nav button[data-page="it"].active{color:var(--it);border-color:var(--it)}
+.module-nav button[data-page="gst"].active{color:var(--gst);border-color:var(--gst)}
+.module-nav button[data-page="lit"].active{color:var(--lit);border-color:var(--lit)}
+.nav-count{font-size:9.5px;font-weight:700;background:#F1F5F9;color:var(--muted);border-radius:20px;padding:1px 6px}
+.module-nav button.active .nav-count{background:var(--bg);color:inherit}
+.appbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.sync-chip{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:600;color:var(--muted);white-space:nowrap}
+.sync-chip i{width:6px;height:6px;border-radius:50%;background:#22C55E;box-shadow:0 0 0 3px #DCFCE7}
+.avatar{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center;font-size:10px;font-weight:700;letter-spacing:.02em}
+
+.wrap{max-width:1560px;margin:0 auto;padding:0 24px 10px}
+.page{display:none}
+.page.active{display:block}
+#page-it{--accent:var(--it);--accent-bg:var(--it-bg);--accent-line:var(--it-line)}
+#page-gst{--accent:var(--gst);--accent-bg:var(--gst-bg);--accent-line:var(--gst-line)}
+#page-lit{--accent:var(--lit);--accent-bg:var(--lit-bg);--accent-line:var(--lit-line)}
+
+/* ── Page head ── */
+.page-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;padding:24px 0 0;flex-wrap:wrap}
+.eyebrow{font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--faint);font-weight:700}
+.page-head h1{font-size:25px;letter-spacing:-.03em;font-weight:700;margin-top:5px;line-height:1.1}
+.page-sub{font-size:12.5px;color:var(--muted);margin-top:5px;max-width:720px}
+.head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-bottom:2px}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--ink);font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap;transition:.15s}
+.btn:hover{border-color:#CBD5E1;background:#F8FAFC}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{filter:brightness(.94);background:var(--accent)}
+.btn.ghost{background:transparent}
+.btn.sm{height:27px;padding:0 9px;font-size:10.5px;border-radius:7px}
+.btn.sm .icon{width:11px;height:11px}
+
+/* ── KPIs ── */
+.kpis{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:9px;margin-top:18px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:12px 13px;position:relative;overflow:hidden}
+.kpi .k-label{font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi .k-value{font-size:25px;font-weight:700;letter-spacing:-.035em;margin-top:3px;line-height:1.05;font-variant-numeric:tabular-nums}
+.kpi .k-foot{font-size:10px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi.accent .k-value{color:var(--accent)}
+.kpi.alert .k-value{color:var(--danger)}
+.kpi.warn .k-value{color:var(--warn)}
+.kpi.ok .k-value{color:var(--ok)}
+.kpi .k-dot{position:absolute;right:11px;top:12px;width:6px;height:6px;border-radius:50%}
+.kpi .k-dot.red{background:#DC2626}.kpi .k-dot.amber{background:#F59E0B}.kpi .k-dot.green{background:#22C55E}.kpi .k-dot.blue{background:#3B82F6}
+
+/* ── View tabs ── */
+.viewtabs{display:flex;gap:22px;border-bottom:1px solid var(--line);margin-top:18px}
+.viewtab{position:relative;border:0;background:none;padding:10px 0 11px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:7px}
+.viewtab:hover{color:var(--ink)}
+.viewtab.active{color:var(--accent)}
+.viewtab.active::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;border-radius:2px;background:var(--accent)}
+.count{font-size:10px;background:#F1F5F9;color:var(--muted);padding:1px 6px;border-radius:20px;font-weight:700}
+.viewtab.active .count{background:var(--accent-bg);color:var(--accent)}
+.view{display:none}
+.view.active{display:block}
+
+/* ── Toolbar ── */
+.toolbar{display:flex;gap:8px;align-items:center;margin:14px 0;flex-wrap:wrap}
+.seg{display:inline-flex;background:#fff;border:1px solid var(--line);border-radius:8px;padding:2px;gap:2px}
+.seg button{border:0;background:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;color:var(--muted);cursor:pointer;white-space:nowrap}
+.seg button:hover{color:var(--ink)}
+.seg button.active{background:var(--ink);color:#fff}
+select.select{height:31px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:0 9px;font-size:11.5px;color:var(--ink);font-family:inherit;cursor:pointer}
+.search{display:flex;align-items:center;gap:7px;height:31px;padding:0 10px;background:#fff;border:1px solid var(--line);border-radius:8px;min-width:200px;flex:1;max-width:330px}
+.search .icon{color:var(--faint)}
+.search input{border:0;outline:0;font-size:12px;width:100%;background:none;color:var(--ink);font-family:inherit}
+.search input::placeholder{color:var(--faint)}
+.spacer{flex:1}
+
+/* ── Chips / tags / urgency ── */
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;border:1px solid transparent;white-space:nowrap;line-height:1.5}
+.chip::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor}
+.chip.plain::before{display:none}
+.chip-open{color:#1D4ED8;background:#EFF6FF;border-color:#BFDBFE}
+.chip-replied{color:#0F766E;background:#F0FDFA;border-color:#99F6E4}
+.chip-overdue{color:#B91C1C;background:#FEF2F2;border-color:#FECACA}
+.chip-closed{color:#475569;background:#F1F5F9;border-color:#E2E8F0}
+.chip-remand{color:#6D28D9;background:#F5F3FF;border-color:#DDD6FE}
+.chip-appeal{color:#B45309;background:#FFFBEB;border-color:#FDE68A}
+.chip-neutral{color:#475569;background:#F8FAFC;border-color:#E2E8F0}
+.chip-accent{color:var(--accent);background:var(--accent-bg);border-color:var(--accent-line)}
+.chip-it{color:var(--it);background:var(--it-bg);border-color:var(--it-line)}
+.chip-gst{color:var(--gst);background:var(--gst-bg);border-color:var(--gst-line)}
+.chip-lit{color:var(--lit);background:var(--lit-bg);border-color:var(--lit-line)}
+
+.tag{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:5px;background:#F1F5F9;color:#334155;border:1px solid #E2E8F0;white-space:nowrap;letter-spacing:-.02em}
+.tag.amber{background:#FFFBEB;color:#92400E;border-color:#FDE68A}
+.tag.blue{background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE}
+.tag.green{background:#F0FDF4;color:#166534;border-color:#BBF7D0}
+.tag.slate{background:#F1F5F9;color:#334155;border-color:#E2E8F0}
+.tag.purple{background:#F5F3FF;color:#6D28D9;border-color:#DDD6FE}
+
+.urg{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;white-space:nowrap}
+.urg::before{content:"";width:6px;height:6px;border-radius:50%}
+.urg.high{color:#B91C1C}.urg.high::before{background:#DC2626}
+.urg.medium{color:#B45309}.urg.medium::before{background:#F59E0B}
+.urg.low{color:#15803D}.urg.low::before{background:#22C55E}
+
+/* ── Panels ── */
+.panel{background:#fff;border:1px solid var(--line);border-radius:12px}
+.panel-h{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 15px;border-bottom:1px solid var(--line-soft)}
+.panel-h h3{font-size:10.5px;text-transform:uppercase;letter-spacing:.11em;color:var(--muted);font-weight:700}
+.panel-b{padding:15px}
+
+/* ── Overview ── */
+.overview-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:14px;margin-top:14px;align-items:start}
+.stack{display:flex;flex-direction:column;gap:14px}
+.radar{width:100%;border-collapse:collapse}
+.radar th,.radar td{padding:8px 6px;font-size:11px;border-bottom:1px solid var(--line-soft);text-align:center}
+.radar thead th{font-size:9px;text-transform:uppercase;letter-spacing:.09em;color:var(--faint);font-weight:700;border-bottom:1px solid var(--line)}
+.radar thead th:first-child{text-align:left}
+.radar tbody th{text-align:left;font-weight:600;color:var(--ink);font-size:11.5px;white-space:nowrap}
+.radar td{font-family:ui-monospace,monospace;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums}
+.radar td.hot{color:var(--danger);background:var(--danger-bg);border-radius:5px}
+.radar td.warm{color:var(--warn);background:var(--warn-bg);border-radius:5px}
+.radar tr:last-child th,.radar tr:last-child td{border-bottom:0}
+.radar-note{font-size:10px;color:var(--faint);margin-top:8px}
+
+.activity{display:flex;flex-direction:column}
+.act{display:flex;gap:10px;padding:9px 0;border-bottom:1px dashed var(--line-soft)}
+.act:last-child{border-bottom:0}
+.act-ic{width:24px;height:24px;border-radius:6px;background:#F1F5F9;color:var(--muted);display:grid;place-items:center;flex:none;margin-top:1px}
+.act-ic.it{background:var(--it-bg);color:var(--it)}
+.act-ic.gst{background:var(--gst-bg);color:var(--gst)}
+.act-ic.lit{background:var(--lit-bg);color:var(--lit)}
+.act-body{min-width:0;flex:1}
+.act-t{font-size:11.5px;font-weight:600;line-height:1.35}
+.act-m{font-size:10.5px;color:var(--muted);margin-top:1px;display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.act-time{font-size:10px;color:var(--faint);white-space:nowrap}
+
+.att-row{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px dashed var(--line-soft);cursor:pointer}
+.att-row:last-child{border-bottom:0}
+.att-row:hover .att-t{color:var(--accent)}
+.att-body{flex:1;min-width:0}
+.att-t{font-size:11.5px;font-weight:600;line-height:1.3;transition:.15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.att-m{font-size:10px;color:var(--muted);margin-top:2px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.att-go{color:var(--faint);flex:none}
+
+.bars{display:flex;flex-direction:column;gap:9px}
+.bar-row{display:grid;grid-template-columns:1fr 36px;gap:8px;align-items:center}
+.bar-top{display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:4px;gap:8px}
+.bar-top b{font-weight:600}
+.bar-top span{color:var(--faint);font-family:ui-monospace,monospace;font-size:10px}
+.bar-track{height:5px;border-radius:5px;background:#EEF2F6;overflow:hidden}
+.bar-track i{display:block;height:100%;border-radius:5px;background:var(--accent)}
+.bar-val{font-size:10.5px;font-weight:700;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+
+/* ── Master/detail list ── */
+.split{display:grid;grid-template-columns:370px minmax(0,1fr);gap:14px;align-items:start}
+.list-toolbar{display:flex;gap:6px;align-items:center;margin-bottom:9px}
+.case-card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:11px 13px;cursor:pointer;transition:.15s;position:relative;margin-bottom:8px}
+.case-card:hover{border-color:#CBD5E1;box-shadow:var(--shadow)}
+.case-card.selected{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-bg)}
+.case-card.selected::before{content:"";position:absolute;left:-1px;top:10px;bottom:10px;width:3px;border-radius:3px;background:var(--accent)}
+.cc-top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.cc-client{font-size:12.5px;font-weight:700;letter-spacing:-.01em}
+.cc-sub{font-size:10.5px;color:var(--muted);margin-top:1px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.cc-proc{font-size:11.5px;color:var(--ink);margin-top:6px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.cc-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px;font-size:10px;color:var(--muted)}
+.cc-deadline{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.cc-deadline.hot{color:var(--danger);font-weight:600}
+.progress{height:4px;background:#EEF2F6;border-radius:4px;overflow:hidden;margin-top:6px}
+.progress > i{display:block;height:100%;border-radius:4px;background:var(--accent)}
+.progress.danger > i{background:var(--danger)}
+.progress.warn > i{background:var(--warn)}
+.progress.ok > i{background:var(--ok)}
+.empty{padding:26px;text-align:center;color:var(--faint);font-size:11.5px;background:#fff;border:1px dashed var(--line);border-radius:10px}
+
+/* ── Detail pane ── */
+.detail-h{padding:16px 18px;border-bottom:1px solid var(--line-soft);display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.detail-eyebrow{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--accent);font-weight:700}
+.detail-title{font-size:18px;font-weight:700;letter-spacing:-.025em;line-height:1.25;margin-top:3px}
+.detail-sub{font-size:11.5px;color:var(--muted);margin-top:5px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.detail-sub b{color:var(--ink)}
+.detail-actions{display:flex;gap:7px;align-items:flex-start;flex-wrap:wrap}
+.detail-body{padding:16px 18px}
+.meta-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.meta{border:1px solid var(--line-soft);background:#FCFDFE;border-radius:8px;padding:8px 10px;min-width:0}
+.meta .m-label{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);font-weight:700;display:flex;gap:5px;align-items:center;white-space:nowrap}
+.meta .m-value{font-size:11.5px;font-weight:600;margin-top:3px;word-break:break-word;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.meta .m-value.link{color:var(--blue);cursor:pointer}
+.detail-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,.9fr);gap:18px;margin-top:16px;align-items:start}
+.section-h{display:flex;align-items:center;gap:10px;margin:0 0 9px}
+.section-h h4{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700;white-space:nowrap}
+.section-h .rule{flex:1;height:1px;background:var(--line-soft)}
+.section-h .hint{font-size:10px;color:var(--faint);white-space:nowrap}
+
+/* ── Deadline clock ── */
+.clock-list{background:#fff;border:1px solid var(--line);border-radius:9px;padding:4px 12px;margin-bottom:18px}
+.clock{display:grid;grid-template-columns:1fr 94px 78px;gap:10px;align-items:center;padding:9px 0;border-bottom:1px dashed var(--line-soft)}
+.clock:last-child{border-bottom:0}
+.clock .c-title{font-size:11.5px;font-weight:600;line-height:1.3}
+.clock .c-prov{font-size:10px;color:var(--faint);margin-top:1px}
+.clock .c-due{font-size:11px;font-weight:600;text-align:right;white-space:nowrap}
+.clock .c-due span{display:block;font-size:9.5px;font-weight:600;color:var(--faint);margin-top:1px}
+.clock .c-status{text-align:right}
+.clock-bar{grid-column:1/-1;margin-top:1px}
+
+/* ── Timeline ── */
+.tl-group{border:1px solid var(--line-soft);border-radius:9px;margin-bottom:7px;overflow:hidden;background:#fff}
+.tl-head{display:flex;align-items:center;gap:8px;padding:9px 11px;cursor:pointer;background:#FCFDFE;user-select:none}
+.tl-head:hover{background:#F8FAFC}
+.tl-head .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none}
+.tl-head .name{font-size:11px;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
+.tl-head .n{font-size:9.5px;background:#F1F5F9;border-radius:20px;padding:1px 6px;color:var(--muted);font-weight:700}
+.tl-head .chev{margin-left:auto;color:var(--faint);transition:.2s}
+.tl-group.closed .tl-body{display:none}
+.tl-group.closed .chev{transform:rotate(-90deg)}
+.tl-body{padding:2px 11px 6px}
+.tl-item{display:grid;grid-template-columns:56px 16px minmax(0,1fr) auto;gap:8px;padding:9px 0;border-bottom:1px solid var(--line-soft);align-items:start}
+.tl-item:last-child{border-bottom:0}
+.tl-date{font-size:10px;color:var(--muted);font-family:ui-monospace,monospace;padding-top:1px;line-height:1.4}
+.tl-date span{display:block;color:var(--faint);font-size:9px}
+.tl-rail{position:relative;display:flex;justify-content:center;padding-top:3px}
+.tl-rail i{width:8px;height:8px;border-radius:50%;border:2px solid var(--accent);background:#fff;z-index:1}
+.tl-rail::before{content:"";position:absolute;top:2px;bottom:-15px;width:1px;background:var(--line)}
+.tl-item:last-child .tl-rail::before{display:none}
+.tl-main{min-width:0}
+.tl-main .t{font-size:12px;font-weight:600;line-height:1.35}
+.tl-main .m{font-size:10.5px;color:var(--muted);margin-top:2px;display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.tl-main .m .sep{color:#CBD5E1}
+.tl-main .chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.tl-actions{display:flex;gap:5px;align-items:center;padding-top:1px}
+
+/* ── Side cards ── */
+.side-card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 13px;margin-bottom:10px}
+.side-card:last-child{margin-bottom:0}
+.side-card h5{font-size:9.5px;text-transform:uppercase;letter-spacing:.11em;color:var(--faint);font-weight:700;margin-bottom:8px;display:flex;justify-content:space-between;gap:8px;align-items:center}
+.kv{display:flex;justify-content:space-between;gap:10px;font-size:11px;padding:4px 0;border-bottom:1px dashed var(--line-soft)}
+.kv:last-child{border-bottom:0}
+.kv .k{color:var(--muted);white-space:nowrap}
+.kv .v{font-weight:600;text-align:right;word-break:break-word;min-width:0}
+.side-note{font-size:10.5px;color:var(--muted);line-height:1.45;padding:7px 0 2px;border-top:1px solid var(--line-soft);margin-top:6px}
+.link-row{display:flex;align-items:center;gap:7px;padding:7px 0;border-bottom:1px dashed var(--line-soft);font-size:11px;cursor:pointer}
+.link-row:last-child{border-bottom:0}
+.link-row .icon{color:var(--faint)}
+.link-row:hover .lr-t{color:var(--accent)}
+.lr-body{min-width:0;flex:1}
+.lr-t{font-weight:600;line-height:1.3;transition:.15s}
+.lr-m{font-size:9.5px;color:var(--faint);margin-top:1px;font-family:ui-monospace,monospace}
+
+/* ── Table ── */
+.tbl-wrap{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.tbl-scroll{overflow:auto}
+.tbl{width:100%;border-collapse:collapse;min-width:1100px}
+.tbl th{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);font-weight:700;text-align:left;padding:9px 11px;background:#F8FAFC;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl td{padding:9px 11px;border-bottom:1px solid var(--line-soft);font-size:11.5px;vertical-align:middle}
+.tbl tbody tr.data:hover td{background:#FAFCFE}
+.tbl tr:last-child td{border-bottom:0}
+.tbl .num{text-align:right;font-family:ui-monospace,monospace;font-size:10.5px;white-space:nowrap}
+.tbl .col-client{font-weight:600}
+.tbl .sub{font-size:10px;color:var(--muted);margin-top:1px;white-space:nowrap}
+.tbl .col-date{white-space:nowrap;font-variant-numeric:tabular-nums}
+.tbl .col-date span{display:block;font-size:9.5px;color:var(--faint);margin-top:1px}
+.tbl .col-desc{min-width:230px;max-width:320px}
+.tbl .col-desc .d{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.3}
+.tbl .actions{white-space:nowrap;text-align:right}
+.rowbtn{border:1px solid var(--line);background:#fff;border-radius:6px;width:25px;height:25px;display:inline-grid;place-items:center;cursor:pointer;color:var(--muted);vertical-align:middle}
+.rowbtn:hover{border-color:#CBD5E1;color:var(--ink);background:#F8FAFC}
+.rowbtn.open{color:var(--accent);border-color:var(--accent-line);background:var(--accent-bg)}
+.rowbtn .icon{width:12px;height:12px;transition:.2s}
+.rowbtn.open .icon{transform:rotate(90deg)}
+tr.expand td{background:#F8FAFC;padding:0!important;border-bottom:1px solid var(--line)}
+.hist{padding:11px 16px 14px 44px;border-top:1px dashed var(--line)}
+.hist-h{display:flex;align-items:center;gap:8px;font-size:9.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:700;margin-bottom:7px}
+.hist-h .tag{margin-left:2px}
+.hist-tbl{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.hist-tbl th{font-size:8.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);font-weight:700;text-align:left;padding:6px 9px;background:#FBFCFE;border-bottom:1px solid var(--line-soft)}
+.hist-tbl td{font-size:10.5px;padding:6px 9px;border-bottom:1px solid var(--line-soft)}
+.hist-tbl tr:last-child td{border-bottom:0}
+.hist-tbl .mono{font-size:10px}
+.hist-note{font-size:9.5px;color:var(--faint);margin-top:7px;display:flex;gap:6px;align-items:center}
+
+/* ── Donut / legend ── */
+.donut-wrap{display:flex;align-items:center;gap:18px}
+.donut{width:118px;height:118px;border-radius:50%;flex:none;position:relative;background:conic-gradient(#3B82F6 0 37.9%,#14B8A6 37.9% 65.5%,#DC2626 65.5% 79.3%,#94A3B8 79.3% 100%)}
+.donut::after{content:"";position:absolute;inset:27px;border-radius:50%;background:#fff}
+.donut-c{position:absolute;inset:0;display:grid;place-items:center;z-index:1;text-align:center}
+.donut-c b{display:block;font-size:20px;letter-spacing:-.03em;line-height:1}
+.donut-c span{display:block;font-size:8.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);font-weight:700;margin-top:2px}
+.legend-list{display:flex;flex-direction:column;gap:6px;flex:1}
+.legend-row{display:flex;align-items:center;gap:7px;font-size:10.5px}
+.legend-row i{width:7px;height:7px;border-radius:2px;flex:none}
+.legend-row b{margin-left:auto;font-variant-numeric:tabular-nums}
+.legend-row span{color:var(--muted)}
+
+/* ── Drawer (GST deep record) ── */
+.overlay{position:fixed;inset:0;background:rgba(15,23,42,.44);opacity:0;pointer-events:none;transition:.2s;z-index:80}
+.overlay.open{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;height:100%;width:min(800px,94vw);background:#F5F7FA;z-index:90;transform:translateX(102%);transition:transform .26s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;box-shadow:-24px 0 60px rgba(15,23,42,.28)}
+.drawer.open{transform:none}
+.drawer-h{background:#fff;border-bottom:1px solid var(--line);padding:14px 20px;display:flex;gap:12px;justify-content:space-between;align-items:flex-start;flex:none}
+.drawer-h .eyebrow{color:var(--gst)}
+.drawer-title{font-size:16.5px;font-weight:700;letter-spacing:-.025em;line-height:1.25;margin-top:2px}
+.drawer-sub{font-size:10.5px;color:var(--muted);margin-top:3px;display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.drawer-h-actions{display:flex;gap:6px;align-items:center;flex:none}
+.x-btn{border:1px solid var(--line);background:#fff;width:28px;height:28px;border-radius:7px;display:grid;place-items:center;cursor:pointer;color:var(--muted)}
+.x-btn:hover{color:var(--ink);border-color:#CBD5E1}
+.drawer-b{padding:16px 20px 28px;overflow:auto}
+.portal-band{background:var(--gst-bg);border:1px solid var(--gst-line);border-radius:9px;padding:11px 13px;margin:12px 0 10px;display:flex;gap:10px;align-items:flex-start}
+.portal-band .ic{width:26px;height:26px;border-radius:7px;background:#DCFCE7;color:var(--gst);display:grid;place-items:center;flex:none}
+.portal-band b{font-size:12px;color:var(--gst);display:block}
+.portal-band span{font-size:10.5px;color:#166534;display:block;margin-top:1px}
+.work-card{background:#fff;border:1px solid var(--line);border-radius:9px;padding:11px 13px;margin-bottom:10px;display:flex;gap:12px;justify-content:space-between;align-items:flex-start}
+.work-card .wt{font-size:12px;font-weight:600}
+.work-card .wd{font-size:10.5px;color:var(--muted);margin-top:2px;line-height:1.45}
+.work-card .actions{display:flex;gap:6px;flex:none;flex-wrap:wrap;justify-content:flex-end}
+.acc{background:#fff;border:1px solid var(--line);border-radius:9px;margin-bottom:7px;overflow:hidden}
+.acc-h{display:flex;align-items:center;gap:8px;padding:10px 13px;cursor:pointer;user-select:none;background:#FCFDFE}
+.acc-h:hover{background:#F8FAFC}
+.acc-h .ic{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;flex:none;background:#F1F5F9;color:var(--muted)}
+.acc-h .name{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.acc-h .n{font-size:9.5px;background:#F1F5F9;border-radius:20px;padding:1px 6px;color:var(--muted);font-weight:700}
+.acc-h .chev{margin-left:auto;color:var(--faint);transition:.2s}
+.acc.closed .acc-b{display:none}
+.acc.closed .chev{transform:rotate(-90deg)}
+.acc-b{border-top:1px solid var(--line-soft);padding:0 13px}
+.doc-row{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px dashed var(--line-soft)}
+.doc-row:last-child{border-bottom:0}
+.doc-row .fic{width:24px;height:24px;border-radius:6px;background:#F8FAFC;border:1px solid var(--line-soft);color:var(--muted);display:grid;place-items:center;flex:none}
+.doc-body{flex:1;min-width:0}
+.doc-t{font-size:11px;font-weight:600;line-height:1.3}
+.doc-m{font-size:9.5px;color:var(--faint);margin-top:1px;font-family:ui-monospace,monospace;display:flex;gap:6px;flex-wrap:wrap}
+.acc-empty{font-size:10.5px;color:var(--faint);padding:11px 0}
+.mono-chip{display:inline-flex;align-items:center;gap:4px;font-family:ui-monospace,monospace;font-size:9.5px;background:#F8FAFC;border:1px solid var(--line);border-radius:5px;padding:1px 5px;color:var(--muted);white-space:nowrap}
+.file-btn{display:inline-flex;align-items:center;gap:4px;font-size:9.5px;font-weight:600;border:1px solid var(--line);background:#fff;border-radius:5px;padding:2px 6px;color:var(--muted);cursor:pointer;white-space:nowrap}
+.file-btn:hover{border-color:var(--accent-line);color:var(--accent);background:var(--accent-bg)}
+
+/* ── Calendar ── */
+.cal-shell{display:grid;grid-template-columns:minmax(0,1fr) 306px;gap:14px;margin-top:14px;align-items:start}
+.cal{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.cal-h{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 15px;border-bottom:1px solid var(--line)}
+.cal-h .m{font-size:13px;font-weight:700;letter-spacing:-.01em}
+.cal-h .nav{display:flex;gap:4px;align-items:center}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr)}
+.cal-dow{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);font-weight:700;padding:7px 9px;border-bottom:1px solid var(--line-soft);background:#FBFCFE}
+.cal-day{min-height:94px;border-right:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft);padding:5px 6px;position:relative;overflow:hidden}
+.cal-day:nth-child(7n){border-right:0}
+.cal-day.dim{background:#FBFCFE}
+.cal-day.today{background:#FFFBEB;box-shadow:inset 0 0 0 1px var(--lit-line)}
+.cal-day .d{font-size:10px;font-weight:700;color:var(--muted);display:inline-grid;place-items:center;width:19px;height:19px;border-radius:50%}
+.cal-day.today .d{background:var(--lit);color:#fff}
+.ev{display:block;width:100%;text-align:left;border:0;border-left:2px solid;border-radius:3px;padding:2px 5px;margin-top:3px;font-size:9px;font-weight:600;line-height:1.3;background:#F8FAFC;color:var(--ink);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ev:hover{filter:brightness(.97)}
+.ev.reply{border-color:#BE123C;background:#FFF1F4;color:#9F1239}
+.ev.hearing{border-color:#2563EB;background:#EFF6FF;color:#1D4ED8}
+.ev.limit{border-color:#B45309;background:#FFFBEB;color:#92400E}
+.ev.more{background:none;color:var(--faint);font-weight:600;padding-left:4px}
+.ag-item{display:flex;gap:10px;padding:9px 0;border-bottom:1px dashed var(--line-soft)}
+.ag-item:last-child{border-bottom:0}
+.ag-date{width:36px;flex:none;text-align:center;border:1px solid var(--line);border-radius:7px;padding:3px 0;background:#fff}
+.ag-date b{display:block;font-size:14px;line-height:1.1;letter-spacing:-.02em}
+.ag-date span{font-size:7.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700}
+.ag-body{min-width:0;flex:1}
+.ag-t{font-size:11px;font-weight:600;line-height:1.3}
+.ag-m{font-size:9.5px;color:var(--muted);margin-top:2px;display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.cal-legend{display:flex;gap:12px;flex-wrap:wrap;padding:10px 15px;border-top:1px solid var(--line-soft);font-size:9.5px;color:var(--muted)}
+.cal-legend span{display:inline-flex;align-items:center;gap:5px}
+.cal-legend i{width:7px;height:7px;border-radius:2px}
+
+/* ── Litigation ── */
+.lit-split{display:grid;grid-template-columns:minmax(0,1fr) 336px;gap:14px;margin-top:14px;align-items:start}
+.lit-side .side-card{margin-bottom:10px}
+.fee-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:9px}
+.fee{border:1px solid var(--line-soft);border-radius:8px;padding:8px 10px;background:#FCFDFE}
+.fee .l{font-size:8.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--faint);font-weight:700}
+.fee .v{font-size:14px;font-weight:700;letter-spacing:-.02em;margin-top:1px;font-variant-numeric:tabular-nums}
+
+.legend-bar{display:flex;gap:16px;flex-wrap:wrap;align-items:center;padding:18px 0 26px;color:var(--muted);font-size:10px;border-top:1px solid var(--line);margin-top:22px}
+.legend-bar b{color:var(--ink)}
+.legend-bar .li{display:inline-flex;align-items:center;gap:5px}
+.legend-bar .li i{width:6px;height:6px;border-radius:50%}
+
+.toast{position:fixed;bottom:22px;left:50%;transform:translate(-50%,16px);background:var(--ink);color:#fff;padding:9px 14px;border-radius:8px;font-size:11.5px;opacity:0;pointer-events:none;transition:.2s;z-index:120;display:flex;gap:8px;align-items:center;box-shadow:0 12px 30px rgba(15,23,42,.25)}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast .icon{color:#86EFAC}
+.tbl tr.selected td{background:var(--lit-bg)!important}
+.chip-tds{color:#0F766E;background:#F0FDFA;border-color:#99F6E4}
+.portal-band.danger{background:#FEF2F2;border-color:#FECACA}
+.portal-band.danger .ic{background:#FEE2E2;color:#B91C1C}
+.portal-band.danger b{color:#B91C1C}
+.portal-band.danger span{color:#991B1B}
+.portal-band.info{background:#EFF6FF;border-color:#BFDBFE}
+.portal-band.info .ic{background:#DBEAFE;color:#1D4ED8}
+.portal-band.info b{color:#1D4ED8}
+.portal-band.info span{color:#1E40AF}
+.cal-day .ev{cursor:pointer}
+
+@media (max-width:1320px){
+  .kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .overview-grid{grid-template-columns:1fr}
+}
+@media (max-width:1120px){
+  .split{grid-template-columns:330px minmax(0,1fr)}
+  .detail-grid{grid-template-columns:1fr}
+  .lit-split{grid-template-columns:1fr}
+  .cal-shell{grid-template-columns:1fr}
+  .lit-side{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .lit-side .side-card{margin-bottom:0}
+}
+@media (max-width:860px){
+  .module-nav{gap:14px}
+  .appbar{padding:0 14px;gap:14px}
+  .wrap{padding:0 14px 10px}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .split{grid-template-columns:1fr}
+  .meta-grid{grid-template-columns:1fr 1fr}
+  .sync-chip,.appbar-right .btn{display:none}
+  .lit-side{grid-template-columns:1fr}
+  .page-head h1{font-size:22px}
+}
+</style>
+</head>
+<body data-page="it">
+
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-sync" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.5 6.2M3 12a9 9 0 0 1 15.5-6.2"/><path d="M21 3v6h-6M3 21v-6h6"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></symbol>
+  <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="m21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 6"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 13 4 4L19 7"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M4 13h4l1.5 2h5L16 13h4"/><path d="M5 4h14l2 9v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5z"/></symbol>
+</svg>
+
+<header class="appbar">
+  <div class="brand">
+    <span class="logo"><i></i><i></i><i></i><i></i></span>
+    <div><b>AayDoc</b><small>CAPIO</small></div>
+  </div>
+  <nav class="module-nav">
+    <button data-page="it" class="active" onclick="showPage('it')">Income Tax <span class="nav-count">42</span></button>
+    <button data-page="gst" onclick="showPage('gst')">GST <span class="nav-count">29</span></button>
+    <button data-page="lit" onclick="showPage('lit')">Litigation <span class="nav-count">16</span></button>
+  </nav>
+  <div class="appbar-right">
+    <span class="sync-chip"><i></i> Synced 26 Nov · 11:35</span>
+    <button class="btn sm ghost" onclick="toast('Download root: D:\\AayDoc\\Downloads')"><svg class="icon"><use href="#i-folder"/></svg> Download root</button>
+    <div class="avatar" title="Sample CA">SC</div>
+  </div>
+</header>
+
+<!-- ═════════════════════════════ INCOME TAX ═════════════════════════════ -->
+<section class="page active" id="page-it">
+  <div class="wrap">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">e-Proceedings · Income Tax</div>
+        <h1>Income-tax e-Proceedings</h1>
+        <div class="page-sub">Every notice, reply, order and limitation clock — linked across assessment years, appeals and hearings.</div>
+      </div>
+      <div class="head-actions">
+        <span class="chip chip-accent plain">Auto-fetch on</span>
+        <button class="btn" onclick="toast('Opening 12 downloaded files…')"><svg class="icon"><use href="#i-download"/></svg> Download</button>
+        <button class="btn primary" onclick="toast('Sync queued for 3 clients · income tax + GST')"><svg class="icon"><use href="#i-sync"/></svg> Sync all</button>
+      </div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi accent"><div class="k-label">Cases</div><div class="k-value">42</div><div class="k-foot">18 open · 24 closed</div><span class="k-dot blue"></span></div>
+      <div class="kpi"><div class="k-label">Fresh notices</div><div class="k-value">7</div><div class="k-foot">not yet replied</div></div>
+      <div class="kpi alert"><div class="k-label">Due in 7 days</div><div class="k-value">3</div><div class="k-foot">2 high urgency</div><span class="k-dot red"></span></div>
+      <div class="kpi warn"><div class="k-label">Due in 15 days</div><div class="k-value">6</div><div class="k-foot">3 assessment · 2 penalty</div><span class="k-dot amber"></span></div>
+      <div class="kpi"><div class="k-label">Under appeal</div><div class="k-value">4</div><div class="k-foot">CIT(A) · ITAT</div></div>
+      <div class="kpi ok"><div class="k-label">Closed by order</div><div class="k-value">18</div><div class="k-foot">no pending appeal</div></div>
+      <div class="kpi warn"><div class="k-label">Remanded</div><div class="k-value">2</div><div class="k-foot">set aside for fresh view</div></div>
+      <div class="kpi alert"><div class="k-label">Overdue limitation</div><div class="k-value">1</div><div class="k-foot">appeal window lapsed</div><span class="k-dot red"></span></div>
+    </div>
+
+    <div class="viewtabs">
+      <button class="viewtab active" data-view="overview" onclick="showView('it','overview')">Overview</button>
+      <button class="viewtab" data-view="cases" onclick="showView('it','cases')">Cases <span class="count">42</span></button>
+      <button class="viewtab" data-view="timeline" onclick="showView('it','timeline')">Timeline</button>
+      <button class="viewtab" data-view="documents" onclick="showView('it','documents')">Documents <span class="count">238</span></button>
+    </div>
+
+    <div class="view active" id="it-view-overview">
+      <div class="overview-grid">
+        <div class="stack">
+          <div class="panel">
+            <div class="panel-h"><h3>Deadline radar</h3><span class="faint" style="font-size:10px">All open proceedings · 26 Nov 2026</span></div>
+            <div class="panel-b" style="padding-top:6px">
+              <table class="radar">
+                <thead><tr><th>Milestone</th><th>Today</th><th>7 days</th><th>15 days</th><th>30 days</th></tr></thead>
+                <tbody>
+                  <tr><th>Notices issued</th><td>0</td><td>4</td><td>9</td><td>16</td></tr>
+                  <tr><th>Replies due</th><td class="hot">1</td><td class="warm">3</td><td>6</td><td>11</td></tr>
+                  <tr><th>Replies filed</th><td>0</td><td>2</td><td>5</td><td>8</td></tr>
+                  <tr><th>Orders passed</th><td>0</td><td>1</td><td>3</td><td>7</td></tr>
+                </tbody>
+              </table>
+              <div class="radar-note">Rolling windows from today. Overdue documents are counted separately in the KPI row.</div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-h"><h3>Recent activity</h3><button class="btn sm ghost" onclick="toast('Opening e-Proceedings activity log…')">Open log</button></div>
+            <div class="panel-b activity">
+              <div class="act">
+                <div class="act-ic it"><svg class="icon"><use href="#i-inbox"/></svg></div>
+                <div class="act-body"><div class="act-t">Notice u/s 143(2) issued to <b>Sample Traders</b></div><div class="act-m"><span class="tag amber">143(2)</span><span>AY 2024-25</span><span>·</span><span>response due 02 Dec 2026</span></div></div>
+                <div class="act-time">24 Nov · 16:10</div>
+              </div>
+              <div class="act">
+                <div class="act-ic it"><svg class="icon"><use href="#i-check"/></svg></div>
+                <div class="act-body"><div class="act-t">Reply filed in <b>Sample Traders</b> — 3 attachments</div><div class="act-m"><span class="tag blue">Reply</span><span>viewed by AO 20 Nov</span></div></div>
+                <div class="act-time">18 Nov · 12:42</div>
+              </div>
+              <div class="act">
+                <div class="act-ic lit"><svg class="icon"><use href="#i-calendar"/></svg></div>
+                <div class="act-body"><div class="act-t">Virtual hearing completed — <b>Sample Traders</b></div><div class="act-m"><span class="tag blue">VC</span><span>recording link saved</span><span>·</span><span>11:30–12:15 IST</span></div></div>
+                <div class="act-time">20 Nov · 12:18</div>
+              </div>
+              <div class="act">
+                <div class="act-ic it"><svg class="icon"><use href="#i-file"/></svg></div>
+                <div class="act-body"><div class="act-t">Assessment order passed — <b>Test Enterprises</b></div><div class="act-m"><span class="tag slate">Order</span><span>AY 2022-23</span><span>·</span><span>appeal window open to 30 Jan 2027</span></div></div>
+                <div class="act-time">20 Nov · 10:05</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="panel">
+            <div class="panel-h"><h3>Needs attention</h3><span class="chip chip-overdue plain">4 open</span></div>
+            <div class="panel-b" style="padding-top:4px;padding-bottom:6px">
+              <div class="att-row" onclick="showPage('it');showView('it','cases');selectCase(0)">
+                <span class="urg high">High</span>
+                <div class="att-body"><div class="att-t">Order for Determination of Tax — Sample Traders</div><div class="att-m"><span class="mono">AABCP1234F</span><span>·</span><span>reply due 02 Dec 2026</span></div></div>
+                <svg class="icon att-go"><use href="#i-arrow"/></svg>
+              </div>
+              <div class="att-row" onclick="showPage('it');showView('it','cases');selectCase(1)">
+                <span class="urg high">High</span>
+                <div class="att-body"><div class="att-t">Penalty SCN u/s 271(1)(c) — Sample Industries</div><div class="att-m"><span class="mono">AABCP1235G</span><span>·</span><span class="muted" style="color:#B91C1C">overdue since 18 Nov 2026</span></div></div>
+                <svg class="icon att-go"><use href="#i-arrow"/></svg>
+              </div>
+              <div class="att-row" onclick="showPage('it');showView('it','cases');selectCase(2)">
+                <span class="urg medium">Medium</span>
+                <div class="att-body"><div class="att-t">CIT(A) appeal — hearing on 03 Dec 2026</div><div class="att-m"><span class="mono">AABCP1236H</span><span>·</span><span>paper book pending</span></div></div>
+                <svg class="icon att-go"><use href="#i-arrow"/></svg>
+              </div>
+              <div class="att-row" onclick="showPage('it');showView('it','cases');selectCase(4)">
+                <span class="urg medium">Medium</span>
+                <div class="att-body"><div class="att-t">ITAT remand — fresh assessment hearing</div><div class="att-m"><span class="mono">AAAAA0000A</span><span>·</span><span>limitation 31 Mar 2027</span></div></div>
+                <svg class="icon att-go"><use href="#i-arrow"/></svg>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-h"><h3>By process</h3><span class="faint" style="font-size:10px">42 cases</span></div>
+            <div class="panel-b bars">
+              <div class="bar-row"><div><div class="bar-top"><b>Assessment</b><span>18</span></div><div class="bar-track"><i style="width:100%"></i></div></div><div class="bar-val">43%</div></div>
+              <div class="bar-row"><div><div class="bar-top"><b>Penalty</b><span>7</span></div><div class="bar-track"><i style="width:39%"></i></div></div><div class="bar-val">17%</div></div>
+              <div class="bar-row"><div><div class="bar-top"><b>Appeal effect</b><span>6</span></div><div class="bar-track"><i style="width:33%"></i></div></div><div class="bar-val">14%</div></div>
+              <div class="bar-row"><div><div class="bar-top"><b>Defective return</b><span>4</span></div><div class="bar-track"><i style="width:22%"></i></div></div><div class="bar-val">10%</div></div>
+              <div class="bar-row"><div><div class="bar-top"><b>Remand</b><span>3</span></div><div class="bar-track"><i style="width:17%"></i></div></div><div class="bar-val">7%</div></div>
+              <div class="bar-row"><div><div class="bar-top"><b>Other intimations</b><span>4</span></div><div class="bar-track"><i style="width:22%"></i></div></div><div class="bar-val">10%</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="view" id="it-view-cases">
+      <div class="toolbar">
+        <div class="seg" id="it-status-seg">
+          <button class="active" data-v="all">All</button>
+          <button data-v="Open">Open</button>
+          <button data-v="Replied">Replied</button>
+          <button data-v="Overdue">Overdue</button>
+          <button data-v="Remanded">Remanded</button>
+          <button data-v="Closed">Closed</button>
+        </div>
+        <select class="select" id="it-urg" onchange="renderItList()">
+          <option value="">Any urgency</option>
+          <option>High</option><option>Medium</option><option>Low</option>
+        </select>
+        <select class="select" onchange="toast('Filtered to assessment year ' + this.value)">
+          <option>All AYs</option><option>2025-26</option><option>2024-25</option><option>2023-24</option><option>2022-23</option><option>2021-22</option>
+        </select>
+        <div class="search">
+          <svg class="icon"><use href="#i-search"/></svg>
+          <input id="it-search" placeholder="Search client, PAN, process, reference…" oninput="renderItList()">
+        </div>
+        <div class="spacer"></div>
+        <span class="faint" style="font-size:10px" id="it-shown">5 of 42 cases</span>
+      </div>
+      <div class="split">
+        <div>
+          <div class="list-toolbar">
+            <span class="faint" style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;font-weight:700">Case list</span>
+            <span class="spacer"></span>
+            <button class="btn sm ghost" onclick="toast('Sorted by earliest deadline')">Deadline ↓</button>
+          </div>
+          <div id="it-list"></div>
+        </div>
+        <div id="it-detail"></div>
+      </div>
+    </div>
+
+    <div class="view" id="it-view-timeline">
+      <div class="toolbar">
+        <div class="seg"><button class="active">All documents</button><button>Notices</button><button>Replies</button><button>Orders</button><button>Hearings</button></div>
+        <div class="search"><svg class="icon"><use href="#i-search"/></svg><input placeholder="Filter timeline…"></div>
+        <div class="spacer"></div>
+        <span class="faint" style="font-size:10px">Newest first · all times IST</span>
+      </div>
+      <div class="panel"><div class="panel-b" style="padding:14px 18px">
+        <div class="section-h"><h4>26 Nov 2026</h4><div class="rule"></div><span class="hint">Today</span></div>
+        <div class="tl-item" style="grid-template-columns:60px 16px minmax(0,1fr) auto">
+          <div class="tl-date">26 Nov<span>11:35</span></div><div class="tl-rail"><i></i></div>
+          <div class="tl-main"><div class="t">Auto-fetch completed — 3 new documents downloaded</div><div class="m"><b>Sample Traders</b><span class="sep">·</span><span>AY 2024-25</span></div><div class="chips"><span class="tag amber">Notice</span><span class="tag blue">Reply</span></div></div>
+          <div class="tl-actions"><button class="file-btn"><svg class="icon"><use href="#i-folder"/></svg> Folder</button></div>
+        </div>
+        <div class="section-h" style="margin-top:14px"><h4>24 Nov 2026</h4><div class="rule"></div></div>
+        <div class="tl-item" style="grid-template-columns:60px 16px minmax(0,1fr) auto">
+          <div class="tl-date">24 Nov<span>16:10</span></div><div class="tl-rail"><i></i></div>
+          <div class="tl-main"><div class="t">Notice u/s 143(2) — production of accounts</div><div class="m"><b>Sample Traders</b><span class="sep">·</span><span>response due 02 Dec 2026</span><span class="sep">·</span><span>6 days left</span></div><div class="chips"><span class="tag amber">Notice</span><span class="chip chip-open">Open</span><span class="mono-chip">AD010926007116G</span></div></div>
+          <div class="tl-actions"><span class="file-btn"><svg class="icon"><use href="#i-paperclip"/></svg> 1</span><button class="rowbtn" onclick="showPage('it');showView('it','cases');selectCase(0)"><svg class="icon"><use href="#i-arrow"/></svg></button></div>
+        </div>
+        <div class="tl-item" style="grid-template-columns:60px 16px minmax(0,1fr) auto">
+          <div class="tl-date">24 Nov<span>09:20</span></div><div class="tl-rail"><i></i></div>
+          <div class="tl-main"><div class="t">Reminder issued — response not received</div><div class="m"><b>Sample Industries</b><span class="sep">·</span><span class="muted" style="color:#B91C1C">overdue since 18 Nov 2026</span></div><div class="chips"><span class="tag amber">DRC-01</span><span class="chip chip-overdue">Overdue</span></div></div>
+          <div class="tl-actions"><button class="rowbtn" onclick="showPage('it');showView('it','cases');selectCase(1)"><svg class="icon"><use href="#i-arrow"/></svg></button></div>
+        </div>
+        <div class="section-h" style="margin-top:14px"><h4>20 Nov 2026</h4><div class="rule"></div></div>
+        <div class="tl-item" style="grid-template-columns:60px 16px minmax(0,1fr) auto">
+          <div class="tl-date">20 Nov<span>12:18</span></div><div class="tl-rail"><i></i></div>
+          <div class="tl-main"><div class="t">Virtual hearing completed — recording saved</div><div class="m"><b>Sample Traders</b><span class="sep">·</span><span>11:30–12:15 IST</span></div><div class="chips"><span class="tag blue">Hearing</span><span class="chip chip-closed">Completed</span></div></div>
+          <div class="tl-actions"><button class="file-btn"><svg class="icon"><use href="#i-link"/></svg> Recording</button></div>
+        </div>
+        <div class="tl-item" style="grid-template-columns:60px 16px minmax(0,1fr) auto">
+          <div class="tl-date">20 Nov<span>10:05</span></div><div class="tl-rail"><i></i></div>
+          <div class="tl-main"><div class="t">CIT(A) order received — appeal effect</div><div class="m"><b>Test Enterprises</b><span class="sep">·</span><span>AY 2022-23</span><span class="sep">·</span><span>appeal window to 30 Jan 2027</span></div><div class="chips"><span class="tag slate">Order</span><span class="chip chip-appeal">Under appeal</span></div></div>
+          <div class="tl-actions"><span class="file-btn"><svg class="icon"><use href="#i-paperclip"/></svg> 2</span><button class="rowbtn" onclick="showPage('it');showView('it','cases');selectCase(2)"><svg class="icon"><use href="#i-arrow"/></svg></button></div>
+        </div>
+        <div class="section-h" style="margin-top:14px"><h4>18 Nov 2026</h4><div class="rule"></div></div>
+        <div class="tl-item" style="grid-template-columns:60px 16px minmax(0,1fr) auto">
+          <div class="tl-date">18 Nov<span>12:42</span></div><div class="tl-rail"><i></i></div>
+          <div class="tl-main"><div class="t">Reply filed with annexures — 3 attachments</div><div class="m"><b>Sample Traders</b><span class="sep">·</span><span>viewed by AO 20 Nov 2026</span></div><div class="chips"><span class="tag blue">Reply</span><span class="chip chip-replied">Filed</span></div></div>
+          <div class="tl-actions"><span class="file-btn"><svg class="icon"><use href="#i-paperclip"/></svg> 3</span></div>
+        </div>
+        <div class="tl-item" style="grid-template-columns:60px 16px minmax(0,1fr) auto">
+          <div class="tl-date">18 Nov<span>—</span></div><div class="tl-rail"><i></i></div>
+          <div class="tl-main"><div class="t">Reply deadline missed — penalty SCN</div><div class="m"><b>Sample Industries</b><span class="sep">·</span><span>s.271(1)(c)</span></div><div class="chips"><span class="tag amber">Penalty</span><span class="chip chip-overdue">Overdue</span></div></div>
+          <div class="tl-actions"><button class="rowbtn" onclick="showPage('it');showView('it','cases');selectCase(1)"><svg class="icon"><use href="#i-arrow"/></svg></button></div>
+        </div>
+      </div></div>
+    </div>
+
+    <div class="view" id="it-view-documents">
+      <div class="toolbar">
+        <div class="seg"><button class="active">All</button><button>Notices</button><button>Replies</button><button>Orders</button><button>Hearings</button></div>
+        <select class="select"><option>All AYs</option><option>2025-26</option><option>2024-25</option><option>2023-24</option></select>
+        <div class="search"><svg class="icon"><use href="#i-search"/></svg><input placeholder="Search document, reference, client…"></div>
+        <div class="spacer"></div>
+        <button class="btn sm"><svg class="icon"><use href="#i-download"/></svg> Export list</button>
+      </div>
+      <div class="tbl-wrap"><div class="tbl-scroll">
+        <table class="tbl">
+          <thead><tr><th>Date</th><th>Client</th><th>Document</th><th>Type</th><th>Case</th><th>Reference</th><th>Status</th><th class="actions">File</th></tr></thead>
+          <tbody>
+            <tr class="data"><td class="col-date">26 Nov 2026<span>11:35</span></td><td class="col-client">Sample Traders<div class="sub">AABCP1234F · AY 2024-25</div></td><td class="col-desc"><div class="d">Notice under section 143(2) — production of accounts</div></td><td><span class="tag amber">Notice</span></td><td class="mono">AD010926007116G</td><td class="mono">ZD011126008838L</td><td><span class="chip chip-open">Open</span></td><td class="actions"><button class="file-btn"><svg class="icon"><use href="#i-paperclip"/></svg> 1</button></td></tr>
+            <tr class="data"><td class="col-date">26 Nov 2026<span>11:35</span></td><td class="col-client">Sample Traders<div class="sub">AABCP1234F · AY 2024-25</div></td><td class="col-desc"><div class="d">Submission — reply to notice u/s 142(1) with annexures</div></td><td><span class="tag blue">Reply</span></td><td class="mono">AD010926007116G</td><td class="mono">ZD011126008829P</td><td><span class="chip chip-replied">Filed</span></td><td class="actions"><button class="file-btn"><svg class="icon"><use href="#i-paperclip"/></svg> 3</button></td></tr>
+            <tr class="data"><td class="col-date">20 Nov 2026<span>10:05</span></td><td class="col-client">Test Enterprises<div class="sub">AABCP1236H · AY 2022-23</div></td><td class="col-desc"><div class="d">Appeal effect order — CIT(A) direction given effect</div></td><td><span class="tag slate">Order</span></td><td class="mono">AD010926007104C</td><td class="mono">ZD011126008802R</td><td><span class="chip chip-closed">Closed</span></td><td class="actions"><button class="file-btn"><svg class="icon"><use href="#i-paperclip"/></svg> 2</button></td></tr>
+            <tr class="data"><td class="col-date">20 Nov 2026<span>12:18</span></td><td class="col-client">Sample Traders<div class="sub">AABCP1234F · AY 2024-25</div></td><td class="col-desc"><div class="d">Virtual hearing — recording and attendance sheet</div></td><td><span class="tag blue">Hearing</span></td><td class="mono">AD010926007116G</td><td class="mono">VC-20261120-014</td><td><span class="chip chip-closed">Completed</span></td><td class="actions"><button class="file-btn"><svg class="icon"><use href="#i-link"/></svg> Link</button></td></tr>
+            <tr class="data"><td class="col-date">18 Nov 2026<span>12:42</span></td><td class="col-client">Sample Traders<div class="sub">AABCP1234F · AY 2024-25</div></td><td class="col-desc"><div class="d">Reply to notice u/s 142(1) — bank statements, ledgers</div></td><td><span class="tag blue">Reply</span></td><td class="mono">AD010926007116G</td><td class="mono">ZD011126008824F</td><td><span class="chip chip-replied">Filed</span></td><td class="actions"><button class="file-btn"><svg class="icon"><use href="#i-paperclip"/></svg> 3</button></td></tr>
+            <tr class="data"><td class="col-date">12 Nov 2026<span>14:20</span></td><td class="col-client">Sample Pvt Ltd<div class="sub">AABCP1237J · AY 2025-26</div></td><td class="col-desc"><div class="d">Notice u/s 139(9) — defective return, response filed</div></td><td><span class="tag amber">Notice</span></td><td class="mono">AD010926007092B</td><td class="mono">ZD011126008801A</td><td><span class="chip chip-replied">Replied</span></td><td class="actions"><button class="file-btn"><svg class="icon"><use href="#i-paperclip"/></svg> 2</button></td></tr>
+            <tr class="data"><td class="col-date">05 Nov 2026<span>09:15</span></td><td class="col-client">Sample Traders<div class="sub">AABCP1234F · AY 2024-25</div></td><td class="col-desc"><div class="d">Intimation u/s 143(1) — return processed, demand nil</div></td><td><span class="tag slate">Intimation</span></td><td class="mono">AD010926007051Y</td><td class="mono">ZD011126008780K</td><td><span class="chip chip-closed">Closed</span></td><td class="actions"><button class="file-btn"><svg class="icon"><use href="#i-paperclip"/></svg> 1</button></td></tr>
+          </tbody>
+        </table>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════ GST ═════════════════════════════ -->
+<section class="page" id="page-gst">
+  <div class="wrap">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">GST Proceedings · Notices &amp; Orders</div>
+        <h1>GST e-Proceedings</h1>
+        <div class="page-sub">All GST notices, orders and case tasks in one flat register — searchable by GSTIN, ARN, reference or reply state.</div>
+      </div>
+      <div class="head-actions">
+        <select class="select"><option>All entities</option><option>Sample Traders</option><option>Sample Pvt Ltd</option><option>Test Enterprises</option></select>
+        <button class="btn" onclick="toast('Exporting 29 GST rows to CSV…')"><svg class="icon"><use href="#i-download"/></svg> Export CSV</button>
+        <button class="btn primary" onclick="toast('Syncing GST notices for all GSTINS…')"><svg class="icon"><use href="#i-sync"/></svg> Sync notices</button>
+      </div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi accent"><div class="k-label">Total notices</div><div class="k-value">29</div><div class="k-foot">across 6 GSTINs</div><span class="k-dot blue"></span></div>
+      <div class="kpi"><div class="k-label">Open</div><div class="k-value">12</div><div class="k-foot">awaiting reply</div></div>
+      <div class="kpi"><div class="k-label">Replied</div><div class="k-value">6</div><div class="k-foot">response filed</div></div>
+      <div class="kpi alert"><div class="k-label">Overdue</div><div class="k-value">3</div><div class="k-foot">past due date</div><span class="k-dot red"></span></div>
+      <div class="kpi warn"><div class="k-label">Due in 7 days</div><div class="k-value">2</div><div class="k-foot">DRC-01 · ASMT-10</div><span class="k-dot amber"></span></div>
+      <div class="kpi ok"><div class="k-label">Orders passed</div><div class="k-value">8</div><div class="k-foot">closed on portal</div></div>
+      <div class="kpi"><div class="k-label">Files saved</div><div class="k-value">61</div><div class="k-foot">notice · reply · order</div></div>
+      <div class="kpi"><div class="k-label">Demand amount</div><div class="k-value" style="font-size:19px">₹4.52L</div><div class="k-foot">from order PDFs</div></div>
+    </div>
+
+    <div class="viewtabs">
+      <button class="viewtab active" data-view="register" onclick="showView('gst','register')">Register <span class="count">29</span></button>
+      <button class="viewtab" data-view="documents" onclick="showView('gst','documents')">Documents <span class="count">61</span></button>
+      <button class="viewtab" data-view="casefiles" onclick="showView('gst','casefiles')">Case files</button>
+    </div>
+
+    <div class="view active" id="gst-view-register">
+      <div class="toolbar">
+        <div class="seg" id="gst-status-seg">
+          <button class="active" data-v="">All status</button>
+          <button data-v="Open">Open</button>
+          <button data-v="Replied">Replied</button>
+          <button data-v="Overdue">Overdue</button>
+          <button data-v="Closed">Closed</button>
+        </div>
+        <select class="select" style="max-width:170px"><option>All types</option><option>Notice</option><option>DRC-01</option><option>ASMT-10</option><option>ASMT-04</option><option>Order</option></select>
+        <div class="search"><svg class="icon"><use href="#i-search"/></svg><input id="gst-search" placeholder="Search GSTIN, ARN, name, reference, description…" oninput="renderGstTable()"></div>
+        <div class="spacer"></div>
+        <span class="faint" style="font-size:10px" id="gst-shown">29 rows</span>
+      </div>
+
+      <div class="tbl-wrap"><div class="tbl-scroll">
+        <table class="tbl" style="min-width:1180px">
+          <thead><tr><th>Issue date</th><th>Client / GSTIN</th><th>Type</th><th>Description</th><th>ARN / Ref</th><th>Period</th><th class="num">Amount</th><th>Status</th><th class="actions">Actions</th></tr></thead>
+          <tbody id="gst-tbody"></tbody>
+        </table>
+      </div></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 4px 0">
+        <span class="faint" style="font-size:10px">Showing 1–8 of 29 · newest issue date first</span>
+        <div class="seg"><button>Prev</button><button class="active">1</button><button>2</button><button>3</button><button>4</button><button>Next</button></div>
+      </div>
+    </div>
+
+    <div class="view" id="gst-view-documents">
+      <div class="toolbar">
+        <div class="seg"><button class="active">All</button><button>Notices</button><button>Replies</button><button>Orders</button></div>
+        <div class="search"><svg class="icon"><use href="#i-search"/></svg><input placeholder="Search file, client, GSTIN…"></div>
+        <div class="spacer"></div>
+        <button class="btn sm"><svg class="icon"><use href="#i-download"/></svg> Export list</button>
+      </div>
+      <div class="tbl-wrap"><div class="tbl-scroll">
+        <table class="tbl">
+          <thead><tr><th>Issue date</th><th>Client</th><th>Kind</th><th>File</th><th>Type</th><th>Reference</th><th>Status</th><th class="actions"></th></tr></thead>
+          <tbody>
+            <tr class="data"><td class="col-date">24 Nov 2026</td><td class="col-client">Sample Pvt Ltd<div class="sub">00AAAAB1234C1Z5</div></td><td><span class="tag slate">Notice</span></td><td class="mono" style="font-size:10px">show_cause_cancellation.pdf</td><td><span class="tag amber">Cancellation</span></td><td class="mono">ZA0111260253348</td><td><span class="chip chip-open">Open</span></td><td class="actions"><button class="file-btn"><svg class="icon"><use href="#i-file"/></svg> Open</button></td></tr>
+            <tr class="data"><td class="col-date">21 Nov 2026</td><td class="col-client">Sample Traders<div class="sub">00AABCP1234F1Z9</div></td><td><span class="tag blue">Reply</span></td><td class="mono" style="font-size:10px">acknowledgement_acceptance.pdf</td><td><span class="tag green">Voluntary</span></td><td class="mono">AD011126001826H</td><td><span class="chip chip-replied">Filed</span></td><td class="actions"><button class="file-btn"><svg class="icon"><use href="#i-file"/></svg> Open</button></td></tr>
+            <tr class="data"><td class="col-date">15 Nov 2026</td><td class="col-client">Test Enterprises<div class="sub">00AABCP1236H1Z3</div></td><td><span class="tag slate">Order</span></td><td class="mono" style="font-size:10px">order_determination_of_tax.pdf</td><td><span class="tag amber">DRC-07</span></td><td class="mono">AD010926007116G</td><td><span class="chip chip-closed">Closed</span></td><td class="actions"><button class="file-btn"><svg class="icon"><use href="#i-file"/></svg> Open</button></td></tr>
+            <tr class="data"><td class="col-date">10 Nov 2026</td><td class="col-client">Sample Industries<div class="sub">00AABCP1235G1Z1</div></td><td><span class="tag slate">Notice</span></td><td class="mono" style="font-size:10px">reminder_drc01.pdf</td><td><span class="tag amber">DRC-01</span></td><td class="mono">ZD011126008838L</td><td><span class="chip chip-overdue">Overdue</span></td><td class="actions"><button class="file-btn"><svg class="icon"><use href="#i-file"/></svg> Open</button></td></tr>
+            <tr class="data"><td class="col-date">02 Nov 2026</td><td class="col-client">Sample Pvt Ltd<div class="sub">00AAAAB1234C1Z5</div></td><td><span class="tag slate">Notice</span></td><td class="mono" style="font-size:10px">asm-10_discrepancy.pdf</td><td><span class="tag amber">ASMT-10</span></td><td class="mono">ZA0111260253206</td><td><span class="chip chip-replied">Replied</span></td><td class="actions"><button class="file-btn"><svg class="icon"><use href="#i-file"/></svg> Open</button></td></tr>
+          </tbody>
+        </table>
+      </div></div>
+    </div>
+
+    <div class="view" id="gst-view-casefiles">
+      <div class="toolbar">
+        <div class="search"><svg class="icon"><use href="#i-search"/></svg><input placeholder="Search GSTIN or case…"></div>
+        <div class="spacer"></div>
+        <span class="faint" style="font-size:10px">Grouped by GSTIN · expand a row to see the full proceeding chain</span>
+      </div>
+      <div class="tbl-wrap"><div class="tbl-scroll">
+        <table class="tbl" style="min-width:1100px">
+          <thead><tr><th style="width:34px"></th><th>GSTIN</th><th>Client</th><th>Case / ARN</th><th>Period</th><th>Type</th><th>Latest</th><th>Status</th><th class="actions"></th></tr></thead>
+          <tbody>
+            <tr class="data" onclick="toggleRow(this)">
+              <td><button class="rowbtn"><svg class="icon"><use href="#i-chevron"/></svg></button></td>
+              <td class="mono">00AABCP1234F1Z9<div class="sub">3 proceedings</div></td>
+              <td class="col-client">Sample Traders</td>
+              <td class="mono">AD010926007116G</td><td class="mono">FY 2021-22</td><td><span class="tag amber">DRC-01</span></td><td>Intimation of issue of reminder</td><td><span class="chip chip-open">Open</span></td>
+              <td class="actions"><button class="file-btn" onclick="event.stopPropagation();openGstDrawer()">Open</button></td>
+            </tr>
+            <tr class="expand" style="display:none"><td colspan="9">
+              <div class="hist">
+                <div class="hist-h"><svg class="icon"><use href="#i-folder"/></svg> Proceedings history <span class="tag">3 records</span> <span class="faint" style="text-transform:none;letter-spacing:0">under ARN AD010926007116G</span></div>
+                <table class="hist-tbl">
+                  <thead><tr><th style="width:36px">#</th><th>Reference ID</th><th>Proceeding / task description</th><th>Issue date</th><th>Status</th></tr></thead>
+                  <tbody>
+                    <tr><td>1</td><td class="mono">ZD011126008838L</td><td>Intimation of issue of reminder in Form GST DRC-01</td><td class="mono">15 Nov 2026</td><td><span class="chip chip-open">Open</span></td></tr>
+                    <tr><td>2</td><td class="mono">ZD011126008829P</td><td>Proceedings initiated by Adjudicating Authority for SCN</td><td class="mono">08 Nov 2026</td><td><span class="chip chip-replied">Replied</span></td></tr>
+                    <tr><td>3</td><td class="mono">ZD011126008821C</td><td>Intimation of issue of reminder in Form GST DRC-01</td><td class="mono">01 Nov 2026</td><td><span class="chip chip-closed">Closed</span></td></tr>
+                  </tbody>
+                </table>
+                <div class="hist-note"><svg class="icon"><use href="#i-link"/></svg> Linked to Litigation case <b style="color:var(--ink)">LIT-2026-014</b> · reply due 02 Dec 2026</div>
+              </div>
+            </td></tr>
+            <tr class="data" onclick="toggleRow(this)">
+              <td><button class="rowbtn"><svg class="icon"><use href="#i-chevron"/></svg></button></td>
+              <td class="mono">00AABCP1235G1Z1<div class="sub">4 proceedings</div></td>
+              <td class="col-client">Sample Industries</td>
+              <td class="mono">AD010926007104C</td><td class="mono">FY 2022-23</td><td><span class="tag amber">ASMT-10</span></td><td>Order for Determination of Tax</td><td><span class="chip chip-closed">Closed</span></td>
+              <td class="actions"><button class="file-btn" onclick="event.stopPropagation();openGstDrawer()">Open</button></td>
+            </tr>
+            <tr class="expand" style="display:none"><td colspan="9">
+              <div class="hist">
+                <div class="hist-h"><svg class="icon"><use href="#i-folder"/></svg> Proceedings history <span class="tag">4 records</span></div>
+                <table class="hist-tbl">
+                  <thead><tr><th style="width:36px">#</th><th>Reference ID</th><th>Proceeding / task description</th><th>Issue date</th><th>Status</th></tr></thead>
+                  <tbody>
+                    <tr><td>1</td><td class="mono">ZD011126008802R</td><td>Order for Determination of Tax</td><td class="mono">20 Nov 2026</td><td><span class="chip chip-closed">Closed</span></td></tr>
+                    <tr><td>2</td><td class="mono">ZD011126008791G</td><td>Intimation of issue of reminder in Form GST DRC-01</td><td class="mono">10 Nov 2026</td><td><span class="chip chip-overdue">Overdue</span></td></tr>
+                    <tr><td>3</td><td class="mono">ZD011126008760B</td><td>Intimation of issue of reminder in Form GST DRC-01</td><td class="mono">28 Oct 2026</td><td><span class="chip chip-replied">Replied</span></td></tr>
+                    <tr><td>4</td><td class="mono">ZD011126008730D</td><td>Show Cause Notice in Form GST ASMT-10</td><td class="mono">12 Oct 2026</td><td><span class="chip chip-replied">Replied</span></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </td></tr>
+            <tr class="data" onclick="toggleRow(this)">
+              <td><button class="rowbtn"><svg class="icon"><use href="#i-chevron"/></svg></button></td>
+              <td class="mono">00AABCP1236H1Z3<div class="sub">2 proceedings</div></td>
+              <td class="col-client">Test Enterprises</td>
+              <td class="mono">AD010926007092B</td><td class="mono">FY 2023-24</td><td><span class="tag green">Voluntary</span></td><td>Acknowledgement of acceptance</td><td><span class="chip chip-replied">Replied</span></td>
+              <td class="actions"><button class="file-btn" onclick="event.stopPropagation();openGstDrawer()">Open</button></td>
+            </tr>
+            <tr class="expand" style="display:none"><td colspan="9">
+              <div class="hist"><div class="acc-empty" style="padding:14px 0">2 records under this ARN — expand a proceeding to view attachments. <a href="#" onclick="event.preventDefault();openGstDrawer()">Open the full record →</a></div></div>
+            </td></tr>
+          </tbody>
+        </table>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════════ LITIGATION ═════════════════════════════ -->
+<section class="page" id="page-lit">
+  <div class="wrap">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Litigation Hub · All modules</div>
+        <h1>Litigation</h1>
+        <div class="page-sub">One cross-module tracker — income tax, GST and TDS deadlines, hearings, limitation clocks, matters and fees.</div>
+      </div>
+      <div class="head-actions">
+        <button class="btn" onclick="toast('Opening new matter form')"><svg class="icon"><use href="#i-plus"/></svg> New matter</button>
+        <button class="btn primary" onclick="toast('Rescanning sources across all modules…')"><svg class="icon"><use href="#i-sync"/></svg> Refresh</button>
+      </div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi accent"><div class="k-label">Total cases</div><div class="k-value">16</div><div class="k-foot">across all modules</div><span class="k-dot blue"></span></div>
+      <div class="kpi"><div class="k-label">Open</div><div class="k-value">11</div><div class="k-foot">not closed</div></div>
+      <div class="kpi alert"><div class="k-label">Overdue</div><div class="k-value">3</div><div class="k-foot">missed milestones</div><span class="k-dot red"></span></div>
+      <div class="kpi warn"><div class="k-label">Due in 7 days</div><div class="k-value">2</div><div class="k-foot">reply + limitation</div><span class="k-dot amber"></span></div>
+      <div class="kpi"><div class="k-label">Upcoming hearings</div><div class="k-value">2</div><div class="k-foot">CIT(A) · GST appeal</div></div>
+      <div class="kpi ok"><div class="k-label">Closed</div><div class="k-value">5</div><div class="k-foot">finalised</div></div>
+      <div class="kpi"><div class="k-label">Linked matters</div><div class="k-value">4</div><div class="k-foot">7 cases linked</div></div>
+      <div class="kpi"><div class="k-label">Fee outstanding</div><div class="k-value" style="font-size:19px">₹86.5K</div><div class="k-foot">2 matters · billed</div></div>
+    </div>
+
+    <div class="viewtabs">
+      <button class="viewtab active" data-view="dashboard" onclick="showView('lit','dashboard')">Dashboard <span class="count">16</span></button>
+      <button class="viewtab" data-view="calendar" onclick="showView('lit','calendar')">Calendar</button>
+      <button class="viewtab" data-view="matters" onclick="showView('lit','matters')">Matters <span class="count">4</span></button>
+    </div>
+
+    <div class="view active" id="lit-view-dashboard">
+      <div class="toolbar">
+        <div class="seg" id="lit-module-seg">
+          <button class="active" data-v="">All modules</button>
+          <button data-v="Income Tax">Income Tax</button>
+          <button data-v="GST">GST</button>
+          <button data-v="TDS">TDS</button>
+        </div>
+        <div class="search"><svg class="icon"><use href="#i-search"/></svg><input id="lit-search" placeholder="Filter by client or case…" oninput="renderLitTable()"></div>
+        <div class="spacer"></div>
+        <span class="faint" style="font-size:10px" id="lit-shown">16 cases</span>
+      </div>
+
+      <div class="lit-split">
+        <div class="tbl-wrap"><div class="tbl-scroll">
+          <table class="tbl" style="min-width:920px">
+            <thead><tr><th>Module</th><th>Client</th><th>Matter</th><th>Type</th><th>AY / Period</th><th>Status</th><th>Urgency</th><th>Case</th></tr></thead>
+            <tbody id="lit-tbody"></tbody>
+          </table>
+        </div></div>
+
+        <div class="lit-side">
+          <div id="lit-detail"></div>
+          <div class="panel">
+            <div class="panel-h"><h3>Next 7 days</h3><span class="faint" style="font-size:10px">26 Nov – 03 Dec</span></div>
+            <div class="panel-b" style="padding-top:6px;padding-bottom:8px">
+              <div class="ag-item"><div class="ag-date"><b>02</b><span>Dec</span></div><div class="ag-body"><div class="ag-t">Reply due — GST DRC-01</div><div class="ag-m"><b>Sample Traders</b><span class="sep">·</span><span class="faint">GST</span> <span class="chip chip-open">Open</span></div></div></div>
+              <div class="ag-item"><div class="ag-date"><b>03</b><span>Dec</span></div><div class="ag-body"><div class="ag-t">CIT(A) hearing — appeal effect</div><div class="ag-m"><b>Test Enterprises</b><span class="sep">·</span><span class="faint">Income Tax</span> <span class="chip chip-appeal">Hearing</span></div></div></div>
+              <div class="ag-item"><div class="ag-date"><b>05</b><span>Dec</span></div><div class="ag-body"><div class="ag-t">Limitation — ITAT appeal filing</div><div class="ag-m"><b>Sample Industries</b><span class="sep">·</span><span class="faint">Income Tax</span> <span class="chip chip-remand">Limitation</span></div></div></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-h"><h3>Portfolio mix</h3></div>
+            <div class="panel-b">
+              <div class="donut-wrap">
+                <div class="donut"><div class="donut-c"><div><b>16</b><span>Cases</span></div></div></div>
+                <div class="legend-list">
+                  <div class="legend-row"><i style="background:#3B82F6"></i><span>Income Tax</span><b>6</b></div>
+                  <div class="legend-row"><i style="background:#14B8A6"></i><span>GST</span><b>5</b></div>
+                  <div class="legend-row"><i style="background:#DC2626"></i><span>Overdue</span><b>3</b></div>
+                  <div class="legend-row"><i style="background:#94A3B8"></i><span>Closed</span><b>5</b></div>
+                </div>
+              </div>
+              <div class="side-note">GST and Income Tax counts include linked cases; overdue and closed overlap with modules.</div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-h"><h3>Matters with fee exposure</h3><span class="chip chip-neutral plain">Billed</span></div>
+            <div class="panel-b" style="padding-top:6px;padding-bottom:8px">
+              <div class="link-row" onclick="showView('lit','matters')"><svg class="icon"><use href="#i-folder"/></svg><div class="lr-body"><div class="lr-t">2024-25 Assessment batch — Sample Traders</div><div class="lr-m">3 cases linked · ₹52,000 outstanding</div></div><svg class="icon"><use href="#i-arrow"/></svg></div>
+              <div class="link-row" onclick="showView('lit','matters')"><svg class="icon"><use href="#i-folder"/></svg><div class="lr-body"><div class="lr-t">GST ASMT-10 group — Sample Pvt Ltd</div><div class="lr-m">2 cases linked · ₹34,500 outstanding</div></div><svg class="icon"><use href="#i-arrow"/></svg></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="view" id="lit-view-calendar">
+      <div class="toolbar">
+        <div class="seg"><button class="active">Month</button><button>Week</button></div>
+        <select class="select"><option>All modules</option><option>Income Tax</option><option>GST</option><option>TDS</option></select>
+        <div class="spacer"></div>
+        <span class="faint" style="font-size:10px">Events hidden once replied / ignored / closed</span>
+      </div>
+      <div class="cal-shell">
+        <div class="cal">
+          <div class="cal-h"><div class="m" id="cal-month">November 2026</div><div class="nav"><button class="btn sm ghost" onclick="changeMonth(-1)"><svg class="icon" style="transform:rotate(180deg)"><use href="#i-chevron"/></svg></button><button class="btn sm" onclick="goToday()">Today</button><button class="btn sm ghost" onclick="changeMonth(1)"><svg class="icon"><use href="#i-chevron"/></svg></button></div></div>
+          <div class="cal-grid" id="cal-grid"></div>
+          <div class="cal-legend"><span><i style="background:#BE123C"></i> Reply due</span><span><i style="background:#2563EB"></i> Hearing</span><span><i style="background:#B45309"></i> Limitation</span></div>
+        </div>
+        <div class="stack">
+          <div class="panel">
+            <div class="panel-h"><h3>Deadline summary</h3></div>
+            <div class="panel-b" style="padding-top:6px">
+              <div class="kv"><span class="k">Upcoming this month</span><span class="v">5</span></div>
+              <div class="kv"><span class="k">Overdue</span><span class="v" style="color:#B91C1C">3</span></div>
+              <div class="kv"><span class="k">Hearings</span><span class="v">2</span></div>
+              <div class="kv"><span class="k">Limitation clocks</span><span class="v">3</span></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-h"><h3>December</h3></div>
+            <div class="panel-b" style="padding-top:4px;padding-bottom:8px">
+              <div class="ag-item"><div class="ag-date"><b>02</b><span>Dec</span></div><div class="ag-body"><div class="ag-t">Reply due — GST DRC-01</div><div class="ag-m"><b>Sample Traders</b><span class="chip chip-open">Open</span></div></div></div>
+              <div class="ag-item"><div class="ag-date"><b>03</b><span>Dec</span></div><div class="ag-body"><div class="ag-t">Hearing — CIT(A) appeal effect</div><div class="ag-m"><b>Test Enterprises</b><span class="chip chip-appeal">Hearing</span></div></div></div>
+              <div class="ag-item"><div class="ag-date"><b>05</b><span>Dec</span></div><div class="ag-body"><div class="ag-t">Limitation — ITAT filing</div><div class="ag-m"><b>Sample Industries</b><span class="chip chip-remand">Limitation</span></div></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="view" id="lit-view-matters">
+      <div class="toolbar">
+        <div class="search"><svg class="icon"><use href="#i-search"/></svg><input placeholder="Search matter, client…"></div>
+        <div class="spacer"></div>
+        <button class="btn sm" onclick="toast('Opening new matter form')"><svg class="icon"><use href="#i-plus"/></svg> New matter</button>
+      </div>
+      <div class="split" style="grid-template-columns:300px minmax(0,1fr)">
+        <div class="list-panel">
+          <button class="case-card selected" onclick="toast('Opening matter')">
+            <div class="cc-top"><div><div class="cc-client">2024-25 Assessment batch</div><div class="cc-sub">Sample Traders · AABCP1234F</div></div><span class="chip chip-accent plain">Active</span></div>
+            <div class="cc-foot"><span>3 cases linked</span><span>₹52,000 outstanding</span></div>
+          </button>
+          <button class="case-card" onclick="toast('Opening matter')">
+            <div class="cc-top"><div><div class="cc-client">GST ASMT-10 group</div><div class="cc-sub">Sample Pvt Ltd · 00AAAAB1234C1Z5</div></div><span class="chip chip-accent plain">Active</span></div>
+            <div class="cc-foot"><span>2 cases linked</span><span>₹34,500 outstanding</span></div>
+          </button>
+          <button class="case-card" onclick="toast('Opening matter')">
+            <div class="cc-top"><div><div class="cc-client">Penalty appeals 2023-24</div><div class="cc-sub">Sample Industries · AABCP1235G</div></div><span class="chip chip-closed plain">Closed</span></div>
+            <div class="cc-foot"><span>1 case linked</span><span>₹0 outstanding</span></div>
+          </button>
+          <button class="case-card" onclick="toast('Opening matter')">
+            <div class="cc-top"><div><div class="cc-client">TDS default — Sample Pvt Ltd</div><div class="cc-sub">Sample Pvt Ltd · TAN ABCD12345E</div></div><span class="chip chip-accent plain">Active</span></div>
+            <div class="cc-foot"><span>1 case linked</span><span>₹0 outstanding</span></div>
+          </button>
+        </div>
+
+        <div class="panel">
+          <div class="detail-h">
+            <div>
+              <div class="detail-eyebrow">Matter · linked cases</div>
+              <div class="detail-title">2024-25 Assessment batch — Sample Traders</div>
+              <div class="detail-sub"><span class="mono">AABCP1234F</span><span>·</span><span>3 linked cases</span><span>·</span><span class="chip chip-accent plain">Active</span></div>
+            </div>
+            <div class="detail-actions"><button class="btn sm" onclick="toast('Editing matter')">Edit</button><button class="btn sm"><svg class="icon"><use href="#i-plus"/></svg> Link case</button></div>
+          </div>
+          <div class="detail-body">
+            <div class="fee-grid" style="grid-template-columns:repeat(4,1fr)">
+              <div class="fee"><div class="l">Agreed</div><div class="v">₹65,000</div></div>
+              <div class="fee"><div class="l">Billed</div><div class="v">₹52,000</div></div>
+              <div class="fee"><div class="l">Received</div><div class="v" style="color:#166534">₹0</div></div>
+              <div class="fee"><div class="l">Outstanding</div><div class="v" style="color:#B91C1C">₹52,000</div></div>
+            </div>
+            <div class="section-h"><h4>Linked cases</h4><div class="rule"></div></div>
+            <div class="tbl-wrap" style="border-radius:9px">
+              <table class="tbl" style="min-width:0">
+                <thead><tr><th>Case</th><th>Module</th><th>Type</th><th>Status</th><th class="actions"></th></tr></thead>
+                <tbody>
+                  <tr class="data"><td class="col-client">Notice u/s 143(2) — Sample Traders</td><td><span class="chip chip-it plain">Income Tax</span></td><td>Notice</td><td><span class="chip chip-open">Open</span></td><td class="actions"><button class="file-btn" onclick="showPage('it');showView('it','cases');selectCase(0)">Open</button></td></tr>
+                  <tr class="data"><td class="col-client">Order for Determination of Tax</td><td><span class="chip chip-gst plain">GST</span></td><td>Assessment</td><td><span class="chip chip-closed">Closed</span></td><td class="actions"><button class="file-btn" onclick="showPage('gst');showView('gst','register')">Open</button></td></tr>
+                  <tr class="data"><td class="col-client">Reply to notice u/s 142(1)</td><td><span class="chip chip-it plain">Income Tax</span></td><td>Notice</td><td><span class="chip chip-replied">Replied</span></td><td class="actions"><button class="file-btn" onclick="showPage('it');showView('it','cases');selectCase(0)">Open</button></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── GST record drawer ── -->
+<div class="overlay" id="gst-overlay" onclick="closeGstDrawer()"></div>
+<aside class="drawer" id="gst-drawer" aria-hidden="true">
+  <div class="drawer-h">
+    <div>
+      <div class="eyebrow">GST · Determination of Tax MFY</div>
+      <div class="drawer-title">Order for Determination of Tax</div>
+      <div class="drawer-sub"><span class="mono">00AABCP1234F1Z9</span><span>·</span><b style="color:var(--ink)">Test Enterprises</b><span>·</span><span class="mono">ARN AD010926007116G</span></div>
+    </div>
+    <div class="drawer-h-actions">
+      <button class="btn sm" onclick="toast('Assigning task to team…')">Assign task</button>
+      <button class="x-btn" onclick="closeGstDrawer()"><svg class="icon"><use href="#i-x"/></svg></button>
+    </div>
+  </div>
+  <div class="drawer-b">
+    <div class="meta-grid" style="grid-template-columns:repeat(3,1fr)">
+      <div class="meta"><div class="m-label">GSTIN</div><div class="m-value mono">00AABCP1234F1Z9</div></div>
+      <div class="meta"><div class="m-label">Business name</div><div class="m-value">Test Enterprises</div></div>
+      <div class="meta"><div class="m-label">Case ID</div><div class="m-value mono">AD010926007116G</div></div>
+      <div class="meta"><div class="m-label">ARN</div><div class="m-value mono link" onclick="toast('Opened portal case')">AD010926007116G</div></div>
+      <div class="meta"><div class="m-label">Reference ID</div><div class="m-value mono">ZD011126008838L</div></div>
+      <div class="meta"><div class="m-label">Financial year</div><div class="m-value">2021-22</div></div>
+      <div class="meta"><div class="m-label">Issue date</div><div class="m-value">15 Nov 2026</div></div>
+      <div class="meta"><div class="m-label">Due date</div><div class="m-value" style="color:#B45309">02 Dec 2026</div></div>
+      <div class="meta"><div class="m-label">Demand amount</div><div class="m-value">₹1,42,500</div></div>
+    </div>
+
+    <div class="portal-band">
+      <div class="ic"><svg class="icon"><use href="#i-check"/></svg></div>
+      <div><b>Portal case status: Order Issued</b><span>Portal task status: Closed · last synced 26 Nov 2026, 11:35</span></div>
+    </div>
+
+    <div class="work-card">
+      <div>
+        <div class="wt">Record work status: <span style="color:#6D28D9">Needs Review</span></div>
+        <div class="wd">Order scope and finality need review; no earlier records were automatically concluded.</div>
+        <div class="wd" style="margin-top:6px"><b style="color:var(--ink)">Task description:</b> Order for Determination of Tax</div>
+      </div>
+      <div class="actions">
+        <button class="btn sm primary" onclick="toast('Marked replied')">Mark replied</button>
+        <button class="btn sm" onclick="toast('Order opened')">Review order</button>
+      </div>
+    </div>
+
+    <div class="section-h" style="margin:16px 0 9px"><h4>Proceedings &amp; folder history</h4><div class="rule"></div><span class="hint">5 records</span></div>
+
+    <div class="acc" onclick="toggleAcc(this)">
+      <div class="acc-h"><span class="ic"><svg class="icon"><use href="#i-bell"/></svg></span><span class="name">Intimations</span><span class="n">0</span><svg class="icon chev"><use href="#i-chevron"/></svg></div>
+      <div class="acc-b"><div class="acc-empty">No intimations recorded.</div></div>
+    </div>
+
+    <div class="acc" onclick="toggleAcc(this)">
+      <div class="acc-h"><span class="ic"><svg class="icon"><use href="#i-inbox"/></svg></span><span class="name">Notices</span><span class="n">3</span><svg class="icon chev"><use href="#i-chevron"/></svg></div>
+      <div class="acc-b">
+        <div class="doc-row"><span class="fic"><svg class="icon"><use href="#i-file"/></svg></span><div class="doc-body"><div class="doc-t">Intimation of issue of reminder in Form GST DRC-01</div><div class="doc-m"><span>ZD011126008838L</span><span>·</span><span>15 Nov 2026</span><span>·</span><span>PDF · 84 KB</span></div></div><button class="file-btn"><svg class="icon"><use href="#i-file"/></svg> Open</button></div>
+        <div class="doc-row"><span class="fic"><svg class="icon"><use href="#i-file"/></svg></span><div class="doc-body"><div class="doc-t">Intimation of issue of reminder in Form GST DRC-01</div><div class="doc-m"><span>ZD011126008829P</span><span>·</span><span>08 Nov 2026</span><span>·</span><span>PDF · 79 KB</span></div></div><button class="file-btn"><svg class="icon"><use href="#i-file"/></svg> Open</button></div>
+        <div class="doc-row"><span class="fic"><svg class="icon"><use href="#i-file"/></svg></span><div class="doc-body"><div class="doc-t">Proceedings initiated by Adjudicating Authority for SCN</div><div class="doc-m"><span>ZD011126008821C</span><span>·</span><span>01 Nov 2026</span><span>·</span><span>PDF · 66 KB</span></div></div><button class="file-btn"><svg class="icon"><use href="#i-file"/></svg> Open</button></div>
+      </div>
+    </div>
+
+    <div class="acc" onclick="toggleAcc(this)">
+      <div class="acc-h"><span class="ic"><svg class="icon"><use href="#i-link"/></svg></span><span class="name">Replies</span><span class="n">1</span><svg class="icon chev"><use href="#i-chevron"/></svg></div>
+      <div class="acc-b">
+        <div class="doc-row"><span class="fic"><svg class="icon"><use href="#i-file"/></svg></span><div class="doc-body"><div class="doc-t">Reply to SCN — written submission</div><div class="doc-m"><span>submitted 12 Nov 2026</span><span>·</span><span>viewed by AO 18 Nov 2026</span><span>·</span><span>PDF · 210 KB</span></div></div><button class="file-btn"><svg class="icon"><use href="#i-file"/></svg> Open</button></div>
+      </div>
+    </div>
+
+    <div class="acc" onclick="toggleAcc(this)">
+      <div class="acc-h"><span class="ic"><svg class="icon"><use href="#i-file"/></svg></span><span class="name">Orders</span><span class="n">1</span><svg class="icon chev"><use href="#i-chevron"/></svg></div>
+      <div class="acc-b">
+        <div class="doc-row"><span class="fic"><svg class="icon"><use href="#i-file"/></svg></span><div class="doc-body"><div class="doc-t">Order for Determination of Tax</div><div class="doc-m"><span>passed 20 Nov 2026</span><span>·</span><span>PDF · 315 KB</span></div></div><button class="file-btn"><svg class="icon"><use href="#i-file"/></svg> Open</button></div>
+      </div>
+    </div>
+
+    <div class="acc closed" onclick="toggleAcc(this)">
+      <div class="acc-h"><span class="ic"><svg class="icon"><use href="#i-check"/></svg></span><span class="name">Closure</span><span class="n">0</span><svg class="icon chev"><use href="#i-chevron"/></svg></div>
+      <div class="acc-b"><div class="acc-empty">Not yet closed by Closure Order.</div></div>
+    </div>
+  </div>
+</aside>
+
+<div class="toast" id="toast"><svg class="icon"><use href="#i-check"/></svg><span id="toast-msg">Done</span></div>
+
+<script>
+/* ── nav ── */
+function showPage(name){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  document.querySelectorAll('.module-nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name));
+  document.body.dataset.page=name;
+  const vname={it:'overview',gst:'register',lit:'dashboard'}[name];
+  showView(name,vname);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function showView(page,view){
+  const root=document.getElementById('page-'+page);
+  root.querySelectorAll('.viewtab').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
+  root.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===page+'-view-'+view));
+}
+
+/* ── toast ── */
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById('toast');
+  document.getElementById('toast-msg').textContent=msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),2200);
+}
+
+/* ── Income Tax cases ── */
+const IT_DATA=[
+ {client:'Sample Traders',pan:'AABCP1234F',ay:'2024-25',proc:'Assessment · u/s 143(2)',status:'Open',urg:'High',due:'02 Dec 2026',days:6,docs:4,ref:'AD010926007116G',
+  title:'Notice u/s 143(2) — production of accounts',desc:'Assessment proceeding initiated. AO has called for books of account, bank statements and ledgers for FY 2022-23. Reply due on 02 Dec 2026.',
+  deadline:'02 Dec 2026',deadlineDays:6,
+  timeline:[['24 Nov 2026','Notice u/s 143(2) issued','issued',['Notice','Open'],'amber','AD010926007116G'],
+            ['18 Nov 2026','Reply filed with annexures','reply',['Reply','Filed'],'blue','ZD011126008824F'],
+            ['20 Nov 2026','Virtual hearing completed','hearing',['Hearing','Completed'],'blue','VC-20261120-014'],
+            ['05 Nov 2026','Intimation u/s 143(1) — demand nil','order',['Intimation','Closed'],'slate','ZD011126008780K']],
+  links:[['LIT-2026-014','Litigation matter · 2024-25 Assessment batch'],['ZD011126008824F','Reply reference (Income Tax)'],['00AABCP1234F1Z9','Linked GSTIN — Sample Traders GST proceedings']]},
+ {client:'Sample Industries',pan:'AABCP1235G',ay:'2023-24',proc:'Penalty · u/s 271(1)(c)',status:'Overdue',urg:'High',due:'18 Nov 2026',days:-8,docs:2,ref:'AD010926007104C',
+  title:'Penalty SCN u/s 271(1)(c)',desc:'Show-cause for penalty for concealment of particulars. Reply window lapsed on 18 Nov 2026. Consider filing condonation with explanation.',
+  deadline:'18 Nov 2026',deadlineDays:-8,
+  timeline:[['18 Nov 2026','Reply deadline missed','overdue',['Penalty','Overdue'],'amber','AD010926007104C'],
+            ['10 Nov 2026','SCN issued','issued',['Notice','Open'],'amber','ZD011126008791G'],
+            ['28 Oct 2026','Reminder issued','reminder',['Reminder','Open'],'amber','ZD011126008760B']],
+  links:[['LIT-2026-011','Litigation matter · Penalty appeals 2023-24'],['AABCP1235G','Client PAN'],['AABCP1235G','Linked GSTIN — Sample Industries GST proceedings']]},
+ {client:'Test Enterprises',pan:'AABCP1236H',ay:'2022-23',proc:'Appeal effect · CIT(A)',status:'Appeal',urg:'Medium',due:'03 Dec 2026',days:7,docs:3,ref:'AD010926007092B',
+  title:'CIT(A) appeal — hearing on 03 Dec 2026',desc:'First appeal against assessment order. CIT(A) has fixed hearing for 03 Dec 2026. Paper book and grounds under preparation — not yet filed.',
+  deadline:'03 Dec 2026',deadlineDays:7,
+  timeline:[['20 Nov 2026','Appeal effect order — CIT(A) direction given effect','order',['Order','Closed'],'slate','ZD011126008802R'],
+            ['12 Nov 2026','Appeal filed — grounds and statement of facts','appeal',['Appeal','Window open'],'amber','APL-2026-032'],
+            ['05 Nov 2026','Appeal window opened','appeal',['Appeal','Window open'],'amber','APL-2026-032']],
+  links:[['LIT-2026-009','Litigation matter · GST ASMT-10 group (linked client)'],['ZD011126008802R','Appeal effect order reference'],['00AABCP1236H1Z3','Linked GSTIN — Test Enterprises GST proceedings']]},
+ {client:'Sample Pvt Ltd',pan:'AABCP1237J',ay:'2025-26',proc:'Defective return · u/s 139(9)',status:'Replied',urg:'Low',due:'10 Dec 2026',days:14,docs:2,ref:'AD010926007051Y',
+  title:'Notice u/s 139(9) — defective return',desc:'Return filed considered defective. Response with revised computation filed; awaiting acceptance or further query from CPC.',
+  deadline:'10 Dec 2026',deadlineDays:14,
+  timeline:[['12 Nov 2026','Reply filed — revised computation','reply',['Reply','Filed'],'blue','ZD011126008801A'],
+            ['05 Nov 2026','Defect notice u/s 139(9)','issued',['Notice','Open'],'amber','AD010926007051Y']],
+  links:[['LIT-2026-007','Litigation matter · 2024-25 Assessment batch (linked client)'],['ZD011126008801A','Reply reference (Income Tax)'],['00AAAAB1234C1Z5','Linked GSTIN — Sample Pvt Ltd GST proceedings']]},
+ {client:'Sample Traders',pan:'AABCP1234F',ay:'2021-22',proc:'Remand · ITAT',status:'Remanded',urg:'Medium',due:'31 Mar 2027',days:125,docs:5,ref:'AD010926007030F',
+  title:'ITAT remand — fresh assessment hearing',desc:'ITAT set aside the CIT(A) order and restored the matter. Fresh assessment now pending before the AO. Limitation clock runs to 31 Mar 2027.',
+  deadline:'31 Mar 2027',deadlineDays:125,
+  timeline:[['22 Nov 2026','ITAT order received — set aside and restored','order',['Order','Remanded'],'slate','ZD011126008785H'],
+            ['20 Nov 2026','Hearing before ITAT','hearing',['Hearing','Completed'],'blue','VC-20261120-009'],
+            ['01 Nov 2026','Appeal filed before ITAT','appeal',['Appeal','Under appeal'],'amber','ITAT-2026-004']],
+  links:[['LIT-2026-003','Litigation matter · 2024-25 Assessment batch'],['ZD011126008785H','ITAT order reference'],['00AABCP1234F1Z9','Linked GSTIN — Sample Traders GST proceedings']]},
+];
+
+let itStatus='all', itSelected=-1;
+
+function statusChip(s){
+  const map={Open:'chip-open',Overdue:'chip-overdue',Replied:'chip-replied',Closed:'chip-closed',Appeal:'chip-appeal',Remanded:'chip-remand'};
+  return '<span class="chip '+(map[s]||'chip-neutral')+'">'+s+'</span>';
+}
+function urgSpan(u){return '<span class="urg '+u.toLowerCase()+'">'+u+'</span>';}
+
+function itMatches(c){
+  if(itStatus!=='all' && c.status!==itStatus) return false;
+  const u=document.getElementById('it-urg').value;
+  if(u && c.urg!==u) return false;
+  const q=(document.getElementById('it-search').value||'').toLowerCase().trim();
+  if(q){const hay=(c.client+' '+c.pan+' '+c.proc+' '+c.ref+' '+c.title).toLowerCase(); if(!hay.includes(q)) return false;}
+  return true;
+}
+function renderItList(){
+  const rows=IT_DATA.map((c,i)=>({c,i})).filter(o=>itMatches(o.c));
+  document.getElementById('it-shown').textContent=rows.length+' of '+IT_DATA.length+' cases';
+  const list=document.getElementById('it-list');
+  if(!rows.length){list.innerHTML='<div class="empty">No cases match these filters.</div>';return;}
+  list.innerHTML=rows.map(({c,i})=>{
+    const sel=(i===itSelected||(itSelected===-1&&rows[0].i===i))?' selected':'';
+    const hot=c.deadlineDays<0?' hot':'';
+    const pct=Math.max(4,Math.min(100,Math.round(c.deadlineDays<0?100:100-(c.deadlineDays/40*100))));
+    return '<div class="case-card'+sel+'" onclick="selectCase('+i+')">'
+      +'<div class="cc-top"><div><div class="cc-client">'+c.client+'</div>'
+      +'<div class="cc-sub"><span class="mono">'+c.pan+'</span><span>·</span><span>AY '+c.ay+'</span></div></div>'
+      +statusChip(c.status)+'</div>'
+      +'<div class="cc-proc">'+c.proc+'</div>'
+      +'<div class="progress '+(c.deadlineDays<0?'danger':(c.deadlineDays<10?'warn':''))+'"><i style="width:'+pct+'%"></i></div>'
+      +'<div class="cc-foot"><span class="cc-deadline'+hot+'"><svg class="icon"><use href="#i-clock"/></svg> '+(c.deadlineDays<0?('Overdue '+Math.abs(c.deadlineDays)+'d'):('Due in '+c.deadlineDays+'d'))+'</span>'
+      +'<span style="display:flex;gap:6px;align-items:center">'+urgSpan(c.urg)+'<svg class="icon"><use href="#i-paperclip"/></svg>'+c.docs+'</span></div>'
+      +'</div>';
+  }).join('');
+}
+function selectCase(i){
+  itSelected=i;
+  renderItList();
+  renderItDetail(IT_DATA[i]);
+  document.getElementById('it-detail').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function renderItDetail(c){
+  const meta=(l,v,link)=>'<div class="meta"><div class="m-label">'+l+'</div><div class="m-value'+(link?' link':'')+'">'+v+'</div></div>';
+  const chipsFor=(arr)=>arr.map(([lab,cls])=>'<span class="tag '+(cls==='Notice'||cls==='Reminder'||cls==='Penalty'||cls==='Appeal'?'amber':cls==='Reply'?'blue':cls==='Hearing'?'blue':'slate')+'">'+lab+'</span>').join('');
+  const tl=c.timeline.map((t,idx)=>{
+    const [date,title,kind,chips,tagc,ref]=t;
+    const ch=chips.map(x=>x==='Open'?'<span class="chip chip-open">Open</span>':
+      x==='Overdue'?'<span class="chip chip-overdue">Overdue</span>':
+      x==='Filed'?'<span class="chip chip-replied">Filed</span>':
+      x==='Completed'?'<span class="chip chip-closed">Completed</span>':
+      x==='Closed'?'<span class="chip chip-closed">Closed</span>':
+      x==='Remanded'||x==='Window open'||x==='Under appeal'?'<span class="chip chip-'+(x==='Remanded'?'remand':'appeal')+'">'+x+'</span>':
+      '<span class="tag '+tagc+'">'+x+'</span>').join(' ');
+    return '<div class="tl-item"><div class="tl-date">'+date+'</div><div class="tl-rail"><i></i></div>'
+      +'<div class="tl-main"><div class="t">'+title+'</div><div class="m"><span class="mono">'+ref+'</span></div><div class="chips">'+ch+'</div></div>'
+      +'<div class="tl-actions"><button class="file-btn"><svg class="icon"><use href="#i-paperclip"/></svg> Files</button></div></div>';
+  }).join('');
+
+  const links=c.links.map(([a,b])=>'<div class="link-row" onclick="toast(\'Opening '+a+'…\')"><svg class="icon"><use href="#i-link"/></svg><div class="lr-body"><div class="lr-t">'+b+'</div><div class="lr-m">'+a+'</div></div><svg class="icon"><use href="#i-arrow"/></svg></div>').join('');
+
+  document.getElementById('it-detail').innerHTML=
+   '<div class="panel">'
+   +'<div class="detail-h"><div style="min-width:0">'
+   +'<div class="detail-eyebrow">Proceeding · '+c.status+'</div>'
+   +'<div class="detail-title">'+c.title+'</div>'
+   +'<div class="detail-sub"><b>'+c.client+'</b><span>·</span><span class="mono">'+c.pan+'</span><span>·</span><span>AY '+c.ay+'</span><span>·</span>'+statusChip(c.status)+urgSpan(c.urg)
+   +'</div></div>'
+   +'<div class="detail-actions">'
+   +'<button class="btn sm" onclick="toast(\'Marked replied\')"><svg class="icon"><use href="#i-check"/></svg> Mark replied</button>'
+   +'<button class="btn sm" onclick="toast(\'Opening e-Proceedings folder…\')"><svg class="icon"><use href="#i-folder"/></svg> Folder</button>'
+   +'<button class="btn sm primary" onclick="toast(\'Opening portal proceeding…\')">Open on portal <svg class="icon"><use href="#i-arrow"/></svg></button>'
+   +'</div></div>'
+   +'<div class="detail-body">'
+   +'<div class="meta-grid">'
+   +meta('Client',c.client)+meta('PAN',c.pan)+meta('Assessment year','AY '+c.ay)
+   +'</div>'
+   +'<div class="detail-grid">'
+   +'<div>'
+   +'<div class="section-h"><h4>Deadline</h4><div class="rule"></div></div>'
+   +'<div class="clock-list" style="margin-bottom:16px">'
+   +'<div class="clock"><div><div class="c-title">'+c.proc+'</div><div class="c-prov">'+c.ref+'</div></div>'
+   +'<div class="c-due">'+c.deadline+'<span>'+(c.deadlineDays<0?'overdue '+Math.abs(c.deadlineDays)+' days':c.deadlineDays+' days left')+'</span></div>'
+   +'<div class="c-status">'+(c.deadlineDays<0?'<span class="chip chip-overdue">Overdue</span>':'<span class="chip chip-open">Open</span>')+'</div>'
+   +'<div class="clock-bar"><div class="progress '+(c.deadlineDays<0?'danger':(c.deadlineDays<10?'warn':'ok'))+'"><i style="width:'+Math.max(4,Math.min(100,Math.round(c.deadlineDays<0?100:100-(c.deadlineDays/40*100))))+'%"></i></div></div></div>'
+   +'</div>'
+   +'<p class="side-note" style="border-top:0;margin:-4px 0 18px;padding-top:0;font-size:12px;color:var(--ink);line-height:1.55">'+c.desc+'</p>'
+   +'<div class="section-h"><h4>Timeline</h4><div class="rule"></div><span class="hint">Newest first · IST</span></div>'
+   +'<div class="tl-group"><div class="tl-head" onclick="toggleGroup(this)"><span class="dot"></span><span class="name">Documents</span><span class="n">'+c.docs+'</span><svg class="icon chev"><use href="#i-chevron"/></svg></div>'
+   +'<div class="tl-body">'+tl+'</div></div>'
+   +'</div>'
+   +'<div>'
+   +'<div class="side-card"><h5>References</h5>'
+   +'<div class="kv"><span class="k">ARN / Case ID</span><span class="v mono">'+c.ref+'</span></div>'
+   +'<div class="kv"><span class="k">Process</span><span class="v">'+c.proc+'</span></div>'
+   +'<div class="kv"><span class="k">Urgency</span><span class="v">'+urgSpan(c.urg)+'</span></div>'
+   +'<div class="kv"><span class="k">Files</span><span class="v">'+c.docs+' saved</span></div>'
+   +'</div>'
+   +'<div class="side-card"><h5>Linked documents &amp; cases</h5>'+links
+   +'<div class="side-note">Cross-links are inferred from the file tree and shared references — same PAN, ARN or matter.</div>'
+   +'</div>'
+   +'</div>'
+   +'</div></div></div>';
+}
+function toggleGroup(el){el.parentElement.classList.toggle('closed');}
+
+document.querySelectorAll('#it-status-seg button').forEach(b=>{
+  b.onclick=()=>{document.querySelectorAll('#it-status-seg button').forEach(x=>x.classList.remove('active'));b.classList.add('active');itStatus=b.dataset.v;itSelected=-1;renderItList();};
+});
+
+/* ── GST register ── */
+const GST_DATA=[
+ {date:'24 Nov 2026',client:'Sample Pvt Ltd',gstin:'00AAAAB1234C1Z5',type:'CANCEL',desc:'Show Cause Notice for Cancellation of Registration',arn:'ZA0111260253348',period:'—',amt:'—',status:'Open'},
+ {date:'21 Nov 2026',client:'Sample Traders',gstin:'00AABCP1234F1Z9',type:'VOL',desc:'Acknowledgement of acceptance — voluntary payment',arn:'AD011126001826H',period:'2025-2026',amt:'₹39,92,546',status:'Replied'},
+ {date:'15 Nov 2026',client:'Sample Traders',gstin:'00AABCP1234F1Z9',type:'DRC-01',desc:'Intimation of issue of reminder in Form GST DRC-01',arn:'AD010926007116G',period:'2021-22',amt:'—',status:'Open'},
+ {date:'15 Nov 2026',client:'Test Enterprises',gstin:'00AABCP1236H1Z3',type:'DRC-07',desc:'Order for Determination of Tax MFY',arn:'AD010926007104C',period:'2022',amt:'₹1,42,500',status:'Closed'},
+ {date:'10 Nov 2026',client:'Sample Industries',gstin:'00AABCP1235G1Z1',type:'DRC-01',desc:'Intimation of issue of reminder in Form GST DRC-01',arn:'ZD011126008791G',period:'2022-23',amt:'—',status:'Overdue'},
+ {date:'02 Nov 2026',client:'Sample Pvt Ltd',gstin:'00AAAAB1234C1Z5',type:'ASMT-10',desc:'Notice for intimating discrepancies in return',arn:'ZA0111260253206',period:'2023-24',amt:'₹86,940',status:'Replied'},
+ {date:'28 Oct 2026',client:'Test Enterprises',gstin:'00AABCP1236H1Z3',type:'ASMT-04',desc:'Intimation of issue of reminder in Form GST DRC-01',arn:'ZD011126008760B',period:'2022-23',amt:'—',status:'Open'},
+ {date:'19 Oct 2026',client:'Sample Pvt Ltd',gstin:'00AAAAB1234C1Z5',type:'APPEAL',desc:'Appeal order passed — APL-04 disposed',arn:'AD011126001820K',period:'2021-22',amt:'₹2,10,000',status:'Closed'},
+];
+let gstStatus='';
+function gstTypeTag(t){
+  const amb=['DRC-01','ASMT-10','ASMT-04','CANCEL','APPEAL'];
+  const grn=['VOL','DRC-07'];
+  const cls=grn.includes(t)?'green':'amber';
+  return '<span class="tag '+cls+'">'+t+'</span>';
+}
+function renderGstTable(){
+  const q=(document.getElementById('gst-search').value||'').toLowerCase().trim();
+  const rows=GST_DATA.filter(r=>{
+    if(gstStatus && r.status!==gstStatus) return false;
+    if(q){const hay=(r.client+' '+r.gstin+' '+r.desc+' '+r.arn+' '+r.type).toLowerCase(); if(!hay.includes(q)) return false;}
+    return true;
+  });
+  document.getElementById('gst-shown').textContent=rows.length+' of '+GST_DATA.length+' rows';
+  const tb=document.getElementById('gst-tbody');
+  tb.innerHTML=rows.map(r=>{
+    const st={Open:'chip-open',Replied:'chip-replied',Overdue:'chip-overdue',Closed:'chip-closed'}[r.status];
+    return '<tr class="data">'
+      +'<td class="col-date">'+r.date+'</td>'
+      +'<td class="col-client">'+r.client+'<div class="sub mono">'+r.gstin+'</div></td>'
+      +'<td>'+gstTypeTag(r.type)+'</td>'
+      +'<td class="col-desc"><div class="d">'+r.desc+'</div></td>'
+      +'<td class="mono" style="font-size:10px">'+r.arn+'</td>'
+      +'<td class="mono">'+r.period+'</td>'
+      +'<td class="num">'+r.amt+'</td>'
+      +'<td><span class="chip '+st+'">'+r.status+'</span></td>'
+      +'<td class="actions"><button class="file-btn" onclick="openGstDrawer()">Open</button> '
+      +'<button class="rowbtn" onclick="showPage(\'gst\');showView(\'gst\',\'casefiles\')"><svg class="icon"><use href="#i-folder"/></svg></button></td></tr>';
+  }).join('');
+}
+document.querySelectorAll('#gst-status-seg button').forEach(b=>{
+  b.onclick=()=>{document.querySelectorAll('#gst-status-seg button').forEach(x=>x.classList.remove('active'));b.classList.add('active');gstStatus=b.dataset.v;renderGstTable();};
+});
+function openGstDrawer(){document.getElementById('gst-drawer').classList.add('open');document.getElementById('gst-drawer').setAttribute('aria-hidden','false');document.getElementById('gst-overlay').classList.add('open');}
+function closeGstDrawer(){document.getElementById('gst-drawer').classList.remove('open');document.getElementById('gst-drawer').setAttribute('aria-hidden','true');document.getElementById('gst-overlay').classList.remove('open');}
+function toggleAcc(el){el.classList.toggle('closed');}
+function toggleRow(tr){
+  const next=tr.nextElementSibling;
+  if(next&&next.classList.contains('expand')){next.style.display=next.style.display==='none'?'table-row':'none';}
+}
+
+/* ── Litigation ── */
+const LIT_DATA=[
+ {module:'Income Tax',client:'Sample Industries',pan:'AABCP1235G',matter:'Penalty appeals 2023-24',type:'Notice',ay:'AY 2023-24',status:'Overdue',urg:'High',caseTitle:'Penalty SCN u/s 271(1)(c)',reason:'Reply deadline lapsed 18 Nov 2026',deadline:'Overdue 8 days'},
+ {module:'GST',client:'Sample Traders',pan:'00AABCP1234F1Z9',matter:'2024-25 Assessment batch',type:'Notice',ay:'FY 2021-22',status:'Open',urg:'High',caseTitle:'GST DRC-01 — reminder issued',reason:'Reply due 02 Dec 2026',deadline:'Due in 6 days'},
+ {module:'Income Tax',client:'Sample Traders',pan:'AABCP1234F',matter:'2024-25 Assessment batch',type:'Notice',ay:'AY 2024-25',status:'Open',urg:'High',caseTitle:'Notice u/s 143(2) — production of accounts',reason:'Reply due 02 Dec 2026',deadline:'Due in 6 days'},
+ {module:'Income Tax',client:'Test Enterprises',pan:'AABCP1236H',matter:'GST ASMT-10 group',type:'Appeal',ay:'AY 2022-23',status:'Under appeal',urg:'Medium',caseTitle:'CIT(A) appeal — hearing 03 Dec 2026',reason:'Hearing fixed 03 Dec 2026',deadline:'Due in 7 days'},
+ {module:'Income Tax',client:'Sample Traders',pan:'AABCP1234F',matter:'2024-25 Assessment batch',type:'Appeal',ay:'AY 2021-22',status:'Remanded',urg:'Medium',caseTitle:'ITAT remand — fresh assessment',reason:'Limitation runs to 31 Mar 2027',deadline:'5 months left'},
+ {module:'GST',client:'Sample Pvt Ltd',pan:'00AAAAB1234C1Z5',matter:'GST ASMT-10 group',type:'Notice',ay:'FY 2023-24',status:'Replied',urg:'Low',caseTitle:'ASMT-10 — discrepancy reply filed',reason:'Awaiting AO response',deadline:'Replied'},
+ {module:'Income Tax',client:'Sample Pvt Ltd',pan:'AABCP1237J',matter:'2024-25 Assessment batch',type:'Notice',ay:'AY 2025-26',status:'Replied',urg:'Low',caseTitle:'Defective return u/s 139(9)',reason:'Response filed 12 Nov 2026',deadline:'Replied'},
+ {module:'GST',client:'Test Enterprises',pan:'00AABCP1236H1Z3',matter:'GST ASMT-10 group',type:'Assessment',ay:'FY 2022-23',status:'Closed',urg:'Low',caseTitle:'Order for Determination of Tax',reason:'Order passed 20 Nov 2026',deadline:'Closed'},
+ {module:'TDS',client:'Sample Pvt Ltd',pan:'AABCP1237J',matter:'TDS default — Sample Pvt Ltd',type:'Notice',ay:'FY 2023-24',status:'Open',urg:'Medium',caseTitle:'TDS default intimation u/s 200A',reason:'Reply due 09 Dec 2026',deadline:'Due in 13 days'},
+];
+let litModule='', litSelected=-1;
+function modChip(m){
+  const map={'Income Tax':'chip-it','GST':'chip-gst','TDS':'chip-tds'};
+  return '<span class="chip '+(map[m]||'chip-neutral')+' plain">'+m+'</span>';
+}
+function renderLitTable(){
+  const q=(document.getElementById('lit-search').value||'').toLowerCase().trim();
+  const rows=LIT_DATA.map((r,i)=>({r,i})).filter(({r})=>{
+    if(litModule && r.module!==litModule) return false;
+    if(q){const hay=(r.client+' '+r.caseTitle+' '+r.pan+' '+r.matter).toLowerCase(); if(!hay.includes(q)) return false;}
+    return true;
+  });
+  document.getElementById('lit-shown').textContent=rows.length+' cases';
+  const tb=document.getElementById('lit-tbody');
+  if(!rows.length){tb.innerHTML='<tr><td colspan="8"><div class="empty" style="border:0">No cases match these filters.</div></td></tr>';return;}
+  tb.innerHTML=rows.map(({r,i})=>{
+    const st={Open:'chip-open',Overdue:'chip-overdue',Replied:'chip-replied',Closed:'chip-closed','Under appeal':'chip-appeal',Remanded:'chip-remand'}[r.status]||'chip-neutral';
+    const sel=litSelected===i?' class="data selected"':' class="data"';
+    return '<tr'+sel+' onclick="litRowClick('+i+')" style="cursor:pointer">'
+      +'<td>'+modChip(r.module)+'</td>'
+      +'<td class="col-client">'+r.client+'<div class="sub mono">'+r.pan+'</div></td>'
+      +'<td>'+r.matter+'</td>'
+      +'<td>'+r.type+'</td>'
+      +'<td class="mono">'+r.ay+'</td>'
+      +'<td><span class="chip '+st+'">'+r.status+'</span></td>'
+      +'<td>'+urgSpan(r.urg)+'</td>'
+      +'<td style="max-width:220px"><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+r.caseTitle+'</div></td>'
+      +'</tr>';
+  }).join('');
+}
+function litRowClick(i){litSelected=i;renderLitTable();renderLitDetail(LIT_DATA[i]);}
+function renderLitDetail(r){
+  const st={Open:'chip-open',Overdue:'chip-overdue',Replied:'chip-replied',Closed:'chip-closed','Under appeal':'chip-appeal',Remanded:'chip-remand'}[r.status]||'chip-neutral';
+  document.getElementById('lit-detail').innerHTML=
+   '<div class="panel" style="margin-bottom:10px">'
+   +'<div class="panel-h"><h3>Case detail</h3>'+modChip(r.module)+'</div>'
+   +'<div class="panel-b">'
+   +'<div style="font-size:12.5px;font-weight:700;line-height:1.35">'+r.caseTitle+'</div>'
+   +'<div class="faint" style="font-size:10.5px;margin-top:2px">'+r.client+' · '+r.pan+'</div>'
+   +'<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px"><span class="chip '+st+'">'+r.status+'</span>'+urgSpan(r.urg)+'</div>'
+   +'<div class="kv" style="margin-top:8px;border-top:1px solid var(--line-soft);padding-top:7px"><span class="k">Matter</span><span class="v">'+r.matter+'</span></div>'
+   +'<div class="kv"><span class="k">Type</span><span class="v">'+r.type+' · '+r.ay+'</span></div>'
+   +'<div class="kv"><span class="k">Next milestone</span><span class="v">'+r.deadline+'</span></div>'
+   +'<p class="side-note">'+r.reason+'</p>'
+   +'<div style="display:flex;gap:6px;margin-top:9px">'
+   +'<button class="btn sm primary" style="flex:1" onclick="openLitCase(\''+r.module+'\')">Open case</button>'
+   +'<button class="btn sm" onclick="toast(\'Marked replied\')">Replied</button>'
+   +'</div>'
+   +'</div></div>';
+}
+function openLitCase(mod){
+  if(mod==='GST'){showPage('gst');showView('gst','register');}
+  else if(mod==='Income Tax'){showPage('it');showView('it','cases');selectCase(0);}
+  else{toast('TDS case view not part of this mockup');}
+}
+document.querySelectorAll('#lit-module-seg button').forEach(b=>{
+  b.onclick=()=>{document.querySelectorAll('#lit-module-seg button').forEach(x=>x.classList.remove('active'));b.classList.add('active');litModule=b.dataset.v;litSelected=-1;renderLitTable();};
+});
+
+/* ── Calendar ── */
+const TODAY=new Date(2026,10,26);
+let calYear=2026, calMonthIdx=10;
+const CAL_EVENTS={
+ '2026-12-02':[{t:'GST DRC-01 reply due',k:'reply',c:'Sample Traders'}],
+ '2026-12-03':[{t:'CIT(A) hearing',k:'hearing',c:'Test Enterprises'}],
+ '2026-12-05':[{t:'ITAT limitation',k:'limit',c:'Sample Industries'}],
+ '2026-12-09':[{t:'TDS 200A reply',k:'reply',c:'Sample Pvt Ltd'}],
+ '2026-12-15':[{t:'GST ASMT-10 reply',k:'reply',c:'Sample Pvt Ltd'}],
+ '2026-11-18':[{t:'Penalty reply missed',k:'limit',c:'Sample Industries'}],
+ '2026-11-24':[{t:'143(2) notice issued',k:'hearing',c:'Sample Traders'}],
+};
+function changeMonth(d){calMonthIdx+=d;if(calMonthIdx>11){calMonthIdx=0;calYear++;}else if(calMonthIdx<0){calMonthIdx=11;calYear--;}buildCal();}
+function goToday(){calYear=2026;calMonthIdx=10;buildCal();}
+function buildCal(){
+  const names=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('cal-month').textContent=names[calMonthIdx]+' '+calYear;
+  const first=new Date(calYear,calMonthIdx,1);
+  const lead=(first.getDay()+6)%7; // Mon-first
+  const lastDay=new Date(calYear,calMonthIdx+1,0).getDate();
+  const prevLast=new Date(calYear,calMonthIdx,0).getDate();
+  const cells=[];
+  for(let i=lead;i>0;i--) cells.push({d:prevLast-i+1,dim:true});
+  for(let d=1;d<=lastDay;d++) cells.push({d,month:true});
+  let next=1; while(cells.length%7) cells.push({d:next++,dim:true});
+  const dow=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(x=>'<div class="cal-dow">'+x+'</div>').join('');
+  const body=cells.map(c=>{
+    if(!c.month){return '<div class="cal-day dim"><span class="d">'+c.d+'</span></div>';}
+    const key=calYear+'-'+String(calMonthIdx+1).padStart(2,'0')+'-'+String(c.d).padStart(2,'0');
+    const evs=CAL_EVENTS[key]||[];
+    const isToday=(calYear===2026&&calMonthIdx===10&&c.d===26);
+    const evHtml=evs.slice(0,2).map(e=>'<button class="ev '+e.k+'" onclick="toast(\''+e.t+' — '+e.c+'\')" title="'+e.t+' — '+e.c+'">'+e.t+'</button>').join('')
+      +(evs.length>2?'<button class="ev more">+'+(evs.length-2)+' more</button>':'');
+    return '<div class="cal-day'+(isToday?' today':'')+'"><span class="d">'+c.d+'</span>'+evHtml+'</div>';
+  }).join('');
+  document.getElementById('cal-grid').innerHTML=dow+body;
+}
+
+/* ── init ── */
+renderItList();renderItDetail(IT_DATA[0]);selectCase(0);
+renderGstTable();
+renderLitTable();renderLitDetail(LIT_DATA[0]);
+buildCal();
+</script>
+
+</body>
+</html>

@@ -9,6 +9,8 @@ pikepdf>=10.7.2        # PDF password removal (requires system qpdf library)
 openpyxl>=3.1.5        # Excel bulk-import / template generation (vault + app)
 xlsxwriter>=3.2.0      # 26AS converter — streaming Excel writer, handles 200K+ rows
 pillow>=12.2.0         # Image generation for custom checkbox styling
+ddddocr>=1.6.0         # MIT OCR used as one reader of the GST login captcha
+onnxruntime>=1.20.0    # Runs the local GST captcha CNN (model.onnx, no PyTorch)
 
 # ── Build-only dependencies (Windows Nuitka standalone executable) ─────────────
 # These are NOT needed to run the application — only to build the .exe on Windows.

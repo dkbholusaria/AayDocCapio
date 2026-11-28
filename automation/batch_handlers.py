@@ -29,10 +29,14 @@ subset of the parameters) so the dispatch loop in app.py can call any of
 them uniformly via the HANDLERS table.
 """
 import asyncio
+import os
 
 from automation.downloader_ais_tis import run_request_ais, run_download_ais_tis
 from automation.downloader_filed_returns import download_filed_returns
 from automation.downloader_challans import download_challans
+from automation.downloader_e_proceedings import download_e_proceedings
+from automation.downloader_filed_forms import download_filed_forms
+from automation.gst.notices import download_gst_notices
 from forms import form_spec, DEFAULT_FORM
 
 DOC_TYPE_LABELS = {
@@ -41,6 +45,10 @@ DOC_TYPE_LABELS = {
     "ais_tis": "AIS/TIS",
     "filed_returns": "Filed Returns",
     "challans": "Tax Challans",
+    "tds_challans": "TDS/TCS Challans",
+    "e_proceedings": "e-Proceedings",
+    "filed_forms": "Filed IT Forms",
+    "gst_proceedings": "GST Proceedings",
 }
 
 
@@ -90,6 +98,7 @@ async def handle_26as(page, pan, dob, year_specs, out_for_year, log_callback, se
 
     txt_paths = {}   # ay_label -> txt_path (for the 26AS→Excel conversion step)
     form_labels = {}
+    already_present: set[str] = set()   # F-14 (#14) — nothing new downloaded
 
     for group_specs, form_code in ((ay_specs, "26AS"), (ty_specs, "168")):
         if not group_specs:
@@ -116,7 +125,11 @@ async def handle_26as(page, pan, dob, year_specs, out_for_year, log_callback, se
             if not ok:
                 set_status(pan, ay_label, f"❌ {_form} Failed — {err_msg}")
                 continue
-            if err_msg:
+            if err_msg.startswith("Already present"):
+                # F-14 (#14): every artifact for this year was already on disk.
+                set_status(pan, ay_label, f"✅ {_form} — {err_msg}")
+                already_present.add(ay_label)
+            elif err_msg:
                 set_status(pan, ay_label, f"⚠ Partially Completed — {err_msg}")
             else:
                 set_status(pan, ay_label, f"✅ {_form} Downloaded")
@@ -132,7 +145,10 @@ async def handle_26as(page, pan, dob, year_specs, out_for_year, log_callback, se
             from automation.as26_converter import convert_26as_txt
             log_callback(f"[Convert] Converting {_form} → Excel/HTML for {pan} ({ay_label})…")
             convert_26as_txt(txt_path, log_callback=log_callback)
-            set_status(pan, ay_label, f"✅ {_form} + Excel + HTML")
+            if ay_label in already_present:
+                set_status(pan, ay_label, f"✅ {_form} already present (Excel/HTML refreshed)")
+            else:
+                set_status(pan, ay_label, f"✅ {_form} + Excel + HTML")
         except Exception as _conv_exc:
             log_callback(f"[Convert] Warning: conversion failed for {pan} ({ay_label}): {_conv_exc}")
             set_status(pan, ay_label, "⚠ Excel convert failed")
@@ -252,7 +268,9 @@ async def handle_filed_returns(page, pan, dob, year_specs, out_for_year, log_cal
         if fr_status.get("ok"):
             return_statuses[value] = fr_status
         if fr_ok:
-            if fr_msg:
+            if fr_msg.startswith("Up to date"):
+                set_status(pan, ay_label, f"✅ Filed Returns — {fr_msg}")
+            elif fr_msg:
                 set_status(pan, ay_label, f"⚠ Partially Completed — {fr_msg}")
             else:
                 set_status(pan, ay_label, f"✅ Filed Returns Downloaded ({len(fr_saved)} file(s))")
@@ -307,12 +325,175 @@ async def handle_challans(page, pan, dob, year_specs, out_for_year, log_callback
     return {"saved": all_saved}
 
 
+async def handle_filed_forms(page, pan, dob, year_specs, out_for_year, log_callback, set_status,
+                              filing_scope="all", is_running=None) -> dict:
+    """F-63 — every form filed under e-File > Income Tax Forms.
+
+    Not year-scoped: the portal groups forms by Income-tax Act (2025 / 1961 /
+    Other), and each filing carries its own AY/FY. Everything is downloaded
+    once per client into ``<client folder>/Filed IT Forms/<Form>/<AY|FY>/``,
+    and the same terminal status is recorded against every selected year row
+    so the grid/progress stay consistent.
+    """
+    await ensure_dashboard(page, log_callback)
+
+    if not year_specs:
+        return {}
+    first_spec = year_specs[0]
+    year_folder = out_for_year(first_spec["year_type"], first_spec["value"])
+    client_root = os.path.dirname(os.path.normpath(year_folder))
+    download_root = os.path.join(client_root, "Filed IT Forms")
+
+    for s in year_specs:
+        set_status(pan, s["ay_label"], "⏳ Queued — Filed IT Forms")
+    set_status(pan, first_spec["ay_label"], "⏳ Downloading Filed IT Forms...")
+
+    ok, msg, saved = await download_filed_forms(
+        page, download_root, log_callback, pan=pan, is_running=is_running)
+
+    if not saved and not ok:
+        for s in year_specs:
+            set_status(pan, s["ay_label"], f"❌ Filed IT Forms Failed — {msg}")
+        return {"saved": []}
+
+    if not saved and "No filed IT forms" in msg:
+        for s in year_specs:
+            set_status(pan, s["ay_label"], f"⬜ Filed IT Forms — {msg}")
+        return {"saved": []}
+
+    if not saved and msg.startswith("Up to date"):
+        for s in year_specs:
+            set_status(pan, s["ay_label"], f"✅ Filed IT Forms — {msg}")
+        return {"saved": []}
+
+    total = len(saved)
+    for s in year_specs:
+        if msg:
+            set_status(pan, s["ay_label"], f"⚠ Partially Completed — {msg}")
+        else:
+            set_status(pan, s["ay_label"],
+                       f"✅ Filed IT Forms Downloaded ({total} file(s))")
+    return {"saved": saved}
+
+
+async def handle_e_proceedings(page, pan, dob, year_specs, out_for_year, log_callback, set_status,
+                                filing_scope="all", is_running=None, doc_delay=None) -> dict:
+    """F-60 — e-Proceedings documents (notices/letters/orders + the client's
+    own submitted responses). NOT year-scoped: proceedings frequently show
+    "Assessment Year : Not Available" (confirmed live), so everything found
+    is downloaded in one pass into the FIRST selected year's client folder
+    under e-Proceedings/, and the same terminal status is recorded against
+    every selected year row so the grid/progress stay consistent."""
+    await ensure_dashboard(page, log_callback)
+
+    if not year_specs:
+        return {}
+    # Files live in one folder regardless of year selection — use the first
+    # selected year's folder as the anchor.
+    first_spec = year_specs[0]
+    download_root = os.path.join(
+        out_for_year(first_spec["year_type"], first_spec["value"]), "e-Proceedings")
+
+    for s in year_specs:
+        set_status(pan, s["ay_label"], "⏳ Queued — e-Proceedings")
+    set_status(pan, first_spec["ay_label"], "⏳ Downloading e-Proceedings...")
+
+    ok, msg, saved = await download_e_proceedings(
+        page, download_root, log_callback, pan=pan, is_running=is_running,
+        before_download=doc_delay)
+
+    # Incremental sync: everything already on disk and nothing new to fetch.
+    if ok and not saved and msg.startswith("Up to date"):
+        for s in year_specs:
+            set_status(pan, s["ay_label"], f"✅ e-Proceedings — {msg}")
+        return {"saved": []}
+
+    if not saved and not ok:
+        # Nothing downloaded — no records or total failure; same label for
+        # every year row.
+        for s in year_specs:
+            set_status(pan, s["ay_label"], f"⬜ e-Proceedings — {msg}" if "No e-Proceedings" in msg
+                       else f"❌ e-Proceedings Failed — {msg}")
+        return {"saved": []}
+
+    total = len(saved)
+    for s in year_specs:
+        if ok and msg:
+            set_status(pan, s["ay_label"], f"⚠ Partially Completed — {msg}")
+        elif ok:
+            set_status(pan, s["ay_label"], f"✅ e-Proceedings Downloaded ({total} file(s))")
+        else:
+            set_status(pan, s["ay_label"], f"❌ e-Proceedings Failed — {msg}")
+    return {"saved": [{"path": s["path"], "proceeding": s.get("proceeding", ""),
+                       "kind": s.get("kind", "")} for s in saved]}
+
+
+async def handle_gst_proceedings(page, pan, dob, year_specs, out_for_year, log_callback,
+                                 set_status, filing_scope="all", is_running=None,
+                                 doc_delay=None, client_dir=None,
+                                 progress_callback=None) -> dict:
+    """GST notices/orders from Services → User Services → View Notices and
+    Orders. GST is not year-scoped (notices carry their own tax period), so
+    everything found is downloaded into one GST-Proceedings folder under the
+    client folder and the same terminal status is recorded against every
+    selected year row. `page` must already be logged in to the GST portal."""
+    if client_dir:
+        download_root = os.path.join(client_dir, "GST-Proceedings")
+    elif year_specs:
+        first_spec = year_specs[0]
+        download_root = os.path.join(
+            out_for_year(first_spec["year_type"], first_spec["value"]),
+            "GST-Proceedings")
+    else:
+        return {}
+
+    for s in year_specs:
+        set_status(pan, s["ay_label"], "⏳ Queued — GST Proceedings")
+    if year_specs:
+        set_status(pan, year_specs[0]["ay_label"], "⏳ Downloading GST notices...")
+
+    ok, msg, saved = await download_gst_notices(
+        page, download_root, log_callback, is_running=is_running,
+        before_download=doc_delay,
+        progress_callback=progress_callback)
+
+    if ok and not saved and msg.startswith("Up to date"):
+        for s in year_specs:
+            set_status(pan, s["ay_label"], f"✅ GST Proceedings — {msg}")
+        return {"saved": []}
+
+    if not saved and not ok:
+        for s in year_specs:
+            set_status(
+                pan, s["ay_label"],
+                f"⬜ GST Proceedings — {msg}" if "No GST notices" in msg
+                else f"❌ GST Proceedings Failed — {msg}")
+        return {"saved": []}
+
+    total = len(saved)
+    for s in year_specs:
+        if ok and msg:
+            set_status(pan, s["ay_label"], f"⚠ GST Partially Completed — {msg}")
+        elif ok:
+            set_status(pan, s["ay_label"], f"✅ GST Proceedings Downloaded ({total} file(s))")
+        else:
+            set_status(pan, s["ay_label"], f"❌ GST Proceedings Failed — {msg}")
+    return {"saved": saved}
+
+
 HANDLERS = {
     "26as": handle_26as,
     "request_ais": handle_request_ais,
     "ais_tis": handle_ais_tis,
     "filed_returns": handle_filed_returns,
     "challans": handle_challans,
+    # F-8: same downloader/handler — only the UI entry point and TAN
+    # credentials differ. Kept as its own doc-type key so the progress
+    # dialog label and vault status axis stay distinct.
+    "tds_challans": handle_challans,
+    "e_proceedings": handle_e_proceedings,
+    "filed_forms": handle_filed_forms,
+    "gst_proceedings": handle_gst_proceedings,
 }
 
 # Filed Returns has only ever been tested (and confirmed working) running
@@ -328,8 +509,11 @@ HANDLERS = {
 # e-File handlers so any second/third-handler fragility hits the newest,
 # least-trusted code first rather than regressing the two already-proven
 # handlers; needs live multi-select testing (e.g. Filed Returns + Challans,
-# 26AS + Challans) before this ordering can be trusted.
-HANDLER_ORDER = ["filed_returns", "26as", "challans", "request_ais", "ais_tis"]
+# 26AS + Challans) before this ordering can be trusted. e-Proceedings (F-60)
+# is also Pending-Actions/e-File-adjacent and brand new — same policy, placed
+# after Challans until live multi-select testing proves it safe elsewhere.
+HANDLER_ORDER = ["filed_returns", "filed_forms", "26as", "challans", "tds_challans",
+                 "e_proceedings", "gst_proceedings", "request_ais", "ais_tis"]
 
 
 def ordered_doc_types(selected_docs):

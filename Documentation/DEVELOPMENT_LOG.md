@@ -281,7 +281,7 @@ For genuinely large files that queue instead of downloading instantly:
 `step(msg, page=None)` that emits numbered, URL-tagged progress lines, e.g.:
 
 [AIS-OPEN] (6) Clicking a#AIS  |  url: https://eportal.incometax.gov.in/...
-[AIS-DL]   (5) Download saved: ABCDE1234F-AIS-2025_26.pdf
+[AIS-DL]   (5) Download saved: AABCP1234F-AIS-2025_26.pdf
 
 Comprehensive step logs are deliberately **kept permanently** across login, 26AS,
 and AIS/TIS — they make any future portal change trivially diagnosable.
@@ -621,3 +621,593 @@ Following the layout overhaul, the user requested an expansion of the help manua
 - **SMTP Setup and Reference Panel:** Detailed the exact email setup flow, specifying Gmail App Passwords, Office 365 port settings (587 with STARTTLS), CC/BCC backups, and how to use placeholders like `{client_name}`, `{pan}`, and `{documents}` in the template editor.
 - **Auto-Update Documentation:** Included guidelines explaining the built-in auto-updater check on startup and manual update checks via the Help menu.
 - **Granular Sidebar Navigation & Sub-sections:** Extended the left sidebar layout to support 37 interactive sections and sub-sections, styling them with nested indentation, and updated the JavaScript scrollspy tracker to resolve target IDs dynamically.
+
+---
+
+## 22. e-Proceedings Documents Download & Viewer (F-60) (2026-11-18)
+
+### 22.1 Context
+The ITD e-Filing portal exposes an **e-Proceedings** section (top bar "Pending
+Actions" hover menu → "e-Proceedings") listing all notices/communications
+issued to a taxpayer — assessment notices, letters, orders — plus the
+taxpayer's own submitted responses with their attachments and acknowledgements.
+Until now the app ignored this section entirely, so a CA had to log in manually
+per client to collect these PDFs. F-60 adds it as a first-class document type
+with the uniform handler contract, and a viewer inside the app.
+
+Key facts confirmed live (Playwright exploration on 3 test PANs, 2026-11-18):
+
+- Navigation must click the hover-menu **button** (`.cdk-overlay-pane button`
+  containing "e-Proceedings"), not the `<span>` — the span does nothing.
+  In-page SPA route: `#/dashboard/eProceedings`.
+- Two tabs: "For your Action (n)" / "For your Information (n)"; proceeding
+  cards (`.mat-mdc-card`) render only for the active tab and re-render on
+  tab switch. Name `.heading5.mNoWrap.mEclipse`, AY
+  `.ass_yr_spacing .heading5`, status `.stepperStatus`. Mat-paginator
+  paginates at 10/page — must page through.
+- Per proceeding: "View Notices/Orders (n)" →
+  `#/dashboard/eProceedings/viewNotices/all` — one block per notice
+  (Reference ID, section, DIN, issued/due dates) with buttons
+  "Notice/Letter Pdf", optional "View Response", optional
+  "Seek/View Adjournment" (never clicked).
+- "Notice/Letter Pdf" → in-page `viewDetailedNotice` route; filename in
+  `.subtitle2.fileName`, download via `button.downloadPdf` (one per
+  attachment card). "View Response" → `viewResponse` route; attachments are
+  `span.hyperLink` entries plus an "Acknowledgement" button
+  (`aria-label="Download Acknowledgement"`).
+- **PDFs are NOT password-protected** — except a couple of client-uploaded
+  response attachments which are owner-encrypted; the downloader strips the
+  owner encryption in-place with pikepdf (`_strip_owner_encryption`).
+- AY is often "Not Available" on proceedings — e-Proceedings is not
+  year-scoped, so the download is one pass per client and the terminal status
+  is recorded against **every** selected year.
+- Empty state: "No e-Proceedings records are found" → ⬜ status.
+- Portal popups ("account deactivated", Outstanding Demand, Disclaimer) are
+  dismissed defensively during the flow.
+
+### 22.2 Fix
+- **`automation/downloader_e_proceedings.py`** (new):
+  `download_e_proceedings(page, download_root, log_callback, pan,
+  is_running=None) -> (ok, msg, saved[])` following the Filed Returns module
+  pattern (step logger, per-artifact download, never aborts the batch on one
+  failure). Both tabs are iterated, per-proceeding "View Notices/Orders"
+  opened, per-notice "Notice/Letter Pdf" → Detailed Notices →
+  `button.downloadPdf`, "View Response" → `span.hyperLink` attachments +
+  Acknowledgement. Files land in
+  `<client>/<AY>/e-Proceedings/<NN>-<ProcName>/notice-NN|response-NN/`
+  keeping portal-suggested filenames. Hardened during live testing:
+  `.card-container` anchoring, disabled-button filtering,
+  popup-vs-in-page viewer resolution (`_resolve_viewer_page`), and
+  `wait_for_selector` resilience for slow re-renders.
+- **`automation/batch_handlers.py`**: `handle_e_proceedings` (uniform handler
+  contract), registered in `HANDLERS["e_proceedings"]`; `HANDLER_ORDER` runs
+  it after Challans and before Request Previously-Filed AIS.
+- **`automation/doc_types.py`**: `e_proceedings_pdf` entry
+  (`emailable=False` until the emailer gains a 2-level glob).
+- **Statuses**: "✅ e-Proceedings Downloaded (n file(s))" / "⬜ e-Proceedings
+  — No e-Proceedings found" / "⚠ Partially Completed — <warn>" /
+  "❌ e-Proceedings Failed — <msg>".
+- **UI**: DownloadPickerDialog checkbox "e-Proceedings Documents"; inline
+  Download Documents tab card; BatchProgressDialog + grid tooltip label maps
+  updated.
+- **Viewer (`EProceedingsDialog`, `ui/dialogs.py` ~4467)**: header (icon +
+  "e-Proceedings — <client>" + PAN/root subtitle), summary strip
+  (proceedings/files/total size), left list of proceedings
+  ("NN-<Name> — N files"), right file list (name • human size •
+  Notice/Response tag from notice-*/response-* subfolders), Open File
+  (double-click) / Open Folder / Refresh, empty state with guidance.
+  Scanning is pure `os.walk` over *.pdf/*.jpg/*.jpeg/*.png; theme tokens
+  (`_t()`) only; opening via `config._open_path`. Wired into app.py:
+  Tools menu "View e-Proceedings" (app.py:539), client-grid right-click
+  entry (app.py:1374), launcher `_open_eproceedings_viewer` (app.py:3040)
+  resolving the year folder exactly like `_execute_batch`.
+- **Verification (live, 2026-11-18)**: [REDACTED_PAN] → ok, 73 files
+  (70 PDF + 3 JPG), 18 proceedings, ~15 MB, one portal data-gap warning
+  (a notice with no attachment); [REDACTED_PAN] → ok, 87 files, 7 proceedings,
+  clean; [REDACTED_PAN] → 1 proceeding (account changed since exploration);
+  the "No e-Proceedings records are found" → ⬜ branch verified. Offline:
+  `test_e_proceedings_parse.py` 9/9 PASS; viewer smoke test 27/27 PASS;
+  app restarted on DISPLAY=:1 with picker + viewer screenshots captured
+  against real downloaded data (18 proceedings • 73 files • 13.9 MB).
+
+---
+
+## 23. e-Proceedings Incremental (Diff) Sync (F-2) (2026-11-19)
+
+### 23.1 Context
+The F-60 downloader re-downloaded **every** e-Proceedings notice and response
+on each run (`_process_proceeding` clicked every "Notice/Letter Pdf" and
+"View Response" button unconditionally), and `_dedupe_path` only avoided
+overwriting — repeated syncs wasted time and accumulated duplicate files
+("Notice (1).pdf", "Notice (2).pdf"…).
+
+### 23.2 Fix
+- **Diff-first sync** (`automation/downloader_e_proceedings.py`): before
+  downloading, each proceeding's `_meta.json` is loaded and compared to the
+  portal's current notice list by `(ref_id, issued_on)`. A notice/response
+  already recorded there **and** still present on disk is skipped — no portal
+  click, no download. Unknown/blank `ref_id` is never treated as present, so
+  it always re-fetches (safe fallback).
+- **New pure helpers** (stdlib only, unit-tested): `_notice_key`,
+  `_load_existing_meta`, `_meta_entries_by_key`, `_files_present`,
+  `_synced_keys`, `_merge_rel_files`, `_diff_build_meta`.
+- **Merged `_meta.json`**: `_diff_build_meta` preserves previously-synced
+  entries (existing file paths, plus `response_files`) and only fills in the
+  fresh paths for new/changed notices. Entries the portal no longer shows are
+  kept (renumbered past the current list so doc ids stay unique).
+- **Correct response mapping**: "View Response" buttons render only for
+  responded notices, so button `j` now maps to the `j`-th responded notice
+  and files land in `response-NN/` keyed by the matching notice — previously
+  the loop used the raw button index, which could mismatch folders when not
+  every notice had a response.
+- **Entry point / handler**: `download_e_proceedings` returns
+  `ok=True, msg="Up to date (N unchanged)", saved=[]` when nothing new was
+  fetched; `handle_e_proceedings` shows
+  `✅ e-Proceedings — Up to date (N unchanged)` instead of a failure.
+- **Log line**: `Sync summary: X new file(s), Y unchanged (skipped), Z warning(s)`.
+
+### 23.3 Verification
+- `test_e_proceedings_parse.py` → 16/16 PASS (7 new tests: notice key,
+  corrupt/missing meta, files-present, synced keys, merge, diff-build for
+  new+reused+hidden notices and appended response attachment).
+- Simulated two-run scenario against a fake tree: run 2 over unchanged data
+  queued **0** downloads; run 3 with one new notice queued **only** that
+  notice's `ref_id`. `py_compile` clean on all touched files.
+
+---
+
+## 24. TDS/TCS Challan Generation (F-4)
+
+Deductor-side TAN login → e-Pay Tax → Income-tax Act 2025 → New Payment →
+Tax Year → Pay TDS/TCS. The wizard differs from the Income Tax challan flow:
+deductee type + residence radios, a section-code dropdown (64 codes for
+Other than Company + Resident), per-section Tax/Surcharge/Cess with Add,
+then a read-only summary before payment mode. Payment-mode selection, CRN
+parsing and artifact download are shared with F-64 via
+`automation/challan_common.py`.
+
+### 24.1 Live findings worth keeping
+
+- A TAN never sees the "Income Tax" tile; the tiles page has its own
+  mandatory Tax Year dropdown (`mat-select[formcontrolname='assessmentYear']`).
+- The deductee radios must be checked through `input[value='0021']` /
+  `input[value='resident']` — clicking the `mat-radio-button` host did not
+  register live.
+- A page-wide "Proceed" click hits the hidden `#okBtnNav3` modal button.
+  Scope to `div.matcard` filtered by "Pay TDS/TCS".
+- Section codes must be matched by the trailing numeric code
+  (`re.search(r"-\s*1002$", option_text)`), never by label.
+- Section amount inputs are three `input[formcontrolname='amount']` in order
+  Tax, Surcharge, Education Cess. Common other payments are `interest`,
+  `fee` (Late Fee u/s 427), `penalty`, `others`.
+- The summary step reuses `taxAmt/surchargeAmt/cessAmt/interestAmt/
+  feeAmt/penaltyAmt/othersAmt`, but read-only.
+- Payment modes are the same five tabs and bank radios as F-64.
+
+### 24.2 Implementation notes
+
+- `vault.py` now accepts TANs as a second identity type (`id_type`), and
+  DOB is optional for a TAN client.
+- The 64-section list is a captured snapshot in
+  `automation/data/tds_sections_other_than_company_resident.txt`; the
+  generator maps by code against the live dropdown and fails a row with a
+  clear reason if a code is no longer offered.
+- v1 supports Other than Company + Resident only; Company / Non-Resident
+  and Act 1961 move to a follow-up.
+
+---
+
+## 25. TDS/TCS Challan Download (F-8)
+
+The existing F-61 downloader (`automation/downloader_challans.py`) was already
+identity-agnostic: login → e-File > e-Pay Tax → Act from year type → Payment
+History → filter by year → download PDFs. F-8 adds only a UI entry point and
+TAN credentials — no portal-flow changes.
+
+- `batch_handlers` registers a `tds_challans` doc-type alias pointing at the
+  same `handle_challans` handler, so the existing batch runner,
+  retry/resume and per-(client, year) progress rows are reused unchanged.
+- The TDS hub gets a "Download TDS / TCS Challans" card. Its picker lists only
+  TAN clients and the same year list as the Income Tax download.
+- `BatchProgressDialog` takes an `id_label` so the identity column reads TAN.
+- Files land in `{TAN}-{Name}/{AY|TY}_{year}/Tax Challans (Paid)/`, exactly
+  like the Income Tax challan download.
+
+
+
+---
+
+## 26. Skip already-downloaded files on every flow (F-14 / #14)
+
+**Problem:** e-Proceedings got an incremental diff sync in F-2, and Filed IT
+Forms already skipped per artifact, but every other document type re-clicked
+the portal and re-downloaded the same file on each run — 26AS, Form 168,
+Filed Returns (Form/Receipt/JSON/Intimation and the ITR-Status Excel), Tax
+Challans, and AIS/TIS Phase 1.
+
+**Decision:** an issued ITD document is immutable — 26AS/168 for a closed
+year, a challan keyed by CIN, a filed return keyed by Acknowledgement Number,
+an intimation keyed by date. So a non-empty file at the deterministic output
+path is treated as already downloaded. No hashing or content comparison.
+
+**Implementation:**
+- `automation/fs_util.py` — `is_present(path)` = exists AND size > 0;
+  `skip_missing_required(path, log, label)` logs `[Skip] …`.
+- `downloader_26as.py` — paths computed before the portal click; PDF and TXT
+  guarded independently; both present returns early with "Already present
+  (PDF + TXT)".
+- `downloader_168.py` — per-artifact guards for PDF / ITD Excel / TXT.
+- `downloader_challans.py` — deterministic `<pan>-Challan-<year>-<CIN>-<type>.pdf`
+  checked before opening the ⋮ actions menu.
+- `downloader_filed_returns.py` — `_download_one_file` now returns
+  "downloaded" / "already_present" / "failed"; ITR-Status Excel guarded too;
+  a year with nothing new reports "Up to date (N file(s) already present)".
+- `downloader_ais_tis.py` — `download_tis`, `request_ais` and
+  `download_ais_from_activity_history` return `already_present` before opening
+  a modal, navigating Activity History, or unlocking.
+- `batch_handlers.py` — "Already present" and "Up to date" map to a green
+  ✅ status instead of a partial-failure warning.
+
+**Trade-off:** if the portal ever re-issues a document for the same year, the
+presence check will keep the old copy. Mitigation: delete the file to force a
+re-download (documented in the changelog).
+
+**Tests:** `test_fs_util.py` (5) and `test_f14_skip.py` (8) — empty file is
+not "present", AIS/TIS/request/activity-history short-circuit before touching
+Playwright, Filed Return artifact skips when present.
+
+---
+
+## 27. View Saved Challans (F-12)
+
+Adds a read-only way to reopen challans already saved in earlier sessions.
+The vault is deliberately not the source of truth: `record_download()` is
+only written by the batch download pipeline, and both challan generators
+(F-64 and F-4) never record their artifacts. The filesystem therefore backs
+the index.
+
+- `automation/challan_index.py` walks the configured download root and
+  classifies files by their containing folder: `Tax Challans (Paid)` (and
+  legacy `Challans` / `Tax Challans`) -> Paid; `Tax Challans (Payable)` (and
+  legacy `Tax Challans (Generated)`) -> Unpaid. Client identity comes from the
+  `{PAN|TAN}-{Name}` folder and is resolved to the current vault name; year
+  comes from the `AY_/TY_` path segment, with a filename fallback for
+  downloaded challans.
+- `ui/challan_viewer.py` — `ViewChallansDialog`: client / status / year
+  filters plus a search box, table (client, year, status, type, file, date,
+  size), double-click to open, Open Folder, Refresh, and an empty state.
+  Nothing is written and no portal login happens.
+- `app.py` — entry points: E-Pay Tax menu -> View Challans..., Income Tax ->
+  E-Pay Tax tab (secondary button), and the TDS hub (action card).
+- `test_challan_viewer.py` — 5 test functions, all passing: folder
+  classification, legacy names, TDS vs Income Tax filenames, year/identity
+  parsing, sort order, filters, empty state, and open-file/open-folder
+  routing (with `_open_path` patched).
+
+---
+
+## 28. Filed IT Forms Download — F-63 (2026-11-20)
+
+Adds "Filed IT Forms" as a normal Download Documents option (alongside 26AS,
+AIS/TIS, ITR, challans, e-Proceedings). It is a separate flow from
+e-Proceedings: e-Proceedings is notices/orders/our replies; this is the forms
+the assessee (or their CA) actually filed.
+
+### Verified live (2026-11-20, assessee logins)
+
+Evidence and per-client inventories: `PlansofThisProject/F-63_evidence/`.
+
+- Path: e-File -> hover "Income Tax Forms" -> "View Filed Forms"
+  (`#/dashboard/statForms/viewFiledForms`).
+- Three Act tabs: 2025 / 1961 / Other Acts. Each tab shows category cards
+  (`.eachMatCardStyle`) with the form description, code, filing count and
+  latest AY/FY; 6 per page, paginated.
+- Opening a category lists filings (`.subCard`), paginated. Each filing has
+  Download Form, Download Receipt, and sometimes Download Attachments,
+  Download JSON, Download XML.
+- Form 3CD arrives inside the `3CB-3CD` / `3CA-3CD` "Download Form" ZIP
+  (`form.pdf`, sometimes a generated CSV). Form 146 follows the same shape
+  wherever it is filed, so no per-form code is needed.
+- Portal filenames repeat across clients (`Form 35_Filed Form.pdf`), so
+  every saved file is prefixed with the form code and acknowledgement number.
+- The security modal ("browser Back/Refresh disabled — logout?") appears if
+  the SPA route is changed via `window.location.hash`. Navigation therefore
+  always uses menu clicks, and the modal is answered with **No** (never YES).
+- Long scans can raise a "Session Timeout — Continue to stay logged in"
+  modal; it is refreshed by clicking Continue, which previously caused a
+  cascade of click timeouts on later filings.
+
+### Implementation
+
+- `automation/downloader_filed_forms.py`
+  - Pure helpers (unit-tested): `form_code_from_text`, `filing_year_from_text`
+    (FY for 15CA, AY otherwise), `parse_filing_text`, `filing_stem`,
+    `artifact_path`, `existing_artifact`.
+  - UI flow: `navigate_to_filed_forms`, act-tab loop, `_collect_categories`
+    (both levels paginated), `_open_category`, `_process_category`,
+    `_process_filing`, `_download_click`, `_download_attachments`.
+  - Resilience: `_refresh_session` (Session Timeout), `_dismiss_modal`
+    (never YES), `_stuck_reason` (detects a portal overlay and aborts the
+    category instead of burning 45 s per remaining button).
+  - Incremental: any artifact already on disk is skipped, so a re-run
+    reports "✅ Filed IT Forms — Up to date (N file(s) already present)".
+  - Output: `<client>/Filed IT Forms/<FormCode>/<AY|FY>/<FormCode>_<AckNo>_<Artifact>.<ext>`
+    (attachments keep their portal extension under `_Attachments`, `_2`, ...).
+- `automation/batch_handlers.py` — `handle_filed_forms` (not year-scoped;
+  records the same status against every selected year) plus
+  `DOC_TYPE_LABELS["filed_forms"]`; `HANDLER_ORDER` runs it immediately after
+  Filed Returns, before 26AS (same e-File menu).
+- `ui/dialogs.py` — "Filed IT Forms" checkbox in `DownloadPickerDialog`.
+- `app.py` — "Filed IT Forms" card on the Download Documents tab and the grid
+  status tooltip label.
+
+### Live verification
+
+- `AAAPL1234C` (placeholder): 15CA (1 filing) + 35 (2 filings) → 14 files, second run
+  reports "Up to date (8 file(s) already present)", 0 downloads.
+- `AAAPL5678F` (placeholder): 10IE (1) + 3CB-3CD (13) → ZIP forms, JSON, receipts and
+  attachments downloaded; labelled "⚠ Partially Completed" for older 3CB-3CD
+  filings whose buttons the portal itself blocks after the Session Timeout.
+- Offline: `test_filed_forms.py` (9 tests) plus the existing
+  `test_tds_challan.py` (18) and `test_e_proceedings_parse.py` (16) pass.
+
+---
+
+## 29. Scheduled e-Proceedings Auto-Fetch — F-13 (2026-11-21)
+
+Adds an optional background scheduler for e-Proceedings, built on the
+incremental sync from F-2 so repeat runs only fetch new/changed documents.
+
+### Implementation
+
+- `automation/eproc_scheduler.py` (new) — pure, no Qt/Playwright:
+  - `normalise_config` (all settings validated and clamped; off by default)
+  - `is_due` / `compute_next_run` (run time, active days, back-off window)
+  - `in_scope` (all / group / selected PANs; excludes password-flagged clients)
+  - `assign_split` (1–3 day cycle, balanced by client count or whole groups)
+  - `assign_rotation` / `build_queue` (alternate starting cases, clients-per-day
+    cap, persisted remainder, distribution phase)
+  - `cooldown_for` (jitter), `should_backoff`, `is_timeout`,
+    `interruptible_sleep` (pause-aware), `estimate_nights`.
+- `vault.py` — per-client `credential_invalid`; preserved when a client is
+  edited with the same password and cleared when the password actually changes.
+  Config accessors store the scheduler state in `settings.eproc_autofetch`.
+- `ui/dialogs.py` — `EAutoFetchSettingsDialog` (time, days, scope, clients per
+  day with a nights estimate, distribution, split boundary, alternate cases,
+  cooldowns, retries, back-off choice, Stop behaviour) and
+  `BatchProgressDialog` controls: Pause/Resume, Restart, Skip Future, countdown
+  line.
+- `app.py` — 60-second `QTimer` tick, per-client background worker (login,
+  e-Proceedings handler, cooldown, timeout retry), credential flagging with
+  notification, rate-limit back-off, queue persistence after every client,
+  restart/skip/pause controls, settings status line and grid warning.
+- `automation/downloader_e_proceedings.py`, `automation/batch_handlers.py` —
+  optional `before_download` hook so the document cooldown is honoured; manual
+  runs pass nothing and behave exactly as before.
+
+### Verification
+
+- `test_eproc_scheduler.py` (new): 21 checks — config defaults/clamps, due time,
+  back-off, next-run day skipping, scope filtering, credential exclusion,
+  1/2/3-day split, group boundary, clients-per-day cap, queue continuation,
+  rotation, alternate cases, cooldown range, rate-limit/timeout detection,
+  nights estimate, vault flag and password-clear.
+- Existing `test_e_proceedings_parse.py` (16) and `test_tds_challan.py` pass.
+- `compileall` clean; `git diff --check` clean.
+- Offscreen UI checks: main window builds, settings dialog saves without losing
+  queue/rotation state, progress controls render, auto-fetch start/finish.
+- Simulated worker runs (no browser): successful sync, wrong-password flag +
+  notification, timeout retry, and rate-limit back-off with queue retention.
+
+### Not yet verified
+
+A supervised real-portal auto-fetch run with live client credentials. All
+browser interaction paths are the existing manual e-Proceedings code.
+
+---
+
+## Virtual hearings (VC) in e-Proceedings — F-118 (#118)
+
+**Goal.** Capture the virtual-conferencing (video hearing) data some faceless
+proceedings expose, alongside notices/orders/responses.
+
+**Confirmed live (2026-11-23, AABCP1234F & AABCP1235G).** Virtual hearings
+appear only in faceless proceedings (assessment u/s 147/148A, first appeals,
+penalties). On the View Notices screen a notice may carry a third button
+`Seek Video Conferencing` (non-faceless shows `Seek/View Adjournment`). It
+opens `#/dashboard/eProceedings/viewNotices/seekVideoConferencing`, an ag-Grid
+request table with columns `date` (request date), `rfsvca` (reason),
+`vcdt` (VC date & time), `sa` (status), `itdrd` (ITD response date),
+`vcld` (VC Recording link), `itdR` (VC Schedule Notice / Status and VC
+recording). Each hyperlink opens an `#attachmentsPopup` modal; the recording
+modal shows a `.webm` URL; the Schedule Notice / Minutes-of-Meeting modals
+download PDFs. The live join link + password live in `#linkPassModal` and are
+only populated within 2 hours of the scheduled time. Three states observed:
+(a) request form only (can apply), (b) open request awaiting schedule (VC date
+"-"), (c) scheduled/completed (full details + recording).
+
+**Design.**
+- `automation/downloader_e_proceedings.py`: pure `_parse_vc_table` (normalizes
+  '-' placeholders), `_hearing_key` (ref + VC date, falling back to request
+  date), `_merge_hearings`, `_synced_hearing_*`; async readers
+  `_vc_button_notice_refs`, `_read_vc_rows`, `_vc_recording_url`,
+  `_vc_join_credentials`, `_download_vc_pdf`, `_sync_notice_hearing`. Integrated
+  into `_process_proceeding` after the notice-PDF loop; meta gains `hearings[]`
+  and `vc_requestable`. Recording is stored as a link only.
+- `ui/eproceedings_model.py`: new `Hearing` dataclass; `Case.hearings` and
+  `Case.vc_requestable` parsed from `_meta.json`.
+- `ui/eproceedings.py`: Overview "Virtual hearings" card — date/time/status,
+  recording + join buttons (open in browser), schedule/Minutes PDFs, and a
+  banner when a VC can still be requested. Open requests show
+  "Requested … — awaiting schedule".
+- Navigation robustness: `navigate_to_e_proceedings` now no-ops when already on
+  the e-Proceedings route (resumed sessions), fixing a hover-menu failure.
+
+**Verification.**
+- `test_e_proceedings_parse.py` extended with VC parser, key, sync-helper,
+  merge and model tests — 23/23 pass.
+- Live AABCP1235G: VC buttons located on First Appeal (open request), Penalty
+  (open request), Assessment u/s 147 (scheduled 07-Mar-2024, Approved → past)
+  and 148A (request form). Targeted run on 147 captured the hearing row and
+  downloaded its VC Schedule Notice PDF into `vc-01/`.
+
+**Deferred.** Downloading the `.webm` recording file (link only, per decision);
+the join link/password appear only inside the 2-hour window.
+
+## 30. Order attachments visible in the timeline — B-123 (2026-11-24)
+
+Issue #123: clicking an order in the e-Proceedings timeline showed no
+documents, even though an order normally carries an Order/Assessment Order,
+a Demand Notice and a Computation Sheet.
+
+### Root cause
+
+The downloader already saved every document from one "Closure Order" modal
+into the order entry's `files` list, and the model put that whole list on one
+`Doc`. The UI lost them: `EprocDocModal` had no documents section and the
+timeline card only linked `doc.files[0]`.
+
+### Implementation
+
+- `automation/doc_types.py` — new `e_proceeding_doc_label()` (filename ->
+  Order / Demand Notice / Computation Sheet) and
+  `e_proceeding_attachment_text()` (one-line card summary).
+- `automation/downloader_e_proceedings.py` — `_order_title` now delegates to
+  the shared label helper, so stored titles and displayed labels cannot drift.
+- `ui/eproc_doc_modal.py` — new Documents section lists every file on the
+  document, with its type label, filename and an Open button.
+- `ui/eproc_timeline.py` — multi-file documents show
+  "N documents: Order · Demand Notice · Computation Sheet" on the card.
+- `ui/eproceedings_model.py` — a `_meta.json` with orders but no notices now
+  builds from meta instead of falling back to the legacy scan, so its
+  attachments stay grouped.
+
+### Verification
+
+- New tests: `test_eproc_order_labels.py`, `test_eproc_doc_modal.py`,
+  `test_eproc_order_grouping.py`.
+- Passing: the three new files plus `test_e_proceedings_parse.py`,
+  `test_eproc_case_open.py`, `test_eproc_viewed_by_ao.py`,
+  `test_litigation_store.py`, `test_litigation_adapter.py` and
+  `test_no_real_identifiers.py` (60 tests).
+- Offscreen check: an order doc with three files renders three modal rows and
+  the timeline summary lists all three labels.
+
+### Not yet verified
+
+A live portal download after this change. Existing downloads already contain
+the files, so no re-download is needed.
+
+## 31. Closure-order modal saves every document — B-126 (2026-11-25)
+
+Issue #126: the "Download Closure Order" modal can list several documents
+(Order / Demand Notice / Computation Sheet, or the penalty equivalents), but
+the downloader saved only the first one and dropped the rest.
+
+### Root cause
+
+`_download_proceeding_orders` clicked `_visible_download_button(page)` in a
+loop. That helper always returns the _first_ visible Download button, so after
+the first download it returned the same button again; the duplicate-filename
+guard then ended the loop and the other rows were never clicked.
+
+### Implementation
+
+- `automation/downloader_e_proceedings.py` — new pure
+  `_order_download_targets()` (dedupes blank/repeated filenames, keeps printed
+  order) and `_read_order_modal_rows()` (reads `#downloadClosurePopup`
+  `.row.marginTopModel` → `.modelName` + its button). The order loop now clicks
+  each row's own Download button by index, with a generic all-buttons fallback
+  for overlays without rows. Modal closing now targets
+  `#downloadClosurePopup` first so the overlay cannot block the next card.
+
+### Verification
+
+- New `test_eproc_order_download_rows.py`; together with the #123 tests,
+  `test_e_proceedings_parse.py`, `test_eproc_case_open.py`,
+  `test_eproc_viewed_by_ao.py` and `test_no_real_identifiers.py`: 57 pass.
+- Live portal run into a clean folder: the 3-document assessment and penalty
+  modals each saved all three files; single-document modals saved one. A second
+  run reported every order document "Cached (unchanged)" — no duplicates.
+
+### Not yet verified
+
+The "For your Information" tab click still occasionally times out at the end
+of a run when a lingering overlay blocks it (order downloads themselves were
+verified). Folders downloaded before this fix still lack their extra order
+documents — re-running e-Proceedings for those clients will fill them in.
+
+---
+
+## F-129 — e-Proceedings, GST and Litigation UX refresh (2026-11-26)
+
+Issue: #129. Plan: `PlansofThisProject/F-129_eproc_gst_litigation_ux.md`.
+Mockup: `docs/eproc_gst_litigation_mockup.html`.
+
+### Goal
+
+Align the three compliance surfaces with the reviewed mockup (built after
+studying SaralKar, GST NoticeDesk and VIDYATOM): clearer dates/times, status
+and urgency, and explicit links between related documents, years and cases.
+Presentation only — no automation, storage-schema or portal-flow change.
+
+### Model helpers (pure, tested)
+
+- `ui/eproceedings_model.py`
+  - `deadline_radar(cases, today=None)` — Today / 7 / 15 / 30 day buckets for
+    notices issued, replies due, replies filed and orders passed.
+  - `related_proceedings(case, cases)` — same-PAN sibling cases for the
+    "related proceedings" card.
+- `ui/gst_proceedings_model.py`
+  - `history_key`, `proceedings_groups`, `group_for_case` — group related GST
+    rows by case/ARN into newest-first proceeding chains for the expandable
+    history table.
+- Tests: `test_eproc_radar.py`, `test_gst_proceedings_groups.py` (synthetic
+  placeholders only).
+
+### Income Tax e-Proceedings (`ui/eproceedings.py`)
+
+- New compact **Deadline radar** above the case list (browse mode only), fed by
+  `deadline_radar()`; replies-due cells are tinted by urgency.
+- Case cards now show status, urgency and a due-in-N-days / overdue badge.
+- Overview "Linked chain" card additionally lists the same client's other
+  assessment years and opens them via `goto_case()`.
+
+### GST e-Proceedings (`ui/gst_proceedings.py`)
+
+- Register table expanded to Issued · Client/GSTIN · Type · Description ·
+  ARN/Reference · Due · Amount · Status.
+- Type filter added beside the status filter; KPI row now includes
+  "Due in 7 days" and total "Demand" (parsed via `amount_value`).
+- New **Proceedings history** table under the register (newest first, grouped
+  by case/ARN via `proceedings_groups`); selecting a history row selects the
+  matching register row.
+- Attachments in the detail pane grouped under Notices / Replies / Orders.
+
+### Litigation hub (`ui/litigation/*`)
+
+- Dashboard: selected-case side panel with module, client, title, status,
+  urgency and next milestone; "Open case" emits the existing
+  `openCaseRequested` signal. Table selection updates the panel.
+- Calendar: deadline summary (due this month / overdue / hearings /
+  limitations); existing open-only event rule preserved.
+- Matters: fee-exposure cards (agreed / billed / received / outstanding) above
+  the ledger.
+
+### Verification
+
+- `test_e_proceedings_parse.py`, `test_eproc_radar.py`,
+  `test_eproc_scheduler.py`, `test_eproc_tab_switch.py`,
+  `test_eproc_doc_modal.py`, `test_eproc_order_grouping.py`,
+  `test_gst_proceedings.py`, `test_gst_proceedings_groups.py`,
+  `test_litigation_adapter.py`, `test_litigation_calendar.py`,
+  `test_litigation_store.py`, `test_theme_contrast.py`,
+  `test_no_real_identifiers.py` — 105 passed.
+- Offscreen construction/refresh smoke tests for all three workspaces, plus a
+  synthetic GST `_meta.json` run to exercise the register + history tables.
+
+### Notes
+
+- Sample data in the mockup and tests uses only allowlisted placeholders.
+- Existing KPI filters, case selection, `goto_case()`, open-file/open-folder
+  and auto-fetch flows are unchanged.

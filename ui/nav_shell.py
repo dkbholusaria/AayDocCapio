@@ -65,13 +65,18 @@ _ICON_SVGS = {
     "help": ('<circle cx="12" cy="12" r="10"/>'
              '<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>'
              '<line x1="12" y1="17" x2="12.01" y2="17"/>'),
+    "gavel": ('<path d="m14 13-7.5 7.5a2.12 2.12 0 0 1-3-3L11 10"/>'
+              '<path d="m16 16 6-6"/>'
+              '<path d="m8 8 6-6"/>'
+              '<path d="m9 7 8 8"/>'
+              '<path d="m21 11-8-8"/>'),
 }
 
 # Which icon each hub uses — matches the approved mockup's rail 1:1.
 HUB_ICONS = {
     "home": "home", "it": "document", "gst": "building", "tds": "rupee",
     "mca": "columns", "team": "people", "mail": "mail", "activity": "list",
-    "settings": "gear", "help": "help",
+    "settings": "gear", "help": "help", "litigation": "gavel",
 }
 
 
@@ -146,6 +151,9 @@ class NavRail(QWidget):
         btn.setCheckable(True)
         btn.setFixedSize(BUTTON_SIZE, BUTTON_SIZE)
         btn.setToolTip(label)
+        btn.setAccessibleName(label)
+        btn.setAccessibleDescription(f"Go to the {label} screen")
+        btn.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setIconSize(QSize(ICON_SIZE, ICON_SIZE))
 
@@ -189,6 +197,9 @@ class NavRail(QWidget):
                 "QToolButton:checked {"
                 f"  background: {accent}29;"
                 "}"
+                "QToolButton:focus {"
+                f"  border: 2px solid {t.border_focus};"
+                "}"
             )
 
 
@@ -207,6 +218,7 @@ class NavShell(QWidget):
 
         self._hub_labels: dict[str, str] = {}
         self._hub_pages: dict[str, QWidget] = {}
+        self._current_key: str = ""
 
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -229,7 +241,11 @@ class NavShell(QWidget):
             return
         self._stack.setCurrentWidget(page)
         self._rail.set_active(key)
+        self._current_key = key
         self.hubChanged.emit(self._hub_labels.get(key, key), sub or "")
+
+    def current_key(self) -> str:
+        return self._current_key
 
     def repaint_theme(self, t):
         self._rail.repaint_theme(t)

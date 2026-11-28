@@ -11,8 +11,9 @@ from urllib.parse import urlencode
 # WSLg sets WAYLAND_DISPLAY which Qt6 prefers; unsetting it prevents the
 # "Wayland connection broke" hang that requires WSL restart to fix.
 if sys.platform != "win32":
-    os.environ["QT_QPA_PLATFORM"] = "xcb"
-    os.environ.pop("WAYLAND_DISPLAY", None)
+    os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
+    if os.environ.get("QT_QPA_PLATFORM") == "xcb":
+        os.environ.pop("WAYLAND_DISPLAY", None)
 from themes import THEMES, ThemeColors, build_stylesheet, get_theme, MONO_FONT_NAME as _MONO_FONT
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton,
@@ -20,15 +21,19 @@ from PyQt6.QtWidgets import (
     QHBoxLayout, QVBoxLayout,
     QMessageBox, QTextEdit, QDialog, QSizePolicy,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
-    QToolButton, QMenu, QCalendarWidget, QSystemTrayIcon,
+    QToolButton, QMenu, QCalendarWidget, QSystemTrayIcon, QButtonGroup,
     QGraphicsDropShadowEffect, QStackedWidget, QRadioButton,
-    QGridLayout,
+    QGridLayout, QAbstractButton, QScrollArea,
 )
 from PyQt6.QtCore import (
     Qt, pyqtSignal, pyqtSlot, QTimer, QMetaObject, Q_ARG, QUrl,
     QPropertyAnimation, QEasingCurve,
 )
-from PyQt6.QtGui import QFont, QTextCursor, QColor, QRegularExpressionValidator, QPalette, QAction, QIcon, QPixmap, QDesktopServices
+from PyQt6.QtGui import (
+    QFont, QTextCursor, QColor, QRegularExpressionValidator, QPalette, QAction,
+    QIcon, QPixmap, QDesktopServices, QKeySequence,
+)
+from ui import shortcuts as _shortcuts
 from PyQt6.QtCore import QRegularExpression
 
 from config import _app_dir, _default_download_dir, _bundled_dir
@@ -40,9 +45,13 @@ from ui.widgets import StyledComboBox, CheckableComboBox, ClickableCard
 from ui.dialogs import (
     ManageYearsDialog, BatchProgressDialog, DownloadPickerDialog,
     GenerateChallansDialog, ChallanGenerationProgressDialog,
-    ReturnStatusDialog, ReturnStatusProgressDialog, EmailLogDialog,
+    ReturnStatusProgressDialog, ReturnStatusTab, EmailLogDialog,
+    EProceedingsDialog, EAutoFetchSettingsDialog,
 )
 from ui.log_history import LogHistoryDialog, LogStore
+from ui.eproceedings import EProceedingsWorkspace
+from ui.gst_proceedings import GstProceedingsWorkspace
+from ui.litigation import LitigationPage
 from automation.errors import _friendly_error
 
 sys.path.insert(0, _bundled_dir())
@@ -98,14 +107,15 @@ class _ClientPickerDialog(QDialog):
             f"QTableWidget{{border:1px solid {t.border};border-radius:6px;"
             f"background:{t.bg_table};gridline-color:{t.grid};outline:0;}}"
             f"QTableWidget::item{{padding:4px 8px;border:none;}}"
-            f"QTableWidget::item:selected{{background:{t.accent};color:white;}}"
+            f"QTableWidget::item:selected{{background:{t.accent};color:{t.accent_text};}}"
             f"QHeaderView::section{{background:{t.bg_header};color:{t.text_muted};"
             f"border:none;border-right:1px solid {t.border};"
             f"border-bottom:1px solid {t.border};font-weight:bold;"
             f"font-size:11px;height:30px;padding:0 8px;}}"
             f"QCheckBox::indicator{{width:14px;height:14px;border:1.5px solid {t.border};"
             f"border-radius:3px;background:{t.bg_checkbox};}}"
-            f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};}}"
+            f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};"
+            f"image:url(resources/check_white.png);}}"
         )
 
         vl = QVBoxLayout(self)
@@ -250,8 +260,13 @@ class AayDocCapioApp(QMainWindow):
     _show_progress_signal = pyqtSignal(list, object, list, str, str)   # (targets, selected_docs: set, year_specs, output_dir, year_tag)
     _challan_done_signal = pyqtSignal()
     _show_challan_progress_signal = pyqtSignal(list, str, str, str)   # (targets, fy_value, type_label, output_dir)
+    _tds_challan_done_signal = pyqtSignal()
+    _show_tds_challan_progress_signal = pyqtSignal(list, str, str, str)
     _return_status_done_signal = pyqtSignal()
     _show_return_status_progress_signal = pyqtSignal(list, str)   # (targets, ay_value)
+    _audit_probe_done_signal = pyqtSignal(dict)   # {pan: bool|None}
+    _eproc_auto_done_signal = pyqtSignal()
+    _gst_dl_done_signal = pyqtSignal()   # worker → main thread: finish GST dialog + re-enable controls
 
     def __init__(self):
         super().__init__()
@@ -308,6 +323,18 @@ class AayDocCapioApp(QMainWindow):
         self._challan_done_signal.connect(self._on_challan_batch_done)
         self._show_challan_progress_signal.connect(self._show_challan_progress_dialog)
 
+        # F-4: TDS/TCS challans run as their own flow (TAN clients, section-wise
+        # amounts) with the same threading/progress pattern as F-64 above.
+        self._tds_challan_running = False
+        self._tds_challan_loop = None
+        self._tds_challan_task = None
+        self._tds_challan_aborted = False
+        self._tds_challan_progress_dialog = None
+        self._tds_challan_done_signal.connect(self._on_tds_challan_batch_done)
+        self._show_tds_challan_progress_signal.connect(self._show_tds_challan_progress_dialog)
+        # F-8: which column label the generic batch progress dialog uses.
+        self._progress_id_label = "PAN"
+
         self._retstatus_running = False
         self._retstatus_loop = None
         self._retstatus_task = None
@@ -316,6 +343,29 @@ class AayDocCapioApp(QMainWindow):
         self._retstatus_on_done = None
         self._return_status_done_signal.connect(self._on_return_status_batch_done)
         self._show_return_status_progress_signal.connect(self._show_return_status_progress_dialog)
+        self._audit_probe_running = False
+        self._audit_probe_done_signal.connect(self._on_audit_probe_done)
+
+        self._eproc_auto_running = False
+        self._eproc_auto_loop = None
+        self._eproc_auto_task = None
+        self._eproc_auto_aborted = False
+        self._eproc_auto_paused = False
+        self._eproc_auto_skip_current = False
+        self._eproc_auto_skip_future = False
+        self._eproc_auto_restart = False
+        self._eproc_auto_stop_keeps = None
+        self._eproc_auto_cfg = {}
+        self._eproc_auto_run_clients = []
+        self._eproc_auto_pending = []
+        self._eproc_auto_tail = []
+        self._eproc_auto_paths = {}
+        self._eproc_auto_counts = {}
+        self._eproc_auto_started_at = None
+        self._eproc_auto_dialog = None
+        self._eproc_auto_timer = None
+        self._eproc_auto_done_signal.connect(self._on_eproc_auto_done)
+        self._gst_dl_done_signal.connect(self._on_gst_dl_done)
 
         try:
             log_path = os.path.join(_app_dir(), "app.log")
@@ -336,11 +386,23 @@ class AayDocCapioApp(QMainWindow):
         except Exception:
             pass
 
-        self._current_theme = self.vault.get_setting("theme", "light")
+        self._theme_pref = self.vault.get_setting("theme", "light")
+        if self._theme_pref not in (*THEMES, "system"):
+            self._theme_pref = "light"
+        self._current_theme = self._resolve_theme(self._theme_pref)
+        # F-17: widgets capture _t() while they are constructed, so the active
+        # theme MUST be set before _build_ui(). Otherwise every inline style
+        # baked into a page uses the light palette (white cards, dark text).
+        import ui._theme as _theme_mod_build
+        _theme_mod_build._active_theme = get_theme(self._current_theme)
+        self._apply_palette(get_theme(self._current_theme))
         self._build_ui()
         self.refresh_grid()
-        # Apply saved theme after UI is built
-        QTimer.singleShot(0, lambda: self._apply_theme(self._current_theme))
+        # Re-sync menu checks and widgets after the UI exists (no rebuild on
+        # the first pass — construction already used the resolved theme).
+        QTimer.singleShot(
+            0, lambda: self._apply_theme(self._theme_pref, persist=False, rebuild_ui=False))
+        self._watch_system_theme()
         self._setup_tray()
 
         client_count = len(self.vault.get_all_assessees())
@@ -351,6 +413,8 @@ class AayDocCapioApp(QMainWindow):
 
         # Check for app updates 3s after startup
         QTimer.singleShot(3000, self._check_for_update)
+
+        self._eproc_auto_init_timer()
 
     # ── System Tray ───────────────────────────────────────────────────────────
 
@@ -484,8 +548,11 @@ class AayDocCapioApp(QMainWindow):
         act_exp      = QAction(_micon("menu_export.png"),     "Export Client Data",       self); act_exp.triggered.connect(self.export_data)
         act_tpl      = QAction(_micon("menu_template.png"),   "Download Import Template", self); act_tpl.triggered.connect(self.generate_template)
         act_groups   = QAction(_micon("btn_scan.png"),        "Manage Groups…",      self); act_groups.triggered.connect(self.open_manage_groups)
+        self._act_add     = act_add
         self._act_edit_cl = act_edit_cl
         self._act_del_cl  = act_del_cl
+        self._act_import  = act_imp
+        self._act_export  = act_exp
         cm_menu.addAction(act_add)
         cm_menu.addSeparator()
         cm_menu.addAction(act_edit_cl)
@@ -511,7 +578,8 @@ class AayDocCapioApp(QMainWindow):
         st_menu.addAction(act_email)
         st_menu.addSeparator()
 
-        # Appearance submenu — built dynamically from THEMES registry
+        # Appearance submenu — built dynamically from THEMES registry, plus
+        # the F-17 "Follow system" preference.
         appear_menu = st_menu.addMenu(_micon("menu_appearance.png"), "Appearance")
         _icons = {"light": "☀", "dark": "🌙"}
         for theme_key, theme_colors in THEMES.items():
@@ -521,6 +589,13 @@ class AayDocCapioApp(QMainWindow):
             act.triggered.connect(lambda _, k=theme_key: self._apply_theme(k))
             setattr(self, f"_theme_{theme_key}_act", act)
             appear_menu.addAction(act)
+        appear_menu.addSeparator()
+        _sys_act = QAction("🖥  Follow system", self)
+        _sys_act.setCheckable(True)
+        _sys_act.setToolTip("Switch automatically with the operating system's light/dark setting")
+        _sys_act.triggered.connect(lambda: self._apply_theme("system"))
+        self._theme_system_act = _sys_act
+        appear_menu.addAction(_sys_act)
 
         # Tools menu
         tools_menu = menubar.addMenu("Tools")
@@ -534,6 +609,10 @@ class AayDocCapioApp(QMainWindow):
         act_mail = QAction(_micon("btn_send.png"), "Mail Docs to Clients…", self)
         act_mail.triggered.connect(self._open_mail_docs)
         tools_menu.addAction(act_mail)
+        tools_menu.addSeparator()
+        act_eproc = QAction(_micon("icon_preview.png"), "View e-Proceedings", self)
+        act_eproc.triggered.connect(self._open_eproceedings_viewer)
+        tools_menu.addAction(act_eproc)
         self._tools_menu = tools_menu
 
         # E-Pay Tax menu (F-64) — home for challan-generation features;
@@ -543,6 +622,17 @@ class AayDocCapioApp(QMainWindow):
         act_gen_challans = QAction("Generate Tax Challans…", self)
         act_gen_challans.triggered.connect(self._open_generate_challans_dialog)
         epay_menu.addAction(act_gen_challans)
+        act_gen_tds_challans = QAction("Generate TDS/TCS Challans…", self)
+        act_gen_tds_challans.triggered.connect(self._open_generate_tds_challans_dialog)
+        epay_menu.addAction(act_gen_tds_challans)
+        act_dl_tds_challans = QAction("Download TDS/TCS Challans…", self)
+        act_dl_tds_challans.triggered.connect(self._open_download_tds_challans_dialog)
+        epay_menu.addAction(act_dl_tds_challans)
+        epay_menu.addSeparator()
+        act_view_challans = QAction("View Challans…", self)
+        act_view_challans.triggered.connect(
+            lambda _checked=False: self._open_view_challans_dialog())
+        epay_menu.addAction(act_view_challans)
         act_challan_template = QAction("Download Import Template…", self)
         act_challan_template.triggered.connect(self._download_challan_template)
         epay_menu.addAction(act_challan_template)
@@ -552,16 +642,22 @@ class AayDocCapioApp(QMainWindow):
         # occasionally, not a per-run action like Downloads/E-Pay Tax, so it
         # only gets a menu entry, no toolbar button.
         return_status_menu = menubar.addMenu("Return Status")
-        act_return_status = QAction("Check Processing Status…", self)
-        act_return_status.triggered.connect(self._open_return_status_dialog)
+        act_return_status = QAction("Open Return Status tab", self)
+        act_return_status.triggered.connect(self._open_return_status_tab)
         return_status_menu.addAction(act_return_status)
         self._return_status_menu = return_status_menu
 
         # Help menu
         help_menu = menubar.addMenu("Help")
+        self._help_menu = help_menu
         act_manual = QAction(_micon("menu_about.png"), "User Manual", self)
         act_manual.triggered.connect(self._open_user_manual)
         help_menu.addAction(act_manual)
+        self._act_manual = act_manual
+        act_shortcuts = QAction("⌨  Keyboard Shortcuts…", self)
+        act_shortcuts.triggered.connect(self._open_shortcut_editor)
+        help_menu.addAction(act_shortcuts)
+        self._act_shortcuts = act_shortcuts
         help_menu.addSeparator()
         smtp_help_action = QAction(_micon("btn_send_test.png"), "Email Setup Help…", self)
         smtp_help_action.triggered.connect(self._open_smtp_help)
@@ -596,12 +692,12 @@ class AayDocCapioApp(QMainWindow):
                                  accent_key="accent_home", section="top")
         self._nav_shell.add_hub("it", "Income Tax", self._mk_income_tax_page(),
                                  accent_key="accent_it", section="top")
-        self._nav_shell.add_hub("gst", "GST", self._mk_placeholder_page(
-            "GST", "Coming soon — see F-70 for the GST vs. Income Tax turnover reconciliation roadmap."),
-            accent_key="accent_gst", section="top")
-        self._nav_shell.add_hub("tds", "TDS", self._mk_placeholder_page(
-            "TDS", "Coming soon — see F-71 for the TAN-based deductor-side automation roadmap."),
-            accent_key="accent_tds", section="top")
+        self._nav_shell.add_hub("gst", "GST", self._mk_gst_page(),
+                                 accent_key="accent_gst", section="top")
+        self._nav_shell.add_hub("tds", "TDS", self._mk_tds_page(),
+                                 accent_key="accent_tds", section="top")
+        self._nav_shell.add_hub("litigation", "Litigation", self._mk_litigation_page(),
+                                 accent_key="accent_litigation", section="top")
         self._nav_shell.add_hub("mca", "MCA", self._mk_placeholder_page(
             "MCA / ROC", "Coming soon — see F-72 for the MCA/ROC filings roadmap."),
             accent_key="accent_mca", section="top")
@@ -616,10 +712,206 @@ class AayDocCapioApp(QMainWindow):
                                  accent_key="accent_home", section="bottom")
         self._nav_shell.add_hub("help", "Help", self._mk_help_page(),
                                  accent_key="accent_home", section="bottom")
+        root.addWidget(self._build_eproc_dashboard_strip())
         root.addWidget(self._nav_shell, 1)
 
         self._nav_shell.hubChanged.connect(self._on_hub_changed)
         self._nav_shell.go("home")
+        # Populate the global e-Proceedings dashboard once the vault/assessees
+        # are available (deferred — tabs are built before the vault loads).
+        QTimer.singleShot(0, self._eproc_update_dashboard)
+
+        # F-17: keyboard navigation + customizable shortcuts (defaults are
+        # applied here; user overrides come from the vault).
+        self._setup_shortcuts()
+
+    def _setup_shortcuts(self):
+        """Create/attach the shortcut action map and apply saved bindings."""
+        self._shortcut_actions: dict[str, QAction] = {}
+        self._shortcut_user = _shortcuts.load_user_bindings(self.vault)
+
+        def _action(action_id: str, handler) -> QAction:
+            act = QAction(self)
+            act.setObjectName(action_id)
+            act.triggered.connect(lambda _=False: handler())
+            self.addAction(act)
+            self._shortcut_actions[action_id] = act
+            return act
+
+        # Reuse the existing menu actions so hints show up in the menus.
+        for action_id, act in (
+            ("app.add_client", getattr(self, "_act_add", None)),
+            ("app.edit_client", getattr(self, "_act_edit_cl", None)),
+            ("app.delete_clients", getattr(self, "_act_del_cl", None)),
+            ("app.import", getattr(self, "_act_import", None)),
+            ("app.export", getattr(self, "_act_export", None)),
+            ("app.user_manual", getattr(self, "_act_manual", None)),
+            ("app.open_shortcuts", getattr(self, "_act_shortcuts", None)),
+        ):
+            if act is not None:
+                self._shortcut_actions[action_id] = act
+
+        for action_id, hub in (
+            ("nav.home", "home"),
+            ("nav.income_tax", "it"),
+            ("nav.tds", "tds"),
+            ("nav.litigation", "litigation"),
+            ("nav.mail", "mail"),
+            ("nav.activity", "activity"),
+            ("nav.settings", "settings"),
+            ("nav.help", "help"),
+        ):
+            _action(action_id, lambda h=hub: self._nav_shell.go(h))
+
+        _action("app.focus_search", self._shortcut_focus_search)
+        _action("app.refresh_clients", self.refresh_grid)
+        _action("app.start_batch", self._open_download_picker)
+        _action("app.stop_batch", self.stop_automation)
+        _action("app.open_output_folder", self._open_output_folder)
+        _action("app.toggle_theme", self._toggle_theme)
+
+        self._apply_shortcut_bindings()
+
+        # Accessibility pass for the primary controls (F-17).
+        effective = _shortcuts.merge_user_bindings(self._shortcut_user)
+        if hasattr(self, "search_box"):
+            self.search_box.setAccessibleName("Search clients")
+            self.search_box.setAccessibleDescription(
+                "Filter the client list by name or PAN. Shortcut: "
+                + _shortcuts.format_binding(effective.get("app.focus_search", "")))
+        if hasattr(self, "status_filter"):
+            self.status_filter.setAccessibleName("Filter by download status")
+        if hasattr(self, "client_table"):
+            self.client_table.setAccessibleName("Client list")
+            self.client_table.setAccessibleDescription(
+                "Tab to a client's checkbox and press Space to select or clear it. "
+                "Arrow keys move through the rows; Ctrl+F searches. "
+                "Use the Downloads button or Ctrl+Enter to start.")
+        if hasattr(self, "btn_run"):
+            self.btn_run.setAccessibleName("Download documents")
+            self.btn_run.setToolTip("Choose document types and start downloading")
+        # Predictable keyboard path through the Home screen.
+        try:
+            QWidget.setTabOrder(self.search_box, self.status_filter)
+            QWidget.setTabOrder(self.status_filter, self.group_filter)
+            QWidget.setTabOrder(self.group_filter, self.source_filter)
+            QWidget.setTabOrder(self.source_filter, self.client_table)
+            QWidget.setTabOrder(self.client_table, self.btn_run)
+        except Exception:
+            pass
+        self._apply_generic_accessibility()
+
+    def _apply_generic_accessibility(self):
+        """Give any remaining interactive control a sensible accessible name."""
+        for button in self.findChildren(QAbstractButton):
+            if button.accessibleName():
+                continue
+            name = (button.text() or "").strip() or (button.toolTip() or "").strip()
+            if name:
+                button.setAccessibleName(name)
+        for field in self.findChildren(QLineEdit):
+            if not field.accessibleName():
+                name = field.placeholderText().strip() or field.toolTip().strip()
+                if name:
+                    field.setAccessibleName(name)
+        for combo in self.findChildren(QComboBox):
+            if not combo.accessibleName():
+                name = combo.toolTip().strip() or combo.currentText().strip()
+                if name:
+                    combo.setAccessibleName(name)
+
+    def _shortcut_focus_search(self):
+        try:
+            self._nav_shell.go("home")
+        except Exception:
+            pass
+        if hasattr(self, "search_box"):
+            self.activateWindow()
+            self.search_box.setFocus(Qt.FocusReason.ShortcutFocusReason)
+            self.search_box.selectAll()
+
+    def _toggle_theme(self):
+        self._apply_theme("light" if self._current_theme == "dark" else "dark")
+
+    def _apply_shortcut_bindings(self):
+        effective = _shortcuts.merge_user_bindings(self._shortcut_user)
+        for action_id, act in self._shortcut_actions.items():
+            seq = effective.get(action_id, "")
+            act.setShortcut(QKeySequence(seq) if seq else QKeySequence())
+            act.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+            act.setShortcutVisibleInContextMenu(True)
+
+    def _open_shortcut_editor(self):
+        from ui.shortcuts_dialog import ShortcutEditorDialog
+        dlg = ShortcutEditorDialog(self, self.vault, on_saved=self._on_shortcuts_saved)
+        dlg.exec()
+
+    def _on_shortcuts_saved(self, user_bindings):
+        self._shortcut_user = user_bindings
+        self._apply_shortcut_bindings()
+        self.log("[Settings] Keyboard shortcuts updated.")
+
+    def _build_eproc_dashboard_strip(self):
+        """GLOBAL e-Proceedings dashboard: Last Sync / Failed Clients / Latest
+        Fetched cards, visible on every hub and tab (sits above the nav
+        stack). Clicking a card jumps to the e-Proceedings tab of the Income
+        Tax hub; the Latest Fetched card opens the newest file's folder."""
+        t = _t()
+        strip = QFrame()
+        strip.setStyleSheet(
+            f"QFrame#eprocDash{{background:{t.bg_panel};border:none;"
+            f"border-bottom:1px solid {t.border};}}")
+        strip.setObjectName("eprocDash")
+        row = QHBoxLayout(strip)
+        row.setContentsMargins(24, 6, 24, 6)
+        row.setSpacing(10)
+
+        self._eproc_dash = {}
+        for key, caption in (("sync", "Last Sync"), ("failed", "Failed Clients"),
+                             ("latest", "Latest Fetched")):
+            card = QFrame()
+            card.setObjectName("eprocDashCard")
+            card.setCursor(Qt.CursorShape.PointingHandCursor)
+            card.setStyleSheet(
+                f"QFrame#eprocDashCard{{background:{t.bg_table_alt};"
+                f"border:1px solid {t.border};border-radius:8px;}}"
+                f"QFrame#eprocDashCard:hover{{border-color:{t.accent_it};}}")
+            cv = QVBoxLayout(card)
+            cv.setContentsMargins(10, 4, 10, 4)
+            cv.setSpacing(0)
+            cv.addWidget(_lbl(caption, 9, color=t.text_muted))
+            val = _lbl("—", 12, bold=True)
+            cv.addWidget(val)
+            row.addWidget(card, 1 if key != "latest" else 2)
+            self._eproc_dash[key] = {"card": card, "value": val}
+
+            def _card_click(event, _k=key):
+                if event.button() == Qt.MouseButton.LeftButton:
+                    if _k == "latest":
+                        self._eproc_open_latest_folder()
+                    else:
+                        self._goto_eproceedings_tab()
+
+            card.mousePressEvent = _card_click
+        row.addStretch(0)
+        return strip
+
+    def _goto_eproceedings_tab(self):
+        """Jump to Income Tax hub ▸ e-Proceedings (dashboard card click)."""
+        try:
+            self._nav_shell.go("it")
+            self._switch_it_tab(5)
+        except Exception:
+            pass
+
+    def _eproc_scan_all_only(self):
+        """Populate self._eproc_cases without touching any widgets — used by
+        the global dashboard refresh (the tab may never have been opened)."""
+        root = self.vault.get_setting("download_root_dir", "")
+        if not (root and os.path.isdir(root)):
+            self._eproc_cases = []
+            return
+        self._eproc_rescan_into_cases(root)
 
     def _on_hub_changed(self, hub_label: str, sub_label: str):
         """NavShell.hubChanged handler — breadcrumb lives on the header
@@ -627,23 +919,152 @@ class AayDocCapioApp(QMainWindow):
         if hasattr(self, "_hdr_crumb"):
             self._hdr_crumb.setText(f"{hub_label} › {sub_label}" if sub_label else hub_label)
 
-    def _apply_theme(self, theme: str):
-        """Switch theme by name and persist the choice."""
-        self._current_theme = theme
-        self.vault.update_setting("theme", theme)
-        self.log(f"[System] Theme set to: {theme}")
-        t = get_theme(theme)
+    def _resolve_theme(self, theme: str) -> str:
+        """Map a preference (light/dark/system) to a concrete theme name."""
+        if theme == "system":
+            return "dark" if self._system_is_dark() else "light"
+        return theme if theme in THEMES else "light"
+
+    def _system_is_dark(self) -> bool:
+        try:
+            app = QApplication.instance()
+            if app:
+                scheme = app.styleHints().colorScheme()
+                if scheme == Qt.ColorScheme.Dark:
+                    return True
+                if scheme == Qt.ColorScheme.Light:
+                    return False
+        except Exception:
+            pass
+        return False
+
+    def _watch_system_theme(self):
+        """Follow the OS light/dark scheme while the preference is "system"."""
+        try:
+            self._style_hints = QApplication.instance().styleHints()
+            self._style_hints.colorSchemeChanged.connect(self._on_system_scheme_changed)
+        except Exception:
+            self._style_hints = None
+
+    def _on_system_scheme_changed(self, *_):
+        if getattr(self, "_theme_pref", "light") == "system":
+            self._apply_theme("system", persist=False)
+
+    def _apply_theme(self, theme: str, persist: bool = True, rebuild_ui: bool = True):
+        """Switch theme by preference name and (optionally) persist it."""
+        if theme not in (*THEMES, "system"):
+            theme = "light"
+        previous = self._current_theme
+        self._theme_pref = theme
+        resolved = self._resolve_theme(theme)
+        self._current_theme = resolved
+        if persist:
+            self.vault.update_setting("theme", theme)
+        suffix = f" ({resolved})" if theme == "system" else ""
+        self.log(f"[System] Theme set to: {theme}{suffix}")
+        t = get_theme(resolved)
         import ui._theme as _theme_mod
         _theme_mod._active_theme = t
+        if QApplication.instance():
+            self._apply_palette(t)
+        self._sync_theme_actions()
+        if (rebuild_ui and resolved != previous
+                and hasattr(self, "_nav_shell")
+                and not getattr(self, "_theme_rebuild_pending", False)):
+            # Inline styles capture the theme at construction time, so a live
+            # theme change rebuilds the pages instead of leaving white cards
+            # behind. Deferred so we never delete the widget that fired the
+            # shortcut/menu action.
+            self._theme_rebuild_pending = True
+            QTimer.singleShot(0, self._rebuild_ui_for_theme)
+        else:
+            self._repaint_theme(t)
+            self._repaint_open_windows(t)
+
+    def _rebuild_ui_for_theme(self):
+        """Rebuild the main UI so every inline style uses the new theme."""
+        self._theme_rebuild_pending = False
+        if not hasattr(self, "_nav_shell"):
+            return
+        nav_key = self._nav_shell.current_key() or "home"
+        search_text = self.search_box.text() if hasattr(self, "search_box") else ""
+        status_idx = self.status_filter.currentIndex() if hasattr(self, "status_filter") else 0
+        group_idx = self.group_filter.currentIndex() if hasattr(self, "group_filter") else 0
+        source_idx = self.source_filter.currentIndex() if hasattr(self, "source_filter") else 0
+        it_tab_idx = self._it_stack.currentIndex() if hasattr(self, "_it_stack") else 0
+
+        for act in getattr(self, "_shortcut_actions", {}).values():
+            self.removeAction(act)
+            act.deleteLater()
+        self._shortcut_actions = {}
+
+        menubar = self.menuBar()
+        menubar.clear()
+        for menu in menubar.findChildren(QMenu):
+            menu.deleteLater()
+
+        self._build_ui()
+        self.refresh_grid()
+
+        if hasattr(self, "status_filter"):
+            self.status_filter.setCurrentIndex(status_idx)
+        if hasattr(self, "group_filter"):
+            self.group_filter.setCurrentIndex(group_idx)
+        if hasattr(self, "source_filter"):
+            self.source_filter.setCurrentIndex(source_idx)
+        if hasattr(self, "search_box") and search_text:
+            self.search_box.setText(search_text)
+        if (nav_key == "it" and hasattr(self, "_it_stack")
+                and hasattr(self, "_it_tab_btns")):
+            self._switch_it_tab(it_tab_idx)
+        self._nav_shell.go(nav_key)
+        self._repaint_theme(get_theme(self._current_theme))
+        self._repaint_open_windows(get_theme(self._current_theme))
+
+    def _sync_theme_actions(self):
+        for name in (*THEMES, "system"):
+            act = getattr(self, f"_theme_{name}_act", None)
+            if act:
+                act.setChecked(name == self._theme_pref)
+
+    def _apply_palette(self, t: ThemeColors):
+        """Theme Qt-painted surfaces that QSS cannot reach reliably."""
         app = QApplication.instance()
-        if app:
-            app.setStyleSheet(build_stylesheet(t))
-        if hasattr(self, "_theme_light_act"):
-            for name, action in THEMES.items():
-                act = getattr(self, f"_theme_{name}_act", None)
-                if act:
-                    act.setChecked(name == theme)
-        self._repaint_theme(t)
+        if not app:
+            return
+        pal = app.palette()
+        pal.setColor(QPalette.ColorRole.Window, QColor(t.bg_window))
+        pal.setColor(QPalette.ColorRole.WindowText, QColor(t.text_primary))
+        pal.setColor(QPalette.ColorRole.Base, QColor(t.bg_input))
+        pal.setColor(QPalette.ColorRole.AlternateBase, QColor(t.bg_table_alt))
+        pal.setColor(QPalette.ColorRole.Text, QColor(t.text_primary))
+        pal.setColor(QPalette.ColorRole.Button, QColor(t.bg_panel))
+        pal.setColor(QPalette.ColorRole.ButtonText, QColor(t.text_primary))
+        pal.setColor(QPalette.ColorRole.ToolTipBase, QColor(t.bg_tooltip))
+        pal.setColor(QPalette.ColorRole.ToolTipText, QColor(t.text_primary))
+        pal.setColor(QPalette.ColorRole.Highlight, QColor(t.accent))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor(t.accent_text))
+        pal.setColor(QPalette.ColorRole.PlaceholderText, QColor(t.text_muted))
+        for role in (QPalette.ColorRole.WindowText, QPalette.ColorRole.Text,
+                     QPalette.ColorRole.ButtonText):
+            pal.setColor(QPalette.ColorGroup.Disabled, role, QColor(t.text_disabled))
+        app.setPalette(pal)
+        app.setStyleSheet(build_stylesheet(t))
+
+    def _repaint_open_windows(self, t: ThemeColors):
+        """Best-effort live re-theme for windows that opt into repaint_theme."""
+        app = QApplication.instance()
+        if not app:
+            return
+        for widget in app.topLevelWidgets():
+            if widget is self or not widget.isVisible():
+                continue
+            repaint = getattr(widget, "repaint_theme", None)
+            if callable(repaint):
+                try:
+                    repaint(t)
+                except Exception:
+                    pass
 
     def _repaint_theme(self, t: ThemeColors = None):
         """Repaint widgets whose colours are set imperatively (not via QSS)."""
@@ -680,6 +1101,11 @@ class AayDocCapioApp(QMainWindow):
         # ── Nav shell (rail + breadcrumb, F-77a) ──────────────────────────────
         if hasattr(self, "_nav_shell"):
             self._nav_shell.repaint_theme(t)
+        if getattr(self, "_litigation_page", None) is not None:
+            try:
+                self._litigation_page.repaint_theme(t)
+            except Exception:
+                pass
 
         # ── Main panel + settings/control bar backgrounds ─────────────────────
         if hasattr(self, "_main_panel"):
@@ -726,7 +1152,8 @@ class AayDocCapioApp(QMainWindow):
                 f"QCheckBox{{font-size:12px;color:{t.text_muted};background:transparent;spacing:6px;}}"
                 f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {t.border};"
                 f"border-radius:3px;background:{t.bg_checkbox};}}"
-                f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};}}")
+                f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};"
+                f"image:url(resources/check_white.png);}}")
 
         # ── Run button ────────────────────────────────────────────────────────
         if hasattr(self, "btn_run"):
@@ -770,6 +1197,7 @@ class AayDocCapioApp(QMainWindow):
             chk_path = self.checkmark_path.replace("\\", "/")
             chk_ss = (
                 "QCheckBox { background: transparent; }"
+                f"QCheckBox:focus {{ background: {t.accent_light}; border-radius: 4px; }}"
                 f"QCheckBox::indicator {{ width: 15px; height: 15px; border: 1.5px solid {t.border};"
                 f" border-radius: 3px; background: {t.bg_checkbox}; }}"
                 f"QCheckBox::indicator:hover {{ border-color: {t.border_focus}; }}"
@@ -779,6 +1207,7 @@ class AayDocCapioApp(QMainWindow):
             self.client_table.setStyleSheet(
                 f"QTableWidget {{ border: 1.5px solid {t.border}; border-radius: 8px;"
                 f" background: {t.bg_table}; outline: 0; gridline-color: {t.grid}; }}"
+                f"QTableWidget:focus {{ border: 2px solid {t.border_focus}; }}"
                 f"QTableWidget::item {{ border-bottom: 1px solid {t.grid}; padding: 5px; color: {t.text_primary}; }}"
                 + chk_ss
             )
@@ -1064,8 +1493,8 @@ class AayDocCapioApp(QMainWindow):
         filter_row.setContentsMargins(0, 0, 0, 0)
 
         self.search_box = QLineEdit()
-        self.search_box.setPlaceholderText("🔍  Search by name, PAN or status...")
-        self.search_box.setFixedHeight(28)
+        self.search_box.setPlaceholderText("🔍  Search by name, PAN, status or GST...")
+        self.search_box.setMinimumHeight(30)
         self.search_box.setClearButtonEnabled(True)
         self.search_box.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
         self.search_box.textChanged.connect(self._apply_filter)
@@ -1080,8 +1509,8 @@ class AayDocCapioApp(QMainWindow):
             "🕐  Queued / Pending",
             "—  Not run yet",
         ])
-        self.status_filter.setFixedHeight(28)
-        self.status_filter.setFixedWidth(185)
+        self.status_filter.setMinimumHeight(30)
+        self.status_filter.setMinimumWidth(185)
         self.status_filter.currentIndexChanged.connect(lambda _: self._apply_filter(self.search_box.text()))
         filter_row.addWidget(self.status_filter)
 
@@ -1090,10 +1519,23 @@ class AayDocCapioApp(QMainWindow):
         # are actually tagged with.
         self.group_filter = StyledComboBox()
         self.group_filter.addItem("All Groups")
-        self.group_filter.setFixedHeight(28)
-        self.group_filter.setFixedWidth(160)
+        self.group_filter.setMinimumHeight(30)
+        self.group_filter.setMinimumWidth(160)
         self.group_filter.currentIndexChanged.connect(lambda _: self._apply_filter(self.search_box.text()))
         filter_row.addWidget(self.group_filter)
+
+        # Credential-source filter — lets the GST client base be listed at a
+        # glance, which is the first thing the GST reconciliation work needs.
+        self.source_filter = StyledComboBox()
+        self.source_filter.addItems([
+            "All sources", "Has GST", "Has TDS", "Has Income Tax", "Has no credentials",
+        ])
+        self.source_filter.setMinimumHeight(30)
+        self.source_filter.setMinimumWidth(150)
+        self.source_filter.setAccessibleName("Filter by portal credentials")
+        self.source_filter.currentIndexChanged.connect(
+            lambda _: self._apply_filter(self.search_box.text()))
+        filter_row.addWidget(self.source_filter)
 
         layout.addLayout(filter_row)
 
@@ -1107,7 +1549,7 @@ class AayDocCapioApp(QMainWindow):
     def _mk_settings_bar(self):
         bar = QFrame()
         self._settings_bar = bar
-        bar.setFixedHeight(68)
+        bar.setMinimumHeight(68)
         bar.setStyleSheet(f"QFrame{{background:{_t().bg_panel};border-radius:10px;}}")
         hl = QHBoxLayout(bar)
         hl.setContentsMargins(20, 0, 20, 0)
@@ -1139,6 +1581,7 @@ class AayDocCapioApp(QMainWindow):
         self.ay_combo.setFixedWidth(220)
         self.ay_combo.model_.itemChanged.connect(lambda _item: self._log_ay_selection())
         self.ay_combo.model_.itemChanged.connect(lambda _item: self.refresh_grid())
+        self.ay_combo.model_.itemChanged.connect(lambda _item: self._sync_ay_to_dl())
 
         manage_btn = QPushButton("⚙")
         manage_btn.setFixedSize(24, 24)
@@ -1212,15 +1655,16 @@ class AayDocCapioApp(QMainWindow):
     _TC_GROUP  = 2
     _TC_PAN    = 3
     _TC_DOB    = 4
-    _TC_STATUS = 5
-    _TC_TS     = 6   # Last Download Time
-    _TC_PATH   = 7
-    _TC_ACTS   = 8
+    _TC_SRCS   = 5   # Credential sources (Income Tax / TDS / GST)
+    _TC_STATUS = 6
+    _TC_TS     = 7   # Last Download Time
+    _TC_PATH   = 8
+    _TC_ACTS   = 9
 
     def _mk_client_table(self):
-        self.client_table = QTableWidget(0, 9)
+        self.client_table = QTableWidget(0, 10)
         self.client_table.setHorizontalHeaderLabels([
-            "", "Name  ⇅", "Group  ⇅", "PAN  ⇅", "Date of Birth",
+            "", "Name  ⇅", "Group  ⇅", "PAN  ⇅", "Date of Birth", "Sources",
             "Last Download Status", "Last Download Time", "Last Saved Location", ""
         ])
 
@@ -1239,12 +1683,14 @@ class AayDocCapioApp(QMainWindow):
         chk_path = self.checkmark_path.replace("\\", "/")
         checkbox_style = (
             "QCheckBox { background: transparent; }"
+            f"QCheckBox:focus {{ background: {_tbl.accent_light}; border-radius: 4px; }}"
             f"QCheckBox::indicator {{ width: 15px; height: 15px; border: 1.5px solid {_tbl.border}; border-radius: 3px; background: {_tbl.bg_checkbox}; }}"
             f"QCheckBox::indicator:hover {{ border-color: {_tbl.border_focus}; }}"
             f"QCheckBox::indicator:checked {{ background-color: {_tbl.accent}; border-color: {_tbl.accent}; image: url('{chk_path}'); }}"
         )
         self.client_table.setStyleSheet(
             f"QTableWidget {{ border: 1.5px solid {_tbl.border}; border-radius: 8px; background: {_tbl.bg_table}; outline: 0; gridline-color: {_tbl.grid}; }}"
+            f"QTableWidget:focus {{ border: 2px solid {_tbl.border_focus}; }}"
             f"QTableWidget::item {{ border-bottom: 1px solid {_tbl.grid}; padding: 5px; }}"
             + checkbox_style
         )
@@ -1266,6 +1712,7 @@ class AayDocCapioApp(QMainWindow):
         self.client_table.setColumnWidth(self._TC_CHK,    45)
         self.client_table.setColumnWidth(self._TC_GROUP, 140)
         self.client_table.setColumnWidth(self._TC_PAN,   130)
+        self.client_table.setColumnWidth(self._TC_SRCS,  200)
         self.client_table.setColumnWidth(self._TC_STATUS, 170)
         self.client_table.setColumnWidth(self._TC_TS,    155)
         self.client_table.setColumnWidth(self._TC_ACTS,   52)
@@ -1366,6 +1813,8 @@ class AayDocCapioApp(QMainWindow):
             menu.addSeparator()
             act_log = menu.addAction(_cicon("btn_scan.png"), "View Log")
             act_log.triggered.connect(lambda checked=False, _a=a: self._show_log_history(_a))
+            act_eproc = menu.addAction(_cicon("icon_preview.png"), "View e-Proceedings")
+            act_eproc.triggered.connect(lambda checked=False, _a=a: self._open_eproceedings_viewer(_a))
             # Right-align menu: top-right of menu anchored to bottom-right of … cell
             from PyQt6.QtCore import QPoint
             rect    = self.client_table.visualItemRect(item)
@@ -1422,7 +1871,7 @@ class AayDocCapioApp(QMainWindow):
     def _mk_control_bar(self):
         bar = QFrame()
         self._control_bar = bar
-        bar.setFixedHeight(54)
+        bar.setMinimumHeight(54)
         bar.setStyleSheet(f"QFrame{{background:{_t().bg_panel};border-radius:10px;}}")
         hl = QHBoxLayout(bar)
         hl.setContentsMargins(22, 0, 16, 0)
@@ -1456,7 +1905,7 @@ class AayDocCapioApp(QMainWindow):
         # per document type — lets a user select any combination for one run.
         self.btn_run = QToolButton()
         self.btn_run.setText("  Downloads")
-        self.btn_run.setFixedHeight(34)
+        self.btn_run.setMinimumHeight(34)
         self.btn_run.setMinimumWidth(130)
         from ui.helpers import _icon_path
         from PyQt6.QtGui import QIcon, QPixmap
@@ -1484,7 +1933,7 @@ class AayDocCapioApp(QMainWindow):
         # generates real portal records rather than just fetching files.
         self.btn_epay = QToolButton()
         self.btn_epay.setText("  🧾 E-Pay Tax")
-        self.btn_epay.setFixedHeight(34)
+        self.btn_epay.setMinimumHeight(34)
         self.btn_epay.setMinimumWidth(130)
         self.btn_epay.setStyleSheet(
             "QToolButton{"
@@ -1496,6 +1945,14 @@ class AayDocCapioApp(QMainWindow):
         )
         self.btn_epay.clicked.connect(self._open_generate_challans_dialog)
         hl.addWidget(self.btn_epay)
+        hl.addSpacing(8)
+
+        self.lbl_eproc_auto_status = QLabel("")
+        self.lbl_eproc_auto_status.setStyleSheet(
+            f"color:{_t().text_muted};font-size:10px;background:transparent;")
+        self.lbl_eproc_auto_status.setWordWrap(False)
+        self.lbl_eproc_auto_status.setMaximumWidth(240)
+        hl.addWidget(self.lbl_eproc_auto_status)
         hl.addSpacing(8)
 
         # ── Exit button ───────────────────────────────────────────────────────
@@ -1584,7 +2041,8 @@ class AayDocCapioApp(QMainWindow):
             f"QCheckBox{{font-size:12px;color:{_ck.text_muted};background:transparent;spacing:6px;}}"
             f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {_ck.border};"
             f"border-radius:3px;background:{_ck.bg_checkbox};}}"
-            f"QCheckBox::indicator:checked{{background:{_ck.accent};border-color:{_ck.accent};}}")
+            f"QCheckBox::indicator:checked{{background:{_ck.accent};border-color:{_ck.accent};"
+            f"image:url(resources/check_white.png);}}")
         layout.addWidget(self.chk_headless)
 
         _auto_min_saved = self.vault.get_setting("auto_minimise", False) if hasattr(self, "vault") else False
@@ -1609,6 +2067,34 @@ class AayDocCapioApp(QMainWindow):
             lambda v: self.vault.update_setting("show_splash", bool(v)))
         layout.addWidget(self.chk_show_splash)
 
+        _section("E-PROCEEDINGS AUTO-FETCH")
+        _auto_cfg = self.vault.get_eproc_autofetch_config()
+        self.chk_eproc_autofetch = QCheckBox("Enable scheduled e-Proceedings auto-fetch")
+        self.chk_eproc_autofetch.setChecked(bool(_auto_cfg["enabled"]))
+        self.chk_eproc_autofetch.setToolTip(
+            "Sync e-Proceedings automatically at the configured time.\n"
+            "Clients whose portal password changed are skipped until the password is updated.")
+        self.chk_eproc_autofetch.setStyleSheet(self.chk_headless.styleSheet())
+        self.chk_eproc_autofetch.stateChanged.connect(self._on_eproc_autofetch_toggle)
+        layout.addWidget(self.chk_eproc_autofetch)
+
+        _eproc_row = QHBoxLayout()
+        _eproc_row.setSpacing(8)
+        btn_eproc_settings = _btn("Auto-Fetch Settings…", "secondary", height=34, icon="btn_scan.png")
+        btn_eproc_settings.clicked.connect(self._open_eproc_autofetch_settings)
+        _eproc_row.addWidget(btn_eproc_settings)
+        self.lbl_eproc_autofetch_summary = QLabel("")
+        self.lbl_eproc_autofetch_summary.setStyleSheet(
+            f"color:{_t().text_muted};font-size:11px;background:transparent;")
+        self.lbl_eproc_autofetch_summary.setWordWrap(True)
+        _eproc_row.addWidget(self.lbl_eproc_autofetch_summary, stretch=1)
+        btn_clear_flags = _btn("Clear Password Warnings", "outline", height=34)
+        btn_clear_flags.setToolTip("Clear the password warning from all clients after you have updated them.")
+        btn_clear_flags.clicked.connect(self._clear_eproc_credential_flags)
+        _eproc_row.addWidget(btn_clear_flags)
+        layout.addLayout(_eproc_row)
+        self._refresh_eproc_autofetch_summary()
+
         _section("EMAIL")
         btn_email = _btn("Email Settings…", "secondary", height=34, icon="icon_email.png")
         btn_email.clicked.connect(self._open_email_settings)
@@ -1621,10 +2107,32 @@ class AayDocCapioApp(QMainWindow):
         for theme_key, theme_colors in THEMES.items():
             icon = _icons.get(theme_key, "●")
             b = _btn(f"{icon}  {theme_colors.name}", "outline", height=34)
+            b.setAccessibleName(f"Use {theme_colors.name} theme")
             b.clicked.connect(lambda _, k=theme_key: self._apply_theme(k))
             theme_row.addWidget(b)
+        b_system = _btn("🖥  Follow system", "outline", height=34)
+        b_system.setToolTip("Switch automatically with the operating system's light/dark setting")
+        b_system.setAccessibleName("Follow the operating system theme")
+        b_system.clicked.connect(lambda: self._apply_theme("system"))
+        theme_row.addWidget(b_system)
         theme_row.addStretch()
         layout.addLayout(theme_row)
+
+        _section("KEYBOARD SHORTCUTS")
+        kb_row = QHBoxLayout()
+        kb_row.setSpacing(8)
+        btn_shortcuts = _btn("Edit Shortcuts…", "secondary", height=34)
+        btn_shortcuts.setToolTip("View, change or reset keyboard shortcuts for actions and pages")
+        btn_shortcuts.setAccessibleName("Edit keyboard shortcuts")
+        btn_shortcuts.clicked.connect(self._open_shortcut_editor)
+        kb_row.addWidget(btn_shortcuts)
+        _kb = _lbl(
+            "Every action and page can be reached from the keyboard. "
+            "Shortcuts are saved automatically and can be reset here.",
+            11, color=_t().text_muted)
+        _kb.setWordWrap(True)
+        kb_row.addWidget(_kb, stretch=1)
+        layout.addLayout(kb_row)
 
         layout.addStretch(1)
         return page
@@ -1637,6 +2145,7 @@ class AayDocCapioApp(QMainWindow):
         layout.setSpacing(8)
 
         items = [
+            ("Keyboard Shortcuts…", "menu_about.png", self._open_shortcut_editor),
             ("User Manual", "menu_about.png", self._open_user_manual),
             ("Email Setup Help…", "btn_send_test.png", self._open_smtp_help),
             ("Report Bug / Request Feature…", "btn_view_log.png", self._open_feedback_picker),
@@ -1701,8 +2210,9 @@ class AayDocCapioApp(QMainWindow):
         btn.setStyleSheet(
             "QPushButton{background:transparent;border:none;border-radius:7px;"
             f"padding:0 14px;font-size:12px;font-weight:600;color:{t.text_muted};}}"
-            f"QPushButton:hover{{background:rgba(255,255,255,0.04);color:{t.text_primary};}}"
-            f"QPushButton:checked{{color:{t.accent_it};background:{t.accent_it}22;}}"
+            f"QPushButton:hover{{background:{t.accent_light};color:{t.text_primary};}}"
+            f"QPushButton:focus{{border:2px solid {t.border_focus};}}"
+            f"QPushButton:checked{{color:{t.accent_it};background:{t.accent_it}1A;}}"
         )
         btn.clicked.connect(lambda: self._switch_it_tab(idx))
         return btn
@@ -1711,15 +2221,30 @@ class AayDocCapioApp(QMainWindow):
         self._it_stack.setCurrentIndex(idx)
         for i, b in enumerate(self._it_tab_btns):
             b.setChecked(i == idx)
+        if idx == 5:
+            # Refresh the case workspace each time the tab is shown (the old
+            # flat-table scan is kept but no longer drives the tab).
+            ws = getattr(self, "_eproc_ws", None)
+            if ws is not None:
+                try:
+                    ws.refresh()
+                except Exception as exc:
+                    self.log(f"[Error] e-Proceedings refresh failed: {exc}")
+            else:
+                self._eproc_rescan()
         if idx > 0 and hasattr(self, "_it_tab_btns"):
             self._on_hub_changed("Income Tax", self._it_tab_btns[idx].text())
         else:
             self._on_hub_changed("Income Tax", "")
 
-    def _mk_it_dialog_tab(self, title: str, desc: str, btn_text: str, icon_key: str, handler):
+    def _mk_it_dialog_tab(self, title: str, desc: str, btn_text: str, icon_key: str, handler,
+                          extra_actions=None):
         """Sub-tab for an action that still opens its existing modal dialog
         (Download Documents / E-Pay Tax / Return Status) rather than being
-        embedded inline — that's a larger later phase (F-77c)."""
+        embedded inline — that's a larger later phase (F-77c).
+
+        `extra_actions`: optional list of (label, icon_key, handler) shown as
+        secondary buttons under the primary action (F-12's View Challans)."""
         t = _t()
         page = QWidget()
         layout = QVBoxLayout(page)
@@ -1735,6 +2260,11 @@ class AayDocCapioApp(QMainWindow):
         btn.setMaximumWidth(260)
         btn.clicked.connect(handler)
         layout.addWidget(btn)
+        for label, icon, action in (extra_actions or []):
+            extra = _btn(label, "secondary", height=34, icon=icon)
+            extra.setMaximumWidth(260)
+            extra.clicked.connect(action)
+            layout.addWidget(extra)
         layout.addStretch(1)
         return page
 
@@ -1758,7 +2288,8 @@ class AayDocCapioApp(QMainWindow):
         cb.setStyleSheet(
             f"QCheckBox::indicator{{width:16px;height:16px;border:1.5px solid {t.border};"
             f"border-radius:4px;background:{t.bg_checkbox};}}"
-            f"QCheckBox::indicator:checked{{background:{t.accent_it};border-color:{t.accent_it};}}")
+            f"QCheckBox::indicator:checked{{background:{t.accent_it};border-color:{t.accent_it};"
+            f"image:url(resources/check_white.png);}}")
         hl.addWidget(cb, 0, Qt.AlignmentFlag.AlignTop)
 
         text_col = QVBoxLayout()
@@ -1787,11 +2318,39 @@ class AayDocCapioApp(QMainWindow):
         return card
 
     def _dl_toggle_all_clients(self, checked: bool):
+        """Check/uncheck only the clients currently visible (matching the
+        active search filter) — so a filtered "Select all" can't silently
+        touch rows the user can't see."""
         for cb in self._dl_client_cbs.values():
+            cb.blockSignals(True)
             cb.setChecked(checked)
+            cb.blockSignals(False)
+        visible_ids = set(self._dl_client_cbs.keys())
+        if checked:
+            self._dl_selected_ids |= visible_ids
+        else:
+            self._dl_selected_ids -= visible_ids
+        self._dl_update_summary()
+
+    def _dl_on_client_toggle(self, client_id: str, checked: bool):
+        if checked:
+            self._dl_selected_ids.add(client_id)
+        else:
+            self._dl_selected_ids.discard(client_id)
+        self._dl_update_summary()
+
+    def _dl_apply_client_filter(self, text: str):
+        """Rebuild Section A's rows filtered by `text` (name / PAN / group).
+        Selection state lives in self._dl_selected_ids so filtering never
+        loses which clients were already ticked."""
+        self._dl_refresh_clients()
 
     def _dl_refresh_clients(self):
-        """(Re)build Section A's client rows from self.assessee_list. Called
+        """(Re)build Section A's client rows from self.assessee_list, keeping
+        only clients with Income Tax capacity (B-30) — this tab downloads
+        from the Income Tax portal only, so GST-only and TDS-only clients
+        must not appear here. Uses the same vault.credential_sources()
+        predicate as the Return Status tab. Called
         once when the tab is first built (assessee_list doesn't exist yet
         at that point — _build_ui() runs before the first refresh_grid())
         and again every time refresh_grid() runs (including on every theme
@@ -1817,6 +2376,35 @@ class AayDocCapioApp(QMainWindow):
         table.setRowCount(0)
         self._dl_client_cbs = {}
         assessees = getattr(self, "assessee_list", [])
+
+        # Income Tax only (B-30): this tab never downloads from the TDS or
+        # GST portals, so a client with no Income Tax login is not a valid
+        # target. credential_sources() is the single source of truth for the
+        # tag; fall back to the unfiltered list if the vault read fails so a
+        # transient error can't blank the whole tab.
+        try:
+            assessees = [a for a in assessees
+                         if "Income Tax" in self.vault.credential_sources(a)]
+        except Exception:
+            self.log("[Download] Could not read client credential sources; "
+                     "showing all clients.")
+
+        q = ""
+        search = getattr(self, "_dl_search", None)
+        if search is not None:
+            q = search.text().strip().lower()
+        if not hasattr(self, "_dl_selected_ids"):
+            self._dl_selected_ids = {a.get("id") for a in assessees}
+        else:
+            known = {a.get("id") for a in assessees}
+            self._dl_selected_ids &= known
+
+        if q:
+            assessees = [a for a in assessees
+                         if q in (a.get("name") or "").lower()
+                         or q in (a.get("pan") or "").lower()
+                         or q in (a.get("group") or "").lower()]
+
         table.setRowCount(len(assessees))
         for i, a in enumerate(assessees):
             cb_container = QWidget()
@@ -1830,10 +2418,12 @@ class AayDocCapioApp(QMainWindow):
                 f"QCheckBox{{background:transparent;}}"
                 f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {t.border};"
                 f"border-radius:3px;background:{t.bg_checkbox};}}"
-                f"QCheckBox::indicator:checked{{background:{t.accent_it};border-color:{t.accent_it};}}")
-            cb.setChecked(True)
-            cb.toggled.connect(self._dl_update_summary)
-            self._dl_client_cbs[a.get("id")] = cb
+                f"QCheckBox::indicator:checked{{background:{t.accent_it};border-color:{t.accent_it};"
+                f"image:url(resources/check_white.png);}}")
+            cid = a.get("id")
+            cb.setChecked(cid in self._dl_selected_ids)
+            cb.toggled.connect(lambda checked, _cid=cid: self._dl_on_client_toggle(_cid, checked))
+            self._dl_client_cbs[cid] = cb
             cl.addWidget(cb)
             table.setCellWidget(i, 0, cb_container)
 
@@ -1847,20 +2437,69 @@ class AayDocCapioApp(QMainWindow):
             self._dl_update_summary()
 
     def _dl_update_summary(self):
+        if not hasattr(self, "_dl_summary_lbl"):
+            return
         n_clients = sum(1 for cb in self._dl_client_cbs.values() if cb.isChecked())
         n_docs = sum(1 for cb in self._dl_doc_cbs.values() if cb.isChecked())
         self._dl_summary_lbl.setText(
             f"{n_clients} client{'s' if n_clients != 1 else ''} × "
             f"{n_docs} document{'s' if n_docs != 1 else ''} selected")
-        if hasattr(self, "_dl_scope_panel"):
-            self._dl_scope_panel.setVisible(self._dl_doc_cbs["filed_returns"].isChecked())
+        if (hasattr(self, "_dl_scope_panel")
+                and "filed_returns" in self._dl_doc_cbs):
+            self._dl_scope_panel.setVisible(
+                self._dl_doc_cbs["filed_returns"].isChecked())
+
+    def _populate_dl_ay_combo(self):
+        """(Re)fill the Download Documents tab's AY/TY selector from the same
+        year list the Home selector uses, carrying over whatever is currently
+        checked there. Never re-checked from a saved setting — same
+        deliberate "starts empty every launch" rule as self.ay_combo."""
+        if not hasattr(self, "_dl_ay_combo"):
+            return
+        enabled = [e["label"] for e in self._load_ay_list() if e.get("enabled", True)]
+        current = set(self.ay_combo.checked_labels()) if hasattr(self, "ay_combo") else set()
+        self._dl_ay_combo.blockSignals(True)
+        self._dl_ay_combo.clear_items()
+        for _label in enabled:
+            self._dl_ay_combo.add_item(_label, checked=(_label in current))
+        self._dl_ay_combo.blockSignals(False)
+
+    def _sync_ay_to_dl(self):
+        """Mirror self.ay_combo's checked years onto the tab's selector.
+        Guarded against re-entrancy so the two selectors' itemChanged
+        signals can't ping-pong forever."""
+        if not hasattr(self, "_dl_ay_combo") or getattr(self, "_ay_syncing", False):
+            return
+        self._ay_syncing = True
+        try:
+            self._dl_ay_combo.blockSignals(True)
+            self._dl_ay_combo.set_checked_labels(self.ay_combo.checked_labels())
+            self._dl_ay_combo.blockSignals(False)
+        finally:
+            self._ay_syncing = False
+
+    def _sync_dl_to_ay(self):
+        """Mirror the tab selector's checked years back onto self.ay_combo,
+        which start_automation() reads as the source of truth."""
+        if not hasattr(self, "_dl_ay_combo") or getattr(self, "_ay_syncing", False):
+            return
+        self._ay_syncing = True
+        try:
+            self.ay_combo.blockSignals(True)
+            self.ay_combo.set_checked_labels(self._dl_ay_combo.checked_labels())
+            self.ay_combo.blockSignals(False)
+        finally:
+            self._ay_syncing = False
+        self._log_ay_selection()
+        self.refresh_grid()
 
     def _dl_run(self):
         n_docs = sum(1 for cb in self._dl_doc_cbs.values() if cb.isChecked())
         if n_docs == 0:
             QMessageBox.warning(self, "Nothing Selected", "Please select at least one document type.")
             return
-        checked_ids = {a_id for a_id, cb in self._dl_client_cbs.items() if cb.isChecked()}
+        known_ids = {a.get("id") for a in getattr(self, "assessee_list", [])}
+        checked_ids = set(getattr(self, "_dl_selected_ids", set())) & known_ids
         if not checked_ids:
             QMessageBox.warning(self, "Selection Required", "Please select at least one client.")
             return
@@ -1885,9 +2524,29 @@ class AayDocCapioApp(QMainWindow):
         self._dl_doc_cbs: dict[str, QCheckBox] = {}
 
         page = QWidget()
-        outer = QVBoxLayout(page)
-        outer.setContentsMargins(24, 24, 24, 20)
-        outer.setSpacing(18)
+        page.setObjectName("dlDocPage")
+        page.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        page.setStyleSheet(f"QWidget#dlDocPage{{background:{t.bg_window};}}")
+        page_v = QVBoxLayout(page)
+        page_v.setContentsMargins(0, 0, 0, 0)
+
+        # Whole tab body scrolls as one page so short windows degrade
+        # gracefully instead of clipping the footer / doc grid.
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet(
+            f"QScrollArea{{background:transparent;border:none;}}"
+            f"QScrollArea > QWidget > QWidget{{background:transparent;}}")
+        content = QWidget()
+        content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        content.setStyleSheet(f"QWidget{{background:{t.bg_window};}}")
+        outer = QVBoxLayout(content)
+        outer.setContentsMargins(24, 20, 24, 16)
+        outer.setSpacing(12)
+        scroll.setWidget(content)
+        page_v.addWidget(scroll)
 
         outer.addWidget(_lbl("Download Documents", 14, bold=True))
         sub = QLabel("Pick clients, pick documents, then run — one batch, unattended.")
@@ -1898,13 +2557,46 @@ class AayDocCapioApp(QMainWindow):
         sec_a = QVBoxLayout()
         sec_a.setSpacing(8)
         a_hdr = QHBoxLayout()
+        a_hdr.setSpacing(8)
         a_hdr.addWidget(_lbl("A   Select Clients", 12, bold=True, color=t.accent_it))
-        a_hdr.addStretch(1)
+        self._dl_search = QLineEdit()
+        self._dl_search.setPlaceholderText("🔍  Search by name, PAN or group…")
+        self._dl_search.setMinimumHeight(30)
+        self._dl_search.setClearButtonEnabled(True)
+        self._dl_search.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
+        self._dl_search.textChanged.connect(self._dl_apply_client_filter)
+        a_hdr.addWidget(self._dl_search, 1)
         select_all_cb = QCheckBox("Select all")
         select_all_cb.setChecked(True)
         select_all_cb.toggled.connect(self._dl_toggle_all_clients)
         a_hdr.addWidget(select_all_cb)
         sec_a.addLayout(a_hdr)
+
+        # Assessment Year / Tax Year (B-1) — the Home hub's own selector is
+        # not reachable from this hub (hubs are one-per-screen), so this tab
+        # needs its own. Both selectors are kept mirror-identical via
+        # _sync_ay_to_dl / _sync_dl_to_ay so a year picked here also applies
+        # on Home (and vice versa), and start_automation() keeps reading
+        # self.ay_combo as the single source of truth.
+        ay_hdr = QHBoxLayout()
+        ay_hdr.setSpacing(8)
+        ay_cap = _lbl("ASSESSMENT / TAX YEAR", 10, bold=True, color=t.text_muted)
+        ay_hdr.addWidget(ay_cap)
+        self._dl_ay_combo = CheckableComboBox(placeholder="Select AY/TY")
+        self._dl_ay_combo.setFixedWidth(220)
+        self._dl_ay_combo.model_.itemChanged.connect(lambda _item: self._sync_dl_to_ay())
+        ay_hdr.addWidget(self._dl_ay_combo)
+        dl_manage_btn = QPushButton("⚙")
+        dl_manage_btn.setFixedSize(24, 24)
+        dl_manage_btn.setToolTip("Manage Years")
+        dl_manage_btn.setStyleSheet(
+            f"QPushButton{{background:transparent;border:none;font-size:14px;color:{t.text_muted};}}"
+            f"QPushButton:hover{{color:{t.accent_it};}}")
+        dl_manage_btn.clicked.connect(self.open_manage_years)
+        ay_hdr.addWidget(dl_manage_btn)
+        ay_hdr.addStretch(1)
+        sec_a.addLayout(ay_hdr)
+        self._populate_dl_ay_combo()
 
         self._dl_table = QTableWidget()
         self._dl_table.setColumnCount(4)
@@ -1913,7 +2605,8 @@ class AayDocCapioApp(QMainWindow):
         self._dl_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._dl_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self._dl_table.setShowGrid(False)
-        self._dl_table.setMaximumHeight(220)
+        self._dl_table.setMinimumHeight(260)
+        self._dl_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self._dl_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self._dl_table.setColumnWidth(0, 34)
         self._dl_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -1927,8 +2620,8 @@ class AayDocCapioApp(QMainWindow):
             f"QHeaderView::section{{background-color:{t.bg_header};border:none;"
             f"border-bottom:1px solid {t.border};font-weight:bold;color:{t.text_muted};"
             f"font-size:10px;height:28px;padding-left:4px;}}")
-        sec_a.addWidget(self._dl_table)
-        outer.addLayout(sec_a)
+        sec_a.addWidget(self._dl_table, 1)
+        outer.addLayout(sec_a, 1)
         self._dl_refresh_clients()
 
         # ── Section B: Select Documents ──────────────────────────────────────
@@ -1944,6 +2637,8 @@ class AayDocCapioApp(QMainWindow):
             self._mk_dl_doc_card("ais_tis", "Previously Requested AIS", "For AIS requested earlier that should be ready now"),
             self._mk_dl_doc_card("filed_returns", "ITR Return + Intimation", "Form, Receipt/ITR-V, JSON, and any Intimation Orders"),
             self._mk_dl_doc_card("challans", "Tax Payment Challans", "From e-Pay Tax Payment History for the selected year"),
+            self._mk_dl_doc_card("e_proceedings", "e-Proceedings Documents", "Notices, orders and submitted responses — all proceedings"),
+            self._mk_dl_doc_card("filed_forms", "Filed IT Forms", "All forms filed under Income Tax Forms — 15CA, 3CD, 10IE, 35 and others"),
         ]
         for i, card in enumerate(doc_cards):
             doc_grid.addWidget(card, i // 3, i % 3)
@@ -1980,13 +2675,12 @@ class AayDocCapioApp(QMainWindow):
         sec_c.setStyleSheet(
             f"QFrame#execBar{{background:{t.bg_panel};border:1px solid {t.border};border-radius:10px;}}")
         c_layout = QHBoxLayout(sec_c)
-        c_layout.setContentsMargins(16, 12, 16, 12)
-        c_layout.addWidget(_lbl("C", 12, bold=True, color=t.accent_it))
-        c_layout.addSpacing(10)
-        self._dl_summary_lbl = _lbl("", 12, bold=True)
+        c_layout.setContentsMargins(14, 6, 14, 6)
+        c_layout.setSpacing(12)
+        self._dl_summary_lbl = _lbl("", 11, bold=True)
         c_layout.addWidget(self._dl_summary_lbl)
         c_layout.addStretch(1)
-        run_btn = _btn("Download Selected", "primary", height=36, icon="btn_run.png")
+        run_btn = _btn("Download Selected", "primary", height=30, icon="btn_run.png")
         run_btn.clicked.connect(self._dl_run)
         c_layout.addWidget(run_btn)
         outer.addWidget(sec_c)
@@ -2017,16 +2711,736 @@ class AayDocCapioApp(QMainWindow):
         outer.addStretch(1)
         return page
 
+    def _mk_it_return_status_tab(self):
+        """Income Tax hub ▸ Return Status (F-121) — inline FY selector + a
+        filterable table of every client with Income Tax credentials, built
+        from the persisted return-status data. "Fetch Selected" re-checks the
+        ticked clients live from the portal via start_return_status_check()
+        (the same worker/progress-dialog flow as before); this tab refreshes
+        itself when that batch finishes. Replaces the old modal dialog.
+        """
+        def _root_getter():
+            try:
+                return self.dir_lbl.text()
+            except Exception:
+                return ""
+
+        self._retstatus_tab = ReturnStatusTab(
+            self.vault, self._ay_entries,
+            download_root_getter=_root_getter,
+            start_fetch=self._on_retstatus_tab_fetch,
+            log_callback=self.log,
+            parent=self,
+            audit_probe=self.start_audit_probe,
+        )
+        return self._retstatus_tab
+
+    def _on_retstatus_tab_fetch(self, ay_value, targets):
+        """ReturnStatusTab 'Fetch Selected' → run the live scan, then
+        refresh the tab when the batch is done."""
+        tab = getattr(self, "_retstatus_tab", None)
+        self.start_return_status_check(
+            ay_value, targets, on_done=(tab.refresh if tab else None))
+
+    def _mk_it_eproceedings_tab(self):
+        """Income Tax hub ▸ e-Proceedings (F-60 v3 — case workspace).
+
+        Replaces the earlier flat-table view with ui.eproceedings.
+        EProceedingsWorkspace: KPI row, left case list (one card per
+        proceeding), right detail workspace with Overview / Case Timeline /
+        Appeals / Limitations tabs and the cross-linking document modal.
+
+        The previous implementation's helper methods (_eproc_rescan,
+        _eproc_populate, the table, chips, etc.) are intentionally LEFT IN
+        PLACE below but unused — kept until the new workspace has proven
+        itself in daily use, per the user's instruction not to delete yet.
+        """
+        # Build the workspace defensively: a UI regression here must never
+        # take the whole app down at startup — fall back to a readable error
+        # page and keep the rest of the program usable.
+        try:
+            self._eproc_ws = EProceedingsWorkspace(
+                self.vault,
+                lambda: getattr(self, "assessee_list", []) or [],
+                self,
+            )
+            return self._eproc_ws
+        except Exception as exc:
+            self._eproc_ws = None
+            self.log(f"[Error] e-Proceedings workspace failed to build: {exc}")
+            page = QWidget()
+            lay = QVBoxLayout(page)
+            lay.setContentsMargins(24, 24, 24, 24)
+            lay.addStretch(1)
+            lay.addWidget(_lbl("e-Proceedings view could not load.", 14, bold=True))
+            lay.addWidget(_lbl(str(exc), 11, color=_t().text_muted))
+            lay.addWidget(_lbl(
+                "The rest of the app is unaffected. Check the activity log.",
+                11, color=_t().text_muted))
+            lay.addStretch(1)
+            return page
+
+    # ── e-Proceedings tab: chips / dashboard cards ────────────────────────────
+
+    def _eproc_set_chip(self, key: str):
+        """Chip clicked → remember state, re-apply the row filter. Exclusive
+        QButtonGroup keeps only one chip checked; state drives the predicate
+        in _eproc_apply_filter."""
+        self._eproc_chip = key
+        self._eproc_apply_filter()
+
+    def _eproc_update_dashboard(self):
+        """Refresh the GLOBAL dashboard cards (shown above the nav stack, so
+        they stay visible on every hub/tab — not just e-Proceedings).
+        Last Sync = newest downloaded_at across all _meta.json files (or
+        newest file mtime); Failed Clients = union of vault download_history
+        entries whose worst status looks failed; Latest Fetched = newest
+        file across all e-Proceedings downloads with click-through to its
+        folder."""
+        cards = getattr(self, "_eproc_dash", None)
+        if not cards:
+            return
+        t = _t()
+        today = datetime.date.today()
+        now = datetime.datetime.now()
+
+        if not getattr(self, "_eproc_cases", None):
+            self._eproc_scan_all_only()
+
+        # Last Sync: max downloaded_at across cases, fallback newest mtime.
+        latest_dt = None
+        newest_file = None
+        for c in self._eproc_cases:
+            if c.get("downloaded_at"):
+                try:
+                    dt = datetime.datetime.strptime(c["downloaded_at"],
+                                                    "%Y-%m-%d %H:%M:%S")
+                    if latest_dt is None or dt > latest_dt:
+                        latest_dt = dt
+                except ValueError:
+                    pass
+            for r in c.get("_file_rows", []):
+                try:
+                    m = datetime.datetime.fromtimestamp(os.path.getmtime(r["path"]))
+                except OSError:
+                    continue
+                if latest_dt is None or m > latest_dt:
+                    latest_dt = m
+                    newest_file = r
+        sync_lbl = self._eproc_dash["sync"]["value"]
+        if latest_dt is None:
+            sync_lbl.setText("—")
+            sync_lbl.setStyleSheet(f"color:{t.text_primary}; font-size:13px; font-weight:bold;")
+            sync_lbl.setToolTip("")
+        else:
+            delta = now - latest_dt
+            days = delta.days
+            rel = ("just now" if delta < datetime.timedelta(minutes=1)
+                   else f"{int(delta.total_seconds() // 60)}m ago" if delta < datetime.timedelta(hours=1)
+                   else f"{days}d ago" if days < 7
+                   else f"{days // 7}w ago" if days < 30
+                   else f"{days // 30}mo ago")
+            sync_text = f"{rel} · {latest_dt.strftime('%d %b %Y')}"
+            sync_lbl.setText(sync_text)
+            stale = latest_dt.date() < today - datetime.timedelta(days=7)
+            sync_lbl.setStyleSheet(
+                f"color:{t.warning if stale else t.text_primary}; "
+                f"font-size:13px; font-weight:bold;")
+            if newest_file:
+                sync_lbl.setToolTip(newest_file["path"])
+
+        # Failed Clients: for every AY label present in the scanned rows, ask
+        # the vault's download history which clients failed — union across
+        # years, dedupe by PAN.
+        failed = {}   # pan → worst status text
+        for c in self._eproc_cases:
+            m = re.match(r"^(A[YZ]|TY)_(\d{4})_(\d{2})$", c["year_dir"])
+            if not m:
+                continue
+            ay_label = f"{m.group(1)[0]}Y {m.group(2)[-2:]}-{m.group(3)}"
+            try:
+                summary = self.vault.get_download_history_summary(ay_label)
+            except Exception:
+                continue
+            for pan, info in summary.items():
+                status = (info or {}).get("status", "")
+                if "❌" in status or "failed" in status.lower():
+                    if pan not in failed or self.vault._status_rank(status) > \
+                            self.vault._status_rank(failed[pan]):
+                        failed[pan] = status
+        fail_lbl = self._eproc_dash["failed"]["value"]
+        if failed:
+            fail_lbl.setText(str(len(failed)))
+            fail_lbl.setStyleSheet(
+                f"color:{t.error}; font-size:13px; font-weight:bold;")
+            lines = [f"{pan} — {failed[pan]}" for pan in sorted(failed)]
+            fail_lbl.setToolTip("\n".join(lines[:10]))
+        else:
+            fail_lbl.setText("0")
+            fail_lbl.setStyleSheet(
+                f"color:{t.success}; font-size:13px; font-weight:bold;")
+            fail_lbl.setToolTip("")
+
+        # Latest Fetched: 3 newest files (newest first).
+        latest_lbl = self._eproc_dash["latest"]["value"]
+        all_files = [r for c in self._eproc_cases for r in c.get("_file_rows", [])]
+        all_files.sort(key=lambda r: r.get("_dt") or datetime.datetime.min, reverse=True)
+        if all_files:
+            first = all_files[0]
+            name = first["file"]
+            shown = name if len(name) <= 28 else name[:27] + "…"
+            latest_lbl.setText(f"{shown}" + (f" +{len(all_files) - 1} more"
+                                             if len(all_files) > 1 else ""))
+            latest_lbl.setStyleSheet(
+                f"color:{t.text_primary}; font-size:13px; font-weight:bold;")
+            tips = [f"{r['client']} — {r['file']}" for r in all_files[:10]]
+            latest_lbl.setToolTip("\n".join(tips))
+        else:
+            latest_lbl.setText("—")
+            latest_lbl.setStyleSheet(
+                f"color:{t.text_muted}; font-size:13px; font-weight:bold;")
+            latest_lbl.setToolTip("")
+
+    def _eproc_open_latest_folder(self):
+        """Latest Fetched card click → open the folder holding the newest
+        file (or its year folder when the file itself is gone)."""
+        if not self._eproc_cases:
+            return
+        all_files = [r for c in self._eproc_cases for r in c.get("_file_rows", [])]
+        if not all_files:
+            return
+        newest = max(all_files, key=lambda r: r.get("_dt") or datetime.datetime.min)
+        folder = os.path.dirname(newest["path"]) or newest.get("folder", "")
+        self._eproc_open_path(folder if os.path.isdir(folder) else newest.get("folder"))
+
+    # ── e-Proceedings tab: scan / populate / filter / open ────────────────────
+
+    @staticmethod
+    def _eproc_human_size(n: int) -> str:
+        """Same formatting as EProceedingsDialog._human_size."""
+        if n >= 1024 * 1024:
+            return f"{n / (1024 * 1024):.1f} MB"
+        if n >= 1024:
+            return f"{n / 1024:.1f} KB"
+        return f"{n} B"
+
+    def _eproc_rescan_into_cases(self, root: str):
+        """Filesystem walk shared by the tab and the global dashboard: builds
+        self._eproc_cases (+ per-case _file_rows) with no widget side effects.
+        <root>/<PAN>-<NameSafe>/<AY_*|TY_*>/e-Proceedings/<NN>-<Proc>/{notice-*,response-*}/<files>.
+        Each proceeding dir with a _meta.json contributes its parsed notices;
+        legacy trees are inferred (kind from subfolder, responded = any
+        response file, issue date from a trailing _DDMMYYYY in the filename).
+        Year is NOT a filter — every year folder counts."""
+        from ui.dialogs import EProceedingsDialog
+        by_pan = {a.get("pan", "").upper(): a for a in self.assessee_list}
+        cases = []
+        if root and os.path.isdir(root):
+            for entry in sorted(os.listdir(root)):
+                client_dir = os.path.join(root, entry)
+                if not os.path.isdir(client_dir) or "-" not in entry:
+                    continue
+                pan = entry.split("-", 1)[0].strip().upper()
+                match = by_pan.get(pan)
+                client_name = (match or {}).get("name") or entry
+                for year_name in sorted(os.listdir(client_dir)):
+                    year_dir = os.path.join(client_dir, year_name)
+                    if not os.path.isdir(year_dir):
+                        continue
+                    if not (year_name.startswith("AY_") or year_name.startswith("TY_")):
+                        continue
+                    eproc_root = os.path.join(year_dir, "e-Proceedings")
+                    if not os.path.isdir(eproc_root):
+                        continue
+                    for proc in EProceedingsDialog._scan_proceedings(eproc_root):
+                        pname = proc["name"]
+                        nd = 0
+                        while nd < len(pname) and pname[nd].isdigit():
+                            nd += 1
+                        proc_display = pname[nd:].lstrip("-").strip() if nd else pname
+                        meta = self._eproc_load_proc_meta(proc["dir"])
+                        notices = self._eproc_case_notices(
+                            proc, meta, proc_display or proc["name"])
+                        case = {
+                            "client": client_name,
+                            "pan": pan,
+                            "year_dir": year_dir,
+                            "year_name": year_name,
+                            "proc_dir": proc["dir"],
+                            "proc_display": proc_display or proc["name"],
+                            "proc_raw": proc["name"],
+                            "proc_num": proc["num"],
+                            "meta": meta,
+                            "notices": notices,
+                            "downloaded_at": (meta or {}).get("downloaded_at", ""),
+                            "_proc_files": proc["files"],
+                            "_file_rows": [],
+                        }
+                        cases.append(case)
+        cases.sort(key=lambda c: (c["client"].lower(), c["proc_num"],
+                                  c["proc_raw"].lower()))
+        for case in cases:
+            self._eproc_build_file_rows(case)
+            self._eproc_classify_case(case)
+        self._eproc_cases = cases
+
+    def _eproc_rescan(self):
+        """Refresh the GLOBAL dashboard + the tab's chips/summary/table after
+        a fresh disk scan (Refresh button, or opening the tab)."""
+        root = self.vault.get_setting("download_root_dir", "")
+        self._eproc_rescan_into_cases(root)
+        cases = self._eproc_cases
+
+        self._eproc_update_dashboard()
+        self._eproc_update_chip_counts()
+        n_clients = len({c["pan"] for c in cases})
+        n_procs = len(cases)
+        n_notices = sum(len(c["notices"]) for c in cases)
+        n_resp = sum(1 for c in cases for n in c["notices"] if n["responded"])
+        n_files = 0
+        total_size = 0
+        for c in cases:
+            for r in c.get("_file_rows", []):
+                n_files += 1
+                total_size += r["size"]
+        self._eproc_summary.setText(
+            f"{n_clients} client{'s' if n_clients != 1 else ''} • "
+            f"{n_procs} proceeding{'s' if n_procs != 1 else ''} • "
+            f"{n_notices} notice{'s' if n_notices != 1 else ''} "
+            f"({n_resp} responded) • "
+            f"{n_files} file{'s' if n_files != 1 else ''} • "
+            f"{self._eproc_human_size(total_size)}")
+        self._eproc_populate()
+        self._eproc_apply_filter()
+        return
+
+    # ── e-Proceedings tab: metadata helpers ───────────────────────────────────
+
+    @staticmethod
+    def _eproc_load_proc_meta(proc_dir: str):
+        """Read <proc_dir>/_meta.json (schema written by
+        automation/downloader_e_proceedings._build_proc_meta). Returns {} when
+        absent/unreadable — callers then fall back to legacy inference."""
+        path = os.path.join(proc_dir, "_meta.json")
+        if not os.path.isfile(path):
+            return {}
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, ValueError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    @staticmethod
+    def _eproc_parse_ddmmyyyy(name: str):
+        """Trailing _DDMMYYYY in a filename → datetime.date (display
+        DD-Mon-YYYY), else None. Legacy inference only."""
+        m = re.search(r"_(\d{2})(\d{2})(\d{4})(?:\.\w+)?$", name)
+        if not m:
+            return None
+        try:
+            return datetime.date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _eproc_fmt_date(d) -> str:
+        if isinstance(d, str):
+            return d or "—"
+        return d.strftime("%d-%b-%Y") if isinstance(d, datetime.date) else "—"
+
+    @staticmethod
+    def _eproc_parse_disp_date(s: str):
+        """DD-Mon-YYYY (portal style, e.g. '26-Nov-2024') → date, else None."""
+        try:
+            return datetime.datetime.strptime(s, "%d-%b-%Y").date()
+        except (ValueError, TypeError):
+            return None
+
+    @classmethod
+    def _eproc_case_notices(cls, proc: dict, meta: dict, proc_display: str) -> list:
+        """Build the notice list for one proceeding. With _meta.json the
+        portal metadata is authoritative; without it (legacy download) each
+        file becomes its own synthesized notice — kind from subfolder,
+        responded = any response-* file exists in the proceeding, issue date
+        from a trailing _DDMMYYYY, due/section unknown → '—', is_order from
+        the filename. Every notice carries a files/response_files list so
+        each file row can find its notice metadata."""
+        if meta:
+            out = []
+            for n in meta.get("notices", []):
+                entry = {
+                    "index": n.get("index", 0),
+                    "ref_id": n.get("ref_id", ""),
+                    "description": n.get("description", ""),
+                    "issued_on": n.get("issued_on", ""),
+                    "response_due": n.get("response_due", ""),
+                    "responded": bool(n.get("responded", False)),
+                    "section": n.get("section", ""),
+                    "viewed_by_ao": n.get("viewed_by_ao", ""),
+                    "is_order": bool(n.get("is_order", False)),
+                    "files": list(n.get("files", [])),
+                    "response_files": list(n.get("response_files", [])),
+                    "legacy": False,
+                }
+                out.append(entry)
+            return out
+        # Legacy: infer per file. responded = ANY response file in proc.
+        has_response = any(
+            os.path.dirname(os.path.relpath(f["path"], proc["dir"])).lower().startswith("response")
+            for f in proc["files"])
+        out = []
+        for f in proc["files"]:
+            rel = os.path.relpath(f["path"], proc["dir"]).replace(os.sep, "/")
+            issued = cls._eproc_parse_ddmmyyyy(f["name"])
+            out.append({
+                "index": 0,
+                "ref_id": "",
+                "description": "",
+                "issued_on": cls._eproc_fmt_date(issued),
+                "response_due": "",
+                "responded": has_response if f["kind"] == "Notice" else True,
+                "section": "",
+                "viewed_by_ao": "",
+                "is_order": "order" in f["name"].lower(),
+                "files": [rel] if f["kind"] != "Response" else [],
+                "response_files": [rel] if f["kind"] == "Response" else [],
+                "legacy": True,
+            })
+        return out
+
+    def _eproc_build_file_rows(self, case: dict):
+        """Materialise the flat file rows for one case: every scanned file
+        joins its notice (files/response_files membership by relative path;
+        legacy notices each own exactly one file) and its computed display
+        fields. Row dicts feed _eproc_populate and the dashboard cards."""
+        rows = []
+        for f in case.get("_proc_files", []):
+            rel = os.path.relpath(f["path"], case["proc_dir"]).replace(os.sep, "/")
+            notice = None
+            for n in case["notices"]:
+                if rel in n["files"] or rel in n["response_files"]:
+                    notice = n
+                    break
+            if notice is None:
+                continue
+            kind = f["kind"]
+            if kind == "Notice" and notice["is_order"]:
+                kind = "Order"
+            issue = notice["issued_on"] or "—"
+            due = notice["response_due"] or "—"
+            responded_txt = ("Yes" if notice["responded"] else
+                             "No" if f["kind"] != "Response" else "Yes")
+            appeal_filed, appeal_none = self._eproc_classify_case(case)
+            appeal_txt = ("Appeal" if appeal_filed else
+                          "None" if appeal_none else "—")
+            try:
+                mtime = datetime.datetime.fromtimestamp(os.path.getmtime(f["path"]))
+            except OSError:
+                mtime = datetime.datetime.min
+            dl = None
+            if case.get("downloaded_at"):
+                try:
+                    dl = datetime.datetime.strptime(
+                        case["downloaded_at"], "%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    dl = None
+            rows.append({
+                "client": case["client"],
+                "pan": case["pan"],
+                "proc": case["proc_display"],
+                "file": f["name"],
+                "kind": kind,
+                "size": f["size"],
+                "folder": case["year_dir"],
+                "path": f["path"],
+                "notice": notice,
+                "issue": issue,
+                "due": due,
+                "responded_txt": responded_txt,
+                "appeal_txt": appeal_txt,
+                "_dt": dl or mtime,
+                "_mtime": mtime,
+                "_from_meta": bool(case.get("meta")),
+            })
+        rows.sort(key=lambda r: r["path"].lower())
+        case["_file_rows"] = rows
+
+    def _eproc_classify_case(self, case: dict):
+        """Appeal classification for one case (spec):
+        appeal_case  — proceeding display name or any notice description
+                       matches r"appeal" (re.I);
+        appeal_filed — appeal_case AND the case has any response file;
+        appeal_none  — appeal_case AND no response files.
+        Orders-without-appeal are NOT counted in the appeal chips. Returns
+        (appeal_filed, appeal_none)."""
+        name_hit = re.search(r"appeal", case["proc_display"] or "", re.I)
+        desc_hit = any(re.search(r"appeal", n["description"] or "", re.I)
+                       for n in case["notices"])
+        appeal_case = bool(name_hit or desc_hit)
+        has_resp = any(n["response_files"] for n in case["notices"])
+        return (appeal_case and has_resp, appeal_case and not has_resp)
+
+    def _eproc_update_chip_counts(self):
+        """Recount notice-level hits for every chip and set the labels:
+        'Open Notices (n)' etc. Counts are at NOTICE level (a notice with 3
+        files counts once), per spec."""
+        today = datetime.date.today()
+
+        def due_within(n, days):
+            d = self._eproc_parse_disp_date(n["response_due"])
+            if d is None:
+                return False
+            delta = (d - today).days
+            return 0 <= delta <= days
+
+        counts = {"all": 0, "open": 0, "due7": 0, "due15": 0,
+                  "orders": 0, "appeal": 0, "noappeal": 0}
+        for case in self._eproc_cases:
+            appeal_filed, appeal_none = self._eproc_classify_case(case)
+            for n in case["notices"]:
+                counts["all"] += 1
+                if not n["responded"]:
+                    counts["open"] += 1
+                    if due_within(n, 7):
+                        counts["due7"] += 1
+                    if due_within(n, 15):
+                        counts["due15"] += 1
+                if n["is_order"] or "order" in (n["description"] or "").lower():
+                    counts["orders"] += 1
+            if appeal_filed:
+                counts["appeal"] += sum(1 for _n in case["notices"])
+            if appeal_none:
+                counts["noappeal"] += sum(1 for _n in case["notices"])
+        labels = {"all": "All", "open": "Open Notices", "due7": "Due ≤7d",
+                  "due15": "Due ≤15d", "orders": "Orders",
+                  "appeal": "Appeal Filed", "noappeal": "No Appeal"}
+        for key, chip in self._eproc_chips.items():
+            chip.setText(f"{labels[key]} ({counts[key]})")
+
+    def _eproc_populate(self):
+        """Build the grouped table: one spanned group header row per case
+        (proceeding), then one file row per file. File rows carry their
+        notice metadata (dates/responded/appeal classification); group rows
+        toggle collapse on single click. Chip/search filtering is applied
+        afterwards by _eproc_apply_filter."""
+        t = _t()
+        self._eproc_table.setRowCount(0)
+        self._eproc_groups = []          # group header row index per case
+        self._eproc_row_meta = {}        # row idx → row dict
+        for case in self._eproc_cases:
+            g_idx = self._eproc_table.rowCount()
+            self._eproc_table.insertRow(g_idx)
+            self._eproc_table.setSpan(g_idx, 0, 1, 11)
+            collapsed = self._eproc_collapsed.get(case["proc_dir"], False)
+            chevron = "▸" if collapsed else "▾"
+            g_item = QTableWidgetItem(
+                f"{chevron} {case['proc_display']} — {case['client']} "
+                f"({self._eproc_ay_label(case)})")
+            font = g_item.font()
+            font.setBold(True)
+            g_item.setFont(font)
+            g_item.setForeground(QColor(t.text_primary))
+            g_item.setData(Qt.ItemDataRole.UserRole + 1, "group")
+            self._eproc_table.setItem(g_idx, 0, g_item)
+            self._eproc_groups.append(g_idx)
+            self._eproc_row_meta[g_idx] = {
+                "type": "group", "case": case,
+                "file_row_idxs": [], "children": []}
+            for r in case.get("_file_rows", []):
+                row_idx = self._eproc_table.rowCount()
+                self._eproc_table.insertRow(row_idx)
+                self._eproc_row_meta[row_idx] = {
+                    "type": "file", "row": r, "case": case}
+                self._eproc_row_meta[g_idx]["children"].append(row_idx)
+                self._eproc_table.setItem(row_idx, 0, QTableWidgetItem(r["client"]))
+                self._eproc_table.setItem(row_idx, 1, QTableWidgetItem(r["pan"]))
+                self._eproc_table.setItem(row_idx, 2, QTableWidgetItem(r["proc"]))
+                doc_item = QTableWidgetItem(r["file"])
+                doc_item.setData(Qt.ItemDataRole.UserRole, r["path"])
+                self._eproc_table.setItem(row_idx, 3, doc_item)
+                # Kind colours: Notice=accent_it, Response=success, Order
+                # (notice that is an order)=warning, none=text_muted.
+                kind_item = QTableWidgetItem(r["kind"])
+                kind_item.setForeground(QColor(
+                    t.accent_it if r["kind"] == "Notice"
+                    else t.success if r["kind"] == "Response"
+                    else t.warning if r["kind"] == "Order"
+                    else t.text_muted))
+                self._eproc_table.setItem(row_idx, 4, kind_item)
+                self._eproc_table.setItem(row_idx, 5, QTableWidgetItem(r["issue"]))
+                due_item = QTableWidgetItem(r["due"])
+                n = r["notice"]
+                if r["due"] != "—":
+                    due_date = self._eproc_parse_disp_date(r["due"])
+                    overdue = (due_date is not None and due_date < datetime.date.today()
+                               and not n["responded"])
+                    soon = (due_date is not None and not n["responded"] and
+                            0 <= (due_date - datetime.date.today()).days <= 7)
+                    due_item.setForeground(QColor(
+                        t.error if overdue else t.warning if soon else t.text_primary))
+                self._eproc_table.setItem(row_idx, 6, due_item)
+                resp_item = QTableWidgetItem(r["responded_txt"])
+                resp_item.setForeground(QColor(
+                    t.success if r["responded_txt"] == "Yes"
+                    else t.warning if r["responded_txt"] == "No"
+                    else t.text_muted))
+                if r["responded_txt"] == "No":
+                    rf = resp_item.font()
+                    rf.setBold(True)
+                    resp_item.setFont(rf)
+                self._eproc_table.setItem(row_idx, 7, resp_item)
+                ap_item = QTableWidgetItem(r["appeal_txt"])
+                ap_item.setForeground(QColor(
+                    t.accent_it if r["appeal_txt"] == "Appeal"
+                    else t.text_muted if r["appeal_txt"] == "None"
+                    else t.text_primary))
+                self._eproc_table.setItem(row_idx, 8, ap_item)
+                self._eproc_table.setItem(row_idx, 9, QTableWidgetItem(
+                    self._eproc_human_size(r["size"])))
+                folder_text = ("…" + r["folder"][-60:]) if len(r["folder"]) > 60 else r["folder"]
+                folder_item = QTableWidgetItem(folder_text)
+                folder_item.setToolTip(r["folder"])
+                folder_item.setData(Qt.ItemDataRole.UserRole, r["folder"])
+                self._eproc_table.setItem(row_idx, 10, folder_item)
+        self._eproc_stack.setCurrentIndex(1 if self._eproc_cases else 0)
+
+    @staticmethod
+    def _eproc_ay_label(case) -> str:
+        """AY_2025_26 → 'AY 2025-26' (TY_* → 'TY …') for group headers and
+        vault lookups."""
+        m = re.match(r"^(A[YZ]|TY)_(\d{4})_(\d{2})$", case["year_name"])
+        if not m:
+            return case["year_name"].replace("_", " ")
+        return f"{m.group(1)} {m.group(2)[-2:]}-{m.group(3)}"
+
+    def _eproc_apply_filter(self, *_):
+        """Hide/show rows already loaded — never rescans. Composes the active
+        chip predicate, the search text, and group collapse: file rows hide
+        unless notice+search match AND their group is expanded; group header
+        rows hide when ALL their file rows are hidden."""
+        query = self._eproc_search.text().strip().lower()
+        today = datetime.date.today()
+
+        def notice_matches(n) -> bool:
+            chip = self._eproc_chip
+            if chip == "all":
+                return True
+            if chip == "open":
+                return not n["responded"]
+            if chip in ("due7", "due15"):
+                if n["responded"]:
+                    return False
+                d = self._eproc_parse_disp_date(n["response_due"])
+                if d is None:
+                    return False
+                delta = (d - today).days
+                return 0 <= delta <= (7 if chip == "due7" else 15)
+            if chip == "orders":
+                return bool(n["is_order"]) or "order" in (n["description"] or "").lower()
+            # appeal / noappeal chips are decided per case below.
+            return True
+
+        # Pre-compute per-case appeal flags once.
+        case_flags = {}
+        for case in self._eproc_cases:
+            case_flags[id(case)] = self._eproc_classify_case(case)
+
+        for row_idx in range(self._eproc_table.rowCount()):
+            meta = self._eproc_row_meta.get(row_idx)
+            if not meta:
+                continue
+            if meta["type"] == "group":
+                continue   # groups decided after their children
+            r = meta["row"]
+            case = meta["case"]
+            n = r["notice"]
+            hay = " ".join((r["pan"], r["client"], r["proc"], r["file"],
+                            r["kind"], r["folder"])).lower()
+            visible = query in hay if query else True
+            if visible:
+                if self._eproc_chip in ("appeal", "noappeal"):
+                    af, an = case_flags[id(case)]
+                    visible = af if self._eproc_chip == "appeal" else an
+                elif not notice_matches(n):
+                    visible = False
+            # Collapse: expanded group keeps children; collapsed hides all.
+            collapsed = self._eproc_collapsed.get(case["proc_dir"], False)
+            visible = visible and not collapsed
+            self._eproc_table.setRowHidden(row_idx, not visible)
+            meta["visible"] = visible
+        # Group header visible only when at least one child row is visible;
+        # a collapsed group with all-children-hidden is still shown so the
+        # user can find and re-expand it.
+        for g_idx in self._eproc_groups:
+            meta = self._eproc_row_meta.get(g_idx)
+            if not meta:
+                continue
+            kids = meta["children"]
+            collapsed = self._eproc_collapsed.get(meta["case"]["proc_dir"], False)
+            any_visible = any(not self._eproc_table.isRowHidden(k) for k in kids)
+            hide = not (any_visible or (collapsed and bool(kids)))
+            self._eproc_table.setRowHidden(g_idx, hide)
+
+    def _eproc_on_group_click(self, row: int, _column: int):
+        """Single click on a group header row toggles collapse (chevron
+        ▸/▾) and re-applies the filter so hidden children follow."""
+        meta = self._eproc_row_meta.get(row)
+        if not meta or meta["type"] != "group":
+            return
+        case = meta["case"]
+        collapsed = not self._eproc_collapsed.get(case["proc_dir"], False)
+        self._eproc_collapsed[case["proc_dir"]] = collapsed
+        item = self._eproc_table.item(row, 0)
+        if item:
+            txt = item.text()
+            item.setText(("▸ " if collapsed else "▾ ") + txt[2:])
+        self._eproc_apply_filter()
+
+    def _eproc_on_double_click(self, row: int, column: int):
+        """Double-click Folder cell → open the year folder; any other cell →
+        open the document itself. Group rows open nothing."""
+        meta = self._eproc_row_meta.get(row)
+        if not meta or meta["type"] != "file":
+            return
+        if column == 10:
+            folder = self._eproc_table.item(row, 10)
+            if folder:
+                self._eproc_open_path(folder.data(Qt.ItemDataRole.UserRole))
+            return
+        doc = self._eproc_table.item(row, 3)
+        if doc:
+            self._eproc_open_path(doc.data(Qt.ItemDataRole.UserRole))
+
+    def _eproc_open_selected(self):
+        row = self._eproc_table.currentRow()
+        if row < 0:
+            return
+        doc = self._eproc_table.item(row, 3)
+        if doc and self._eproc_row_meta.get(row, {}).get("type") == "file":
+            self._eproc_open_path(doc.data(Qt.ItemDataRole.UserRole))
+
+    def _eproc_open_path(self, path):
+        from config import _open_path
+        if not path or not os.path.exists(path):
+            QMessageBox.warning(self, "Not Found",
+                f"This file or folder no longer exists:\n{path or '(unknown)'}\n\n"
+                "It may have been moved or deleted — try Refresh.")
+            return
+        _open_path(path)
+
     def _mk_income_tax_page(self):
         """F-77b: Income Tax hub — mockup's tab-row navigation (Actions /
-        Download Documents / E-Pay Tax / Return Status / Tools) over a
-        QStackedWidget. The Actions tab is the action-card landing screen;
-        clicking a card switches tabs (mirrors the mockup's
-        onclick="activeTabIdx=N; render()") instead of opening a dialog
-        directly. Download Documents/E-Pay Tax/Return Status tabs still
-        open their existing modal dialogs — full inline embedding is a
+        Download Documents / E-Pay Tax / Return Status / Tools /
+        e-Proceedings) over a QStackedWidget. The Actions tab is the
+        action-card landing screen; clicking a card switches tabs (mirrors
+        the mockup's onclick="activeTabIdx=N; render()") instead of opening
+        a dialog directly. Download Documents/E-Pay Tax/Return Status tabs
+        still open their existing modal dialogs — full inline embedding is a
         later phase (F-77c). Tools is fully inline since it's just two
-        one-shot conversions, no client/year selection needed."""
+        one-shot conversions, no client/year selection needed; e-Proceedings
+        (F-60) is inline too — one flat table of every downloaded notice /
+        response across ALL clients and ALL year folders."""
         page = QWidget()
         outer = QVBoxLayout(page)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -2037,7 +3451,7 @@ class AayDocCapioApp(QMainWindow):
         tr = QHBoxLayout(tab_row)
         tr.setContentsMargins(24, 8, 24, 8)
         tr.setSpacing(4)
-        labels = ["Actions", "Download Documents", "E-Pay Tax", "Return Status", "Tools"]
+        labels = ["Actions", "Download Documents", "E-Pay Tax", "Return Status", "Tools", "e-Proceedings"]
         self._it_tab_btns = [self._mk_it_tab_btn(l, i) for i, l in enumerate(labels)]
         for b in self._it_tab_btns:
             tr.addWidget(b)
@@ -2053,24 +3467,33 @@ class AayDocCapioApp(QMainWindow):
         av.setContentsMargins(24, 20, 24, 20)
         av.setSpacing(14)
         av.addWidget(_lbl("What do you want to do?", 11, bold=True, color=_t().text_muted))
-        grid = QHBoxLayout()
-        grid.setSpacing(14)
+        # 5 cards now → QGridLayout 2x3 (with 3 stretches so rows share width
+        # evenly) instead of the old 4-card QHBoxLayout.
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(14)
+        grid.setVerticalSpacing(14)
         grid.addWidget(self._mk_action_card(
             "Download Documents",
             "26AS, Form 168, AIS, TIS & Filed Returns — bulk, unattended, for every selected client.",
-            "document", lambda: self._switch_it_tab(1)))
+            "document", lambda: self._switch_it_tab(1)), 0, 0)
         grid.addWidget(self._mk_action_card(
             "E-Pay Tax",
             "Generate tax payment challans against the ITD portal, or import a prepared batch.",
-            "rupee", lambda: self._switch_it_tab(2)))
+            "rupee", lambda: self._switch_it_tab(2)), 0, 1)
         grid.addWidget(self._mk_action_card(
             "Check Processing Status",
             "See where every client's return actually stands, straight from the portal.",
-            "list", lambda: self._switch_it_tab(3)))
+            "list", lambda: self._switch_it_tab(3)), 0, 2)
         grid.addWidget(self._mk_action_card(
             "Tools",
             "Convert an already-downloaded 26AS or AIS file to Excel, outside a full batch run.",
-            "gear", lambda: self._switch_it_tab(4)))
+            "gear", lambda: self._switch_it_tab(4)), 1, 0)
+        grid.addWidget(self._mk_action_card(
+            "e-Proceedings",
+            "All notices and responses downloaded for every client, in one place.",
+            "list", lambda: self._switch_it_tab(5)), 1, 1)
+        for col in range(3):
+            grid.setColumnStretch(col, 1)
         av.addLayout(grid)
         av.addStretch(1)
         self._it_stack.addWidget(actions_page)
@@ -2081,18 +3504,417 @@ class AayDocCapioApp(QMainWindow):
         # ── Tabs 2-3: still open their existing modal dialogs ────────────────
         self._it_stack.addWidget(self._mk_it_dialog_tab(
             "E-Pay Tax",
-            "Generate tax payment challans against the ITD portal, or import a prepared batch.",
-            "Generate Tax Challans…", "", self._open_generate_challans_dialog))
-        self._it_stack.addWidget(self._mk_it_dialog_tab(
-            "Return Status",
-            "See where every client's return actually stands, straight from the portal.",
-            "Check Processing Status…", "", self._open_return_status_dialog))
+            "Generate tax payment challans against the ITD portal, or import a prepared batch. "
+            "Already saved a challan? Open it without fetching it again.",
+            "Generate Tax Challans…", "", self._open_generate_challans_dialog,
+            extra_actions=[
+                ("View Challans…", "document",
+                 lambda _checked=False: self._open_view_challans_dialog("Income Tax")),
+            ]))
+        self._it_stack.addWidget(self._mk_it_return_status_tab())
 
         # ── Tab 4: Tools (fully inline) ──────────────────────────────────────
         self._it_stack.addWidget(self._mk_it_tools_tab())
 
+        # ── Tab 5: e-Proceedings (F-60) — all clients, all years, one table ──
+        self._it_stack.addWidget(self._mk_it_eproceedings_tab())
+
         self._switch_it_tab(0)
         return page
+
+    def _mk_gst_page(self):
+        """GST hub — its own Action / Download Documents / Proceedings tabs.
+
+        GST keeps a separate navigation, download flow and data format from
+        Income Tax; only the auto-fetch scheduler plumbing is shared.
+        """
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        tab_row = QWidget()
+        tab_row.setFixedHeight(46)
+        tr = QHBoxLayout(tab_row)
+        tr.setContentsMargins(24, 8, 24, 8)
+        tr.setSpacing(4)
+        labels = ["Actions", "Download Documents", "Proceedings"]
+        self._gst_tab_btns = []
+        for i, label in enumerate(labels):
+            btn = self._mk_it_tab_btn(label, 0)
+            try:
+                btn.clicked.disconnect()
+            except Exception:
+                pass
+            btn.clicked.connect(lambda _=False, _i=i: self._switch_gst_tab(_i))
+            self._gst_tab_btns.append(btn)
+            tr.addWidget(btn)
+        tr.addStretch(1)
+        outer.addWidget(tab_row)
+
+        self._gst_stack = QStackedWidget()
+        outer.addWidget(self._gst_stack, 1)
+
+        # ── Tab 0: Actions ───────────────────────────────────────────────────
+        actions_page = QWidget()
+        av = QVBoxLayout(actions_page)
+        av.setContentsMargins(24, 20, 24, 20)
+        av.setSpacing(14)
+        av.addWidget(_lbl("What do you want to do?", 11, bold=True, color=_t().text_muted))
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(14)
+        grid.setVerticalSpacing(14)
+        grid.addWidget(self._mk_action_card(
+            "Download Documents",
+            "Fetch GST notices and orders — with replies and attachments — for the selected GST clients.",
+            "document", lambda: self._switch_gst_tab(1)), 0, 0)
+        grid.addWidget(self._mk_action_card(
+            "Notices & Orders",
+            "Every downloaded GST notice, order, reply and attachment for all clients, in one place.",
+            "list", lambda: self._switch_gst_tab(2)), 0, 1)
+        for col in range(2):
+            grid.setColumnStretch(col, 1)
+        av.addLayout(grid)
+        av.addStretch(1)
+        self._gst_stack.addWidget(actions_page)
+
+        # ── Tab 1: Download Documents ────────────────────────────────────────
+        self._gst_stack.addWidget(self._mk_gst_download_tab())
+
+        # ── Tab 2: Proceedings ───────────────────────────────────────────────
+        try:
+            self._gst_ws = GstProceedingsWorkspace(
+                self.vault,
+                lambda: getattr(self, "assessee_list", []) or [],
+                self,
+            )
+            self._gst_stack.addWidget(self._gst_ws)
+        except Exception as exc:
+            self._gst_ws = None
+            self.log(f"[Error] GST Proceedings workspace failed to build: {exc}")
+            fallback = QWidget()
+            fl = QVBoxLayout(fallback)
+            fl.setContentsMargins(24, 24, 24, 24)
+            fl.addWidget(_lbl("GST Proceedings view could not load.", 14, bold=True))
+            fl.addWidget(_lbl(str(exc), 11, color=_t().text_muted))
+            fl.addStretch(1)
+            self._gst_stack.addWidget(fallback)
+
+        self._switch_gst_tab(0)
+        return page
+
+    def _mk_gst_download_tab(self):
+        """GST-only download screen: pick clients with GST credentials and
+        fetch notices/orders. Separate from the Income Tax Download Documents
+        tab because the eligible clients and the process are different."""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(12)
+        layout.addWidget(_lbl("Download GST Notices & Orders", 14, bold=True))
+        layout.addWidget(_lbl(
+            "Fetches Services ▸ User Services ▸ View Notices and Orders for every "
+            "selected client, saving notices, replies, orders and attachments under "
+            "GST-Proceedings in each client folder.", 11, color=_t().text_muted))
+
+        info = QFrame()
+        info.setStyleSheet(
+            f"QFrame{{background:{_t().bg_table_alt};border:1px solid {_t().border};"
+            f"border-radius:8px;}}")
+        iv = QVBoxLayout(info)
+        iv.setContentsMargins(12, 8, 12, 8)
+        self._gst_dl_count_lbl = _lbl("", 11, color=_t().text_muted)
+        iv.addWidget(self._gst_dl_count_lbl)
+        self._gst_auto_chk = QCheckBox(
+            "Include GST notices in the scheduled auto-fetch (shared scheduler)")
+        self._gst_auto_chk.toggled.connect(self._on_gst_auto_toggle)
+        iv.addWidget(self._gst_auto_chk)
+        layout.addWidget(info)
+
+        btn_row = QHBoxLayout()
+        self._gst_dl_btn = _btn("Download Notices for Selected Clients", "primary", height=38)
+        self._gst_dl_btn.clicked.connect(self._start_gst_download)
+        btn_row.addWidget(self._gst_dl_btn)
+        btn_row.addStretch(1)
+        layout.addLayout(btn_row)
+        layout.addStretch(1)
+        return page
+
+    def _refresh_gst_download_tab(self):
+        clients = self._gst_clients()
+        cfg = self.vault.get_eproc_autofetch_config()
+        chk = getattr(self, "_gst_auto_chk", None)
+        if chk is not None:
+            chk.blockSignals(True)
+            chk.setChecked(bool(cfg.get("fetch_gst", True)))
+            chk.blockSignals(False)
+        selected = set(getattr(self, "selected_ids", set()) or set())
+        if selected:
+            clients = [c for c in clients if c.get("id") in selected or
+                       (c.get("pan") or "").upper() in
+                       {str(s).upper() for s in selected}]
+        label = getattr(self, "_gst_dl_count_lbl", None)
+        if label is not None:
+            nxt = cfg.get("next_run_at", "")
+            suffix = f" Next scheduled run: {nxt}." if nxt else ""
+            scope = ("selected client(s)" if selected
+                     else "all GST clients (select client rows on Home to narrow)")
+            label.setText(f"{len(clients)} GST client(s) — {scope}.{suffix}")
+        btn = getattr(self, "_gst_dl_btn", None)
+        if btn is not None:
+            btn.setEnabled(bool(clients) and not getattr(self, "_gst_dl_running", False))
+
+    def _on_gst_auto_toggle(self, checked: bool):
+        cfg = self.vault.get_eproc_autofetch_config()
+        cfg["fetch_gst"] = bool(checked)
+        self.vault.save_eproc_autofetch_config(cfg)
+        state = "enabled" if checked else "disabled"
+        self.log(f"[Auto-Fetch] GST notices {state} in the shared scheduler.")
+
+    def _switch_gst_tab(self, idx: int):
+        try:
+            self._gst_stack.setCurrentIndex(idx)
+        except Exception:
+            return
+        for i, b in enumerate(getattr(self, "_gst_tab_btns", [])):
+            b.setChecked(i == idx)
+        if idx == 1:
+            self._refresh_gst_download_tab()
+        if idx == 2:
+            ws = getattr(self, "_gst_ws", None)
+            if ws is not None:
+                try:
+                    ws.refresh()
+                except Exception as exc:
+                    self.log(f"[Error] GST Proceedings refresh failed: {exc}")
+        label = getattr(self, "_gst_tab_btns", [])
+        self._on_hub_changed("GST", label[idx].text() if idx < len(label) else "")
+
+    def _gst_clients(self):
+        clients = []
+        for assessee in getattr(self, "assessee_list", []) or []:
+            try:
+                sources = self.vault.credential_sources(assessee)
+            except Exception:
+                sources = []
+            if "GST" in sources:
+                clients.append(assessee)
+        return clients
+
+    def _start_gst_download(self):
+        if getattr(self, "is_running", False) or getattr(self, "_gst_dl_running", False):
+            self.log("[GST] A batch is already running — please wait.")
+            return
+        clients = self._gst_clients()
+        selected_ids = set(getattr(self, "selected_ids", set()) or set())
+        if selected_ids:
+            clients = [c for c in clients if c.get("id") in selected_ids or
+                       (c.get("pan") or "").upper() in
+                       {str(s).upper() for s in selected_ids}]
+        if not clients:
+            QMessageBox.information(
+                self, "No GST Clients",
+                "Add GST credentials to at least one client, then select it and try again.")
+            return
+        spec = self._eproc_auto_year_spec()
+        if spec is None:
+            QMessageBox.information(
+                self, "No Year Selected",
+                "Enable at least one Assessment/Tax Year before downloading.")
+            return
+        output_dir = self.dir_lbl.text() or self.vault.get_setting("download_root_dir", "")
+        if not output_dir:
+            QMessageBox.information(self, "No Download Folder",
+                                    "Choose a download folder first.")
+            return
+        self._gst_dl_running = True
+        self.is_running = True
+        self._gst_dl_btn.setEnabled(False)
+        self._gst_dl_count_lbl.setText(f"Downloading notices for {len(clients)} client(s)…")
+        dialog = BatchProgressDialog(
+            clients, {"gst_proceedings"}, year_specs=[spec],
+            ay="GST Notices",
+            output_dir=output_dir, parent=self, id_label="GST/PAN")
+        dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+        self._gst_dl_dialog = dialog
+        threading.Thread(
+            target=self._gst_download_worker,
+            args=(clients, spec, output_dir),
+            daemon=True).start()
+
+    def _gst_download_worker(self, clients, spec, output_dir):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(self._gst_download_run(clients, spec, output_dir))
+        except Exception as exc:
+            self.log(f"[GST] Download run crashed: {exc}")
+        finally:
+            try:
+                loop.close()
+            except Exception:
+                pass
+            self._gst_dl_running = False
+            self.is_running = False
+
+    async def _gst_download_run(self, clients, spec, output_dir):
+        from automation.batch_handlers import handle_gst_proceedings
+        from automation.gst.login import login_gst
+        from automation.eproc_scheduler import client_key
+
+        context = None
+        dialog = getattr(self, "_gst_dl_dialog", None)
+        try:
+            context = await browser_manager.get_context(
+                log_callback=self.log, interactive=not self.chk_headless.isChecked())
+            for index, client in enumerate(clients):
+                ident = client_key(client)
+                ay_label = spec["ay_label"]
+
+                def _status(_p, _ay, text, _ident=ident):
+                    try:
+                        if dialog is not None:
+                            dialog.set_status(_ident, ay_label, text)
+                        if any(text.startswith(p) for p in ("✅", "❌", "🕐", "⬜", "⚠")):
+                            self.vault.record_download(_ident, ay_label,
+                                                       "gst_proceedings", text, "")
+                    except Exception:
+                        pass
+
+                client_dir = os.path.dirname(
+                    self._eproc_auto_client_dir(client, output_dir, spec))
+                if dialog is not None:
+                    dialog.set_client_path(ident, ay_label,
+                                           os.path.join(client_dir, "GST-Proceedings"))
+                page = await context.new_page()
+                try:
+                    _status(ident, ay_label, "⏳ Logging in to GST portal...")
+                    result = await login_gst(
+                        page, client.get("gst_username", ""),
+                        client.get("gst_password", ""), self.log)
+                    reason = (result or {}).get("reason")
+                    login_ok = bool(result.get("ok")) and reason not in (
+                        "credentials", "otp", "locked", "exhausted", "too-many-wrong", "error")
+                    if not login_ok:
+                        if reason == "otp":
+                            _status(ident, ay_label, "⚠ GST OTP required — sign in manually")
+                        elif reason == "locked":
+                            _status(ident, ay_label,
+                                    "⚠ GST account locked — reset the password on the portal")
+                        elif reason == "credentials":
+                            _status(ident, ay_label, "⚠ GST login failed — check credentials")
+                            pan_value = str(client.get("pan", "")).upper()
+                            if pan_value:
+                                self.vault.set_client_credential_invalid(pan_value, True)
+                        else:
+                            _status(ident, ay_label,
+                                    f"⚠ GST login not completed ({reason})")
+                        continue
+                    def _progress(kind, pos, total, row_obj, _ident=ident, _ay=ay_label):
+                        if kind == "progress":
+                            _status(
+                                _ident, _ay,
+                                f"⏳ Downloading GST notices… "
+                                f"{(row_obj.get('notice_type') or 'Notice')} "
+                                f"{pos}/{total}")
+
+                    await handle_gst_proceedings(
+                        page, ident, client.get("dob", ""), [spec],
+                        lambda yt, val: client_dir, self.log, _status,
+                        client_dir=client_dir, progress_callback=_progress)
+                except Exception as exc:
+                    self.log(f"[GST] {ident} failed: {exc}")
+                    _status(ident, ay_label, f"❌ GST download failed — {_friendly_error(str(exc))}")
+                finally:
+                    try:
+                        await page.close()
+                    except Exception:
+                        pass
+                    if dialog is not None:
+                        dialog.client_finished(ident, ay_label)
+                if index < len(clients) - 1:
+                    await asyncio.sleep(2)
+        finally:
+            if context is not None:
+                try:
+                    await browser_manager.close()
+                except Exception:
+                    pass
+            # Route UI updates to the main thread — this runs on a plain
+            # asyncio worker thread, so touching widgets directly here left
+            # the dialog frozen / the progress window un-refreshed.
+            if dialog is not None:
+                self._gst_dl_count_label_text = (
+                    f"Last run finished — {len(clients)} client(s) processed.")
+                self._gst_dl_done_signal.emit()
+            ws = getattr(self, "_gst_ws", None)
+            if ws is not None:
+                try:
+                    ws.refresh()
+                except Exception:
+                    pass
+
+    def _on_gst_dl_done(self):
+        """Main-thread: finish the GST progress dialog and re-enable controls."""
+        dialog = getattr(self, "_gst_dl_dialog", None)
+        if dialog is not None:
+            try:
+                dialog.batch_finished()
+            except Exception:
+                pass
+        self._gst_dl_btn.setEnabled(True)
+        text = getattr(self, "_gst_dl_count_label_text", "")
+        if text:
+            self._gst_dl_count_lbl.setText(text)
+
+    def _mk_litigation_page(self):
+        """F-26: Litigation hub - unified e-proceedings across modules."""
+        try:
+            self._litigation_page = LitigationPage(
+                self.vault,
+                lambda: getattr(self, "assessee_list", []) or [],
+                self,
+            )
+            self._litigation_page.dataChanged.connect(self._on_litigation_changed)
+            self._litigation_page.openCaseRequested.connect(self._open_litigation_case)
+            return self._litigation_page
+        except Exception as exc:
+            self._litigation_page = None
+            self.log(f"[Error] Litigation hub failed to build: {exc}")
+            page = QWidget()
+            lay = QVBoxLayout(page)
+            lay.setContentsMargins(24, 24, 24, 24)
+            lay.addStretch(1)
+            lay.addWidget(_lbl("Litigation view could not load.", 14, bold=True))
+            lay.addWidget(_lbl(str(exc), 11, color=_t().text_muted))
+            lay.addStretch(1)
+            return page
+
+    def _on_litigation_changed(self):
+        ws = getattr(self, "_eproc_ws", None)
+        if ws is not None:
+            try:
+                ws.refresh()
+            except Exception as exc:
+                self.log(f"[Error] e-Proceedings refresh failed: {exc}")
+
+    def _open_litigation_case(self, module, native_id):
+        if module == "it":
+            self._nav_shell.go("it")
+            try:
+                self._switch_it_tab(5)
+            except Exception:
+                pass
+            ws = getattr(self, "_eproc_ws", None)
+            if ws is not None:
+                try:
+                    ws.refresh()
+                    ws.goto_case(native_id)
+                except Exception as exc:
+                    self.log(f"[Error] Opening case {native_id}: {exc}")
 
     def _mk_mail_docs_page(self):
         page = QWidget()
@@ -2152,18 +3974,47 @@ class AayDocCapioApp(QMainWindow):
         layout.addStretch(1)
         return page
 
+    def _mk_tds_page(self):
+        """TDS hub — deductor-side (TAN) actions. F-4 adds TDS/TCS challan
+        generation; the rest of the TDS roadmap remains a placeholder."""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(14)
+        layout.addWidget(_lbl("TDS / TCS — Deductor (TAN)", 11, bold=True, color=_t().text_muted))
+        layout.addWidget(self._mk_action_card(
+            "TDS / TCS Challan",
+            "Generate Challan 281 under Income-tax Act, 2025 for a deductor TAN, "
+            "with section-wise tax, surcharge and cess.",
+            "rupee", self._open_generate_tds_challans_dialog))
+        layout.addWidget(self._mk_action_card(
+            "Download TDS / TCS Challans",
+            "Download already-paid challans from e-Pay Tax Payment History "
+            "for the selected TAN clients and years.",
+            "document", self._open_download_tds_challans_dialog))
+        layout.addWidget(self._mk_action_card(
+            "View Challans",
+            "Browse challans already generated or downloaded in an earlier "
+            "session — filter by client and Paid / Unpaid, then open the "
+            "file or its folder.",
+            "list", lambda _checked=False: self._open_view_challans_dialog("TDS/TCS")))
+        layout.addStretch(1)
+        return page
+
     _LOG_HEADER_HEIGHT = 32
 
     def _mk_footer(self):
         """Live Logs — embedded in the Activity Log hub page, styled to
         match iBench's Activity Log view (WindowsProject/iBench App.tsx):
-        dark #0F1923 panel, #1A2636 header, per-line severity colouring
-        instead of icons, no wrap (horizontal scroll), always-on
-        auto-scroll. No hide/show toggle — it already lives on its own
-        dedicated page, so there's nothing to collapse it against."""
+        a deliberately dark panel in both themes, with per-line severity
+        colouring instead of icons, no wrap (horizontal scroll), and
+        always-on auto-scroll.
+
+        B-101: all colours come from the theme-invariant ``log_*`` tokens,
+        so this file has no unexplained raw hex literals."""
+        t = _t()
         footer = QFrame()
-        # Intentional: Live Logs panel is deliberately dark regardless of theme
-        footer.setStyleSheet("QFrame{background:#0F1923;}")
+        footer.setStyleSheet(f"QFrame{{background:{t.log_panel};}}")
         fl = QVBoxLayout(footer)
         fl.setContentsMargins(0, 0, 0, 0)
         fl.setSpacing(0)
@@ -2171,12 +4022,15 @@ class AayDocCapioApp(QMainWindow):
 
         log_hdr = QFrame()
         log_hdr.setFixedHeight(self._LOG_HEADER_HEIGHT)
-        log_hdr.setStyleSheet("QFrame{background:#1A2636;border-bottom:1px solid #1E293B;}")
+        log_hdr.setStyleSheet(
+            f"QFrame{{background:{t.log_header};"
+            f"border-bottom:1px solid {t.log_header_border};}}")
         hhl = QHBoxLayout(log_hdr); hhl.setContentsMargins(16, 0, 12, 0)
-        hhl.addWidget(_lbl("Activity Log", 11, bold=True, color="#CBD5E1"))
+        hhl.addWidget(_lbl("Activity Log", 11, bold=True, color=t.log_header_text))
         hhl.addStretch()
         self._log_count_lbl = QLabel("0 lines")
-        self._log_count_lbl.setStyleSheet("color:#64748B;font-size:10px;background:transparent;")
+        self._log_count_lbl.setStyleSheet(
+            f"color:{t.log_muted};font-size:10px;background:transparent;")
         hhl.addWidget(self._log_count_lbl)
         hhl.addSpacing(12)
 
@@ -2184,9 +4038,11 @@ class AayDocCapioApp(QMainWindow):
             b = QPushButton(text)
             b.setFixedHeight(22)
             b.setStyleSheet(
-                "QPushButton{background:#1E293B;color:#94A3B8;border:none;"
-                "border-radius:4px;padding:0 10px;font-size:10px;}"
-                "QPushButton:hover{background:#334155;color:#E2E8F0;}")
+                f"QPushButton{{background:{t.log_button_bg};color:{t.log_button_fg};"
+                "border:none;border-radius:4px;padding:0 10px;font-size:10px;}"
+                f"QPushButton:hover{{background:{t.log_button_hover_bg};"
+                f"color:{t.log_button_hover_fg};}}"
+                f"QPushButton:focus{{border:2px solid {t.border_focus};}}")
             return b
 
         open_folder_btn = _hdr_btn("Open Logs Folder")
@@ -2202,9 +4058,9 @@ class AayDocCapioApp(QMainWindow):
         self.log_box.setReadOnly(True)
         self.log_box.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         self.log_box.setStyleSheet(
-            "QTextEdit{background:#0F1923;border:none;"
+            f"QTextEdit{{background:{t.log_panel};border:none;"
             f"font-family:'{_MONO_FONT}',monospace;"
-            "font-size:12px;padding:8px 16px;}")  # noqa: hardcoded colors intentional — Live Logs panel is deliberately dark regardless of theme
+            "font-size:12px;padding:8px 16px;}")
         fl.addWidget(self.log_box)
         self._log_line_count = 0
 
@@ -2261,6 +4117,8 @@ class AayDocCapioApp(QMainWindow):
         group_wanted = (self.group_filter.currentText()
                         if hasattr(self, "group_filter") and self.group_filter.currentIndex() > 0
                         else None)
+        _src_wanted = (self.source_filter.currentIndex()
+                       if hasattr(self, "source_filter") else 0)
         for row_idx in range(self.client_table.rowCount()):
             name_item   = self.client_table.item(row_idx, self._TC_NAME)
             pan_item    = self.client_table.item(row_idx, self._TC_PAN)
@@ -2280,7 +4138,20 @@ class AayDocCapioApp(QMainWindow):
                 status_match = any(st.startswith(p) for p in status_prefixes)
             group_match = (group_wanted is None
                            or (group_item is not None and group_item.text() == group_wanted))
-            hidden = not (text_match and status_match and group_match)
+            src_item = self.client_table.item(row_idx, self._TC_SRCS)
+            srcs = (src_item.data(Qt.ItemDataRole.UserRole + 2)
+                    if src_item is not None else None) or []
+            if _src_wanted == 1:
+                src_match = "GST" in srcs
+            elif _src_wanted == 2:
+                src_match = "TDS" in srcs
+            elif _src_wanted == 3:
+                src_match = "Income Tax" in srcs
+            elif _src_wanted == 4:
+                src_match = not srcs
+            else:
+                src_match = True
+            hidden = not (text_match and status_match and group_match and src_match)
             self.client_table.setRowHidden(row_idx, hidden)
             if not hidden:
                 a_id = name_item.data(Qt.ItemDataRole.UserRole)
@@ -2380,6 +4251,7 @@ class AayDocCapioApp(QMainWindow):
                 f"image:url('{_chk_path}');}}"
             )
             cb.setChecked(is_selected)
+            cb.setAccessibleName(f"Select {a.get('name', pan)}")
             cb.toggled.connect(lambda checked, id_=a_id: self._on_check(id_, checked))
             self._checkbox_map[a_id] = cb
             self._id_to_row[a_id] = i
@@ -2389,6 +4261,9 @@ class AayDocCapioApp(QMainWindow):
             # Col 1: Name
             name_item = QTableWidgetItem(a.get("name", ""))
             name_item.setData(Qt.ItemDataRole.UserRole, a_id)
+            name_item.setData(
+                Qt.ItemDataRole.AccessibleTextRole,
+                f"Client {a.get('name', '')}, PAN {pan}")
             name_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             self.client_table.setItem(i, self._TC_NAME, name_item)
 
@@ -2409,23 +4284,54 @@ class AayDocCapioApp(QMainWindow):
             dob_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.client_table.setItem(i, self._TC_DOB, dob_item)
 
+            # Col: Credential sources — Income Tax / TDS / GST tags
+            sources = self.vault.credential_sources(a)
+            src_item = QTableWidgetItem(" · ".join(sources))
+            src_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            src_item.setData(Qt.ItemDataRole.UserRole + 2, sources)
+            if sources:
+                src_item.setForeground(QColor(_t().accent_hover))
+                src_item.setToolTip("Credentials saved for: " + ", ".join(sources))
+            else:
+                src_item.setForeground(QColor(_t().text_muted))
+                src_item.setToolTip("No portal credentials saved for this client yet.")
+            src_item.setData(
+                Qt.ItemDataRole.AccessibleTextRole,
+                f"Credentials for {a.get('name', pan)}: "
+                + (", ".join(sources) if sources else "none"))
+            self.client_table.setItem(i, self._TC_SRCS, src_item)
+
             # Col 4: Last Download Status (from history) — one glyph summarizing
             # the worst outcome across doc types, tooltip breaks down each one.
             hist = dl_history.get(pan, {})
             status_text = hist.get("status", "—")
             breakdown = hist.get("breakdown", [])
+            credential_invalid = bool(a.get("credential_invalid"))
+            if credential_invalid:
+                status_text = "⚠ Password needs update — auto-fetch paused"
+                breakdown = []
             status_item = QTableWidgetItem(status_text)
             status_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             if len(breakdown) > 1:
                 _doc_labels = {"26as": "26AS/Form 168", "request_ais": "AIS Request",
                                "ais_tis": "AIS/TIS", "filed_returns": "Filed Returns",
-                               "challans": "Tax Challans", "legacy": "Download"}
+                               "challans": "Tax Challans", "legacy": "Download",
+                               "e_proceedings": "e-Proceedings",
+                               "filed_forms": "Filed IT Forms"}
                 tooltip_text = "\n".join(
                     f"{_doc_labels.get(dt, dt)}: {st}" for dt, st in breakdown
                 )
             else:
                 tooltip_text = status_text
+            if credential_invalid:
+                tooltip_text = ("The portal rejected this client's saved password. "
+                                "Update it in Client Master to resume automatic sync.")
             status_item.setToolTip(tooltip_text)
+            # F-17: never make colour the only signal — screen readers get the
+            # status text and the per-document breakdown too.
+            status_item.setData(
+                Qt.ItemDataRole.AccessibleTextRole,
+                f"Status for {a.get('name', pan)}: {status_text}. {tooltip_text}")
             if status_text.startswith("✅"):
                 status_item.setForeground(QColor(_t().success))
             elif status_text.startswith("❌"):
@@ -2642,7 +4548,6 @@ class AayDocCapioApp(QMainWindow):
         editing = a is not None
         dlg = QDialog(self)
         dlg.setWindowTitle("Edit Client" if editing else "Add New Client")
-        dlg.setFixedWidth(400)
         t = _t()
         dlg.setStyleSheet(
             f"QDialog{{background:{t.bg_window};}}"
@@ -2650,15 +4555,31 @@ class AayDocCapioApp(QMainWindow):
             f"QLineEdit{{border:1px solid {t.border};border-radius:6px;padding:6px 10px;"
             f"font-size:12px;background:{t.bg_input};color:{t.text_primary};}}"
             f"QLineEdit:focus{{border-color:{t.border_focus};background:{t.bg_input_focus};}}"
+            f"QFrame#clientSep{{background:{t.border};border:none;}}"
         )
-        vl = QVBoxLayout(dlg)
-        vl.setContentsMargins(28, 24, 28, 24)
-        vl.setSpacing(0)
+
+        # Two columns side by side so the dialog stays short and wide instead of
+        # becoming a long single strip that overflows a laptop screen.
+        root = QVBoxLayout(dlg)
+        root.setContentsMargins(28, 24, 28, 24)
+        root.setSpacing(0)
 
         title_lbl = QLabel("Edit Client" if editing else "Add New Client")
         title_lbl.setStyleSheet(f"font-size:14px;font-weight:700;color:{t.text_primary};")
-        vl.addWidget(title_lbl)
-        vl.addSpacing(18)
+        root.addWidget(title_lbl)
+        root.addSpacing(16)
+
+        cols = QHBoxLayout()
+        cols.setSpacing(28)
+        cols.setContentsMargins(0, 0, 0, 0)
+        left = QVBoxLayout()
+        right = QVBoxLayout()
+        for col in (left, right):
+            col.setSpacing(0)
+            col.setContentsMargins(0, 0, 0, 0)
+        cols.addLayout(left, 1)
+        cols.addLayout(right, 1)
+        root.addLayout(cols)
 
         fields = {}
 
@@ -2667,37 +4588,46 @@ class AayDocCapioApp(QMainWindow):
             l.setStyleSheet(f"font-size:11px;font-weight:600;color:{t.text_muted};margin-bottom:3px;")
             return l
 
-        # ── Name ──────────────────────────────────────────────────────────────
-        vl.addWidget(_field_label("Full Name"))
-        fields["name"] = QLineEdit()
-        fields["name"].setPlaceholderText("e.g. Deepak Bholusaria")
-        fields["name"].setFixedHeight(34)
-        fields["name"].setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
-        vl.addWidget(fields["name"])
-        vl.addSpacing(10)
+        def _line_edit(ph):
+            e = QLineEdit()
+            e.setPlaceholderText(ph)
+            e.setFixedHeight(34)
+            e.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
+            return e
 
-        # ── Group (F-11, optional) ───────────────────────────────────────────
-        vl.addWidget(_field_label("Group (optional — e.g. a family or firm name)"))
+        def _section_head(text):
+            lbl = QLabel(text.upper())
+            lbl.setStyleSheet(
+                f"font-size:10px;font-weight:700;color:{t.text_muted};"
+                f"letter-spacing:0.6px;background:transparent;border:none;")
+            return lbl
+
+        # ── LEFT COLUMN — identity ────────────────────────────────────────────
+        left.addWidget(_section_head("Client"))
+        left.addSpacing(8)
+
+        left.addWidget(_field_label("Full Name"))
+        fields["name"] = _line_edit("e.g. Deepak Bholusaria")
+        left.addWidget(fields["name"])
+        left.addSpacing(10)
+
+        left.addWidget(_field_label("Group (optional — e.g. a family or firm name)"))
         fields["group"] = self._make_group_combo(a.get("group", "") if editing else "")
-        vl.addWidget(fields["group"])
-        vl.addSpacing(10)
+        left.addWidget(fields["group"])
+        left.addSpacing(10)
 
-        # ── PAN ───────────────────────────────────────────────────────────────
-        vl.addWidget(_field_label("PAN Number"))
-        fields["pan"] = QLineEdit()
-        fields["pan"].setPlaceholderText("e.g. ABCDE1234F")
-        fields["pan"].setFixedHeight(34)
+        left.addWidget(_field_label("PAN / TAN"))
+        fields["pan"] = _line_edit("PAN AABCP1234F  ·  TAN ABCD12345E")
         fields["pan"].setMaxLength(10)
         fields["pan"].setValidator(
             QRegularExpressionValidator(QRegularExpression("[A-Za-z0-9]{0,10}")))
-        fields["pan"].setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
         fields["pan"].textChanged.connect(
             lambda txt, e=fields["pan"]: e.setText(txt.upper()) if txt != txt.upper() else None)
-        vl.addWidget(fields["pan"])
-        vl.addSpacing(10)
+        left.addWidget(fields["pan"])
+        left.addSpacing(10)
 
         # ── Date of Birth — text input + calendar picker + live hint ─────────
-        vl.addWidget(_field_label("Date of Birth"))
+        left.addWidget(_field_label("Date of Birth (required for PAN, optional for TAN)"))
         dob_row = QHBoxLayout()
         dob_row.setSpacing(6)
         dob_row.setContentsMargins(0, 0, 0, 0)
@@ -2718,14 +4648,130 @@ class AayDocCapioApp(QMainWindow):
 
         dob_row.addWidget(dob_edit, 1)
         dob_row.addWidget(cal_btn)
-        vl.addLayout(dob_row)
+        left.addLayout(dob_row)
 
-        # Hint label: shows normalised date or error inline
         dob_hint = QLabel("")
         dob_hint.setStyleSheet("font-size:10px;background:transparent;border:none;")
         dob_hint.setFixedHeight(16)
-        vl.addWidget(dob_hint)
-        vl.addSpacing(6)
+        left.addWidget(dob_hint)
+        left.addStretch(1)
+
+        # ── RIGHT COLUMN — contact then each credential set ──────────────────
+        right.addWidget(_section_head("Contact"))
+        right.addSpacing(8)
+
+        right.addWidget(_field_label("Email Address (optional)"))
+        fields["email"] = _line_edit("client@example.com")
+        right.addWidget(fields["email"])
+        right.addSpacing(10)
+
+        right.addWidget(_field_label("CC (optional — separate multiple with  ;)"))
+        fields["cc"] = _line_edit("spouse@example.com;accountant@firm.com")
+        right.addWidget(fields["cc"])
+        right.addSpacing(16)
+
+        # Each portal is opt-in. The tick box decides whether this client is
+        # part of that portal's flows at all, and reveals its credential
+        # boxes only when ticked — so a GST-only client never appears in the
+        # income-tax lists, and a TDS client only in the TDS flows.
+        def _enable_row(text):
+            cb = QCheckBox(text)
+            cb.setStyleSheet(
+                f"QCheckBox{{color:{t.text_primary};font-size:12px;"
+                f"font-weight:600;background:transparent;}}")
+            return cb
+
+        def _pw_cb(label):
+            cb = QCheckBox(label)
+            cb.setStyleSheet(
+                f"color:{t.text_muted};font-size:11px;background:transparent;")
+            return cb
+
+        def _inset_box():
+            box = QWidget()
+            lay = QVBoxLayout(box)
+            lay.setContentsMargins(20, 0, 0, 0)
+            lay.setSpacing(0)
+            return box, lay
+
+        hosts = {}
+
+        # ── Income Tax (PAN) ─────────────────────────────────────────────────
+        enable_it = _enable_row("Enable Income Tax (26AS · AIS/TIS · returns)")
+        right.addWidget(enable_it)
+        right.addSpacing(8)
+        it_box, it_lay = _inset_box()
+        it_lay.addWidget(_field_label("Portal Password"))
+        fields["pwd"] = _line_edit("Enter password")
+        fields["pwd"].setEchoMode(QLineEdit.EchoMode.Password)
+        it_lay.addWidget(fields["pwd"])
+        show_cb = _pw_cb("Show password")
+        it_lay.addWidget(show_cb)
+        right.addWidget(it_box)
+        right.addSpacing(12)
+
+        # ── TDS / TRACES ─────────────────────────────────────────────────────
+        enable_tds = _enable_row("Enable TDS (TDS / TRACES login)")
+        right.addWidget(enable_tds)
+        right.addSpacing(8)
+        tds_box, tds_lay = _inset_box()
+        tds_lay.addWidget(_field_label("TDS / TRACES Username"))
+        fields["tds_user"] = _line_edit("TDS / TRACES user id")
+        tds_lay.addWidget(fields["tds_user"])
+        tds_lay.addSpacing(8)
+        tds_lay.addWidget(_field_label("TDS / TRACES Password"))
+        fields["tds_pwd"] = _line_edit("TDS password")
+        fields["tds_pwd"].setEchoMode(QLineEdit.EchoMode.Password)
+        tds_lay.addWidget(fields["tds_pwd"])
+        tds_show = _pw_cb("Show TDS password")
+        tds_lay.addWidget(tds_show)
+        hosts["tds_show"] = tds_show
+        right.addWidget(tds_box)
+        right.addSpacing(12)
+
+        # ── GST ──────────────────────────────────────────────────────────────
+        enable_gst = _enable_row("Enable GST")
+        right.addWidget(enable_gst)
+        right.addSpacing(8)
+        gst_box, gst_lay = _inset_box()
+        gst_lay.addWidget(_field_label("GST Username"))
+        fields["gst_user"] = _line_edit("GST portal login")
+        gst_lay.addWidget(fields["gst_user"])
+        gst_lay.addSpacing(8)
+        gst_lay.addWidget(_field_label("GST Password"))
+        fields["gst_pwd"] = _line_edit("GST password")
+        fields["gst_pwd"].setEchoMode(QLineEdit.EchoMode.Password)
+        gst_lay.addWidget(fields["gst_pwd"])
+        gst_show = _pw_cb("Show GST password")
+        gst_lay.addWidget(gst_show)
+        hosts["gst_show"] = gst_show
+        right.addWidget(gst_box)
+        right.addStretch(1)
+
+        def _sync_enable(_checked: bool = False):
+            it_box.setVisible(enable_it.isChecked())
+            tds_box.setVisible(enable_tds.isChecked())
+            gst_box.setVisible(enable_gst.isChecked())
+            dlg.adjustSize()
+
+        enable_it.toggled.connect(_sync_enable)
+        enable_tds.toggled.connect(_sync_enable)
+        enable_gst.toggled.connect(_sync_enable)
+
+        def _toggle_echo(_checked: bool = False):
+            fields["pwd"].setEchoMode(
+                QLineEdit.EchoMode.Normal if show_cb.isChecked()
+                else QLineEdit.EchoMode.Password)
+            fields["tds_pwd"].setEchoMode(
+                QLineEdit.EchoMode.Normal if hosts["tds_show"].isChecked()
+                else QLineEdit.EchoMode.Password)
+            fields["gst_pwd"].setEchoMode(
+                QLineEdit.EchoMode.Normal if hosts["gst_show"].isChecked()
+                else QLineEdit.EchoMode.Password)
+
+        show_cb.toggled.connect(_toggle_echo)
+        hosts["tds_show"].toggled.connect(_toggle_echo)
+        hosts["gst_show"].toggled.connect(_toggle_echo)
 
         def _smart_normalise(text: str) -> str:
             """Pre-process raw text before vault normalisation.
@@ -2876,49 +4922,97 @@ class AayDocCapioApp(QMainWindow):
             popup.move(pos)
             popup.exec()
 
+        def _show_calendar():
+            from PyQt6.QtCore import QDate
+            from PyQt6.QtGui import QPalette, QColor
+            from vault import _normalise_dob, _DOB_RE
+
+            popup = QDialog(dlg)
+            popup.setWindowTitle("Pick Date of Birth")
+            popup.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
+            popup.setStyleSheet(
+                f"QDialog{{background:{t.bg_panel};border:2px solid {t.border};border-radius:8px;}}"
+                f"QToolButton{{color:{t.text_primary};background:transparent;border:none;"
+                f"border-radius:4px;padding:3px 8px;font-size:12px;font-weight:600;}}"
+                f"QToolButton:hover{{background:{t.accent};color:{t.accent_text};}}"
+                f"QToolButton::menu-indicator{{image:none;}}"
+                f"QSpinBox{{color:{t.text_primary};background:{t.bg_input};"
+                f"border:1px solid {t.border};border-radius:4px;padding:2px 6px;}}"
+                f"QSpinBox::up-button,QSpinBox::down-button{{background:transparent;border:none;}}"
+                f"QMenu{{background:{t.bg_menu};color:{t.text_primary};border:1.5px solid {t.border_menu};}}"
+                f"QMenu::item:selected{{background:{t.accent};color:{t.accent_text};}}"
+                f"QHeaderView::section{{background:{t.bg_header};color:{t.text_muted};"
+                f"border:none;font-size:11px;font-weight:600;padding:4px 0;}}"
+                f"#qt_calendar_navigationbar{{background:{t.bg_header};padding:6px 8px;}}"
+                f"QAbstractItemView{{background:{t.bg_table};color:{t.text_primary};"
+                f"selection-background-color:{t.accent};selection-color:{t.accent_text};"
+                f"outline:none;border:none;}}"
+            )
+
+            pl = QVBoxLayout(popup)
+            pl.setContentsMargins(0, 0, 0, 0)
+            pl.setSpacing(0)
+
+            cal = QCalendarWidget(popup)
+            cal.setGridVisible(False)
+            cal.setVerticalHeaderFormat(QCalendarWidget.VerticalHeaderFormat.NoVerticalHeader)
+
+            # Set QPalette on the calendar so Qt's internal painter uses theme colours
+            pal = QPalette()
+            pal.setColor(QPalette.ColorRole.Window,      QColor(t.bg_table))
+            pal.setColor(QPalette.ColorRole.Base,        QColor(t.bg_table))
+            pal.setColor(QPalette.ColorRole.AlternateBase, QColor(t.bg_table_alt))
+            pal.setColor(QPalette.ColorRole.Text,        QColor(t.text_primary))
+            pal.setColor(QPalette.ColorRole.BrightText,  QColor(t.accent_text))
+            pal.setColor(QPalette.ColorRole.Highlight,   QColor(t.accent))
+            pal.setColor(QPalette.ColorRole.HighlightedText, QColor(t.accent_text))
+            pal.setColor(QPalette.ColorRole.ButtonText,  QColor(t.text_primary))
+            pal.setColor(QPalette.ColorRole.Button,      QColor(t.bg_input))
+            pal.setColor(QPalette.ColorRole.WindowText,  QColor(t.text_primary))
+            pal.setColor(QPalette.ColorRole.ToolTipBase, QColor(t.bg_menu))
+            pal.setColor(QPalette.ColorRole.ToolTipText, QColor(t.text_primary))
+
+            # Disabled role — other-month days
+            pal.setColor(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text,
+                         QColor(t.text_muted))
+            cal.setPalette(pal)
+
+            # Apply palette to all child widgets (nav bar, table view, header)
+            for child in cal.findChildren(QWidget):
+                child.setPalette(pal)
+                child.setAutoFillBackground(True)
+
+            # Pre-select current value if valid
+            raw = dob_edit.text().strip()
+            normed = _normalise_dob(raw) if raw else ""
+            if _DOB_RE.match(normed):
+                try:
+                    d, m, y = normed.split("-")
+                    cal.setSelectedDate(QDate(int(y), int(m), int(d)))
+                except Exception:
+                    pass
+
+            cal.setMaximumDate(QDate.currentDate())
+            pl.addWidget(cal)
+
+            def _picked(date):
+                dob_edit.setText(f"{date.day():02d}-{date.month():02d}-{date.year()}")
+                popup.accept()
+
+            cal.clicked.connect(_picked)
+            pos = cal_btn.mapToGlobal(cal_btn.rect().bottomLeft())
+            popup.move(pos)
+            popup.exec()
+
         cal_btn.clicked.connect(_show_calendar)
 
-        # ── Portal Password ───────────────────────────────────────────────────
-        vl.addWidget(_field_label("Portal Password"))
-        fields["pwd"] = QLineEdit()
-        fields["pwd"].setPlaceholderText("Enter password")
-        fields["pwd"].setFixedHeight(34)
-        fields["pwd"].setEchoMode(QLineEdit.EchoMode.Password)
-        fields["pwd"].setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
-        vl.addWidget(fields["pwd"])
-        vl.addSpacing(10)
-
-        # Show password toggle
-        show_cb = QCheckBox("Show password")
-        show_cb.setStyleSheet(f"color:{t.text_muted};font-size:11px;background:transparent;")
-        show_cb.toggled.connect(
-            lambda v: fields["pwd"].setEchoMode(
-                QLineEdit.EchoMode.Normal if v else QLineEdit.EchoMode.Password))
-        vl.addWidget(show_cb)
-        vl.addSpacing(14)
-
-        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setStyleSheet(f"background:{t.border};border:none;max-height:1px;")
-        vl.addWidget(sep)
-        vl.addSpacing(10)
-
-        # ── Email ─────────────────────────────────────────────────────────────
-        vl.addWidget(_field_label("Email Address (optional)"))
-        fields["email"] = QLineEdit()
-        fields["email"].setPlaceholderText("client@example.com")
-        fields["email"].setFixedHeight(34)
-        fields["email"].setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
-        vl.addWidget(fields["email"])
-        vl.addSpacing(10)
-
-        # ── CC ────────────────────────────────────────────────────────────────
-        vl.addWidget(_field_label("CC (optional — separate multiple with  ;)"))
-        fields["cc"] = QLineEdit()
-        fields["cc"].setPlaceholderText("spouse@example.com;accountant@firm.com")
-        fields["cc"].setFixedHeight(34)
-        fields["cc"].setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
-        vl.addWidget(fields["cc"])
-        vl.addSpacing(18)
+        # ── Footer ────────────────────────────────────────────────────────────
+        root.addSpacing(16)
+        sep = QFrame(); sep.setObjectName("clientSep")
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setFixedHeight(1)
+        root.addWidget(sep)
+        root.addSpacing(14)
 
         # Pre-fill if editing
         if editing:
@@ -2928,6 +5022,18 @@ class AayDocCapioApp(QMainWindow):
             fields["pwd"].setText(a.get("password", ""))
             fields["email"].setText(a.get("email", ""))
             fields["cc"].setText(a.get("cc", ""))
+            fields["tds_user"].setText(a.get("tds_username", ""))
+            fields["tds_pwd"].setText(a.get("tds_password", ""))
+            fields["gst_user"].setText(a.get("gst_username", ""))
+            fields["gst_pwd"].setText(a.get("gst_password", ""))
+            from vault import credential_sources as _sources
+            _src = _sources(a)
+            enable_it.setChecked(bool(a.get("enable_income_tax", "Income Tax" in _src)))
+            enable_gst.setChecked(bool(a.get("enable_gst", "GST" in _src)))
+            enable_tds.setChecked(bool(a.get("enable_tds", "TDS" in _src)))
+        else:
+            enable_it.setChecked(True)   # a new client starts as a PAN client
+        _sync_enable()
 
         # Buttons
         btn_row = QHBoxLayout()
@@ -2936,19 +5042,40 @@ class AayDocCapioApp(QMainWindow):
         btn_row.addWidget(btn_cancel)
         btn_row.addStretch()
         btn_row.addWidget(btn_save)
-        vl.addLayout(btn_row)
+        root.addLayout(btn_row)
 
         btn_cancel.clicked.connect(dlg.reject)
 
         def _save():
             try:
                 edit_id = a.get("id") if editing else None
+                it_on = enable_it.isChecked()
+                tds_on = enable_tds.isChecked()
+                gst_on = enable_gst.isChecked()
+                if not (it_on or tds_on or gst_on):
+                    raise ValueError("Tick at least one portal for this client.")
+                if gst_on and not (fields["gst_user"].text().strip()
+                                   and fields["gst_pwd"].text()):
+                    raise ValueError(
+                        "GST is enabled — enter the GST username and password.")
+                if tds_on and not (fields["tds_user"].text().strip()
+                                   and fields["tds_pwd"].text()):
+                    raise ValueError(
+                        "TDS is enabled — enter the TDS / TRACES username and password.")
                 self.vault.add_update_assessee(
                     fields["name"].text(), fields["pan"].text(),
-                    fields["dob"].text(), fields["pwd"].text(), edit_id,
+                    fields["dob"].text(),
+                    fields["pwd"].text() if it_on else "", edit_id,
                     email=fields["email"].text(),
                     cc=fields["cc"].text(),
-                    group=fields["group"].currentText())
+                    group=fields["group"].currentText(),
+                    gst_username=fields["gst_user"].text() if gst_on else "",
+                    gst_password=fields["gst_pwd"].text() if gst_on else "",
+                    tds_username=fields["tds_user"].text() if tds_on else "",
+                    tds_password=fields["tds_pwd"].text() if tds_on else "",
+                    enable_income_tax=it_on,
+                    enable_gst=gst_on,
+                    enable_tds=tds_on)
                 action = "updated" if editing else "added"
                 self.log(f"[Vault] Client {action}: {fields['pan'].text()} — {fields['name'].text()}")
                 dlg.accept()
@@ -3016,6 +5143,88 @@ class AayDocCapioApp(QMainWindow):
 
     # ── Email menu handlers ───────────────────────────────────────────────────
 
+    def _clear_eproc_credential_flags(self):
+        flagged = sorted(self.vault.get_credential_invalid())
+        if not flagged:
+            QMessageBox.information(self, "No Warnings",
+                                    "No client is currently blocked for a password update.")
+            return
+        answer = QMessageBox.question(
+            self, "Clear Password Warnings",
+            f"Clear the password warning for {len(flagged)} client(s)?\n\n"
+            "Only do this after updating their passwords.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        for pan in flagged:
+            self.vault.set_client_credential_invalid(pan, False)
+        self.log(f"[Auto-Fetch] Cleared password warning for {len(flagged)} client(s).")
+        self.refresh_grid()
+
+    def _open_eproc_autofetch_settings(self):
+        dlg = EAutoFetchSettingsDialog(self, self.vault, self.vault.get_all_assessees())
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            cfg = self.vault.get_eproc_autofetch_config()
+            if cfg["enabled"] and not self._eproc_auto_running:
+                from automation.eproc_scheduler import compute_next_run
+                nxt = compute_next_run(datetime.datetime.now(), cfg)
+                cfg["next_run_at"] = nxt.isoformat(timespec="seconds") if nxt else ""
+                cfg = self.vault.save_eproc_autofetch_config(cfg)
+            self._refresh_eproc_autofetch_summary()
+            self.log("[Auto-Fetch] Settings saved.")
+
+    def _on_eproc_autofetch_toggle(self, state):
+        cfg = self.vault.get_eproc_autofetch_config()
+        cfg["enabled"] = bool(state)
+        if cfg["enabled"] and not cfg.get("next_run_at"):
+            from automation.eproc_scheduler import compute_next_run
+            next_run = compute_next_run(datetime.datetime.now(), cfg)
+            cfg["next_run_at"] = next_run.isoformat(timespec="seconds") if next_run else ""
+        self.vault.save_eproc_autofetch_config(cfg)
+        self._refresh_eproc_autofetch_summary()
+        self.log(f"[Auto-Fetch] {'Enabled' if cfg['enabled'] else 'Disabled'}.")
+
+    def _refresh_eproc_autofetch_summary(self):
+        label = getattr(self, "lbl_eproc_autofetch_summary", None)
+        compact = getattr(self, "lbl_eproc_auto_status", None)
+        cfg = self.vault.get_eproc_autofetch_config()
+        if not cfg["enabled"]:
+            if label is not None:
+                label.setText("Auto-fetch is off.")
+            if compact is not None:
+                compact.setText("Auto-fetch off")
+            return
+        parts = []
+        backoff = cfg.get("backoff_until") or ""
+        if backoff:
+            try:
+                when = datetime.datetime.fromisoformat(backoff)
+                if when > datetime.datetime.now():
+                    parts.append(f"Backing off until {when.strftime('%d %b %H:%M')}")
+            except ValueError:
+                pass
+        next_run = cfg.get("next_run_at") or ""
+        if next_run:
+            try:
+                when = datetime.datetime.fromisoformat(next_run)
+                parts.append(f"Next run {when.strftime('%d %b %H:%M')}")
+            except ValueError:
+                pass
+        summary = cfg.get("last_run_summary") or {}
+        if summary:
+            parts.append(
+                f"Last: {summary.get('synced', 0)} synced, "
+                f"{summary.get('failed', 0)} failed, "
+                f"{summary.get('flagged', 0)} password issue(s)")
+        if not parts:
+            parts.append(f"Scheduled daily at {cfg['run_time']}")
+        text = " · ".join(parts)
+        if label is not None:
+            label.setText(text)
+        if compact is not None:
+            compact.setText(text)
+
     def _open_email_settings(self):
         from ui.dialogs import SmtpSettingsDialog
         SmtpSettingsDialog(self, self.vault).exec()
@@ -3027,6 +5236,53 @@ class AayDocCapioApp(QMainWindow):
         _checked = self.ay_combo.checked_labels() if hasattr(self, "ay_combo") else []
         ay_label = _checked[0] if _checked else ""
         MailDocsDialog(self, self.vault, ay_label).exec()
+
+    def _open_eproceedings_viewer(self, a=None):
+        """Tools > View e-Proceedings, and the grid row context menu's own
+        "View e-Proceedings" entry (which passes the clicked client in `a`).
+
+        `a` is the clicked client dict from the grid context menu — OR the
+        QAction `checked` boolean when triggered from the Tools menu
+        (Qt passes it as the first positional arg), so anything that isn't
+        a dict is treated as "no explicit client" and the grid selection is
+        used instead.
+
+        Client comes from the grid selection (self.selected_ids, same source
+        of truth every other single-client flow uses) unless a row was
+        explicitly clicked. Year folder is resolved exactly like
+        _execute_batch's _out_for_year: <root>/<PAN>-<name_safe>/<AY|TY_value>,
+        using the first checked year of the combo (e-Proceedings downloads are
+        not year-scoped — batch_handlers.handle_e_proceedings anchors them to
+        the FIRST selected year's folder too). A missing folder still opens
+        the dialog; it shows its own empty state."""
+        if not isinstance(a, dict):
+            a = None
+        if a is None:
+            if not self.selected_ids:
+                QMessageBox.warning(self, "Selection Required",
+                    "Please select at least one client.")
+                return
+            matches = [x for x in self.assessee_list if x.get("id") in self.selected_ids]
+            if not matches:
+                QMessageBox.warning(self, "Selection Required",
+                    "Please select at least one client.")
+                return
+            a = matches[0]
+        pan = a.get("pan", "")
+        name = a.get("name", "")
+        _checked = self.ay_combo.checked_labels() if hasattr(self, "ay_combo") else []
+        ay_label = _checked[0] if _checked else ""
+        _ay, _fy, year_type, _form = self._resolve_ay_fy(ay_label) if ay_label else (None, None, "AY", None)
+        value = _ay if year_type == "AY" else (_fy if year_type == "TY" else None)
+        if not value:
+            QMessageBox.warning(self, "Selection Required",
+                "Please select at least one Assessment / Tax Year.")
+            return
+        name_safe = "".join(c if c.isalnum() or c in " _-" else "" for c in name)
+        root_dir = self.dir_lbl.text()
+        year_dir = os.path.join(root_dir, f"{pan}-{name_safe}", f"{year_type}_{value.replace('-','_')}")
+        eproc_root = os.path.join(year_dir, "e-Proceedings")
+        EProceedingsDialog(self, name or pan, pan, eproc_root).exec()
 
     def _show_log_history(self, a: dict):
         history  = self.log_store.get(a.get("pan", ""))
@@ -3191,6 +5447,7 @@ class AayDocCapioApp(QMainWindow):
         for _label in ay_labels:
             self.ay_combo.add_item(_label, checked=(_label in current))
         self.ay_combo.blockSignals(False)
+        self._populate_dl_ay_combo()
         self.log("[Settings] Assessment Year list refreshed.")
 
     def _log_ay_selection(self):
@@ -3214,26 +5471,28 @@ class AayDocCapioApp(QMainWindow):
     def _log_level_color(self, message: str) -> str:
         """Classify a log line the same way iBench does — by scanning for
         a status marker already present in the message text — and return
-        the matching iBench severity colour."""
+        the matching theme-invariant log severity colour."""
+        t = _t()
         m = message.lower()
         if "✅" in message or "done" in m:
-            return "#34D399"   # ok / success
+            return t.log_success
         if "❌" in message or "error" in m or "failed" in m or "timeout" in m:
-            return "#F87171"   # err
+            return t.log_error
         if "⚠" in message or "🕐" in message or "warn" in m:
-            return "#FBBF24"   # warn
+            return t.log_warning
         if "[debug]" in m:
-            return "#64748B"   # debug
-        return "#7DD3FC"       # info (default)
+            return t.log_debug
+        return t.log_info
 
     def _append_log(self, text):
         m = self._LOG_TS_RE.match(text)
         ts, message = (m.group(1), m.group(2)) if m else ("", text)
         color = self._log_level_color(message)
+        ts_color = _t().log_timestamp
         row = (
             '<div style="white-space:pre;line-height:20px;">'
-            f'<span style="color:#475569;">{html.escape(ts)}</span>'
-            '<span style="color:#475569;">&nbsp;&nbsp;</span>'
+            f'<span style="color:{ts_color};">{html.escape(ts)}</span>'
+            f'<span style="color:{ts_color};">&nbsp;&nbsp;</span>'
             f'<span style="color:{color};">{html.escape(message)}</span>'
             '</div>'
         )
@@ -3395,6 +5654,8 @@ class AayDocCapioApp(QMainWindow):
 
     def _lock_ui(self, lock: bool):
         widgets = [self.ay_combo, self.btn_run, self.chk_headless]
+        if hasattr(self, "_dl_ay_combo"):
+            widgets.append(self._dl_ay_combo)
         for _act in (getattr(self, "_act_edit_cl", None), getattr(self, "_act_del_cl", None)):
             if _act:
                 _act.setEnabled(not lock)
@@ -3422,8 +5683,8 @@ class AayDocCapioApp(QMainWindow):
     def start_automation(self, selected_docs):
         """
         selected_docs: set/collection of doc-type strings to run, any of
-        "26as", "request_ais", "ais_tis", "filed_returns" — one batch run
-        can now cover several at once (F-56 Phase 2).
+        "26as", "request_ais", "ais_tis", "filed_returns", "filed_forms" —
+        one batch run can now cover several at once (F-56 Phase 2).
 
         F-14 (multi-year): the AY/TY combo is now a multi-select — every
         checked year runs for every selected client. `year_specs` (built
@@ -3433,6 +5694,10 @@ class AayDocCapioApp(QMainWindow):
         """
         selected_docs = set(selected_docs) if not isinstance(selected_docs, set) else selected_docs
         if self.is_running:
+            return
+        if getattr(self, "_eproc_auto_running", False):
+            QMessageBox.warning(self, "Auto-Fetch Running",
+                "Scheduled e-Proceedings auto-fetch is running. Stop it before starting another batch.")
             return
         if not selected_docs:
             return
@@ -3480,6 +5745,7 @@ class AayDocCapioApp(QMainWindow):
         year_tag = years_desc if len(ay_labels) <= 3 else f"{len(ay_labels)} years"
 
         # Show progress dialog (on main thread via signal)
+        self._progress_id_label = "PAN"
         self._show_progress_signal.emit(targets, selected_docs, year_specs, output_dir, year_tag)
 
         # Enable "Send to Tray" in tray menu while batch is running
@@ -3503,12 +5769,29 @@ class AayDocCapioApp(QMainWindow):
             stop_callback=self.stop_automation,
             resume_callback=self.resume_batch, skip_callback=self.skip_client,
             tray_callback=self._tray_to_system_manual,
-            output_dir=output_dir, parent=self)
+            output_dir=output_dir, parent=self,
+            id_label=getattr(self, "_progress_id_label", "PAN"))
         # Window-modal: blocks the parent window but allows live signal updates.
         self._progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
         self._progress_dialog.show()
         self._progress_dialog.raise_()
         self._progress_dialog.activateWindow()
+
+    # ── F-12: View saved challans (Paid / Unpaid) ────────────────────────────
+
+    def _open_view_challans_dialog(self, challan_type: str = ""):
+        """Read-only browser for challans already saved on disk. No portal
+        login — the files are the source of truth, since generation does not
+        write a download-history record into the vault.
+
+        ``challan_type`` scopes the view to a single flavour: ``"TDS/TCS"``
+        shows only TAN-downloaded challans, ``"Income Tax"`` only PAN ones.
+        Empty shows everything (used by the generic menu entry)."""
+        from ui.challan_viewer import ViewChallansDialog
+        root = self.dir_lbl.text() or self.vault.get_setting("download_root_dir", "")
+        dlg = ViewChallansDialog(self, root, self.vault.get_all_assessees(),
+                                 challan_type=challan_type)
+        dlg.exec()
 
     # ── F-64: Generate Tax Challans ──────────────────────────────────────────
 
@@ -3550,8 +5833,17 @@ class AayDocCapioApp(QMainWindow):
         # Match each row's PAN against the vault once, up front, so a client
         # removed/renamed between dialog-open and Generate-click can't crash
         # the batch mid-run — same defensiveness as start_automation's
-        # targets list build.
-        by_pan = {a.get("pan", "").upper(): a for a in self.assessee_list}
+        # targets list build. Income Tax challans are PAN-login only (#30):
+        # a TDS-only (TAN) or GST-only client has no PAN password, so it is
+        # never a valid target even if an old draft carries its PAN.
+        by_pan = {}
+        for a in self.assessee_list:
+            try:
+                if "Income Tax" not in self.vault.credential_sources(a):
+                    continue
+            except Exception:
+                pass
+            by_pan[a.get("pan", "").upper()] = a
         targets = []
         for row in rows:
             client = by_pan.get(row["pan"].upper())
@@ -3777,17 +6069,275 @@ class AayDocCapioApp(QMainWindow):
             self._tray_send_act.setVisible(False)
         self.refresh_grid()
 
+
+    # ── F-4: Generate TDS/TCS Challans ───────────────────────────────────────
+
+    def _open_generate_tds_challans_dialog(self):
+        if self._tds_challan_running:
+            return
+        from ui.dialogs import GenerateTdsChallansDialog
+        dlg = GenerateTdsChallansDialog(self, self.vault, self._ay_entries,
+                                        output_dir=self.dir_lbl.text())
+        if dlg.exec() == dlg.DialogCode.Accepted:
+            self.start_tds_challan_generation(dlg.year_label, dlg.rows)
+
+    def start_tds_challan_generation(self, year_label: str, rows: list):
+        from vault import identify_type
+        by_tan = {a.get("pan", "").upper(): a for a in self.assessee_list
+                  if identify_type(a.get("pan", "")) == "TAN"}
+        targets = []
+        for row in rows:
+            client = by_tan.get(row.get("tan", "").upper())
+            if not client:
+                self.log(f"[Warning] Skipping {row.get('tan')} — no matching TAN client in the vault.")
+                continue
+            targets.append({**client, "_tds_row": row})
+        if not targets:
+            QMessageBox.warning(self, "Nothing to Generate",
+                                "None of the TDS rows matched a TAN client in the vault.")
+            return
+
+        self._tds_challan_running = True
+        self._tds_challan_aborted = False
+        self._clear_log()
+        if hasattr(self, "_tray_send_act"):
+            self._tray_send_act.setVisible(True)
+
+        output_dir = self.dir_lbl.text()
+        self.log(f"[System] Starting TDS/TCS challan generation — {len(targets)} row(s) | "
+                 f"TY {year_label} | Output: {output_dir}")
+        self._show_tds_challan_progress_signal.emit(
+            targets, f"TY {year_label}", "TDS/TCS (Act 2025)", output_dir)
+        threading.Thread(
+            target=self._run_tds_challan_wrapper,
+            args=(targets, year_label, output_dir), daemon=True).start()
+
+    def _show_tds_challan_progress_dialog(self, targets, year_display, type_label, output_dir):
+        from ui.dialogs import ChallanGenerationProgressDialog
+        self._tds_challan_progress_dialog = ChallanGenerationProgressDialog(
+            targets, year_display, type_label,
+            stop_callback=self.stop_tds_challan_generation,
+            tray_callback=self._tray_to_system_manual,
+            output_dir=output_dir, parent=self, id_label="TAN")
+        self._tds_challan_progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        self._tds_challan_progress_dialog.show()
+        self._tds_challan_progress_dialog.raise_()
+        self._tds_challan_progress_dialog.activateWindow()
+
+    def stop_tds_challan_generation(self):
+        if not self._tds_challan_running:
+            return
+        self.log("[System] Abort requested (TDS/TCS challan generation)...")
+        self._tds_challan_running = False
+        self._tds_challan_aborted = True
+        if self._tds_challan_task and self._tds_challan_loop:
+            self._tds_challan_loop.call_soon_threadsafe(self._tds_challan_task.cancel)
+
+    def _run_tds_challan_wrapper(self, targets, year_label, output_dir):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        self._tds_challan_loop = loop
+        try:
+            self._tds_challan_task = loop.create_task(
+                self._execute_tds_challan_generation(targets, year_label, output_dir))
+            loop.run_until_complete(self._tds_challan_task)
+        except asyncio.CancelledError:
+            self.log("[System] TDS/TCS challan generation cancelled.")
+        except Exception as e:
+            self.log(f"[System Error] TDS/TCS challan generation crashed: {e}")
+        finally:
+            self._tds_challan_task = None
+            self._tds_challan_loop = None
+            loop.close()
+            self._tds_challan_running = False
+            if self._tds_challan_progress_dialog:
+                self._tds_challan_progress_dialog.batch_finished()
+            self._tds_challan_done_signal.emit()
+
+    async def _execute_tds_challan_generation(self, targets, year_label, output_dir):
+        from automation.challan_generator_tds import generate_tds_challan
+
+        def set_status(row_index, text):
+            if self._tds_challan_progress_dialog:
+                self._tds_challan_progress_dialog.set_status(row_index, text)
+
+        try:
+            interactive = not self.chk_headless.isChecked()
+            context = await browser_manager.get_context(log_callback=self.log, interactive=interactive)
+        except Exception as e:
+            self.log(f"[System Error] Browser init failed: {e}")
+            return
+
+        results = []
+        processed = set()
+        try:
+            for i, target in enumerate(targets):
+                if not self._tds_challan_running:
+                    self.log("[System] Aborted.")
+                    break
+                tan = target.get("pan", "")
+                name = target.get("name", "")
+                row = dict(target.get("_tds_row", {}))
+                row["tan"] = tan
+                row["name"] = name
+                self.log("──────────────────────────────────────────────────")
+                self.log(f"[{i+1}/{len(targets)}] {name} ({tan})")
+
+                name_safe = "".join(c if c.isalnum() or c in " _-" else "" for c in name)
+                client_year_dir = os.path.join(
+                    output_dir, f"{tan}-{name_safe}", f"TY_{year_label.replace('-', '_')}")
+                set_status(i, "⏳ Logging in to ITD...")
+                page = None
+                try:
+                    page = await login_itd(tan, target.get("password"), self.log, context,
+                                           is_running=lambda: self._tds_challan_running)
+                    set_status(i, "⏳ Navigating to e-Pay Tax...")
+                    result = await generate_tds_challan(
+                        page, year_label, row, client_year_dir, self.log)
+                    results.append(result)
+                    processed.add(i)
+                    if result["status"] == "generated":
+                        set_status(i, f"✅ Generated — CRN {result['crn']}")
+                        if self._tds_challan_progress_dialog and result.get("artifact_path"):
+                            self._tds_challan_progress_dialog.set_artifact_path(
+                                i, result["artifact_path"])
+                    else:
+                        set_status(i, f"❌ Failed — {result['reason']}")
+                except Exception as e:
+                    self.log(f"[Error] {name}: {e}")
+                    set_status(i, f"❌ Failed — {e}")
+                    results.append({
+                        "tan": tan, "name": name, "portal_year_label": year_label,
+                        "sections": row.get("sections", []), "total_amount": 0,
+                        "payment_mode": row.get("payment_mode", ""), "bank": row.get("bank", ""),
+                        "drawee_bank": row.get("drawee_bank", ""), "crn": "", "valid_till": "",
+                        "status": "failed", "reason": str(e), "artifact_path": "",
+                    })
+                    processed.add(i)
+                finally:
+                    if page:
+                        try:
+                            await logout_itd(page, self.log)
+                        except Exception:
+                            pass
+        except asyncio.CancelledError:
+            self.log("[System] TDS/TCS challan generation stopped by user.")
+        finally:
+            for idx in range(len(targets)):
+                if idx not in processed:
+                    set_status(idx, "⏹ Stopped")
+            try:
+                report_path = self._write_tds_challan_summary(results, output_dir, year_label)
+                if report_path and self._tds_challan_progress_dialog:
+                    self._tds_challan_progress_dialog.set_report_path(report_path)
+            except Exception as e:
+                self.log(f"[Warning] Could not write TDS challan summary: {e}")
+
+    def _write_tds_challan_summary(self, results, output_dir, year_label):
+        from automation.challan_fields import TDS_SUMMARY_COLUMNS
+        from openpyxl import Workbook
+        import datetime as _dt
+
+        os.makedirs(output_dir, exist_ok=True)
+        ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = os.path.join(output_dir, f"TDS_Challans_Summary_{ts}.xlsx")
+        wb = Workbook()
+        ws = wb.active
+        ws.append(TDS_SUMMARY_COLUMNS)
+        for r in results:
+            secs = r.get("sections", []) or []
+            codes = ", ".join(str(s.get("section_code", "")) for s in secs)
+            ws.append([
+                r.get("tan", ""), r.get("name", ""), r.get("portal_year_label", ""),
+                "Other than Company", "Resident", codes, r.get("total_amount", 0),
+                r.get("payment_mode", ""), r.get("bank", ""), r.get("drawee_bank", ""),
+                r.get("crn", ""), r.get("valid_till", ""), r.get("status", ""),
+                r.get("reason", ""), r.get("artifact_path", ""),
+            ])
+        wb.save(path)
+        self.log(f"[System] TDS challan summary written: {path}")
+        return path
+
+    def _on_tds_challan_batch_done(self):
+        self.log("[System] TDS/TCS challan generation idle.")
+        if hasattr(self, "_tray_send_act") and not self.is_running:
+            self._tray_send_act.setVisible(False)
+        self.refresh_grid()
+
+    # ── F-8: Download TDS/TCS Challans ───────────────────────────────────────
+
+    def _open_download_tds_challans_dialog(self):
+        if self.is_running:
+            return
+        from ui.dialogs import DownloadTdsChallansDialog
+        dlg = DownloadTdsChallansDialog(self, self.vault, self._ay_entries)
+        if dlg.exec() == dlg.DialogCode.Accepted:
+            self.start_tds_challan_download(dlg.selected_clients, dlg.year_labels)
+
+    def start_tds_challan_download(self, targets: list, year_labels: list):
+        """Same batch pipeline as the Income Tax downloads, restricted to the
+        TAN clients/years picked on the TDS hub. handle_challans() is
+        identity-agnostic, so no portal code changes are involved."""
+        if self.is_running:
+            return
+        if not targets:
+            return
+        year_specs = []
+        for ay_label in year_labels:
+            ay, fy, year_type, form_type = self._resolve_ay_fy(ay_label)
+            if not ay:
+                self.log(f"[Warning] Skipping unresolvable year: {ay_label}")
+                continue
+            year_specs.append({
+                "ay_label": ay_label, "value": ay, "fy": fy,
+                "year_type": year_type, "form_type": form_type,
+            })
+        if not year_specs:
+            QMessageBox.warning(self, "Invalid", "None of the selected years could be resolved.")
+            return
+
+        selected_docs = {"tds_challans"}
+        self.is_running = True
+        self._batch_aborted = False
+        self._batch_filing_scope = "all"
+        self._lock_ui(True)
+        self._clear_log()
+
+        output_dir = self.dir_lbl.text()
+        self._last_batch_params = (year_specs, output_dir, selected_docs)
+        self.btn_run.setText("⏳ Downloading...")
+
+        years_desc = ", ".join(year_labels)
+        self.log(f"[System] Starting TDS/TCS challan download — {len(targets)} client(s) | "
+                 f"Year(s): {years_desc} | Output: {output_dir}")
+        year_tag = years_desc if len(year_labels) <= 3 else f"{len(year_labels)} years"
+
+        self._progress_id_label = "TAN"
+        self._show_progress_signal.emit(targets, selected_docs, year_specs, output_dir, year_tag)
+        if hasattr(self, "_tray_send_act"):
+            self._tray_send_act.setVisible(True)
+        if getattr(self, "chk_auto_minimise", None) and self.chk_auto_minimise.isChecked():
+            QTimer.singleShot(800, lambda: self._tray_to_system(len(targets)))
+
+        threading.Thread(
+            target=self._run_wrapper,
+            args=(targets, year_specs, output_dir, selected_docs),
+            daemon=True).start()
+
     # ── F-67: ITR Processing Status ──────────────────────────────────────────
 
-    def _open_return_status_dialog(self):
-        """Menu entry point — opens the browse/filter/select window. The
-        dialog itself calls back into start_return_status_check() below
-        when the user actually wants to re-check something; it never runs
-        Playwright itself."""
-        ReturnStatusDialog(self, self.vault, self._ay_entries).exec()
+    def _open_return_status_tab(self):
+        """Menu entry point — jumps to the inline Income Tax ▸ Return Status
+        tab (F-121). The old modal dialog is retired; everything now lives in
+        the hub tab, which can still re-check clients live via Fetch Selected."""
+        try:
+            self._nav_shell.go("it")
+        except Exception:
+            pass
+        self._switch_it_tab(3)
 
     def start_return_status_check(self, ay_value: str, targets: list, on_done=None):
-        """Called by ReturnStatusDialog with the clients/AY the user picked
+        """Called by the Return Status tab with the clients/AY the user picked
         and checked. `on_done` is a plain callback (not a Qt signal) —
         _on_return_status_batch_done invokes it once the batch actually
         finishes, safely on the main thread, since that method is itself
@@ -3884,7 +6434,16 @@ class AayDocCapioApp(QMainWindow):
                             pan, ay_value, result["status"],
                             status_date=result.get("status_date", ""),
                             filing_date=result.get("filing_date", ""),
-                            ack_no=result.get("ack_no", ""))
+                            ack_no=result.get("ack_no", ""),
+                            filed=result.get("filed"),
+                            section=result.get("section", ""),
+                            revised=result.get("revised"),
+                            revised_section=result.get("revised_section", ""),
+                            rectified=result.get("rectified"),
+                            e_verified=result.get("e_verified"),
+                            processed=result.get("processed"),
+                            refund_status=result.get("refund_status", ""),
+                            everify_pending=result.get("everify_pending"))
                         status_display = result["status"]
                         if result.get("status_date"):
                             status_display += f" ({result['status_date']})"
@@ -3907,6 +6466,95 @@ class AayDocCapioApp(QMainWindow):
             for idx in range(len(targets)):
                 if idx not in processed_indices:
                     set_status(idx, "⏹ Stopped")
+
+    def start_audit_probe(self, ay_value: str, pans: list):
+        """ReturnStatusTab "Check Audit Reports" → query the portal's Income
+        Tax Forms listing for each audit-applicable client and report whether
+        a 3CB-3CD / 3CA-3CD audit report is present. Runs in a background
+        thread (never blocks the UI); results land via _audit_probe_done_signal.
+
+        No PAN/name is logged here beyond the masked form the rest of the app
+        already uses."""
+        if not pans:
+            return
+        if self._audit_probe_running:
+            self.log("[Audit Probe] A check is already running — ignoring.")
+            return
+        if self._retstatus_running:
+            self.log("[Audit Probe] Return-status check is running — try again after it finishes.")
+            return
+        self._audit_probe_running = True
+        targets = []
+        by_pan = {c.get("pan", "").upper(): c for c in self.vault.get_all_assessees()}
+        for pan in pans:
+            c = by_pan.get(pan)
+            if c:
+                targets.append(c)
+        self.log(f"[System] Checking audit reports for {len(targets)} client(s) | AY {ay_value}")
+        threading.Thread(
+            target=self._run_audit_probe_wrapper,
+            args=(targets,), daemon=True).start()
+
+    def _on_audit_probe_done(self, results: dict):
+        self._audit_probe_running = False
+        tab = getattr(self, "_retstatus_tab", None)
+        if tab is not None:
+            try:
+                tab.set_audit_report_results(results)
+            except Exception as e:
+                self.log(f"[Audit Probe] Could not apply results: {e}")
+
+    def _run_audit_probe_wrapper(self, targets):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(self._execute_audit_probe(targets))
+        except Exception as e:
+            self.log(f"[System Error] Audit report check crashed: {e}")
+        finally:
+            loop.close()
+            self._audit_probe_running = False
+
+    async def _execute_audit_probe(self, targets):
+        from automation.return_status import probe_audit_report
+        from automation.downloader_filed_forms import navigate_to_filed_forms
+        from automation.downloader import make_step_logger
+
+        step = make_step_logger(self.log, "AUDITPROBE")
+        results: dict = {}
+        try:
+            interactive = not self.chk_headless.isChecked()
+            context = await browser_manager.get_context(
+                log_callback=self.log, interactive=interactive)
+        except Exception as e:
+            self.log(f"[System Error] Browser init failed: {e}")
+            self._audit_probe_done_signal.emit(results)
+            return
+
+        try:
+            for target in targets:
+                pan = target.get("pan", "")
+                name = target.get("name", "")
+                masked = pan[:3] + "XXXXXXX" if pan and len(pan) >= 3 else "UNKNOWN"
+                page = None
+                try:
+                    page = await login_itd(pan, target.get("password"), self.log, context,
+                                           is_running=lambda: self._audit_probe_running)
+                    await navigate_to_filed_forms(page, self.log)
+                    results[pan.upper()] = await probe_audit_report(page, step)
+                    self.log(f"[Audit Probe] {masked} ({name}): "
+                             f"{'filed' if results[pan.upper()] else 'not filed'}")
+                except Exception as e:
+                    results[pan.upper()] = None
+                    self.log(f"[Audit Probe] {masked} ({name}): could not check — {e}")
+                finally:
+                    if page:
+                        try:
+                            await logout_itd(page, self.log)
+                        except Exception:
+                            pass
+        finally:
+            self._audit_probe_done_signal.emit(results)
 
     def _on_return_status_batch_done(self):
         self.log("[System] ITR Processing Status check idle.")
@@ -3961,6 +6609,682 @@ class AayDocCapioApp(QMainWindow):
             target=self._run_wrapper,
             args=(remaining_targets, year_specs, root_dir, selected_docs),
             daemon=True).start()
+
+    # ── Scheduled e-Proceedings auto-fetch (F-13) ─────────────────────────────
+
+    def _eproc_auto_init_timer(self):
+        from automation.eproc_scheduler import compute_next_run
+        self._eproc_auto_timer = QTimer(self)
+        self._eproc_auto_timer.setInterval(60_000)
+        self._eproc_auto_timer.timeout.connect(self._eproc_auto_tick)
+        self._eproc_auto_timer.start()
+        cfg = self.vault.get_eproc_autofetch_config()
+        if cfg["enabled"] and not cfg.get("next_run_at"):
+            nxt = compute_next_run(datetime.datetime.now(), cfg)
+            cfg["next_run_at"] = nxt.isoformat(timespec="seconds") if nxt else ""
+            self.vault.save_eproc_autofetch_config(cfg)
+            self._refresh_eproc_autofetch_summary()
+
+    def _eproc_auto_tick(self):
+        if getattr(self, "_eproc_auto_running", False):
+            return
+        if self.is_running or self._challan_running or self._tds_challan_running or self._retstatus_running:
+            return
+        from automation.eproc_scheduler import is_due
+        cfg = self.vault.get_eproc_autofetch_config()
+        if not cfg["enabled"]:
+            return
+        if not is_due(datetime.datetime.now(), cfg):
+            return
+        self._eproc_auto_start(cfg)
+
+    def _eproc_auto_year_spec(self):
+        labels = []
+        try:
+            labels = self.ay_combo.checked_labels()
+        except Exception:
+            labels = []
+        if not labels:
+            labels = [e["label"] for e in self._ay_entries if e.get("enabled", True)]
+        for label in labels:
+            ay, fy, year_type, form_type = self._resolve_ay_fy(label)
+            if ay:
+                return {"ay_label": label, "value": ay, "fy": fy,
+                        "year_type": year_type, "form_type": form_type}
+        return None
+
+    def _eproc_auto_token(self, pan: str) -> str:
+        return pan[:3] + "XXXXXXX" if pan and len(pan) >= 3 else "UNKNOWN"
+
+    def _eproc_auto_client_dir(self, target: dict, output_dir: str, spec: dict) -> str:
+        ident = (str(target.get("pan") or "").strip().upper()
+                 or str(target.get("gst_username") or "").strip().upper())
+        name_safe = "".join(c if c.isalnum() or c in " _-" else "" for c in target.get("name", ""))
+        return os.path.join(
+            output_dir, f"{ident}-{name_safe}",
+            f"{spec['year_type']}_{spec['value'].replace('-', '_')}")
+
+    def _eproc_auto_start(self, cfg=None, clients_override=None):
+        from automation.eproc_scheduler import build_queue
+        if getattr(self, "_eproc_auto_running", False):
+            return
+        if self.is_running or self._challan_running or self._tds_challan_running or self._retstatus_running:
+            return
+        cfg = dict(cfg or self.vault.get_eproc_autofetch_config())
+        if not cfg.get("fetch_income_tax", True) and not cfg.get("fetch_gst", True):
+            self.log("[Auto-Fetch] Both Income Tax and GST fetching are disabled — nothing to do.")
+            self._eproc_auto_schedule_next(cfg)
+            return
+        all_clients = self.vault.get_all_assessees()
+        if clients_override is None:
+            clients, cfg = build_queue(all_clients, cfg)
+        else:
+            blocked = self.vault.get_credential_invalid()
+            clients = [c for c in clients_override
+                       if str(c.get("pan", "")).upper() not in blocked]
+            cfg["queue_remaining"] = []
+        if not clients:
+            self.log("[Auto-Fetch] No clients in scope or queue is empty.")
+            self._eproc_auto_schedule_next(cfg)
+            return
+        spec = self._eproc_auto_year_spec()
+        if spec is None:
+            self.log("[Auto-Fetch] No enabled Assessment/Tax Year is available.")
+            self._eproc_auto_schedule_next(cfg)
+            return
+
+        from automation.eproc_scheduler import client_key
+        output_dir = self.dir_lbl.text() or self.vault.get_setting("download_root_dir", "")
+        pending = [client_key(c) for c in clients if client_key(c)]
+        tail = list(cfg.get("queue_remaining") or [])
+        cfg["queue_remaining"] = pending + tail
+        self.vault.save_eproc_autofetch_config(cfg)
+
+        self._eproc_auto_cfg = cfg
+        self._eproc_auto_run_clients = list(clients)
+        self._eproc_auto_pending = pending
+        self._eproc_auto_tail = tail
+        self._eproc_auto_paths = {}
+        self._eproc_auto_counts = {"synced": 0, "failed": 0, "skipped": 0,
+                                   "flagged": 0, "timeouts": 0}
+        self._eproc_auto_running = True
+        self._eproc_auto_aborted = False
+        self._eproc_auto_paused = False
+        self._eproc_auto_skip_current = False
+        self._eproc_auto_skip_future = False
+        self._eproc_auto_restart = False
+        self._eproc_auto_stop_keeps = None
+        self._eproc_auto_started_at = datetime.datetime.now()
+
+        all_modules = set()
+        for client in clients:
+            if cfg.get("fetch_income_tax", True) and str(client.get("pan", "")).strip():
+                all_modules.add("e_proceedings")
+            if cfg.get("fetch_gst", True) and client.get("gst_username") and client.get("gst_password"):
+                all_modules.add("gst_proceedings")
+        all_modules = all_modules or {"e_proceedings"}
+        self._eproc_auto_dialog = BatchProgressDialog(
+            clients, all_modules, year_specs=[spec],
+            ay="Notices Auto-Fetch",
+            stop_callback=self._eproc_auto_stop,
+            skip_callback=self._eproc_auto_skip_client,
+            tray_callback=self._tray_to_system_manual,
+            output_dir=output_dir, parent=self,
+            pause_callback=self._eproc_auto_pause,
+            resume_pause_callback=self._eproc_auto_resume_pause,
+            restart_callback=self._eproc_auto_restart_run,
+            skip_future_callback=self._eproc_auto_skip_future_clients)
+        self._eproc_auto_dialog.show()
+        self._eproc_auto_dialog.raise_()
+
+        for client in clients:
+            ident = client_key(client)
+            key = (ident, spec["ay_label"])
+            client_dir = self._eproc_auto_client_dir(client, output_dir, spec)
+            client_base = os.path.dirname(client_dir)
+            self._eproc_auto_paths[key] = client_base
+            self._eproc_auto_dialog.set_client_path(ident, spec["ay_label"], client_base)
+
+        self.log(f"[Auto-Fetch] Starting — {len(clients)} client(s), "
+                 f"run time {cfg['run_time']}, mode {cfg['distribution']}.")
+        threading.Thread(target=self._eproc_auto_worker,
+                         args=(clients, [spec], output_dir),
+                         daemon=True).start()
+
+    def _eproc_auto_worker(self, clients, year_specs, output_dir):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        self._eproc_auto_loop = loop
+
+        def _exc_handler(loop, ctx):
+            exc = ctx.get("exception")
+            if exc is not None and type(exc).__name__ in (
+                    "TargetClosedError", "ConnectionClosedError", "CancelledError"):
+                return
+            loop.default_exception_handler(ctx)
+
+        loop.set_exception_handler(_exc_handler)
+        try:
+            self._eproc_auto_task = loop.create_task(
+                self._eproc_auto_run(clients, year_specs, output_dir))
+            loop.run_until_complete(self._eproc_auto_task)
+        except asyncio.CancelledError:
+            self.log("[Auto-Fetch] Run cancelled.")
+        except Exception as exc:
+            self.log(f"[Auto-Fetch] Run crashed: {exc}")
+        finally:
+            self._eproc_auto_task = None
+            self._eproc_auto_loop = None
+            loop.close()
+            self._eproc_auto_done_signal.emit()
+
+    async def _eproc_auto_run(self, clients, year_specs, output_dir):
+        from automation.eproc_scheduler import client_key, cooldown_for
+        context = None
+        try:
+            interactive = not self.chk_headless.isChecked()
+            context = await browser_manager.get_context(
+                log_callback=self.log, interactive=interactive)
+            for index, target in enumerate(clients):
+                if not self._eproc_auto_running or self._eproc_auto_skip_future:
+                    break
+                if self._eproc_auto_budget_used():
+                    self.log("[Auto-Fetch] Run time budget reached — stopping.")
+                    self._eproc_auto_aborted = True
+                    break
+                pan = str(target.get("pan", "")).upper()
+                ident = client_key(target) or pan
+                if pan and pan in self.vault.get_credential_invalid():
+                    self._eproc_auto_counts["flagged"] += 1
+                    self._eproc_auto_set_status(
+                        ident, year_specs[0]["ay_label"],
+                        "⚠ Password needs update — skipped")
+                    self._eproc_auto_mark_processed(ident)
+                    if self._eproc_auto_dialog is not None:
+                        self._eproc_auto_dialog.client_finished(ident, year_specs[0]["ay_label"])
+                    continue
+                self._eproc_auto_skip_current = False
+                try:
+                    processed = await self._eproc_auto_sync_client(
+                        context, target, year_specs, output_dir, self._eproc_auto_cfg)
+                except Exception as exc:
+                    processed = False
+                    self.log(f"[Auto-Fetch] {ident} sync error: {exc}")
+                # Always finish the row so the progress dialog never stalls
+                # on a client whose sync returned False (timeout/backoff/etc).
+                if processed:
+                    self._eproc_auto_mark_processed(ident)
+                if self._eproc_auto_dialog is not None:
+                    self._eproc_auto_dialog.client_finished(ident, year_specs[0]["ay_label"])
+                if index < len(clients) - 1 and self._eproc_auto_running and not self._eproc_auto_skip_future:
+                    seconds = cooldown_for(
+                        self._eproc_auto_cfg["client_cooldown_sec"],
+                        self._eproc_auto_cfg["jitter_sec"])
+                    await self._eproc_auto_wait(seconds, "Next client in")
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self.log(f"[Auto-Fetch] Error: {exc}")
+        finally:
+            if context is not None:
+                try:
+                    await browser_manager.close()
+                except Exception:
+                    pass
+
+    async def _eproc_auto_sync_client(self, context, target, year_specs, output_dir, cfg):
+        """Fetch every enabled module for one client in a single pass.
+
+        Income Tax e-Proceedings and GST notices are both driven here, each in
+        its own runner, so one scheduler run covers a client's IT, GST, or both
+        credentials. The per-client identity is the PAN when present, else the
+        GST username, so GST-only clients are not dropped.
+        """
+        from automation.eproc_scheduler import client_key, client_modules
+
+        pan = str(target.get("pan", "")).upper()
+        ident = client_key(target) or pan
+        modules = client_modules(target)
+        want_it = cfg.get("fetch_income_tax", True) and "it" in modules
+        want_gst = cfg.get("fetch_gst", True) and "gst" in modules
+
+        if not (want_it or want_gst):
+            return True
+
+        processed = True
+        if want_it:
+            processed = await self._eproc_auto_run_income_tax(
+                context, target, year_specs, output_dir, cfg, pan, ident) and processed
+        if want_gst and (self._eproc_auto_running
+                         and not self._eproc_auto_skip_future):
+            processed = await self._eproc_auto_run_gst(
+                context, target, year_specs, output_dir, cfg, ident) and processed
+        return processed
+
+    def _auto_out_for_year(self, output_dir, key, name, year_specs):
+        def _out_for_year(year_type, value, _root=output_dir, _pan=key,
+                          _name_safe="".join(c if c.isalnum() or c in " _-" else ""
+                                             for c in (name or ""))):
+            return os.path.join(_root, f"{_pan}-{_name_safe}",
+                                f"{year_type}_{value.replace('-', '_')}")
+        return _out_for_year
+
+    async def _eproc_auto_run_income_tax(self, context, target, year_specs, output_dir,
+                                         cfg, pan, ident):
+        from automation.batch_handlers import handle_e_proceedings
+        from automation.eproc_scheduler import cooldown_for, is_timeout, should_backoff
+
+        if not pan:
+            return True
+        name = target.get("name", "")
+        spec = year_specs[0]
+        ay_label = spec["ay_label"]
+        token = self._eproc_auto_token(pan)
+        attempts = int(cfg["timeout_retries"]) + 1
+        _out_for_year = self._auto_out_for_year(output_dir, pan, name, year_specs)
+
+        for attempt in range(attempts):
+            if not self._eproc_auto_running or self._eproc_auto_skip_future:
+                return False
+            page = None
+            last_status = {}
+            try:
+                self._eproc_auto_set_status(ident, ay_label, "⏳ Logging in to ITD...")
+                page = await login_itd(
+                    pan, target.get("password"), self.log, context,
+                    is_running=lambda: (self._eproc_auto_running
+                                        and not self._eproc_auto_skip_current
+                                        and not self._eproc_auto_skip_future))
+                if self._eproc_auto_skip_current:
+                    self._eproc_auto_counts["skipped"] += 1
+                    self._eproc_auto_set_status(ident, ay_label, "⬜ Skipped")
+                    return True
+
+                def _set_status(_id, ay_, text_):
+                    last_status[ay_] = text_
+                    self._eproc_auto_set_status(_id, ay_, text_)
+
+                async def _doc_delay():
+                    seconds = cooldown_for(cfg["doc_cooldown_sec"], cfg["jitter_sec"])
+                    if seconds:
+                        await self._eproc_auto_wait(seconds, "Next document in")
+
+                await handle_e_proceedings(
+                    page, pan, target.get("dob", ""), year_specs,
+                    _out_for_year, self.log, _set_status,
+                    filing_scope="all",
+                    is_running=lambda: (self._eproc_auto_running
+                                        and not self._eproc_auto_skip_future
+                                        and not self._eproc_auto_skip_current),
+                    doc_delay=_doc_delay)
+
+                if self._eproc_auto_skip_current:
+                    self._eproc_auto_counts["skipped"] += 1
+                    self._eproc_auto_set_status(ident, ay_label, "⬜ Skipped")
+                elif any(str(v).startswith("❌") for v in last_status.values()):
+                    self._eproc_auto_counts["failed"] += 1
+                else:
+                    self._eproc_auto_counts["synced"] += 1
+                return True
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                text = str(exc)
+                if self._eproc_auto_skip_current or self._eproc_auto_skip_future:
+                    self._eproc_auto_counts["skipped"] += 1
+                    self._eproc_auto_set_status(ident, ay_label, "⬜ Skipped")
+                    return True
+                if not self._eproc_auto_running:
+                    return False
+                if self._eproc_auto_is_credential_error(text):
+                    self.vault.set_client_credential_invalid(pan, True)
+                    self._eproc_auto_counts["flagged"] += 1
+                    self._eproc_auto_set_status(ident, ay_label, "⚠ ITD password needs update")
+                    self.log(f"[Auto-Fetch] {token} needs an ITD password update — "
+                             f"skipping the Income Tax fetch until it is updated.")
+                    notify_windows("AayDocCapio — Password needs update",
+                                   f"{name or token}: portal login failed. Update the password; "
+                                   f"auto-fetch will skip this client until then.")
+                    return True
+                if should_backoff(text):
+                    self._eproc_auto_set_backoff()
+                    self._eproc_auto_counts["failed"] += 1
+                    self._eproc_auto_set_status(ident, ay_label, "❌ Portal rate limit — backing off")
+                    self._eproc_auto_aborted = True
+                    self._eproc_auto_running = False
+                    self.log("[Auto-Fetch] Portal rate-limit signal — run stopped and back-off applied.")
+                    return False
+                if is_timeout(text) and attempt < attempts - 1:
+                    self._eproc_auto_counts["timeouts"] += 1
+                    self.log(f"[Auto-Fetch] {token} timed out — retry "
+                             f"{attempt + 1}/{attempts - 1}.")
+                    self._eproc_auto_set_status(ident, ay_label, "🕐 Timed out — retrying...")
+                    seconds = cooldown_for(
+                        cfg["client_cooldown_sec"], cfg["jitter_sec"])
+                    await self._eproc_auto_wait(seconds, "Retry in")
+                    continue
+                self._eproc_auto_counts["failed"] += 1
+                self._eproc_auto_set_status(ident, ay_label, f"❌ Failed — {_friendly_error(text)}")
+                self.log(f"[Auto-Fetch] {token} failed: {text}")
+                return False
+            finally:
+                if page is not None:
+                    try:
+                        await logout_itd(page, self.log)
+                    except Exception:
+                        pass
+        return True
+
+    async def _eproc_auto_run_gst(self, context, target, year_specs, output_dir,
+                                  cfg, ident):
+        from automation.batch_handlers import handle_gst_proceedings
+        from automation.eproc_scheduler import cooldown_for, is_timeout, should_backoff
+        from automation.gst.login import login_gst
+
+        username = target.get("gst_username", "")
+        password = target.get("gst_password", "")
+        if not (username and password):
+            return True
+        name = target.get("name", "")
+        spec = year_specs[0]
+        ay_label = spec["ay_label"]
+        token = self._eproc_auto_token(ident)
+        attempts = int(cfg["timeout_retries"]) + 1
+        client_dir = os.path.dirname(
+            self._eproc_auto_client_dir(target, output_dir, spec))
+
+        for attempt in range(attempts):
+            if not self._eproc_auto_running or self._eproc_auto_skip_future:
+                return False
+            page = None
+            last_status = {}
+            try:
+                self._eproc_auto_set_status(ident, ay_label, "⏳ Logging in to GST...",
+                                            doc_type="gst_proceedings")
+                page = await context.new_page()
+                result = await login_gst(page, username, password, self.log)
+                if self._eproc_auto_skip_current:
+                    self._eproc_auto_counts["skipped"] += 1
+                    self._eproc_auto_set_status(ident, ay_label, "⬜ Skipped")
+                    return True
+                reason = (result or {}).get("reason")
+                login_ok = bool(result.get("ok")) and reason not in (
+                    "credentials", "otp", "locked", "exhausted", "too-many-wrong", "error")
+                if not login_ok:
+                    if reason == "otp":
+                        self._eproc_auto_counts["flagged"] += 1
+                        self._eproc_auto_set_status(
+                            ident, ay_label, "⚠ GST OTP required — sign in manually")
+                    elif reason == "locked":
+                        self._eproc_auto_counts["flagged"] += 1
+                        self._eproc_auto_set_status(
+                            ident, ay_label,
+                            "⚠ GST account locked — reset the password on the portal")
+                        pan_value = str(target.get("pan", "")).upper()
+                        if pan_value:
+                            self.vault.set_client_credential_invalid(pan_value, True)
+                    elif reason == "credentials":
+                        self._eproc_auto_counts["flagged"] += 1
+                        self._eproc_auto_set_status(
+                            ident, ay_label, "⚠ GST login failed — check credentials")
+                        pan_value = str(target.get("pan", "")).upper()
+                        if pan_value:
+                            self.vault.set_client_credential_invalid(pan_value, True)
+                    else:
+                        self._eproc_auto_counts["failed"] += 1
+                        self._eproc_auto_set_status(
+                            ident, ay_label, f"❌ GST login failed ({reason})")
+                    return True
+
+                def _set_status(_id, ay_, text_):
+                    last_status[ay_] = text_
+                    self._eproc_auto_set_status(_id, ay_, text_,
+                                                doc_type="gst_proceedings")
+
+                async def _doc_delay():
+                    seconds = cooldown_for(cfg["doc_cooldown_sec"], cfg["jitter_sec"])
+                    if seconds:
+                        await self._eproc_auto_wait(seconds, "Next document in")
+
+                def _progress(kind, pos, total, row_obj, _id=ident, _ay=ay_label):
+                    if kind == "progress":
+                        self._eproc_auto_set_status(
+                            _id, _ay,
+                            f"⏳ Downloading GST notices… "
+                            f"{(row_obj.get('notice_type') or 'Notice')} {pos}/{total}",
+                            doc_type="gst_proceedings")
+
+                await handle_gst_proceedings(
+                    page, ident, target.get("dob", ""), year_specs,
+                    self._auto_out_for_year(output_dir, ident, name, year_specs),
+                    self.log, _set_status, client_dir=client_dir,
+                    is_running=lambda: (self._eproc_auto_running
+                                        and not self._eproc_auto_skip_future
+                                        and not self._eproc_auto_skip_current),
+                    doc_delay=_doc_delay, progress_callback=_progress)
+
+                if self._eproc_auto_skip_current:
+                    self._eproc_auto_counts["skipped"] += 1
+                    self._eproc_auto_set_status(ident, ay_label, "⬜ Skipped")
+                elif any(str(v).startswith("❌") for v in last_status.values()):
+                    self._eproc_auto_counts["failed"] += 1
+                else:
+                    self._eproc_auto_counts["synced"] += 1
+                return True
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                text = str(exc)
+                if self._eproc_auto_skip_current or self._eproc_auto_skip_future:
+                    self._eproc_auto_counts["skipped"] += 1
+                    self._eproc_auto_set_status(ident, ay_label, "⬜ Skipped")
+                    return True
+                if not self._eproc_auto_running:
+                    return False
+                if should_backoff(text):
+                    self._eproc_auto_set_backoff()
+                    self._eproc_auto_counts["failed"] += 1
+                    self._eproc_auto_set_status(ident, ay_label, "❌ GST rate limit — backing off")
+                    self._eproc_auto_aborted = True
+                    self._eproc_auto_running = False
+                    self.log("[Auto-Fetch] GST rate-limit signal — run stopped and back-off applied.")
+                    return False
+                if is_timeout(text) and attempt < attempts - 1:
+                    self._eproc_auto_counts["timeouts"] += 1
+                    self._eproc_auto_set_status(ident, ay_label, "🕐 GST timed out — retrying...")
+                    seconds = cooldown_for(
+                        cfg["client_cooldown_sec"], cfg["jitter_sec"])
+                    await self._eproc_auto_wait(seconds, "Retry in")
+                    continue
+                self._eproc_auto_counts["failed"] += 1
+                self._eproc_auto_set_status(ident, ay_label, f"❌ GST failed — {_friendly_error(text)}")
+                self.log(f"[Auto-Fetch] {token} GST failed: {text}")
+                return False
+            finally:
+                if page is not None:
+                    try:
+                        await page.close()
+                    except Exception:
+                        pass
+        return True
+
+    async def _eproc_auto_wait(self, seconds, label):
+        from automation.eproc_scheduler import format_countdown, interruptible_sleep
+        if seconds <= 0:
+            return True
+
+        def _tick(remaining, paused):
+            dialog = self._eproc_auto_dialog
+            if dialog is None:
+                return
+            if paused:
+                dialog.set_countdown("Paused — press Resume to continue.")
+            else:
+                dialog.set_countdown(f"{label} {format_countdown(remaining)}")
+
+        return await interruptible_sleep(
+            seconds,
+            should_continue=lambda: self._eproc_auto_running and not self._eproc_auto_skip_future,
+            is_paused=lambda: self._eproc_auto_paused,
+            on_tick=_tick)
+
+    def _eproc_auto_budget_used(self) -> bool:
+        if self._eproc_auto_started_at is None:
+            return False
+        minutes = (datetime.datetime.now() - self._eproc_auto_started_at).total_seconds() / 60
+        return minutes >= self._eproc_auto_cfg.get("run_budget_min", 60)
+
+    def _eproc_auto_set_status(self, pan, ay_label, text, doc_type="e_proceedings"):
+        dialog = self._eproc_auto_dialog
+        if dialog is not None:
+            dialog.set_status(pan, ay_label, text)
+        terminal = ("✅", "❌", "🕐", "⏹", "⬜", "⚠")
+        if ay_label and any(text.startswith(p) for p in terminal):
+            try:
+                self.vault.record_download(
+                    pan, ay_label, doc_type, text,
+                    self._eproc_auto_paths.get((pan, ay_label), ""))
+            except Exception:
+                pass
+
+    def _eproc_auto_mark_processed(self, pan):
+        pan = str(pan).upper()
+        if pan in self._eproc_auto_pending:
+            self._eproc_auto_pending.remove(pan)
+        cfg = self.vault.get_eproc_autofetch_config()
+        cfg["queue_remaining"] = self._eproc_auto_pending + self._eproc_auto_tail
+        self.vault.save_eproc_autofetch_config(cfg)
+        self._eproc_auto_cfg = cfg
+
+    def _eproc_auto_set_backoff(self):
+        cfg = self.vault.get_eproc_autofetch_config()
+        until = datetime.datetime.now() + datetime.timedelta(minutes=cfg["backoff_min"])
+        cfg["backoff_until"] = until.isoformat(timespec="seconds")
+        cfg["queue_remaining"] = self._eproc_auto_pending + self._eproc_auto_tail
+        self.vault.save_eproc_autofetch_config(cfg)
+        self._eproc_auto_cfg = cfg
+
+    def _eproc_auto_schedule_next(self, cfg):
+        from automation.eproc_scheduler import compute_next_run
+        now = datetime.datetime.now()
+        backoff = cfg.get("backoff_until") or ""
+        next_run = None
+        if backoff:
+            try:
+                until = datetime.datetime.fromisoformat(backoff)
+            except ValueError:
+                until = None
+            if until is not None and until > now:
+                same_day = cfg["on_backoff_action"] == "resume_same_evening"
+                if same_day and until.date() == now.date() and now.weekday() in cfg["active_days"]:
+                    next_run = until
+                else:
+                    next_run = compute_next_run(until, cfg)
+        if next_run is None:
+            next_run = compute_next_run(now, cfg)
+        cfg["next_run_at"] = next_run.isoformat(timespec="seconds") if next_run else ""
+        self.vault.save_eproc_autofetch_config(cfg)
+        self._refresh_eproc_autofetch_summary()
+
+    @staticmethod
+    def _eproc_auto_is_credential_error(text: str) -> bool:
+        low = str(text).lower()
+        return any(marker in low for marker in (
+            "authentication failed", "2fa", "otp", "account locked"))
+
+    def _eproc_auto_cancel_task(self):
+        if self._eproc_auto_task is not None and self._eproc_auto_loop is not None:
+            try:
+                self._eproc_auto_loop.call_soon_threadsafe(self._eproc_auto_task.cancel)
+            except Exception:
+                pass
+
+    def _eproc_auto_stop(self):
+        if not self._eproc_auto_running:
+            return
+        cfg = self.vault.get_eproc_autofetch_config()
+        mb = QMessageBox(self)
+        mb.setWindowTitle("Stop Auto-Fetch")
+        mb.setText("Stop the scheduled e-Proceedings sync?")
+        mb.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        mb.setDefaultButton(QMessageBox.StandardButton.No)
+        keep = QCheckBox("Keep the remaining clients for the next run")
+        keep.setChecked(bool(cfg["stop_keeps_remainder"]))
+        mb.setCheckBox(keep)
+        if mb.exec() != QMessageBox.StandardButton.Yes:
+            return
+        self._eproc_auto_stop_keeps = keep.isChecked()
+        self._eproc_auto_aborted = True
+        self._eproc_auto_running = False
+        self.log("[Auto-Fetch] Stop requested.")
+        self._eproc_auto_cancel_task()
+
+    def _eproc_auto_skip_client(self):
+        self._eproc_auto_skip_current = True
+        self.log("[Auto-Fetch] Skip current client requested.")
+
+    def _eproc_auto_skip_future_clients(self):
+        self._eproc_auto_skip_future = True
+        self._eproc_auto_skip_current = True
+        self.log("[Auto-Fetch] Remaining clients will be skipped.")
+
+    def _eproc_auto_pause(self):
+        self._eproc_auto_paused = True
+        self.log("[Auto-Fetch] Paused.")
+
+    def _eproc_auto_resume_pause(self):
+        self._eproc_auto_paused = False
+        self.log("[Auto-Fetch] Resumed.")
+
+    def _eproc_auto_restart_run(self):
+        if not self._eproc_auto_running:
+            return
+        self._eproc_auto_restart = True
+        self._eproc_auto_running = False
+        self._eproc_auto_cancel_task()
+        self.log("[Auto-Fetch] Restart requested.")
+
+    def _on_eproc_auto_done(self):
+        was_aborted = self._eproc_auto_aborted
+        restart = self._eproc_auto_restart
+        self._eproc_auto_running = False
+        dialog = self._eproc_auto_dialog
+        self._eproc_auto_dialog = None
+        if dialog is not None:
+            try:
+                dialog.batch_finished(aborted=was_aborted)
+            except Exception:
+                pass
+
+        if restart:
+            clients = list(self._eproc_auto_run_clients)
+            cfg = self.vault.get_eproc_autofetch_config()
+            if dialog is not None:
+                dialog.accept()
+            self._eproc_auto_restart = False
+            self._eproc_auto_start(cfg, clients_override=clients)
+            return
+
+        cfg = self.vault.get_eproc_autofetch_config()
+        cfg["last_run_finished"] = datetime.datetime.now().isoformat(timespec="seconds")
+        cfg["last_run_summary"] = dict(self._eproc_auto_counts)
+        keep_remaining = cfg["stop_keeps_remainder"]
+        if self._eproc_auto_stop_keeps is not None:
+            keep_remaining = self._eproc_auto_stop_keeps
+        if self._eproc_auto_skip_future or (was_aborted and not keep_remaining):
+            cfg["queue_remaining"] = []
+        else:
+            cfg["queue_remaining"] = self._eproc_auto_pending + self._eproc_auto_tail
+        self._eproc_auto_schedule_next(cfg)
+        counts = self._eproc_auto_counts
+        self.log(f"[Auto-Fetch] Finished — {counts.get('synced', 0)} synced, "
+                 f"{counts.get('failed', 0)} failed, {counts.get('flagged', 0)} password issue(s), "
+                 f"{counts.get('skipped', 0)} skipped.")
+        if not was_aborted:
+            notify_windows(
+                "AayDocCapio — Auto-Fetch Complete",
+                f"{counts.get('synced', 0)} client(s) synced, "
+                f"{counts.get('failed', 0)} failed, {counts.get('flagged', 0)} password issue(s).")
 
     def _run_wrapper(self, targets, year_specs, root_dir, selected_docs):
         loop = asyncio.new_event_loop()
@@ -4218,7 +7542,7 @@ class AayDocCapioApp(QMainWindow):
         pan_lbl.setStyleSheet("font-size:11px;font-weight:600;")
         lay.addWidget(pan_lbl)
         pan_edit = QLineEdit()
-        pan_edit.setPlaceholderText("e.g. AFCPB9287R")
+        pan_edit.setPlaceholderText("e.g. AABCP1234F")
         pan_edit.setFixedHeight(34)
         lay.addWidget(pan_edit)
 
@@ -4226,7 +7550,7 @@ class AayDocCapioApp(QMainWindow):
         dob_lbl.setStyleSheet("font-size:11px;font-weight:600;")
         lay.addWidget(dob_lbl)
         dob_edit = QLineEdit()
-        dob_edit.setPlaceholderText("DD-MM-YYYY  (e.g. 09-07-1979)")
+        dob_edit.setPlaceholderText("DD-MM-YYYY  (e.g. 01-01-1980)")
         dob_edit.setFixedHeight(34)
         lay.addWidget(dob_edit)
 
@@ -4464,7 +7788,16 @@ class AayDocCapioApp(QMainWindow):
                                         pan, _ay_value, _status_info.get("status", ""),
                                         status_date=_status_info.get("status_date", ""),
                                         filing_date=_status_info.get("filing_date", ""),
-                                        ack_no=_status_info.get("ack_no", ""))
+                                        ack_no=_status_info.get("ack_no", ""),
+                                        filed=_status_info.get("filed"),
+                                        section=_status_info.get("section", ""),
+                                        revised=_status_info.get("revised"),
+                                        revised_section=_status_info.get("revised_section", ""),
+                                        rectified=_status_info.get("rectified"),
+                                        e_verified=_status_info.get("e_verified"),
+                                        processed=_status_info.get("processed"),
+                                        refund_status=_status_info.get("refund_status", ""),
+                                        everify_pending=_status_info.get("everify_pending"))
                                 except Exception as _rs_err:
                                     self.log(f"[Warning] Could not save processing status for AY {_ay_value}: {_rs_err}")
                         elif doc_type == "request_ais":
@@ -4584,7 +7917,16 @@ class AayDocCapioApp(QMainWindow):
                                             pan, _ay_value, _status_info.get("status", ""),
                                             status_date=_status_info.get("status_date", ""),
                                             filing_date=_status_info.get("filing_date", ""),
-                                            ack_no=_status_info.get("ack_no", ""))
+                                            ack_no=_status_info.get("ack_no", ""),
+                                            filed=_status_info.get("filed"),
+                                            section=_status_info.get("section", ""),
+                                            revised=_status_info.get("revised"),
+                                            revised_section=_status_info.get("revised_section", ""),
+                                            rectified=_status_info.get("rectified"),
+                                            e_verified=_status_info.get("e_verified"),
+                                            processed=_status_info.get("processed"),
+                                            refund_status=_status_info.get("refund_status", ""),
+                                            everify_pending=_status_info.get("everify_pending"))
                                     except Exception as _rs_err:
                                         self.log(f"[Warning] Could not save processing status for AY {_ay_value}: {_rs_err}")
                             elif doc_type == "request_ais":
@@ -4807,14 +8149,35 @@ if __name__ == "__main__":
         # visible moment with nothing else on screen otherwise.
         splash = None
         _splash_shown_at = None
+        _theme_pref_early = "light"
         try:
             # Read the "show splash screen" setting before AayDocCapioApp()
             # (and its own VaultManager) exists yet — a throwaway early
             # VaultManager just for this one read; harmless to construct
             # twice (idempotent _ensure_vault() migration check).
-            _show_splash = VaultManager().get_setting("show_splash", True)
+            _early_vault = VaultManager()
+            _show_splash = _early_vault.get_setting("show_splash", True)
+            _theme_pref_early = _early_vault.get_setting("theme", "light")
         except Exception:
             _show_splash = True
+        # F-17: apply the saved theme (including "system") before the splash
+        # paints, so there is no light flash before the main window appears.
+        _resolved_early = _theme_pref_early
+        if _resolved_early == "system":
+            try:
+                _resolved_early = (
+                    "dark" if app.styleHints().colorScheme() == Qt.ColorScheme.Dark
+                    else "light")
+            except Exception:
+                _resolved_early = "light"
+        if _resolved_early not in THEMES:
+            _resolved_early = "light"
+        try:
+            import ui._theme as _theme_mod_early
+            _theme_mod_early._active_theme = get_theme(_resolved_early)
+            app.setStyleSheet(build_stylesheet(get_theme(_resolved_early)))
+        except Exception:
+            pass
         try:
             _splash_logo_path = os.path.join(_bundled_dir(), "resources", "AayDoc_FullLogo.png")
             if _show_splash and os.path.exists(_splash_logo_path):
@@ -4831,11 +8194,14 @@ if __name__ == "__main__":
         app.setApplicationName("AayDocCapio")
         app.setDesktopFileName("aay-doc-capio")
         app.setStyle("Fusion")
-        # Force light palette so macOS dark mode doesn't corrupt unstyled
-        # native widgets (dialogs, menus, headers). Will be overridden once
-        # the theme system initialises inside AayDocCapioApp.
+        # Match the native palette to the saved preference. "system" is left
+        # alone so the OS scheme is honoured; light/dark are pinned so macOS
+        # dark mode does not corrupt unstyled native widgets.
         try:
-            app.styleHints().setColorScheme(Qt.ColorScheme.Light)
+            if _theme_pref_early == "dark":
+                app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
+            elif _theme_pref_early == "light":
+                app.styleHints().setColorScheme(Qt.ColorScheme.Light)
         except AttributeError:
             pass  # Qt < 6.8
         _diag("Step 3: font loading")
@@ -4846,7 +8212,7 @@ if __name__ == "__main__":
                 if _ttf.endswith(".ttf"):
                     QFontDatabase.addApplicationFont(os.path.join(_fonts_dir, _ttf))
         _diag("Step 4: setStyleSheet")
-        app.setStyleSheet(build_stylesheet(get_theme("light")))
+        app.setStyleSheet(build_stylesheet(get_theme(_resolved_early)))
         _diag("Step 5: AayDocCapioApp()")
         window = AayDocCapioApp()
         _diag("Step 6: setWindowIcon")

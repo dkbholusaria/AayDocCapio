@@ -38,3 +38,31 @@ CHALLAN_SUMMARY_COLUMNS = [
     "Payment Mode", "Bank", "Drawn on Bank", "Total Amount", "CRN", "Valid Till",
     "Status", "Reason", "Artifact Path",
 ]
+
+# ── TDS/TCS challan (F-4) ────────────────────────────────────────────────
+# A TDS challan is NOT the same row shape as an Income Tax challan: it has
+# one or more section codes, each with its own Tax / Surcharge / Cess, plus
+# ONE common set of other payments. Kept separate from CHALLAN_INPUT_COLUMNS
+# so the Income Tax dialog/import/export cannot drift.
+TDS_SECTION_FIELDS = [
+    ("section_code", "Section Code", "text"),
+    ("tax",          "Tax",          "amount"),
+    ("surcharge",    "Surcharge",    "amount"),
+    ("cess",         "Education Cess", "amount"),
+]
+
+TDS_OTHER_FIELDS = [
+    ("interest", "Interest (d)",          "amount"),
+    ("fee",      "Late Fee u/s 427 (e)",  "amount"),
+    ("penalty",  "Penalty (f)",           "amount"),
+    ("others",   "Others (g)",            "amount"),
+]
+
+TDS_AMOUNT_FIELDS = [k for k, _, kind in TDS_SECTION_FIELDS if kind == "amount"]
+TDS_OTHER_AMOUNT_FIELDS = [k for k, _, kind in TDS_OTHER_FIELDS if kind == "amount"]
+
+TDS_SUMMARY_COLUMNS = [
+    "TAN", "Name", "Tax Year", "Deductee Type", "Residence", "Sections",
+    "Total Amount", "Payment Mode", "Bank", "Drawn on Bank", "CRN",
+    "Valid Till", "Status", "Reason", "Artifact Path",
+]

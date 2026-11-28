@@ -10,6 +10,7 @@ AayDocCapio is a PyQt6 desktop app for Indian CAs and tax professionals. It auto
 
 Follow these steps in order — no step is optional:
 
+0. **Work on a dedicated branch** — at the start of a new chat/session, always create and switch to a fresh branch off `main` (`git checkout -b <type>/<short-description>`, e.g. `feature/bulk-ais-export` or `fix/26as-timeout`). If the task relates to an existing GitHub issue, switch to (or create) that issue's own branch and name it after the issue (`<type>/<issue-number>_<short-description>`, e.g. `fix/42_26as-timeout`). Never do feature/bug work directly on `main`, and never share a branch across unrelated tasks — this keeps the code clean and avoids confusion when other agents are working simultaneously.
 1. **Open a GitHub issue** — before anything else, create a GitHub issue for the task (`gh issue create`). Use the appropriate label (`bug`, `enhancement`,'Feature') and priority (`P1`/`P2`/`P3`). Record the issue number.
    - Every issue body must mention the creation/report date in `YYYY-MM-DD` format.
 2. **Plan** — prepare an implementation plan, save it as a `.md` file in the untracked `PlansofThisProject/` subfolder, and get user approval before writing any code.
@@ -29,6 +30,11 @@ Follow these steps in order — no step is optional:
 - **Active Python Path:** Always use the explicit `.venv/bin/python` interpreter.
 - **Adding Packages:** Verify the project dependency manager first (default to `venv + pip` and update `requirements.txt` via `pip freeze > requirements.txt`).
 - **Compact Context:** Compact the context from time to time by summarizing findings or archiving logs to save tokens.
+- **No Real Client Data, Ever:** No real client name, file, filename, identifier, username, password, or any other real-world detail may ever enter the codebase. This applies to code, comments, variable/string values, test fixtures, sample data, generated filenames, logs, screenshots, CHANGELOG entries, commit messages, PR/issue bodies and comments, plans, and documentation — everywhere, without exception. Never use a real client's name, company/entity name, username, TAN, PAN, GSTIN, DOB, email, phone, address, password, document filename, or any identifier that could point to a real person or entity. Always use the approved placeholders: names `Sample Client` / `Sample Pvt Ltd` / `Test User`; PAN `AABCP1234F`; TAN `ABCD12345E`; GST username `GSTLOGIN01`; email `client@example.com`; DOB `01-01-1990`; filenames `26AS_SampleClient_2023-24.txt`, `AIS_SampleClient_2023-24.pdf`; passwords `testpass` (never a real-looking or reused password).
+- **Developer-Supplied Credentials for Testing:** If the developer gives you credentials (portal logins, real PAN/password/DOB, vault files, portal data exports) to test against, use them only in your local, untracked test environment. NEVER commit them to git/GitHub, never paste them into commits, PRs, issues, comments, or plans, and never hardcode them into the app, tests, or scripts. Delete any scratch file that held them once done.
+- **Never Reuse Real Portal Responses:** Do not copy, paste, screenshot, or transcribe real portal/ITD responses (AIS/TIS JSON, 26AS TXT, PDF contents, error screens, activity-history text) into the code, tests, fixtures, or docs. Reconstruct realistic-looking but entirely synthetic dummy data for any sample or fixture. If a real response is needed to understand structure, reduce it to an anonymised schema and use invented values.
+- **Placeholders Are Dummy Only:** All sample data written by the agent must be fabricated. If unsure whether a value is real, treat it as real and replace it with an approved placeholder.
+- The guard test `test_no_real_identifiers.py` enforces this — run it before every commit (`pytest test_no_real_identifiers.py`).
 
 ## Collaboration & Planning Preferences
 

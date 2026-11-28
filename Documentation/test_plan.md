@@ -31,7 +31,7 @@ python app.py
 | Step | Action | Expected result |
 |---|---|---|
 | 1 | Client Master → Add Single Client | Popup dialog opens |
-| 2 | Enter Name: `Test User`, PAN: `AAAPT0001A`, DOB: `01-01-1980`, Password: `testpass` | Fields accept input |
+| 2 | Enter Name: `Test User`, PAN: `AABCP1234F`, DOB: `01-01-1980`, Password: `testpass` | Fields accept input |
 | 3 | Click Save | Dialog closes; new client appears in table |
 | 4 | Relaunch app | Client is still present (persisted in vault) |
 
@@ -44,8 +44,8 @@ python app.py
 | 1 | Client Master → Add Single Client | Dialog opens |
 | 2 | Enter PAN: `INVALIDPAN` | — |
 | 3 | Click Save | Inline error: "Invalid PAN format" with format explanation |
-| 4 | Enter PAN: `aaapt0001a` (lowercase) | — |
-| 5 | Click Save | Accepted (auto-uppercased) OR inline error — PAN saved as `AAAPT0001A` |
+| 4 | Enter PAN: `AABCP1234F` (lowercase) | — |
+| 5 | Click Save | Accepted (auto-uppercased) OR inline error — PAN saved as `AABCP1234F` |
 
 ---
 
@@ -218,3 +218,27 @@ python app.py
 - AIS JSON download is not implemented (CAPTCHA-gated) — F-08 in backlog.
 - Large 26AS (TRACES shows "on-demand" message) is detected and reported with TRACES-direct instructions per D-11; full TRACES-direct automation remains out of scope for v1.x.
 - Accounts with 2FA cannot be automated — expected behaviour per E-02.
+
+---
+
+## TDS/TCS Challan (F-4)
+
+| Step | Action | Expected result |
+|---|---|---|
+| 1 | Add a TAN client (e.g. ABCD12345E) with no DOB | Saves successfully; grid shows the TAN |
+| 2 | Add a PAN client without DOB | Rejected with a clear Date of Birth message |
+| 3 | Build a TDS row with two section codes and dummy amounts (1000 + 500) | Row saves; app-side total = 1500 |
+| 4 | Generate with Pay at Bank Counter / Cheque / Kotak Mahindra Bank | CRN captured; Challan Form PDF saved |
+| 5 | Check the portal summary total before confirming | Equals the app-side total |
+| 6 | Generate with RTGS/NEFT | Mandate Form PDF saved |
+| 7 | Regression: one Income Tax challan (F-64) end-to-end | CRN + PDF unchanged |
+
+## Download TDS/TCS Challans (F-8)
+
+| Step | Action | Expected result |
+|---|---|---|
+| 1 | Open TDS hub → Download TDS / TCS Challans | Picker lists only TAN clients |
+| 2 | Tick one TAN and one TY year → Download | Progress grid shows TAN column and one row per year |
+| 3 | Let the run finish | Paid challan PDFs appear under `{TAN}-{Name}/TY_…/Tax Challans (Paid)/` |
+| 4 | Select both a TY and an AY | One navigation per Act group; no re-login per year |
+| 5 | Regression: Income Tax → Download Documents → Tax Payment Challans | Unchanged |

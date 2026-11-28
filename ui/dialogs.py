@@ -5,15 +5,18 @@ from PyQt6.QtWidgets import (
     QFrame, QTableWidget, QTableWidgetItem, QHeaderView,
     QAbstractItemView, QProgressBar, QSizePolicy, QFileDialog, QMessageBox,
     QTextEdit, QSpinBox, QComboBox, QFontComboBox, QTabWidget,
+    QTimeEdit, QGridLayout,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QTime
 from PyQt6.QtGui import (
     QFont, QColor, QPixmap, QPainter, QBrush, QPen,
-    QTextCharFormat, QIcon,
+    QTextCharFormat, QIcon, QDoubleValidator,
 )
+from automation.challan_fields import TDS_SECTION_FIELDS, TDS_OTHER_FIELDS
 
 from ui._theme import _t
 from ui.helpers import _btn, _lbl, _status_style, _UI_FONT, _icon_path
+from ui.widgets import CheckableComboBox
 from automation.doc_types import match_doc_type
 from config import _open_path, _log_open, _app_dir
 from themes import MONO_FONT_NAME as _MONO_FONT
@@ -141,7 +144,8 @@ class ManageYearsDialog(QDialog):
             f"QCheckBox{{color:{t.text_primary};background:transparent;spacing:6px;}}"
             f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {t.border};"
             f"border-radius:3px;background:{t.bg_checkbox};}}"
-            f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};}}"
+            f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};"
+            f"image:url(resources/check_white.png);}}"
         )
         self._checkboxes.append((entry, cb))
         self._list_layout.insertWidget(self._list_layout.count() - 1, cb)
@@ -527,6 +531,126 @@ class ManageGroupsDialog(QDialog):
 
 # ── Batch Progress Dialog ─────────────────────────────────────────────────────
 
+class DownloadTdsChallansDialog(QDialog):
+    """Pick TAN clients + years for the existing challan-download workflow.
+
+    The downloader itself is identity-agnostic (login → e-Pay Tax →
+    Payment History), so this dialog only chooses WHO and WHICH years; the
+    runner reuses handle_challans unchanged.
+    """
+
+    def __init__(self, parent, vault, ay_entries):
+        super().__init__(parent)
+        from vault import identify_type
+        bt = _t()
+        self._all_clients = [c for c in vault.get_all_assessees()
+                             if identify_type(c.get("pan", "")) == "TAN"]
+        self.selected_clients = []
+        self.year_labels = []
+
+        self.setWindowTitle("Download TDS / TCS Challans")
+        self.setMinimumSize(560, 480)
+        self.setStyleSheet(
+            f"QDialog{{background:{bt.bg_window};}}"
+            f"QLabel{{color:{bt.text_primary};background:transparent;}}"
+            f"QCheckBox{{color:{bt.text_primary};background:transparent;font-size:12px;}}"
+        )
+
+        vl = QVBoxLayout(self)
+        vl.setContentsMargins(20, 18, 20, 16)
+        vl.setSpacing(8)
+
+        vl.addWidget(_lbl("Tax Year(s)", 11, bold=True))
+        self._year_combo = CheckableComboBox(placeholder="Select Tax Year")
+        for e in ay_entries:
+            if e.get("enabled", True):
+                self._year_combo.add_item(e.get("label", ""), checked=False)
+        vl.addWidget(self._year_combo)
+        hint = QLabel("TY years use Income-tax Act 2025; AY years use Act 1961.")
+        hint.setStyleSheet(f"color:{bt.text_muted};font-size:11px;background:transparent;")
+        vl.addWidget(hint)
+
+        head = QHBoxLayout()
+        head.addWidget(_lbl("TAN Clients", 11, bold=True))
+        head.addStretch(1)
+        self._select_all = QCheckBox("Select all")
+        self._select_all.toggled.connect(self._toggle_all)
+        head.addWidget(self._select_all)
+        vl.addLayout(head)
+
+        self._table = QTableWidget(0, 2)
+        self._table.setHorizontalHeaderLabels(["TAN", "Name"])
+        self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._table.verticalHeader().setVisible(False)
+        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self._table.setStyleSheet(
+            f"QTableWidget{{border:1.5px solid {bt.border};border-radius:8px;"
+            f"background:{bt.bg_table};outline:0;gridline-color:{bt.grid};}}"
+            f"QTableWidget::item{{border-bottom:1px solid {bt.grid};padding:0 8px;}}")
+        self._table.horizontalHeader().setStyleSheet(
+            f"QHeaderView::section{{background-color:{bt.bg_header};border:none;"
+            f"border-right:1px solid {bt.border};border-bottom:1px solid {bt.border};"
+            f"font-weight:bold;color:{bt.text_muted};font-size:11px;height:34px;padding:0 8px;}}")
+
+        for c in self._all_clients:
+            r = self._table.rowCount()
+            self._table.insertRow(r)
+            self._table.setRowHeight(r, 34)
+            id_item = QTableWidgetItem(c.get("pan", ""))
+            id_item.setFlags(id_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            id_item.setCheckState(Qt.CheckState.Unchecked)
+            id_item.setFont(QFont(_MONO_FONT, 10))
+            self._table.setItem(r, 0, id_item)
+            self._table.setItem(r, 1, QTableWidgetItem(c.get("name", "")))
+        vl.addWidget(self._table, 1)
+
+        if not self._all_clients:
+            warn = QLabel("No TAN clients in the vault yet. Add one via Client Master → "
+                          "Add New Client (use the deductor's TAN).")
+            warn.setWordWrap(True)
+            warn.setStyleSheet(f"color:{bt.error};font-size:11px;background:transparent;")
+            vl.addWidget(warn)
+
+        footer = QHBoxLayout()
+        footer.addStretch(1)
+        cancel = _btn("Cancel", "secondary")
+        download = _btn("Download", "primary")
+        download.setEnabled(bool(self._all_clients))
+        footer.addWidget(cancel)
+        footer.addWidget(download)
+        vl.addLayout(footer)
+        cancel.clicked.connect(self.reject)
+        download.clicked.connect(self._on_download)
+
+    def _toggle_all(self, checked: bool):
+        state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+        for r in range(self._table.rowCount()):
+            item = self._table.item(r, 0)
+            if item:
+                item.setCheckState(state)
+
+    def _on_download(self):
+        chosen = []
+        for r in range(self._table.rowCount()):
+            item = self._table.item(r, 0)
+            if item and item.checkState() == Qt.CheckState.Checked:
+                pan = item.text()
+                client = next((c for c in self._all_clients if c.get("pan") == pan), None)
+                if client:
+                    chosen.append(client)
+        years = self._year_combo.checked_labels()
+        if not chosen:
+            QMessageBox.warning(self, "Nothing Selected", "Please select at least one TAN client.")
+            return
+        if not years:
+            QMessageBox.warning(self, "Nothing Selected", "Please select at least one year.")
+            return
+        self.selected_clients = chosen
+        self.year_labels = years
+        self.accept()
+
+
 class BatchProgressDialog(QDialog):
     """
     Live progress popup shown during any batch run.
@@ -542,7 +666,9 @@ class BatchProgressDialog(QDialog):
     _update_signal = pyqtSignal(str, str, str)         # pan, ay_label, status
     _path_signal   = pyqtSignal(str, str, str)         # pan, ay_label, folder
     _resume_signal = pyqtSignal(list)
+    _countdown_signal = pyqtSignal(str)
     _client_done_signal = pyqtSignal(str, str)   # pan, ay_label — ALL selected doc types finished for this (client, year)
+    _batch_finished_signal = pyqtSignal(bool)    # aborted — marshals batch_finished() onto the UI thread
 
     _COL_NAME   = 0
     _COL_YEAR   = 1
@@ -552,12 +678,19 @@ class BatchProgressDialog(QDialog):
 
     def __init__(self, targets: list, selected_docs, year_specs: list,
                  ay: str = "", stop_callback=None, resume_callback=None, skip_callback=None,
-                 tray_callback=None, output_dir: str = "", parent=None):
+                 tray_callback=None, output_dir: str = "", parent=None,
+                 id_label: str = "PAN", pause_callback=None, resume_pause_callback=None,
+                 restart_callback=None, skip_future_callback=None):
         super().__init__(parent)
         self._stop_callback   = stop_callback
         self._resume_callback = resume_callback
         self._skip_callback   = skip_callback
         self._tray_callback   = tray_callback
+        self._pause_callback = pause_callback
+        self._resume_pause_callback = resume_pause_callback
+        self._restart_callback = restart_callback
+        self._skip_future_callback = skip_future_callback
+        self._paused = False
         self._output_dir      = output_dir
         self._selected_docs   = selected_docs
         self._ay              = ay
@@ -575,6 +708,10 @@ class BatchProgressDialog(QDialog):
             "ais_tis":        "AIS / TIS",
             "filed_returns":  "Filed Returns",
             "challans":       "Tax Challans",
+            "tds_challans":   "TDS/TCS Challans",
+            "e_proceedings":  "e-Proceedings",
+            "filed_forms":    "Filed IT Forms",
+            "gst_proceedings": "GST Notices",
         }
         mode_label = " + ".join(
             _doc_labels.get(d, d) for d in sorted(selected_docs)
@@ -613,7 +750,7 @@ class BatchProgressDialog(QDialog):
 
         # ── Table ─────────────────────────────────────────────────────────────
         self._table = QTableWidget(len(self._client_year_pairs), 5)
-        self._table.setHorizontalHeaderLabels(["Name", "Year", "PAN", "Status", "Save Path"])
+        self._table.setHorizontalHeaderLabels(["Name", "Year", id_label, "Status", "Save Path"])
         if not self._multi_year:
             self._table.setColumnHidden(self._COL_YEAR, True)
 
@@ -655,7 +792,7 @@ class BatchProgressDialog(QDialog):
             pan  = tgt.get("pan", "")
             name = tgt.get("name", "—")
             ay_label = spec["ay_label"]
-            self._row_key_to_row[(pan, ay_label)] = row
+            self._row_key_to_row[(self._client_ident(tgt), ay_label)] = row
             self._table.setRowHeight(row, 40)
 
             name_item = QTableWidgetItem(name)
@@ -700,6 +837,11 @@ class BatchProgressDialog(QDialog):
             f"font-weight:600;color:{_bt.accent_text};}}"
             f"QProgressBar::chunk{{background:{_bt.success};border-radius:9px;}}")
         layout.addWidget(self._progress_bar)
+
+        self._countdown_lbl = QLabel("")
+        self._countdown_lbl.setStyleSheet(
+            f"color:{_bt.text_muted};font-size:11px;background:transparent;")
+        layout.addWidget(self._countdown_lbl)
 
         # ── Footer ────────────────────────────────────────────────────────────
         footer = QHBoxLayout()
@@ -777,6 +919,33 @@ class BatchProgressDialog(QDialog):
         self._stop_btn.clicked.connect(self._on_stop_clicked)
         footer.addWidget(self._stop_btn)
 
+        self._pause_btn = QPushButton("⏸  Pause")
+        self._pause_btn.setFixedHeight(32)
+        self._pause_btn.setMinimumWidth(90)
+        self._pause_btn.setVisible(bool(self._pause_callback))
+        self._pause_btn.setStyleSheet(
+            f"QPushButton{{background:{_bt.bg_table_alt};color:{_bt.text_primary};border:1px solid {_bt.border};"
+            f"border-radius:6px;font-size:12px;font-weight:600;padding:0 12px;}}"
+            f"QPushButton:hover{{background:{_bt.bg_input};}}")
+        self._pause_btn.clicked.connect(self._on_pause_clicked)
+        footer.addWidget(self._pause_btn)
+
+        self._restart_btn = QPushButton("↻  Restart")
+        self._restart_btn.setFixedHeight(32)
+        self._restart_btn.setMinimumWidth(90)
+        self._restart_btn.setVisible(bool(self._restart_callback))
+        self._restart_btn.setStyleSheet(self._pause_btn.styleSheet())
+        self._restart_btn.clicked.connect(self.restart_run)
+        footer.addWidget(self._restart_btn)
+
+        self._skip_future_btn = QPushButton("⏭⏭  Skip Future")
+        self._skip_future_btn.setFixedHeight(32)
+        self._skip_future_btn.setMinimumWidth(110)
+        self._skip_future_btn.setVisible(bool(self._skip_future_callback))
+        self._skip_future_btn.setStyleSheet(self._pause_btn.styleSheet())
+        self._skip_future_btn.clicked.connect(self.skip_future)
+        footer.addWidget(self._skip_future_btn)
+
         self._resume_btn = QPushButton("▶  Resume")
         self._resume_btn.setFixedHeight(32)
         self._resume_btn.setMinimumWidth(100)
@@ -804,16 +973,37 @@ class BatchProgressDialog(QDialog):
         self._rows_data  = {}
 
         for tgt, spec in self._client_year_pairs:
-            self._rows_data[(tgt.get("pan", ""), spec["ay_label"])] = {
+            self._rows_data[(self._client_ident(tgt), spec["ay_label"])] = {
                 "name": tgt.get("name", ""), "ay_label": spec["ay_label"],
                 "path": "", "status": "Waiting", "ts": ""}
 
         self._update_signal.connect(self._on_update)
         self._path_signal.connect(self._on_path_update)
+        self._countdown_signal.connect(self._set_countdown_ui)
         self._client_done_signal.connect(self._on_client_done)
+        self._batch_finished_signal.connect(self._on_batch_finished)
         self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
 
     # ── internal helpers ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _client_ident(tgt: dict) -> str:
+        """Row identity for a client — PAN when available, else ``GST:<username>``.
+
+        Must match ``client_key()`` (automation/eproc_scheduler.py) used by the
+        worker flows when calling set_status / set_client_path /
+        client_finished. GST-only clients have no PAN, so keying rows purely
+        by PAN left their status/finish updates silently unmatched and the
+        progress bar stalled.
+        """
+        pan = str(tgt.get("pan", "")).strip().upper()
+        if pan:
+            return pan
+        gst_user = str(tgt.get("gst_username", "")).strip().upper()
+        if gst_user:
+            return f"GST:{gst_user}"
+        name = str(tgt.get("name", "")).strip().upper()
+        return f"NAME:{name}" if name else ""
 
     def _row_key_for_row(self, row: int):
         for key, r in self._row_key_to_row.items():
@@ -911,12 +1101,75 @@ class BatchProgressDialog(QDialog):
     def _on_skip_clicked(self):
         if self._skip_callback:
             self._skip_callback()
+
+    def _on_pause_clicked(self):
+        self._paused = not self._paused
+        if self._paused:
+            self.pause_visual()
+            if self._pause_callback:
+                self._pause_callback()
+        else:
+            self.resume_visual()
+            if self._resume_pause_callback:
+                self._resume_pause_callback()
+
+    def pause_visual(self):
+        self._paused = True
+        self._pause_btn.setText("▶  Resume")
+        self._countdown_lbl.setText("Paused — the current step will finish first.")
+
+    def resume_visual(self):
+        self._paused = False
+        self._pause_btn.setText("⏸  Pause")
+        self._countdown_lbl.setText("Resuming…")
+
+    def set_countdown(self, text: str):
+        self._countdown_signal.emit(text)
+
+    def _set_countdown_ui(self, text: str):
+        self._countdown_lbl.setText(text)
+
+    def restart_run(self):
+        if not self._restart_callback:
+            return
+        answer = QMessageBox.question(
+            self, "Restart Run",
+            "Restart this auto-fetch run from the first client?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer == QMessageBox.StandardButton.Yes:
+            self._restart_callback()
+
+    def skip_future(self):
+        if not self._skip_future_callback:
+            return
+        answer = QMessageBox.question(
+            self, "Skip Future Clients",
+            "Stop after the current client and remove the remaining clients from this run?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if answer == QMessageBox.StandardButton.Yes:
+            self._skip_future_callback()
         self._skip_btn.setEnabled(False)
         self._skip_btn.setText("⏭  Skipping...")
 
     def _on_tray_clicked(self):
         if self._tray_callback:
             self._tray_callback()
+
+    def closeEvent(self, event):
+        """Always allow closing the progress window, even mid-run.
+
+        The Close button only enables after every row is done; if a client
+        hangs (portal timeout, popup left open) the user must still be able to
+        dismiss the window instead of being stuck behind it. Closing here does
+        not stop the worker — use Stop for that.
+        """
+        try:
+            self._batch_finished_signal.emit(False)
+        except Exception:
+            pass
+        event.accept()
 
     def _on_stop_clicked(self):
         if self._stop_callback:
@@ -1019,6 +1272,16 @@ class BatchProgressDialog(QDialog):
         self._path_signal.emit(pan, ay_label, folder)
 
     def batch_finished(self, aborted: bool = False):
+        """Thread-safe: marshals the work onto the UI thread via a signal.
+
+        The GST fetch runs in a plain threading.Thread (not the Qt main
+        thread), so touching widgets here directly was a cross-thread UI
+        mutation — the dialog could freeze or fail to repaint. Emitting a
+        signal delivers _on_batch_finished to the main thread's event loop.
+        """
+        self._batch_finished_signal.emit(aborted)
+
+    def _on_batch_finished(self, aborted: bool):
         """Enable Close/Report and hide Stop. If aborted, sweeps non-terminal rows to ⏹ Stopped."""
         terminal = ("✅", "❌", "🕐", "⏹", "⬜ Skipped")
         if aborted:
@@ -1032,7 +1295,12 @@ class BatchProgressDialog(QDialog):
         self._skip_btn.setVisible(False)
         self._tray_btn.setVisible(False)
         self._stop_btn.setVisible(False)
-        self._resume_btn.setVisible(aborted)
+        self._pause_btn.setVisible(False)
+        self._restart_btn.setVisible(False)
+        self._skip_future_btn.setVisible(False)
+        if self._countdown_lbl.text():
+            self._countdown_lbl.setText("")
+        self._resume_btn.setVisible(bool(aborted and self._resume_callback))
         self._close_btn.setEnabled(True)
         self._report_btn.setEnabled(True)
         n = self._done_count
@@ -1520,7 +1788,7 @@ class SmtpSettingsDialog(QDialog):
             f"QTabBar::tab{{background:{t.bg_table_alt};color:{t.text_muted};"
             f"padding:8px 20px;border:1px solid {t.border};border-bottom:none;"
             f"border-radius:6px 6px 0 0;margin-right:2px;font-size:12px;}}"
-            f"QTabBar::tab:selected{{background:{t.accent};color:white;"
+            f"QTabBar::tab:selected{{background:{t.accent};color:{t.accent_text};"
             f"border-color:{t.accent};font-weight:600;}}"
             f"QTabBar::tab:hover:!selected{{background:{t.bg_input};}}"
         )
@@ -1727,7 +1995,7 @@ class SmtpSettingsDialog(QDialog):
         self._tpl_list.setStyleSheet(
             f"QListWidget{{background:{t.bg_panel};border:none;outline:none;font-size:12px;}}"
             f"QListWidget::item{{padding:8px 10px;border-radius:5px;color:{t.text_primary};}}"
-            f"QListWidget::item:selected{{background:{t.accent};color:white;}}"
+            f"QListWidget::item:selected{{background:{t.accent};color:{t.accent_text};}}"
             f"QListWidget::item:hover:!selected{{background:{t.bg_table_alt};}}"
         )
         self._tpl_list.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked)
@@ -1826,7 +2094,7 @@ class SmtpSettingsDialog(QDialog):
             f"border:1px solid {t.border};border-radius:5px;"
             f"font-size:12px;padding:0 8px;min-width:28px;height:28px;}}"
             f"QPushButton:hover{{background:{t.bg_input};border-color:{t.accent};}}"
-            f"QPushButton:checked{{background:{t.accent};color:#fff;border-color:{t.accent};}}"
+            f"QPushButton:checked{{background:{t.accent};color:{t.accent_text};border-color:{t.accent};}}"
         )
 
         def _fmt_toggle(label: str, prop: str) -> QPushButton:
@@ -1916,7 +2184,8 @@ class SmtpSettingsDialog(QDialog):
             f"QCheckBox{{color:{t.text_primary};font-size:12px;spacing:6px;}}"
             f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {t.border};"
             f"border-radius:3px;background:{t.bg_checkbox};}}"
-            f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};}}"
+            f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};"
+            f"image:url(resources/check_white.png);}}"
         )
         self._doc_cbs = {}
         docs_rows = QVBoxLayout(); docs_rows.setSpacing(6)
@@ -2710,7 +2979,12 @@ class ChallanRowDetailDialog(QDialog):
         self._pan_combo = QComboBox()
         self._pan_combo.setEditable(True)
         self._pan_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        for a in sorted(vault.get_all_assessees(), key=lambda a: a.get("name", "")):
+        # Income Tax challans are filed under a PAN login only (#30) — offer
+        # just the clients with Income Tax capacity, never TDS-only (TAN) or
+        # GST-only logins, which have no PAN password to authenticate with.
+        it_clients = [a for a in vault.get_all_assessees()
+                      if "Income Tax" in vault.credential_sources(a)]
+        for a in sorted(it_clients, key=lambda a: a.get("name", "")):
             self._pan_combo.addItem(f"{a.get('pan','')} — {a.get('name','')}", a.get("pan", ""))
         # Qt's auto-created completer for an editable combo defaults to
         # "starts with" matching against the item text — since items read
@@ -3397,7 +3671,7 @@ def download_challan_template(path: str):
         "payment_mode": DEFAULT_PAYMENT_MODE, "bank": DEFAULT_BANK, "drawee_bank": "",
         "tax": 15000, "surcharge": 0, "cess": 0, "interest": 0, "penalty": 0, "others": 0,
     }
-    sample_row = ["AAAPT0001A", "Sample Client Name"] + [
+    sample_row = ["AABCP1234F", "Sample Client Name"] + [
         sample_values.get(key, "") for key, _, _ in CHALLAN_INPUT_COLUMNS if key != "pan"
     ]
     write_challan_table_file(path, headers, [sample_row])
@@ -3738,11 +4012,21 @@ class GenerateChallansDialog(QDialog):
     def _row_missing_bank(self, row: dict) -> bool:
         return bool(self._row_bank_problem(row)) or bool(self._row_drawee_problem(row))
 
+    def _income_tax_clients(self) -> list:
+        """Clients a PAN challan can actually be filed for — Income Tax
+        capacity only (#30). A TDS-only (TAN) or GST-only client has no PAN
+        password to authenticate against the Income Tax portal, so it must
+        not count as a known/ready target even if a draft or imported sheet
+        happens to carry its PAN."""
+        return [a for a in self._vault.get_all_assessees()
+                if "Income Tax" in self._vault.credential_sources(a)]
+
     def _row_is_ready(self, row: dict) -> bool:
         pan = (row.get("pan") or "").upper()
         if not pan:
             return False
-        matched = any(a.get("pan", "").upper() == pan for a in self._vault.get_all_assessees())
+        matched = any(a.get("pan", "").upper() == pan
+                      for a in self._income_tax_clients())
         if not matched:
             return False
         total = self._row_total(row)
@@ -3756,10 +4040,11 @@ class GenerateChallansDialog(QDialog):
 
     def _refresh_table(self):
         _bt = _t()
+        clients = self._income_tax_clients()
         self._table.setRowCount(len(self._row_data))
         for i, row in enumerate(self._row_data):
             pan = (row.get("pan") or "").upper()
-            matched = next((a for a in self._vault.get_all_assessees() if a.get("pan", "").upper() == pan), None)
+            matched = next((a for a in clients if a.get("pan", "").upper() == pan), None)
             self._table.setRowHeight(i, 36)
 
             pan_item = QTableWidgetItem(pan)
@@ -4087,6 +4372,437 @@ class GenerateChallansDialog(QDialog):
 
         self.rows = rows
         self.accept()
+class TdsSectionEditDialog(QDialog):
+    """Add/edit ONE section line (code + Tax + Surcharge + Cess)."""
+
+    def __init__(self, parent, section: dict | None = None):
+        super().__init__(parent)
+        from automation.tds_sections import SECTIONS
+        bt = _t()
+        self.section = dict(section or {})
+        self.setWindowTitle("TDS Section")
+        self.setFixedWidth(520)
+        self.setStyleSheet(f"QDialog{{background:{bt.bg_window};}}")
+
+        vl = QVBoxLayout(self)
+        vl.setContentsMargins(20, 18, 20, 16)
+        vl.setSpacing(8)
+
+        vl.addWidget(_lbl("Section", 11, bold=True))
+        self._code_combo = QComboBox()
+        # The portal's section labels are long paragraphs. Left unbounded, the
+        # combo sizes itself (and its popup list) to the longest label and
+        # covers the whole screen. Show a trimmed label, keep the full text as
+        # a tooltip, and cap the popup to a normal modal width with elision.
+        self._code_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self._code_combo.setMinimumContentsLength(34)
+        self._code_combo.setMaxVisibleItems(12)
+        self._code_combo.setMaximumWidth(470)
+        self._code_combo.view().setTextElideMode(Qt.TextElideMode.ElideRight)
+        self._code_combo.view().setMinimumWidth(440)
+        self._code_combo.view().setMaximumWidth(560)
+        for s in SECTIONS:
+            full = f"{s['code']} — {s['label']}"
+            short = full if len(full) <= 88 else full[:85].rstrip() + "…"
+            self._code_combo.addItem(short, s["code"])
+            self._code_combo.setItemData(
+                self._code_combo.count() - 1, full, Qt.ItemDataRole.ToolTipRole)
+        if self.section.get("section_code"):
+            idx = self._code_combo.findData(str(self.section["section_code"]))
+            if idx >= 0:
+                self._code_combo.setCurrentIndex(idx)
+        vl.addWidget(self._code_combo)
+
+        self._amounts = {}
+        for key, label, _kind in TDS_SECTION_FIELDS:
+            if key == "section_code":
+                continue
+            vl.addWidget(_lbl(label, 11, bold=True))
+            box = QLineEdit(str(self.section.get(key, "") or ""))
+            box.setPlaceholderText("0")
+            box.setFixedHeight(32)
+            validator = QDoubleValidator(0, 999999999, 2, box)
+            validator.setNotation(QDoubleValidator.Notation.StandardNotation)
+            box.setValidator(validator)
+            self._amounts[key] = box
+            vl.addWidget(box)
+
+        row = QHBoxLayout()
+        row.addStretch(1)
+        cancel = _btn("Cancel", "secondary")
+        ok = _btn("Save", "primary")
+        row.addWidget(cancel)
+        row.addWidget(ok)
+        vl.addLayout(row)
+        cancel.clicked.connect(self.reject)
+        ok.clicked.connect(self._accept)
+
+    def _accept(self):
+        for box in self._amounts.values():
+            if box.text().strip() and not box.hasAcceptableInput():
+                QMessageBox.critical(self, "Invalid amount", "Enter a non-negative number.")
+                return
+        self.section = {
+            "section_code": self._code_combo.currentData(),
+            **{k: float(b.text() or 0) for k, b in self._amounts.items()},
+        }
+        self.accept()
+
+
+class TdsChallanRowDetailDialog(QDialog):
+    """Full editor for ONE TDS challan row."""
+
+    def __init__(self, parent, tan_clients: list, row: dict | None = None):
+        super().__init__(parent)
+        from automation.challan_generator import (
+            PAYMENT_MODES, all_bank_options, DEFAULT_PAYMENT_MODE,
+        )
+        bt = _t()
+        self.row = dict(row or {})
+        self.row.setdefault("deductee_type", "other_than_company")
+        self.row.setdefault("residence", "resident")
+        self.row.setdefault("sections", [])
+        self.row.setdefault("payment_mode", DEFAULT_PAYMENT_MODE)
+        self.row.setdefault("bank", "Cheque")
+        self.setWindowTitle("TDS / TCS Challan Row")
+        self.setMinimumSize(720, 600)
+        self.setStyleSheet(f"QDialog{{background:{bt.bg_window};}}")
+
+        vl = QVBoxLayout(self)
+        vl.setContentsMargins(18, 16, 18, 14)
+        vl.setSpacing(8)
+
+        vl.addWidget(_lbl("Deductor (TAN)", 11, bold=True))
+        self._tan_combo = QComboBox()
+        self._tan_combo.setEditable(True)
+        self._tan_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        for c in sorted(tan_clients, key=lambda c: c.get("name", "")):
+            self._tan_combo.addItem(f"{c['pan']} — {c['name']}", c["pan"])
+        # Make the deductor searchable by TAN or name (mirrors the PAN combo
+        # in ChallanRowDetailDialog): items read "TAN — Name", so default
+        # "starts-with" matching would miss name queries — switch to
+        # contains + case-insensitive.
+        completer = self._tan_combo.completer()
+        if completer:
+            completer.setFilterMode(Qt.MatchFlag.MatchContains)
+            completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self._tan_combo.setMaxVisibleItems(18)
+        if self.row.get("tan"):
+            idx = self._tan_combo.findData(self.row["tan"])
+            if idx >= 0:
+                self._tan_combo.setCurrentIndex(idx)
+        vl.addWidget(self._tan_combo)
+
+        # Deductee type + residence (v1: one supported value each, shown
+        # disabled so the constraint is visible rather than hidden).
+        type_row = QHBoxLayout()
+        self._type_combo = QComboBox()
+        self._type_combo.addItem("Other than Company Deductee(s)", "other_than_company")
+        self._type_combo.addItem("Company Deductee(s) — not supported yet", "company")
+        self._type_combo.setCurrentIndex(
+            max(0, self._type_combo.findData(self.row["deductee_type"])))
+        self._type_combo.setEnabled(False)
+        type_row.addWidget(_lbl("Deductee type", 11, bold=True))
+        type_row.addWidget(self._type_combo, 1)
+        self._res_combo = QComboBox()
+        self._res_combo.addItem("Resident Deductee(s)", "resident")
+        self._res_combo.addItem("Non-Resident Deductee(s) — not supported yet", "non_resident")
+        self._res_combo.setCurrentIndex(max(0, self._res_combo.findData(self.row["residence"])))
+        self._res_combo.setEnabled(False)
+        type_row.addWidget(_lbl("Residence", 11, bold=True))
+        type_row.addWidget(self._res_combo, 1)
+        vl.addLayout(type_row)
+
+        vl.addWidget(_lbl("Section-wise details (max 20)", 11, bold=True))
+        self._sec_table = QTableWidget(0, 5)
+        self._sec_table.setHorizontalHeaderLabels(
+            ["Code", "Section", "Tax", "Surcharge", "Cess"])
+        self._sec_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._sec_table.verticalHeader().setVisible(False)
+        self._sec_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._sec_table.doubleClicked.connect(lambda *_: self._edit_section())
+        vl.addWidget(self._sec_table, 1)
+
+        sec_btns = QHBoxLayout()
+        add_sec = _btn("➕ Add Section", "primary")
+        edit_sec = _btn("Edit", "secondary")
+        del_sec = _btn("Remove", "danger")
+        sec_btns.addWidget(add_sec)
+        sec_btns.addWidget(edit_sec)
+        sec_btns.addWidget(del_sec)
+        sec_btns.addStretch(1)
+        vl.addLayout(sec_btns)
+        add_sec.clicked.connect(self._add_section)
+        edit_sec.clicked.connect(self._edit_section)
+        del_sec.clicked.connect(self._remove_section)
+
+        vl.addWidget(_lbl("Other payments (common to the challan)", 11, bold=True))
+        self._other = {}
+        other_row = QHBoxLayout()
+        for key, label, _kind in TDS_OTHER_FIELDS:
+            col = QVBoxLayout()
+            col.addWidget(_lbl(label, 10))
+            box = QLineEdit(str(self.row.get(key, "") or ""))
+            box.setPlaceholderText("0")
+            box.setFixedHeight(30)
+            box.setValidator(QDoubleValidator(0, 999999999, 2, box))
+            self._other[key] = box
+            col.addWidget(box)
+            other_row.addLayout(col)
+        vl.addLayout(other_row)
+
+        mode_row = QHBoxLayout()
+        self._mode_combo = QComboBox()
+        self._mode_combo.addItems(list(PAYMENT_MODES.keys()))
+        self._mode_combo.setCurrentText(self.row["payment_mode"])
+        self._mode_combo.currentTextChanged.connect(self._refresh_banks)
+        mode_row.addWidget(_lbl("Payment Mode", 11, bold=True))
+        mode_row.addWidget(self._mode_combo, 1)
+        self._bank_combo = QComboBox()
+        mode_row.addWidget(_lbl("Bank / Sub-Mode", 11, bold=True))
+        mode_row.addWidget(self._bank_combo, 1)
+        vl.addLayout(mode_row)
+
+        bank_row = QHBoxLayout()
+        self._drawee = QLineEdit(self.row.get("drawee_bank", ""))
+        self._drawee.setPlaceholderText("Drawn on Bank (Pay at Bank Counter only)")
+        self._drawee.setFixedHeight(30)
+        bank_row.addWidget(_lbl("Drawn on Bank", 11, bold=True))
+        bank_row.addWidget(self._drawee, 1)
+        vl.addLayout(bank_row)
+
+        self._hint = QLabel("")
+        self._hint.setWordWrap(True)
+        self._hint.setStyleSheet(f"color:{bt.text_muted};font-size:11px;background:transparent;")
+        vl.addWidget(self._hint)
+
+        footer = QHBoxLayout()
+        footer.addStretch(1)
+        cancel = _btn("Cancel", "secondary")
+        ok = _btn("Save Row", "primary")
+        footer.addWidget(cancel)
+        footer.addWidget(ok)
+        vl.addLayout(footer)
+        cancel.clicked.connect(self.reject)
+        ok.clicked.connect(self._accept)
+
+        self._refresh_banks(self._mode_combo.currentText())
+        if self.row.get("bank"):
+            idx = self._bank_combo.findText(self.row["bank"])
+            if idx >= 0:
+                self._bank_combo.setCurrentIndex(idx)
+        self._fill_sections()
+        self._drawee.textChanged.connect(self._update_hint)
+
+    def _refresh_banks(self, mode: str):
+        from automation.challan_generator import all_bank_options
+        current = self._bank_combo.currentText()
+        self._bank_combo.clear()
+        self._bank_combo.addItems(all_bank_options(mode))
+        if current:
+            idx = self._bank_combo.findText(current)
+            if idx >= 0:
+                self._bank_combo.setCurrentIndex(idx)
+        self._update_hint()
+
+    def _fill_sections(self):
+        from automation.tds_sections import description_for
+        secs = self.row.get("sections", [])
+        self._sec_table.setRowCount(len(secs))
+        for r, sec in enumerate(secs):
+            code = str(sec.get("section_code", ""))
+            vals = [code, description_for(code),
+                    str(sec.get("tax", 0)), str(sec.get("surcharge", 0)), str(sec.get("cess", 0))]
+            for c, v in enumerate(vals):
+                self._sec_table.setItem(r, c, QTableWidgetItem(v))
+        self._update_hint()
+
+    def _add_section(self):
+        if len(self.row.get("sections", [])) >= 20:
+            QMessageBox.warning(self, "Limit Reached",
+                                "The portal allows at most 20 section codes per challan.")
+            return
+        dlg = TdsSectionEditDialog(self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self.row.setdefault("sections", []).append(dlg.section)
+            self._fill_sections()
+
+    def _edit_section(self):
+        r = self._sec_table.currentRow()
+        if r < 0:
+            return
+        dlg = TdsSectionEditDialog(self, self.row["sections"][r])
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self.row["sections"][r] = dlg.section
+            self._fill_sections()
+
+    def _remove_section(self):
+        r = self._sec_table.currentRow()
+        if r < 0:
+            return
+        del self.row["sections"][r]
+        self._fill_sections()
+
+    def _current_tan(self) -> str:
+        idx = self._tan_combo.currentIndex()
+        text = self._tan_combo.currentText().strip()
+        if idx >= 0 and self._tan_combo.itemText(idx) == text:
+            return (self._tan_combo.itemData(idx) or "").upper()
+        if " — " in text:
+            return text.split(" — ")[0].strip().upper()
+        return text.upper()
+
+    def _row_from_widgets(self) -> dict:
+        row = dict(self.row)
+        row["tan"] = self._current_tan()
+        row["payment_mode"] = self._mode_combo.currentText()
+        row["bank"] = self._bank_combo.currentText()
+        row["drawee_bank"] = self._drawee.text().strip()
+        for k, box in self._other.items():
+            try:
+                row[k] = float(box.text() or 0)
+            except ValueError:
+                row[k] = 0
+        return row
+
+    def _update_hint(self):
+        from automation.challan_generator_tds import tds_row_total
+        self._hint.setText(f"Total: ₹{tds_row_total(self._row_from_widgets()):,.2f}")
+
+    def _accept(self):
+        from automation.challan_generator_tds import validate_tds_row
+        row = self._row_from_widgets()
+        row["name"] = self._tan_combo.currentText().split(" — ", 1)[-1]
+        problem = validate_tds_row(row)
+        if problem:
+            QMessageBox.warning(self, "Check This Row", f"This row {problem}.")
+            return
+        self.row = row
+        self.accept()
+
+
+class GenerateTdsChallansDialog(QDialog):
+    """Bulk TDS/TCS challan builder — one TY for the run, manual rows."""
+
+    def __init__(self, parent, vault, ay_entries, output_dir: str = ""):
+        super().__init__(parent)
+        from vault import identify_type
+        bt = _t()
+        self._vault = vault
+        self._ay_entries = ay_entries
+        self._output_dir = output_dir
+        self.year_label = None
+        self.rows = []
+        self._row_data = []
+
+        tan_clients = [c for c in vault.get_all_assessees()
+                       if identify_type(c.get("pan", "")) == "TAN"]
+
+        self.setWindowTitle("Generate TDS / TCS Challans")
+        self.setMinimumSize(760, 520)
+        self.setStyleSheet(f"QDialog{{background:{bt.bg_window};}}")
+        vl = QVBoxLayout(self)
+        vl.setContentsMargins(16, 14, 16, 12)
+        vl.setSpacing(8)
+
+        year_row = QHBoxLayout()
+        year_row.addWidget(_lbl("Tax Year:", 11, bold=True))
+        self._year_combo = QComboBox()
+        for e in ay_entries:
+            if not e.get("enabled", True):
+                continue
+            ty = e.get("year", {}).get("TY")
+            if ty:
+                self._year_combo.addItem(e.get("label", ty), ty)
+        year_row.addWidget(self._year_combo, 1)
+        year_row.addWidget(_lbl("Income-tax Act, 2025", 11, color=bt.text_muted))
+        vl.addLayout(year_row)
+
+        if not tan_clients:
+            warn = QLabel("No TAN clients in the vault yet. Add one via Client Master → "
+                          "Add New Client (use the deductor's TAN, e.g. ABCD12345E).")
+            warn.setWordWrap(True)
+            warn.setStyleSheet(f"color:{bt.error};font-size:11px;background:transparent;")
+            vl.addWidget(warn)
+
+        btns = QHBoxLayout()
+        self._add_btn = _btn("➕ Add Row", "primary")
+        self._edit_btn = _btn("Edit", "secondary")
+        self._del_btn = _btn("Remove", "danger")
+        btns.addWidget(self._add_btn)
+        btns.addWidget(self._edit_btn)
+        btns.addWidget(self._del_btn)
+        btns.addStretch(1)
+        vl.addLayout(btns)
+
+        self._table = QTableWidget(0, 6)
+        self._table.setHorizontalHeaderLabels(["TAN", "Name", "Sections", "Total", "Mode", "Bank"])
+        self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._table.verticalHeader().setVisible(False)
+        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._table.doubleClicked.connect(lambda *_: self._edit_row())
+        vl.addWidget(self._table, 1)
+
+        footer = QHBoxLayout()
+        footer.addStretch(1)
+        cancel = _btn("Cancel", "secondary")
+        gen = _btn("Generate Challans", "primary")
+        gen.setEnabled(bool(tan_clients))
+        footer.addWidget(cancel)
+        footer.addWidget(gen)
+        vl.addLayout(footer)
+
+        self._tan_clients = tan_clients
+        self._add_btn.clicked.connect(self._add_row)
+        self._edit_btn.clicked.connect(self._edit_row)
+        self._del_btn.clicked.connect(self._delete_row)
+        cancel.clicked.connect(self.reject)
+        gen.clicked.connect(self._generate)
+
+    def _refresh(self):
+        from automation.challan_generator_tds import tds_row_total
+        self._table.setRowCount(len(self._row_data))
+        for r, row in enumerate(self._row_data):
+            vals = [row.get("tan", ""), row.get("name", ""), str(len(row.get("sections", []))),
+                    f"₹{tds_row_total(row):,.0f}", row.get("payment_mode", ""),
+                    row.get("bank", "")]
+            for c, v in enumerate(vals):
+                self._table.setItem(r, c, QTableWidgetItem(v))
+
+    def _add_row(self):
+        if not self._tan_clients:
+            return
+        dlg = TdsChallanRowDetailDialog(self, self._tan_clients)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._row_data.append(dlg.row)
+            self._refresh()
+
+    def _edit_row(self):
+        r = self._table.currentRow()
+        if r < 0:
+            return
+        dlg = TdsChallanRowDetailDialog(self, self._tan_clients, self._row_data[r])
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._row_data[r] = dlg.row
+            self._refresh()
+
+    def _delete_row(self):
+        r = self._table.currentRow()
+        if r >= 0:
+            del self._row_data[r]
+            self._refresh()
+
+    def _generate(self):
+        if not self._row_data:
+            QMessageBox.warning(self, "Nothing to Generate",
+                                "Add at least one TDS challan row.")
+            return
+        self.year_label = self._year_combo.currentData()
+        self.rows = list(self._row_data)
+        self.accept()
+
+
 class ChallanGenerationProgressDialog(QDialog):
     """
     Live progress popup for a Generate Tax Challans run (F-64). Deliberately
@@ -4109,7 +4825,8 @@ class ChallanGenerationProgressDialog(QDialog):
     _COL_PATH = 3
 
     def __init__(self, targets: list, year_display: str, type_label: str,
-                 stop_callback=None, tray_callback=None, output_dir: str = "", parent=None):
+                 stop_callback=None, tray_callback=None, output_dir: str = "", parent=None,
+                 id_label: str = "PAN"):
         super().__init__(parent)
         self._stop_callback = stop_callback
         self._tray_callback = tray_callback
@@ -4138,7 +4855,7 @@ class ChallanGenerationProgressDialog(QDialog):
         layout.addWidget(title)
 
         self._table = QTableWidget(len(targets), 4)
-        self._table.setHorizontalHeaderLabels(["Name", "PAN", "Status", "Save Path"])
+        self._table.setHorizontalHeaderLabels(["Name", id_label, "Status", "Save Path"])
         hdr = self._table.horizontalHeader()
         hdr.setSectionResizeMode(self._COL_NAME, QHeaderView.ResizeMode.Interactive)
         hdr.setSectionResizeMode(self._COL_PAN, QHeaderView.ResizeMode.Interactive)
@@ -4230,6 +4947,33 @@ class ChallanGenerationProgressDialog(QDialog):
         self._stop_btn = _btn("⏹  Stop", "danger")
         self._stop_btn.clicked.connect(self._on_stop_clicked)
         footer.addWidget(self._stop_btn)
+
+        self._pause_btn = QPushButton("⏸  Pause")
+        self._pause_btn.setFixedHeight(32)
+        self._pause_btn.setMinimumWidth(90)
+        self._pause_btn.setVisible(bool(self._pause_callback))
+        self._pause_btn.setStyleSheet(
+            f"QPushButton{{background:{_bt.bg_table_alt};color:{_bt.text_primary};border:1px solid {_bt.border};"
+            f"border-radius:6px;font-size:12px;font-weight:600;padding:0 12px;}}"
+            f"QPushButton:hover{{background:{_bt.bg_input};}}")
+        self._pause_btn.clicked.connect(self._on_pause_clicked)
+        footer.addWidget(self._pause_btn)
+
+        self._restart_btn = QPushButton("↻  Restart")
+        self._restart_btn.setFixedHeight(32)
+        self._restart_btn.setMinimumWidth(90)
+        self._restart_btn.setVisible(bool(self._restart_callback))
+        self._restart_btn.setStyleSheet(self._pause_btn.styleSheet())
+        self._restart_btn.clicked.connect(self.restart_run)
+        footer.addWidget(self._restart_btn)
+
+        self._skip_future_btn = QPushButton("⏭⏭  Skip Future")
+        self._skip_future_btn.setFixedHeight(32)
+        self._skip_future_btn.setMinimumWidth(110)
+        self._skip_future_btn.setVisible(bool(self._skip_future_callback))
+        self._skip_future_btn.setStyleSheet(self._pause_btn.styleSheet())
+        self._skip_future_btn.clicked.connect(self.skip_future)
+        footer.addWidget(self._skip_future_btn)
         layout.addLayout(footer)
 
         self._update_signal.connect(self._on_update)
@@ -4332,7 +5076,7 @@ class DownloadPickerDialog(QDialog):
 
         self.setWindowTitle("Download Documents")
         self.setMinimumWidth(440)
-        self.resize(460, 460)
+        self.resize(460, 520)
         self.setWindowFlags(
             Qt.WindowType.Dialog |
             Qt.WindowType.WindowTitleHint |
@@ -4349,7 +5093,8 @@ class DownloadPickerDialog(QDialog):
             f"QCheckBox::indicator{{width:16px;height:16px;border:1.5px solid {t.border};"
             f"border-radius:4px;background:{t.bg_checkbox};}}"
             f"QCheckBox::indicator:hover{{border-color:{t.border_focus};}}"
-            f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};}}"
+            f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};"
+            f"image:url(resources/check_white.png);}}"
             f"QRadioButton{{color:{t.text_primary};background:transparent;font-size:12px;spacing:6px;}}"
             f"QRadioButton::indicator{{width:14px;height:14px;border:1.5px solid {t.border};"
             f"border-radius:7px;background:{t.bg_checkbox};}}"
@@ -4393,6 +5138,12 @@ class DownloadPickerDialog(QDialog):
 
         add_option("challans", "Tax Payment Challans",
                     "Downloads challan PDFs from e-Pay Tax Payment History for the selected year")
+
+        add_option("e_proceedings", "e-Proceedings Documents",
+                    "Notices, orders and your submitted responses — all proceedings, both tabs")
+
+        add_option("filed_forms", "Filed IT Forms",
+                    "Every form under e-File > Income Tax Forms — 15CA, 3CD, 10IE, 35 and any others")
 
         self._scope_panel = QFrame()
         self._scope_panel.setStyleSheet(
@@ -4456,6 +5207,330 @@ class DownloadPickerDialog(QDialog):
         except Exception:
             pass
         self.accept()
+
+
+# ── e-Proceedings Viewer Dialog (F-60) ────────────────────────────────────────
+
+class EProceedingsDialog(QDialog):
+    """
+    Tools → View e-Proceedings (F-60 UI phase). Read-only viewer over the
+    documents the backend already downloaded under
+    <client_year_folder>/e-Proceedings/<NN>-<ProcName>/{notice-NN,response-NN}/
+    — pure local filesystem scanning, never touches Playwright/portal.
+
+    Launch paths: Tools menu (client taken from the grid selection, year
+    resolved the same way _execute_batch's _out_for_year does) and the grid's
+    right-click menu (client fixed by the clicked row). A missing root just
+    shows the empty state.
+    """
+
+    _FILE_EXTS = (".pdf", ".jpg", ".jpeg", ".png")
+
+    def __init__(self, parent, client_name: str, pan: str, eproc_root: str):
+        super().__init__(parent)
+        self._client_name = client_name
+        self._pan = pan
+        self._eproc_root = eproc_root
+        # [{"name","dir","num","files":[{"path","name","size","kind"}]}, ...]
+        # sorted by the NN prefix so the list order matches the portal's own.
+        self._proceedings = []
+
+        self.setWindowTitle("e-Proceedings")
+        self.setMinimumSize(880, 560)
+        self.resize(1000, 640)
+        self.setSizeGripEnabled(True)
+        self.setStyleSheet(f"QDialog{{background:{_t().bg_window};}}")
+
+        self._build_ui()
+        self._rescan()
+
+    # ── Scanning ──────────────────────────────���───────────────────────────────
+
+    @staticmethod
+    def _human_size(n: int) -> str:
+        if n >= 1024 * 1024:
+            return f"{n / (1024 * 1024):.1f} MB"
+        if n >= 1024:
+            return f"{n / 1024:.1f} KB"
+        return f"{n} B"
+
+    @classmethod
+    def _scan_proceedings(cls, eproc_root: str) -> list:
+        """One level of proceedings (NN-* dirs; tolerant of anything else),
+        then walk each one for PDF/image files. Kind comes from the first
+        subfolder component (notice-* → Notice, response-* → Response);
+        loose files inside the proceeding dir get "—". Unnumbered dirs sort
+        last so a stray folder can't jump ahead of 01-…"""
+        procs = []
+        try:
+            entries = os.listdir(eproc_root)
+        except OSError:
+            return procs
+        for name in entries:
+            pdir = os.path.join(eproc_root, name)
+            if not os.path.isdir(pdir):
+                continue
+            digits = ""
+            i = 0
+            while i < len(name) and name[i].isdigit():
+                digits += name[i]
+                i += 1
+            num = int(digits) if digits else 10 ** 6
+            label = name[i:].lstrip("-") if digits else name
+            files = []
+            for dirpath, _dirnames, filenames in os.walk(pdir):
+                first = os.path.relpath(dirpath, pdir).split(os.sep)[0].lower()
+                if first.startswith("notice"):
+                    kind = "Notice"
+                elif first.startswith("response"):
+                    kind = "Response"
+                else:
+                    kind = "—"
+                for fn in filenames:
+                    if not fn.lower().endswith(cls._FILE_EXTS):
+                        continue
+                    fp = os.path.join(dirpath, fn)
+                    try:
+                        size = os.path.getsize(fp)
+                    except OSError:
+                        size = 0
+                    files.append({"path": fp, "name": fn, "size": size, "kind": kind})
+            files.sort(key=lambda f: f["path"].lower())
+            procs.append({"name": name, "dir": pdir, "num": num, "files": files})
+        procs.sort(key=lambda p: (p["num"], p["name"].lower()))
+        return procs
+
+    # ── UI ────────────────────────────────────────────────────────────────────
+
+    def _build_ui(self):
+        from PyQt6.QtWidgets import QListWidget, QListWidgetItem, QStackedWidget
+        from PyQt6.QtCore import QSize
+        from config import _bundled_dir
+        t = _t()
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 14, 16, 12)
+        layout.setSpacing(8)
+
+        # Header: app icon + title + subtitle, same shape as ManageYearsDialog
+        hdr_row = QHBoxLayout()
+        hdr_row.setSpacing(12)
+        icon_lbl = QLabel()
+        icon_lbl.setStyleSheet("background:transparent;")
+        icon_path = os.path.join(_bundled_dir(), "resources", "app_icon.png")
+        if os.path.isfile(icon_path):
+            icon_lbl.setPixmap(QPixmap(icon_path).scaled(
+                40, 40, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation))
+        hdr_row.addWidget(icon_lbl)
+        txt_col = QVBoxLayout()
+        txt_col.setSpacing(2)
+        txt_col.addWidget(_lbl(f"e-Proceedings — {self._client_name}", 13, bold=True))
+        txt_col.addWidget(_lbl(f"PAN: {self._pan} • {self._eproc_root}", 10, color=t.text_muted))
+        hdr_row.addLayout(txt_col)
+        hdr_row.addStretch()
+        layout.addLayout(hdr_row)
+
+        sep = QFrame(); sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet(f"background:{t.border};border:none;max-height:1px;")
+        layout.addWidget(sep)
+
+        # Summary strip: proceedings / files / total size, recomputed on rescan
+        self._summary_lbl = _lbl("", 11, bold=True, color=t.text_muted)
+        layout.addWidget(self._summary_lbl)
+
+        self._stack = QStackedWidget()
+        layout.addWidget(self._stack, 1)
+
+        # Empty state — missing root or zero proceedings
+        empty_page = QWidget()
+        empty_v = QVBoxLayout(empty_page)
+        empty_v.addStretch()
+        msg = _lbl("No e-Proceedings downloaded yet for this client.", 12)
+        msg.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        empty_v.addWidget(msg)
+        hint = _lbl("Run Download → e-Proceedings Documents.", 11, color=t.text_muted)
+        hint.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        empty_v.addWidget(hint)
+        empty_v.addStretch()
+        self._stack.addWidget(empty_page)
+
+        # Main page: proceedings list (left) + files of the selected one (right)
+        body_page = QWidget()
+        body = QHBoxLayout(body_page)
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(10)
+
+        left_col = QVBoxLayout(); left_col.setSpacing(4)
+        left_col.addWidget(_lbl("PROCEEDINGS", 10, bold=True, color=t.text_muted))
+        self._proc_list = QListWidget()
+        self._proc_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._proc_list.setStyleSheet(
+            f"QListWidget{{background:{t.bg_table};border:1px solid {t.border};"
+            f"border-radius:8px;outline:0;padding:4px;color:{t.text_primary};}}"
+            f"QListWidget::item{{padding:8px 10px;margin:1px 0;border-radius:4px;}}"
+            f"QListWidget::item:selected{{background:{t.accent_light};color:{t.text_primary};}}"
+            f"QListWidget::item:hover{{background:{t.bg_table_alt};}}")
+        self._proc_list.currentItemChanged.connect(self._on_proc_selected)
+        self._proc_list.itemDoubleClicked.connect(lambda _it: self._open_selected_folder())
+        left_col.addWidget(self._proc_list, 1)
+        body.addLayout(left_col, 2)
+
+        right_col = QVBoxLayout(); right_col.setSpacing(4)
+        self._files_caption = _lbl("FILES", 10, bold=True, color=t.text_muted)
+        right_col.addWidget(self._files_caption)
+        self._file_list = QListWidget()
+        self._file_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._file_list.setStyleSheet(
+            f"QListWidget{{background:{t.bg_table};border:1px solid {t.border};"
+            f"border-radius:8px;outline:0;padding:4px;color:{t.text_primary};}}"
+            f"QListWidget::item{{padding:0;margin:1px 0;border-radius:4px;}}"
+            f"QListWidget::item:selected{{background:{t.accent_light};}}"
+            f"QListWidget::item:hover{{background:{t.bg_table_alt};}}")
+        self._file_list.itemDoubleClicked.connect(lambda _it: self._open_selected_file())
+        right_col.addWidget(self._file_list, 1)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+        self._btn_open_file = _btn("Open File", "primary", height=32, icon="icon_preview.png")
+        self._btn_open_file.clicked.connect(self._open_selected_file)
+        btn_row.addWidget(self._btn_open_file)
+        btn_row.addStretch()
+        self._btn_open_folder = _btn("Open Folder", "outline", height=32, icon="btn_open.png")
+        self._btn_open_folder.clicked.connect(self._open_selected_folder)
+        btn_row.addWidget(self._btn_open_folder)
+        right_col.addLayout(btn_row)
+        body.addLayout(right_col, 3)
+        self._stack.addWidget(body_page)
+
+        # Footer: hint + Refresh + Close (ReturnStatusDialog footer shape)
+        footer = QHBoxLayout()
+        self._hint_lbl = QLabel("Double-click a file to open it.")
+        self._hint_lbl.setStyleSheet(f"color:{t.text_muted};font-size:11px;background:transparent;")
+        footer.addWidget(self._hint_lbl, 1)
+        refresh_btn = _btn("Refresh", "outline", height=32, icon="btn_refresh.png")
+        refresh_btn.clicked.connect(self._rescan)
+        footer.addWidget(refresh_btn)
+        close_btn = _btn("Close", "outline", height=32)
+        close_btn.clicked.connect(self.accept)
+        footer.addWidget(close_btn)
+        layout.addLayout(footer)
+
+    def _make_file_row(self, f: dict) -> QWidget:
+        """Row widget for the file list: name (stretch) • size • kind tag."""
+        t = _t()
+        row = QWidget()
+        row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        row.setStyleSheet("QWidget{background:transparent;}")
+        hl = QHBoxLayout(row)
+        hl.setContentsMargins(10, 4, 10, 4)
+        hl.setSpacing(8)
+        name_lbl = QLabel(f["name"])
+        name_lbl.setStyleSheet(f"background:transparent;font-size:12px;color:{t.text_primary};")
+        hl.addWidget(name_lbl, 1)
+        size_lbl = QLabel(self._human_size(f["size"]))
+        size_lbl.setStyleSheet(f"background:transparent;font-size:11px;color:{t.text_muted};")
+        hl.addWidget(size_lbl)
+        kind_color = (t.accent_it if f["kind"] == "Notice"
+                      else t.success if f["kind"] == "Response"
+                      else t.text_muted)
+        kind_lbl = QLabel(f["kind"])
+        kind_lbl.setStyleSheet(
+            f"background:transparent;font-size:11px;font-weight:bold;color:{kind_color};")
+        hl.addWidget(kind_lbl)
+        return row
+
+    # ── Population / selection ────────────────────────────────────────────────
+
+    def _rescan(self):
+        self._proceedings = self._scan_proceedings(self._eproc_root)
+        n = len(self._proceedings)
+        n_files = sum(len(p["files"]) for p in self._proceedings)
+        total = sum(f["size"] for p in self._proceedings for f in p["files"])
+        self._summary_lbl.setText(
+            f"{n} proceeding{'s' if n != 1 else ''} • "
+            f"{n_files} file{'s' if n_files != 1 else ''} • {self._human_size(total)}")
+        self._refresh_proc_list()
+        self._stack.setCurrentIndex(1 if self._proceedings else 0)
+
+    def _refresh_proc_list(self):
+        from PyQt6.QtWidgets import QListWidgetItem
+        from PyQt6.QtCore import QSize
+        self._proc_list.blockSignals(True)
+        self._proc_list.clear()
+        for i, p in enumerate(self._proceedings):
+            n_files = len(p["files"])
+            item = QListWidgetItem(f"{p['name']} — {n_files} file{'s' if n_files != 1 else ''}")
+            item.setData(Qt.ItemDataRole.UserRole, i)
+            item.setSizeHint(QSize(0, 30))
+            self._proc_list.addItem(item)
+        self._proc_list.blockSignals(False)
+        if self._proceedings:
+            # Fires _on_proc_selected → _refresh_file_list with row 0 selected.
+            self._proc_list.setCurrentRow(0)
+        else:
+            self._refresh_file_list()
+
+    def _on_proc_selected(self, _current=None, _previous=None):
+        self._refresh_file_list()
+
+    def _current_proc(self):
+        it = self._proc_list.currentItem()
+        if not it:
+            return None
+        try:
+            idx = int(it.data(Qt.ItemDataRole.UserRole))
+        except (TypeError, ValueError):
+            return None
+        if 0 <= idx < len(self._proceedings):
+            return self._proceedings[idx]
+        return None
+
+    def _refresh_file_list(self):
+        from PyQt6.QtWidgets import QListWidgetItem
+        from PyQt6.QtCore import QSize
+        self._file_list.clear()
+        p = self._current_proc()
+        if not p:
+            self._files_caption.setText("FILES")
+            return
+        n_files = len(p["files"])
+        self._files_caption.setText(f"{p['name']} — {n_files} file{'s' if n_files != 1 else ''}")
+        for i, f in enumerate(p["files"]):
+            item = QListWidgetItem()
+            item.setData(Qt.ItemDataRole.UserRole, i)
+            item.setSizeHint(QSize(0, 28))
+            self._file_list.addItem(item)
+            self._file_list.setItemWidget(item, self._make_file_row(f))
+
+    def _current_file(self):
+        p = self._current_proc()
+        it = self._file_list.currentItem()
+        if not p or not it:
+            return None
+        try:
+            idx = int(it.data(Qt.ItemDataRole.UserRole))
+        except (TypeError, ValueError):
+            return None
+        if 0 <= idx < len(p["files"]):
+            return p["files"][idx]
+        return None
+
+    # ── Open actions ──────────────────────────────────────────────────────────
+
+    def _open_selected_file(self):
+        f = self._current_file()
+        if not f:
+            return
+        _log_open(f"[EProcViewer] Open file: {f['path']!r}")
+        _open_path(f["path"])
+
+    def _open_selected_folder(self):
+        p = self._current_proc()
+        if not p:
+            return
+        _log_open(f"[EProcViewer] Open folder: {p['dir']!r}")
+        _open_path(p["dir"])
 
 
 # ── Mail Docs to Clients Dialog ───────────────────────────────────────────────
@@ -4548,7 +5623,7 @@ class MailDocsDialog(QDialog):
             f"QPushButton:hover{{background:{t.bg_table_alt};}}"
         )
         _btn_ss_primary = (
-            f"QPushButton{{background:{t.accent};color:white;border:none;"
+            f"QPushButton{{background:{t.accent};color:{t.accent_text};border:none;"
             f"border-radius:5px;padding:0 8px;font-size:11px;font-weight:600;}}"
             f"QPushButton:hover{{background:{t.accent_hover};}}"
             f"QPushButton:disabled{{background:{t.border};color:{t.text_muted};}}"
@@ -4857,7 +5932,8 @@ class MailDocsDialog(QDialog):
                 f"QCheckBox{{background:transparent;}}"
                 f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {t.border};"
                 f"border-radius:3px;background:{t.bg_checkbox};}}"
-                f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};}}"
+                f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};"
+            f"image:url(resources/check_white.png);}}"
                 f"QCheckBox::indicator:disabled{{background:{t.border};}}")
             chk_layout.addWidget(chk)
             self._table.setCellWidget(row, self._COL_CHK, chk_widget)
@@ -5299,6 +6375,7 @@ class ReturnStatusProgressDialog(QDialog):
         self._stop_btn = _btn("⏹  Stop", "danger")
         self._stop_btn.clicked.connect(self._on_stop_clicked)
         footer.addWidget(self._stop_btn)
+
         layout.addLayout(footer)
 
         self._update_signal.connect(self._on_update)
@@ -5546,7 +6623,8 @@ class ReturnStatusDialog(QDialog):
                 f"QCheckBox{{background:transparent;}}"
                 f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {_bt.border};"
                 f"border-radius:3px;background:{_bt.bg_checkbox};}}"
-                f"QCheckBox::indicator:checked{{background:{_bt.accent};border-color:{_bt.accent};}}"
+                f"QCheckBox::indicator:checked{{background:{_bt.accent};border-color:{_bt.accent};"
+                f"image:url(resources/check_white.png);}}"
                 f"QCheckBox::indicator:disabled{{background:{_bt.border};}}")
             chk.stateChanged.connect(
                 lambda state, k=key: self._checked_keys.add(k) if state
@@ -5607,3 +6685,687 @@ class ReturnStatusDialog(QDialog):
         parent = self.parent()
         if parent is not None and hasattr(parent, "start_return_status_check"):
             parent.start_return_status_check(ay_value, targets, on_done=self._refresh_table)
+
+
+class EAutoFetchSettingsDialog(QDialog):
+    def __init__(self, parent, vault, clients):
+        super().__init__(parent)
+        self.vault = vault
+        self.clients = list(clients or [])
+        self._cfg = vault.get_eproc_autofetch_config()
+        self._pan_labels = {}
+
+        t = _t()
+        self.setWindowTitle("e-Proceedings Auto-Fetch Settings")
+        self.setMinimumSize(660, 720)
+        self.resize(700, 780)
+        self.setStyleSheet(
+            f"QDialog{{background:{t.bg_window};}}"
+            f"QLabel{{background:transparent;border:none;color:{t.text_primary};font-size:12px;}}"
+            f"QCheckBox,QRadioButton{{background:transparent;color:{t.text_primary};font-size:12px;spacing:6px;}}"
+            f"QSpinBox,QComboBox,QTimeEdit{{background:{t.bg_input};border:1px solid {t.border};"
+            f"border-radius:5px;padding:4px 6px;color:{t.text_primary};font-size:12px;}}"
+            f"QGroupBox{{border:1px solid {t.border};border-radius:6px;margin-top:10px;"
+            f"padding:10px 8px 8px 8px;color:{t.text_primary};font-weight:600;}}"
+            f"QGroupBox::title{{subcontrol-origin:margin;left:10px;padding:0 4px;}}"
+        )
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(16, 14, 16, 12)
+        outer.setSpacing(10)
+
+        title = QLabel("Scheduled e-Proceedings Auto-Fetch")
+        title.setStyleSheet(f"font-size:15px;font-weight:700;color:{t.text_primary};")
+        outer.addWidget(title)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        body = QWidget()
+        body.setStyleSheet("background:transparent;")
+        layout = QVBoxLayout(body)
+        layout.setContentsMargins(2, 2, 8, 2)
+        layout.setSpacing(10)
+        scroll.setWidget(body)
+        outer.addWidget(scroll, stretch=1)
+
+        def section(text):
+            label = QLabel(text)
+            label.setStyleSheet(
+                f"font-size:10px;font-weight:700;color:{t.text_muted};"
+                "letter-spacing:0.5px;margin-top:6px;")
+            layout.addWidget(label)
+
+        self.chk_enabled = QCheckBox("Enable e-Proceedings auto-fetch")
+        self.chk_enabled.setChecked(self._cfg["enabled"])
+        self.chk_enabled.setToolTip("When off, nothing runs automatically.")
+        layout.addWidget(self.chk_enabled)
+
+        section("SCHEDULE")
+        schedule_row = QHBoxLayout()
+        schedule_row.setSpacing(8)
+        schedule_row.addWidget(QLabel("Run at"))
+        self.time_edit = QTimeEdit()
+        self.time_edit.setDisplayFormat("HH:mm")
+        self.time_edit.setTime(QTime.fromString(self._cfg["run_time"], "HH:mm"))
+        self.time_edit.setFixedWidth(90)
+        schedule_row.addWidget(self.time_edit)
+        schedule_row.addSpacing(12)
+        schedule_row.addWidget(QLabel("Active days"))
+        self._day_checks = {}
+        for index, name in enumerate(("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")):
+            cb = QCheckBox(name)
+            cb.setChecked(index in self._cfg["active_days"])
+            cb.stateChanged.connect(self._update_estimate)
+            self._day_checks[index] = cb
+            schedule_row.addWidget(cb)
+        schedule_row.addStretch()
+        layout.addLayout(schedule_row)
+
+        section("CLIENTS")
+        self.combo_scope = QComboBox()
+        self.combo_scope.addItems(["All clients", "Selected group", "Selected clients"])
+        self.combo_scope.setCurrentIndex({"all": 0, "group": 1, "pan": 2}.get(self._cfg["scope"], 0))
+        self.combo_scope.currentIndexChanged.connect(self._scope_changed)
+        layout.addWidget(self.combo_scope)
+
+        self.combo_group = QComboBox()
+        self.combo_group.addItems(self.vault.get_all_groups())
+        if self._cfg["scope_groups"]:
+            wanted = self._cfg["scope_groups"][0]
+            pos = self.combo_group.findText(wanted)
+            if pos >= 0:
+                self.combo_group.setCurrentIndex(pos)
+        self.combo_group.currentIndexChanged.connect(self._update_estimate)
+        layout.addWidget(self.combo_group)
+
+        self.combo_clients = CheckableComboBox(placeholder="Select clients")
+        for client in self.clients:
+            pan = str(client.get("pan", "")).upper()
+            label = f"{pan} — {client.get('name', '')}".strip()
+            self._pan_labels[label] = pan
+            self.combo_clients.add_item(label, pan in set(self._cfg["scope_pans"]))
+        layout.addWidget(self.combo_clients)
+
+        row_clients = QHBoxLayout()
+        row_clients.setSpacing(8)
+        row_clients.addWidget(QLabel("Clients per day"))
+        self.spin_clients_per_day = QSpinBox()
+        self.spin_clients_per_day.setRange(1, 500)
+        self.spin_clients_per_day.setValue(self._cfg["clients_per_day"])
+        self.spin_clients_per_day.valueChanged.connect(self._update_estimate)
+        row_clients.addWidget(self.spin_clients_per_day)
+        self.lbl_estimate = QLabel("")
+        self.lbl_estimate.setStyleSheet(f"color:{t.text_muted};font-size:11px;")
+        row_clients.addWidget(self.lbl_estimate, stretch=1)
+        layout.addLayout(row_clients)
+
+        section("DISTRIBUTION")
+        self.rd_every_day = QRadioButton("Run every day and continue where it left off")
+        self.rd_distribute = QRadioButton("Distribute the workload across several days")
+        self.rd_every_day.setChecked(self._cfg["distribution"] == "every_day")
+        self.rd_distribute.setChecked(self._cfg["distribution"] == "distribute")
+        self.rd_every_day.toggled.connect(self._distribution_changed)
+        self.rd_distribute.toggled.connect(self._distribution_changed)
+        layout.addWidget(self.rd_every_day)
+        layout.addWidget(self.rd_distribute)
+
+        self._distribute_box = QWidget()
+        self._distribute_box.setStyleSheet("background:transparent;")
+        dist_lay = QVBoxLayout(self._distribute_box)
+        dist_lay.setContentsMargins(22, 0, 0, 0)
+        dist_lay.setSpacing(6)
+        row_days = QHBoxLayout()
+        row_days.addWidget(QLabel("Spread across"))
+        self.spin_distribute_days = QSpinBox()
+        self.spin_distribute_days.setRange(1, 3)
+        self.spin_distribute_days.setValue(self._cfg["distribute_days"])
+        self.spin_distribute_days.setFixedWidth(60)
+        self.spin_distribute_days.valueChanged.connect(self._update_estimate)
+        row_days.addWidget(self.spin_distribute_days)
+        row_days.addWidget(QLabel("day(s)  (1 day = every day)"))
+        row_days.addStretch()
+        dist_lay.addLayout(row_days)
+        self.rd_by_count = QRadioButton("Split by number of clients (balanced)")
+        self.rd_by_group = QRadioButton("Split by group (whole groups per day)")
+        self.rd_by_count.setChecked(self._cfg["split_boundary"] == "client_count")
+        self.rd_by_group.setChecked(self._cfg["split_boundary"] == "group")
+        self.rd_by_count.toggled.connect(self._update_estimate)
+        self.rd_by_group.toggled.connect(self._update_estimate)
+        dist_lay.addWidget(self.rd_by_count)
+        dist_lay.addWidget(self.rd_by_group)
+        layout.addWidget(self._distribute_box)
+
+        self.chk_alternate = QCheckBox("Alternate the starting client each run (do not always start with the same cases)")
+        self.chk_alternate.setChecked(self._cfg["alternate_cases"])
+        layout.addWidget(self.chk_alternate)
+
+        section("WHAT TO FETCH")
+        self.chk_fetch_it = QCheckBox("Income Tax e-Proceedings")
+        self.chk_fetch_it.setChecked(self._cfg.get("fetch_income_tax", True))
+        self.chk_fetch_gst = QCheckBox("GST Notices & Orders")
+        self.chk_fetch_gst.setChecked(self._cfg.get("fetch_gst", True))
+        for _cb in (self.chk_fetch_it, self.chk_fetch_gst):
+            _cb.toggled.connect(self._update_estimate)
+            layout.addWidget(_cb)
+
+        section("PACING AND SAFETY")
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(6)
+        self._set_spin = {}
+        spin_defs = [
+            ("client_cooldown_sec", "Cooldown between clients (seconds)", 0, 86400),
+            ("doc_cooldown_sec", "Cooldown between documents (seconds)", 0, 3600),
+            ("jitter_sec", "Random extra delay (seconds)", 0, 600),
+            ("run_budget_min", "Maximum minutes per run", 1, 1440),
+            ("backoff_min", "Back-off after a rate-limit warning (minutes)", 1, 1440),
+            ("timeout_retries", "Retries after a portal timeout", 0, 5),
+        ]
+        for row, (key, label, low, high) in enumerate(spin_defs):
+            spin = QSpinBox()
+            spin.setRange(low, high)
+            spin.setValue(self._cfg[key])
+            grid.addWidget(QLabel(label), row, 0)
+            grid.addWidget(spin, row, 1)
+            self._set_spin[key] = spin
+        layout.addLayout(grid)
+        note = QLabel(
+            "The ITD portal is sometimes slow and times out. Increase the cooldowns "
+            "if you see many timeouts, or lower clients per day.")
+        note.setWordWrap(True)
+        note.setStyleSheet(f"color:{t.text_muted};font-size:11px;")
+        layout.addWidget(note)
+
+        row_backoff = QHBoxLayout()
+        row_backoff.addWidget(QLabel("After a rate-limit back-off"))
+        self.combo_backoff_action = QComboBox()
+        self.combo_backoff_action.addItems(["Resume the same evening", "Wait for the next scheduled day"])
+        self.combo_backoff_action.setCurrentIndex(
+            0 if self._cfg["on_backoff_action"] == "resume_same_evening" else 1)
+        row_backoff.addWidget(self.combo_backoff_action)
+        row_backoff.addStretch()
+        layout.addLayout(row_backoff)
+
+        row_stop = QHBoxLayout()
+        row_stop.addWidget(QLabel("When I press Stop"))
+        self.combo_stop = QComboBox()
+        self.combo_stop.addItems(["Keep the remaining clients for next time",
+                                  "Drop the remaining clients"])
+        self.combo_stop.setCurrentIndex(0 if self._cfg["stop_keeps_remainder"] else 1)
+        row_stop.addWidget(self.combo_stop)
+        row_stop.addStretch()
+        layout.addLayout(row_stop)
+
+        layout.addStretch(1)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        cancel = _btn("Cancel", "secondary", height=34)
+        cancel.clicked.connect(self.reject)
+        save = _btn("Save", "primary", height=34)
+        save.clicked.connect(self._save)
+        buttons.addWidget(cancel)
+        buttons.addSpacing(8)
+        buttons.addWidget(save)
+        outer.addLayout(buttons)
+
+        self._scope_changed()
+        self._distribution_changed()
+        self._update_estimate()
+
+    def _scope_changed(self):
+        scope = self.combo_scope.currentIndex()
+        self.combo_group.setVisible(scope == 1)
+        self.combo_clients.setVisible(scope == 2)
+        self._update_estimate()
+
+    def _distribution_changed(self):
+        self._distribute_box.setVisible(self.rd_distribute.isChecked())
+        self._update_estimate()
+
+    def _selected_pans(self):
+        return {self._pan_labels.get(label) for label in self.combo_clients.checked_labels()} - {None}
+
+    def _draft_config(self):
+        from automation.eproc_scheduler import normalise_config
+        return normalise_config({
+            "enabled": self.chk_enabled.isChecked(),
+            "run_time": self.time_edit.time().toString("HH:mm"),
+            "active_days": [i for i, cb in self._day_checks.items() if cb.isChecked()],
+            "scope": ("all", "group", "pan")[self.combo_scope.currentIndex()],
+            "scope_groups": [self.combo_group.currentText()] if self.combo_group.currentText() else [],
+            "scope_pans": sorted(self._selected_pans()),
+            "distribution": "distribute" if self.rd_distribute.isChecked() else "every_day",
+            "distribute_days": self.spin_distribute_days.value(),
+            "split_boundary": "group" if self.rd_by_group.isChecked() else "client_count",
+            "alternate_cases": self.chk_alternate.isChecked(),
+            "clients_per_day": self.spin_clients_per_day.value(),
+            **{key: spin.value() for key, spin in self._set_spin.items()},
+            "on_backoff_action": ("resume_same_evening" if self.combo_backoff_action.currentIndex() == 0
+                                  else "next_day"),
+            "stop_keeps_remainder": self.combo_stop.currentIndex() == 0,
+            "fetch_income_tax": self.chk_fetch_it.isChecked(),
+            "fetch_gst": self.chk_fetch_gst.isChecked(),
+            "last_run_finished": self._cfg.get("last_run_finished", ""),
+            "last_run_summary": self._cfg.get("last_run_summary", {}),
+            "next_run_at": self._cfg.get("next_run_at", ""),
+            "rotation_cursor": self._cfg.get("rotation_cursor", 0),
+            "split_phase": self._cfg.get("split_phase", 0),
+            "queue_remaining": self._cfg.get("queue_remaining", []),
+            "backoff_until": self._cfg.get("backoff_until", ""),
+        })
+
+    def _update_estimate(self, *_args):
+        from automation.eproc_scheduler import estimate_nights, in_scope
+        cfg = self._draft_config()
+        total = len(in_scope(self.clients, cfg))
+        if total == 0:
+            self.lbl_estimate.setText("No clients in this scope.")
+            return
+        nights = estimate_nights(self.clients, cfg)
+        cap = cfg["clients_per_day"]
+        if cfg["distribution"] == "every_day":
+            self.lbl_estimate.setText(
+                f"{total} client(s) in scope — about {nights} night(s) at {cap}/night.")
+        else:
+            self.lbl_estimate.setText(
+                f"{total} client(s) in scope — {cfg['distribute_days']} day cycle, "
+                f"about {nights} night(s) at {cap}/night.")
+
+    def _save(self):
+        cfg = self._draft_config()
+        if not cfg["active_days"]:
+            QMessageBox.warning(self, "Select Days", "Choose at least one active day.")
+            return
+        if cfg["scope"] == "group" and not cfg["scope_groups"]:
+            QMessageBox.warning(self, "Select Group", "Choose a client group to sync.")
+            return
+        if cfg["scope"] == "pan" and not cfg["scope_pans"]:
+            QMessageBox.warning(self, "Select Clients", "Choose at least one client.")
+            return
+        self._cfg = self.vault.save_eproc_autofetch_config(cfg)
+        self.accept()
+
+
+# ── Return Status Tab (F-121) ─────────────────────────────────────────────
+class ReturnStatusTab(QWidget):
+    """Income Tax hub ▸ Return Status — an inline FY selector + a filterable
+    table of every client that has Income Tax (PAN + e-Filing password)
+    credentials. Replaces the old ReturnStatusDialog modal.
+
+    Rows come from the vault: clients from get_all_assessees() (filtered via
+    VaultManager.credential_sources), status fields from
+    get_return_status(ay). The table also shows cached data offline; "Fetch
+    Selected" hands the checked clients up to the parent via start_fetch()
+    to run the live portal scan, then this tab refreshes when the batch is
+    done.
+
+    The audit-applicable flag is per client *per year*, persisted via
+    vault.set_audit_applicable(); toggling it rewrites that one entry.
+    Whether an audit report is actually filed is read from the downloaded
+    Income-Tax-Forms tree (no portal hit) via has_audit_report().
+    """
+
+    _COL_CHECK = 0
+    _COL_NAME = 1
+    _COL_GROUP = 2
+    _COL_PAN = 3
+    _COL_FILED = 4
+    _COL_SECTION = 5
+    _COL_REVISED = 6
+    _COL_REV_SEC = 7
+    _COL_RECTIFIED = 8
+    _COL_STATUS = 9
+    _COL_EVERIFY = 10
+    _COL_REFUND = 11
+    _COL_AUDIT = 12
+    _COL_AUDIT_REPORT = 13
+
+    _HEADERS = [
+        "", "Client", "Group", "PAN", "Filed", "Section", "Revised",
+        "Revised §", "Rectified", "Last Status", "e-Verify",
+        "Refund / Demand", "Audit Applicable", "Audit Report",
+    ]
+
+    def __init__(self, vault, ay_entries, download_root_getter, start_fetch,
+                 log_callback=None, parent=None, audit_probe=None):
+        super().__init__(parent)
+        self._vault = vault
+        self._ay_entries = [e for e in ay_entries if e.get("year", {}).get("AY")]
+        self._download_root_getter = download_root_getter
+        self._start_fetch = start_fetch
+        self._log = log_callback or (lambda *_a, **_k: None)
+        self._audit_probe = audit_probe
+        self._audit_report_by_pan: dict = {}
+        self._row_data: list = []
+        self._checked_keys: set = set()
+
+        self._build_ui()
+        self.refresh()
+
+    # ── UI ──
+    def _build_ui(self):
+        t = _t()
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(24, 16, 24, 16)
+        outer.setSpacing(10)
+
+        # Row 1: FY selector + search + group + fetch
+        top = QHBoxLayout()
+        top.setSpacing(10)
+        top.addWidget(_lbl("Financial Year:", 11, bold=True))
+        self._ay_combo = QComboBox()
+        self._ay_combo.setMinimumWidth(210)
+        for e in self._ay_entries:
+            y = e.get("year", {})
+            self._ay_combo.addItem(e.get("label", y.get("AY", "")), y.get("AY", ""))
+        self._ay_combo.currentIndexChanged.connect(self.refresh)
+        top.addWidget(self._ay_combo)
+
+        self._search = QLineEdit()
+        self._search.setPlaceholderText("Search name or PAN…")
+        self._search.setClearButtonEnabled(True)
+        self._search.textChanged.connect(self._refresh_table)
+        top.addWidget(self._search, 1)
+
+        top.addWidget(_lbl("Group:", 11, bold=True))
+        self._group_combo = QComboBox()
+        self._group_combo.addItem("All Groups", "")
+        try:
+            for g in self._vault.get_all_groups():
+                self._group_combo.addItem(g, g)
+        except Exception:
+            pass
+        self._group_combo.currentIndexChanged.connect(self._refresh_table)
+        top.addWidget(self._group_combo)
+
+        self._btn_fetch = _btn("Fetch Selected", "primary", height=32)
+        self._btn_fetch.clicked.connect(self._on_fetch_clicked)
+        top.addWidget(self._btn_fetch)
+        self._btn_audit_probe = _btn("Check Audit Reports", "secondary", height=32)
+        self._btn_audit_probe.setToolTip(
+            "Query the portal's Income Tax Forms for the audit-applicable clients shown")
+        self._btn_audit_probe.clicked.connect(self.probe_audit)
+        top.addWidget(self._btn_audit_probe)
+        outer.addLayout(top)
+
+        # Row 2: quick filters
+        filt = QHBoxLayout()
+        filt.setSpacing(14)
+        filt.addWidget(_lbl("Show:", 11, bold=True, color=t.text_muted))
+        self._chk_pending = QCheckBox("Pending")
+        self._chk_outstanding = QCheckBox("Outstanding")
+        self._chk_pending_everify = QCheckBox("Pending e-verification")
+        self._chk_audit = QCheckBox("Audit applicable")
+        self._chk_audit_report_filed = QCheckBox("Audit report filed")
+        self._chk_audit_report_not_filed = QCheckBox("Audit report not filed")
+        for c in (self._chk_pending, self._chk_outstanding,
+                  self._chk_pending_everify, self._chk_audit,
+                  self._chk_audit_report_filed, self._chk_audit_report_not_filed):
+            c.setStyleSheet(f"QCheckBox{{background:transparent;color:{t.text_primary};font-size:11px;}}")
+            c.stateChanged.connect(self._refresh_table)
+            filt.addWidget(c)
+        filt.addStretch(1)
+        self._counts = _lbl("", 11, color=t.text_muted)
+        filt.addWidget(self._counts)
+        outer.addLayout(filt)
+
+        # Table
+        self._table = QTableWidget(0, len(self._HEADERS))
+        self._table.setHorizontalHeaderLabels(self._HEADERS)
+        hdr = self._table.horizontalHeader()
+        hdr.setSectionResizeMode(self._COL_CHECK, QHeaderView.ResizeMode.Fixed)
+        hdr.setSectionResizeMode(self._COL_NAME, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(self._COL_GROUP, QHeaderView.ResizeMode.Interactive)
+        for col in range(self._COL_PAN, len(self._HEADERS)):
+            hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+        self._table.setColumnWidth(self._COL_CHECK, 30)
+        self._table.setColumnWidth(self._COL_GROUP, 100)
+        self._table.setColumnWidth(self._COL_PAN, 100)
+        for col in (self._COL_FILED, self._COL_REVISED, self._COL_RECTIFIED):
+            self._table.setColumnWidth(col, 60)
+        self._table.setColumnWidth(self._COL_SECTION, 80)
+        self._table.setColumnWidth(self._COL_REV_SEC, 80)
+        self._table.setColumnWidth(self._COL_STATUS, 200)
+        self._table.setColumnWidth(self._COL_EVERIFY, 80)
+        self._table.setColumnWidth(self._COL_REFUND, 130)
+        self._table.setColumnWidth(self._COL_AUDIT, 110)
+        self._table.setColumnWidth(self._COL_AUDIT_REPORT, 110)
+        self._table.verticalHeader().setVisible(False)
+        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._table.setStyleSheet(
+            f"QTableWidget{{border:1.5px solid {t.border};border-radius:8px;"
+            f"background:{t.bg_table};outline:0;gridline-color:{t.grid};}}"
+            f"QTableWidget::item{{border-bottom:1px solid {t.grid};padding:0 8px;}}")
+        hdr.setStyleSheet(
+            f"QHeaderView::section{{background-color:{t.bg_header};border:none;"
+            f"border-right:1px solid {t.border};border-bottom:1px solid {t.border};"
+            f"font-weight:bold;color:{t.text_muted};font-size:11px;height:32px;padding:0 8px;}}")
+        outer.addWidget(self._table, 1)
+
+        hint = _lbl(
+            "Tick clients and click Fetch Selected to re-check them live from the portal. "
+            "Audit Applicable is saved per client per year; Audit Report comes from the "
+            "portal's Income Tax Forms (3CB-3CD / 3CA-3CD) via Check Audit Reports, with a "
+            "downloaded-forms fallback.", 10, color=t.text_muted)
+        hint.setWordWrap(True)
+        outer.addWidget(hint)
+
+    # ── data ──
+    def _current_ay(self) -> str:
+        return self._ay_combo.currentData() or ""
+
+    def refresh(self, *_a):
+        self._refresh_table()
+
+    def _client_rows(self) -> list:
+        """One row per Income-Tax-credential client for the selected AY."""
+        ay = self._current_ay()
+        if not ay:
+            return []
+        try:
+            clients = self._vault.get_all_assessees()
+        except Exception as exc:
+            self._log(f"[Return Status] Could not load clients: {exc}")
+            return []
+        status_map = self._vault.get_return_status(ay)
+        audit_years = self._vault.get_audit_applicable_for_year(ay)
+        root = ""
+        try:
+            root = self._download_root_getter() or ""
+        except Exception:
+            root = ""
+        rows = []
+        for c in clients:
+            try:
+                sources = self._vault.credential_sources(c)
+            except Exception:
+                sources = []
+            if "Income Tax" not in sources:
+                continue
+            pan = (c.get("pan") or "").upper()
+            entry = status_map.get(pan, {}) or {}
+            audit_on = bool(audit_years.get(pan, False))
+            # Portal probe result wins (True/False); when the portal hasn't been
+            # asked yet or errored (None), fall back to the local downloaded-
+            # forms scan so the column still shows something honest.
+            audit_report = self._audit_report_by_pan.get(pan)
+            if audit_report is None and audit_on and root:
+                try:
+                    from automation.return_status import has_audit_report
+                    audit_report = has_audit_report(root, pan, ay)
+                except Exception:
+                    audit_report = None
+            rows.append({
+                "pan": pan, "name": c.get("name", ""),
+                "group": (c.get("group") or "").strip(),
+                "filed": entry.get("filed"), "section": entry.get("section", ""),
+                "revised": entry.get("revised"), "revised_section": entry.get("revised_section", ""),
+                "rectified": entry.get("rectified"), "status": entry.get("status", ""),
+                "status_date": entry.get("status_date", ""),
+                "e_verified": entry.get("e_verified"), "processed": entry.get("processed"),
+                "everify_pending": entry.get("everify_pending"),
+                "refund_status": entry.get("refund_status", ""),
+                "checked": bool(entry), "audit_on": audit_on,
+                "audit_report": audit_report,
+            })
+        return rows
+
+    def _passes_filters(self, r: dict) -> bool:
+        search = self._search.text().strip().lower()
+        if search and search not in r["name"].lower() and search not in r["pan"].lower():
+            return False
+        group = self._group_combo.currentData()
+        if group and r["group"] != group:
+            return False
+        if self._chk_pending.isChecked():
+            if r["filed"] and r["processed"]:
+                return False
+        if self._chk_outstanding.isChecked():
+            if r["refund_status"] not in ("pending", "adjusted"):
+                return False
+        if self._chk_pending_everify.isChecked():
+            if not (r["filed"] and r["e_verified"] is False):
+                return False
+        if self._chk_audit.isChecked():
+            if not r["audit_on"]:
+                return False
+        if self._chk_audit_report_filed.isChecked() and r["audit_report"] is not True:
+            return False
+        if self._chk_audit_report_not_filed.isChecked() and r["audit_report"] is not False:
+            return False
+        return True
+
+    def _refresh_table(self, *_a):
+        t = _t()
+        from automation.return_status import compute_everify_pending
+        all_rows = self._client_rows()
+        rows = [r for r in all_rows if self._passes_filters(r)]
+        self._row_data = rows
+        table = self._table
+        table.setRowCount(len(rows))
+        for i, r in enumerate(rows):
+            table.setRowHeight(i, 32)
+            key = (r["pan"], self._current_ay())
+            chk = QCheckBox()
+            chk.setChecked(key in self._checked_keys)
+            chk.setStyleSheet(
+                f"QCheckBox{{background:transparent;}}"
+                f"QCheckBox::indicator{{width:15px;height:15px;border:1.5px solid {t.border};"
+                f"border-radius:3px;background:{t.bg_checkbox};}}"
+                f"QCheckBox::indicator:checked{{background:{t.accent};border-color:{t.accent};}}")
+            chk.stateChanged.connect(
+                lambda state, k=key: self._checked_keys.add(k) if state
+                else self._checked_keys.discard(k))
+            table.setCellWidget(i, self._COL_CHECK, chk)
+
+            def _set(col, text, muted=False, warn=False):
+                item = QTableWidgetItem(text)
+                item.setForeground(QColor(t.warning if warn else (t.text_muted if muted else t.text_primary)))
+                if col == self._COL_PAN:
+                    item.setFont(QFont(_MONO_FONT, 10))
+                table.setItem(i, col, item)
+
+            _set(self._COL_NAME, r["name"] or "—")
+            _set(self._COL_GROUP, r["group"] or "—", muted=True)
+            _set(self._COL_PAN, r["pan"], muted=True)
+
+            def _yn(v, blank="—"):
+                return "Yes" if v is True else ("No" if v is False else blank)
+            _set(self._COL_FILED, _yn(r["filed"]), muted=(r["filed"] is None))
+            _set(self._COL_SECTION, r["section"] or "—", muted=not r["section"])
+            _set(self._COL_REVISED, _yn(r["revised"]), muted=(r["revised"] is None))
+            _set(self._COL_REV_SEC, r["revised_section"] or "—", muted=not r["revised_section"])
+            _set(self._COL_RECTIFIED, _yn(r["rectified"]), muted=(r["rectified"] is None))
+
+            if r["checked"]:
+                status_text = r["status"] or "—"
+                if r["status_date"]:
+                    status_text += f" ({r['status_date']})"
+                _set(self._COL_STATUS, status_text)
+            else:
+                _set(self._COL_STATUS, "Not yet fetched", muted=True, warn=True)
+
+            everify = r.get("everify_pending")
+            if everify is None:
+                everify = compute_everify_pending(
+                    r["filed"], r["e_verified"], r["status"])
+            if not r["filed"]:
+                _set(self._COL_EVERIFY, "—", muted=True)
+            elif everify:
+                _set(self._COL_EVERIFY, "Pending", warn=True)
+            else:
+                _set(self._COL_EVERIFY, "Done", muted=True)
+
+            rs = r["refund_status"]
+            rs_label = {"paid": "Refund paid", "adjusted": "Adjusted vs demand",
+                        "pending": "Refund pending"}.get(rs, "—")
+            _set(self._COL_REFUND, rs_label, muted=(not rs))
+
+            audit_chk = QCheckBox()
+            audit_chk.setChecked(r["audit_on"])
+            audit_chk.setStyleSheet(f"QCheckBox{{background:transparent;}}")
+            audit_chk.stateChanged.connect(
+                lambda state, pan=r["pan"], ay=self._current_ay(): self._on_audit_toggled(pan, ay, bool(state)))
+            table.setCellWidget(i, self._COL_AUDIT, audit_chk)
+
+            if not r["audit_on"]:
+                _set(self._COL_AUDIT_REPORT, "—", muted=True)
+            elif r["audit_report"] is True:
+                _set(self._COL_AUDIT_REPORT, "Filed")
+            elif r["audit_report"] is False:
+                _set(self._COL_AUDIT_REPORT, "Not filed", warn=True)
+            else:
+                _set(self._COL_AUDIT_REPORT, "Unknown", muted=True)
+
+        self._counts.setText(f"{len(rows)} of {len(all_rows)} client(s)")
+
+    def _on_audit_toggled(self, pan: str, ay: str, value: bool):
+        try:
+            self._vault.set_audit_applicable(pan, ay, value)
+        except Exception as exc:
+            self._log(f"[Return Status] Could not save audit flag: {exc}")
+        self._refresh_table()
+
+    def _on_fetch_clicked(self):
+        ay = self._current_ay()
+        if not ay:
+            return
+        pans = [pan for (pan, a) in self._checked_keys if a == ay]
+        if not pans:
+            QMessageBox.information(self, "Nothing Selected",
+                                    "Tick at least one client to fetch.")
+            return
+        by_pan = {c.get("pan", "").upper(): c for c in self._vault.get_all_assessees()}
+        targets = [by_pan[p] for p in pans if p in by_pan]
+        if not targets:
+            return
+        self._start_fetch(ay, targets)
+
+    def set_audit_report_results(self, results: dict):
+        """Apply {pan: bool|None} audit-report states from a portal probe."""
+        self._audit_report_by_pan.update(results or {})
+        self._refresh_table()
+
+    def probe_audit(self):
+        """Ask the parent to run the portal audit probe for audit-applicable
+        clients of the selected AY. No-op if no callback was supplied."""
+        if not self._audit_probe:
+            return
+        ay = self._current_ay()
+        pans = [r["pan"] for r in self._client_rows() if r["audit_on"]]
+        if ay and pans:
+            self._audit_probe(ay, pans)
+
+    def select_all_visible(self):
+        for r in self._row_data:
+            self._checked_keys.add((r["pan"], self._current_ay()))
+        self._refresh_table()
+
+    def clear_selection(self):
+        ay = self._current_ay()
+        self._checked_keys = {k for k in self._checked_keys if k[1] != ay}
+        self._refresh_table()

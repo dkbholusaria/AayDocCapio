@@ -31,6 +31,7 @@ __pycache__/
 
 # Build artefacts
 build/
+automation/gst/tools/build/
 dist/
 *.egg-info/
 .eggs/
@@ -63,6 +64,9 @@ checkmark.png
 # Plans subfolders (untracked)
 Plans/
 PlansofThisProject/
+
+# Local test-download output (real client documents — never commit)
+Downloads-demo/
 
 # ICAI CA PRACTO submission drafts (not for version control)
 ICAI_Submission/
